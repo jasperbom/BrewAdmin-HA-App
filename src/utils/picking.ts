@@ -14,6 +14,7 @@
 //   (geen SKU) → match op bier-/batchnaam + verpakking (ook via product_id)
 
 import { productVoorRegel } from './sku'
+import { verkoopbareAfvullingen } from './haccp'
 
 export interface PickRefData {
   bat?: any[]
@@ -149,105 +150,6 @@ export const afvullingHoortBijBierNaam = (
   if (batch.biernaam && lower(batch.biernaam) === lower(bierNaam)) return true
   if (prod && batch.product_id === prod.id) return true
   return false
-}
-
-// ── Tijdelijke diagnose (bieren-picken-visibility) ──────────────────────────
-// Legt per afvulling uit waarom hij wél/niet aan een orderregel koppelt. Puur,
-// zodat de UI er alleen een leesbare dump van hoeft te tonen. Bedoeld om de
-// oorzaak van "bier verschijnt niet bij het picken" uit echte data te halen;
-// mag weer weg zodra de oorzaak vaststaat.
-export interface PickDiagnoseRegel {
-  id: any
-  batch_id: any
-  batch_naam: string
-  batch_biernaam: string
-  batch_product_id: any
-  product_id: any
-  artikel_sku: any
-  verpakking_type: any
-  tier1_sku_exact: boolean
-  tier2_geen_sku: boolean
-  tier3_product: boolean
-  naam_fallback: boolean
-  verpakking_matcht: boolean
-  gerelateerd: boolean
-}
-
-export interface PickDiagnose {
-  orderSku: string | null
-  order_product_id: number | null
-  regel_bier: string
-  regel_verpakking: string
-  regels: PickDiagnoseRegel[]
-}
-
-export const diagnosePickMatch = (
-  afvullingen: any[],
-  regelBierNaam: string,
-  regelVerpakking: string,
-  orderSku: string | null,
-  data: PickRefData,
-): PickDiagnose => {
-  const { bat = [], artikelen = [], producten = [], verpakkingen = [] } = data
-  const pid = orderProductId(orderSku, regelBierNaam, data)
-  const prod = producten.find((p: any) => lower(p.naam) === lower(regelBierNaam))
-
-  const regels = (afvullingen || []).map((a: any): PickDiagnoseRegel => {
-    const batch = bat.find((b: any) => b.id === a.batch_id)
-    const avPid = a.product_id ?? batch?.product_id ?? null
-    const vMatch = verpakkingMatcht(a.verpakking_type, regelVerpakking, verpakkingen)
-
-    const tier1 = !!orderSku && a.artikel_sku === orderSku
-    const matchArt = artikelen.find((art: any) =>
-      art.artikelnummer === orderSku &&
-      lower(art.verpakking_type) === lower(a.verpakking_type))
-    const tier2 = !!orderSku && !a.artikel_sku && !!matchArt &&
-      (batch?.biernaam ? batch.biernaam === matchArt.biernaam : true)
-    const tier3 = !!orderSku && pid != null && avPid === pid && vMatch
-    const naamFb =
-      vMatch && !!batch && (
-        lower(batch.naam) === lower(regelBierNaam) ||
-        (!!batch.biernaam && lower(batch.biernaam) === lower(regelBierNaam)) ||
-        (!!prod && (a.product_id === prod.id || batch.product_id === prod.id))
-      )
-    // "Gerelateerd" = dit is plausibel hetzelfde bier (naam of product raakt),
-    // zodat de UI de ruis (alle andere voorraad) kan wegfilteren.
-    const gerelateerd =
-      naamFb ||
-      (pid != null && avPid === pid) ||
-      (!!batch && (
-        lower(batch.naam).includes(lower(regelBierNaam)) ||
-        lower(regelBierNaam).includes(lower(batch.naam)) ||
-        (!!batch.biernaam && (
-          lower(batch.biernaam).includes(lower(regelBierNaam)) ||
-          lower(regelBierNaam).includes(lower(batch.biernaam))))
-      ))
-
-    return {
-      id: a.id,
-      batch_id: a.batch_id,
-      batch_naam: batch?.naam ?? '',
-      batch_biernaam: batch?.biernaam ?? '',
-      batch_product_id: batch?.product_id ?? null,
-      product_id: a.product_id ?? null,
-      artikel_sku: a.artikel_sku ?? null,
-      verpakking_type: a.verpakking_type ?? null,
-      tier1_sku_exact: tier1,
-      tier2_geen_sku: tier2,
-      tier3_product: tier3,
-      naam_fallback: naamFb,
-      verpakking_matcht: vMatch,
-      gerelateerd,
-    }
-  })
-
-  return {
-    orderSku: orderSku ?? null,
-    order_product_id: pid,
-    regel_bier: regelBierNaam,
-    regel_verpakking: regelVerpakking,
-    regels,
-  }
 }
 
 // ── Werkruimte-badge & -dashboard (Verkoop) ─────────────────────────────────
@@ -405,7 +307,7 @@ export const verzamelPicklijst = (
   // volgende niet meer beschikbaar (een regel zonder verpakking matcht breed).
   const bat = opts.data?.bat || []
   const gebruikt = new Map<any, number>()
-  const voorraad = (opts.afvullingen || []).filter((a: any) => a && !a.geblokkeerd && opts.beschikbaar(a) > 0)
+  const voorraad = verkoopbareAfvullingen(opts.afvullingen).filter((a: any) => opts.beschikbaar(a) > 0)
   const regels = [...groepen.values()].sort((a, b) =>
     a.bier_naam.localeCompare(b.bier_naam) || a.verpakking_type.localeCompare(b.verpakking_type))
   for (const g of regels) {

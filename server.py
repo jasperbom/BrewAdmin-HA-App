@@ -132,6 +132,9 @@ WC_POST_PREFIX  = '/api/woocommerce/create/'
 WC_TIMEOUT      = 20
 WC_POGINGEN     = 2
 WC_RETRY_PAUZE  = 1.0
+# Oorzaakscodes die de verbindingstest aan de app doorgeeft (zie _wc_oorzaak;
+# de app vertaalt ze via utils/wcFout.ts). Alleen deze — nooit vrije tekst.
+_WC_TEST_OORZAKEN = ('timeout', 'certificaat', 'tls', 'dns', 'verbinding', 'netwerk')
 
 # Website-telemetrie: brouwerijcijfers naar de plugin Craftery Brouwerij op de
 # webshop (zie _website_tick). Zelfde sleutel als de WooCommerce-API; de route
@@ -260,6 +263,10 @@ _SEC_HEADERS = [
 # nodig — alleen 'unsafe-inline' voor de bundle en blob: voor workers. Elke
 # extra whitelisted host zou een XSS toestaan om willekeurige scripts na te
 # laden, dus houd deze lijst leeg.
+# `img-src` bevat bewust geen `https:`: een externe afbeelding is bij een XSS
+# een uitlekkanaal (beacon), terwijl `connect-src` op 'self' staat. Externe
+# afbeeldingen (zoals WooCommerce-productfoto's) toont de app daarom niet
+# inline, alleen als link (WcProductModal, `veiligeAfbeeldingUrl`).
 _CSP = (
     "default-src 'none'; "
     "script-src 'unsafe-inline'; "
@@ -872,6 +879,12 @@ def _run_backup() -> str:
     today = datetime.date.today().isoformat()
     dest = BACKUP_DIR / today
     dest.mkdir(parents=True, exist_ok=True)
+    # De snapshot bevat de credentials onversleuteld (restore-baar), dus
+    # alleen voor de addon-gebruiker leesbaar: 0700 op de map, 0600 op de JSON.
+    try:
+        os.chmod(dest, 0o700)
+    except OSError:
+        pass
     conn = _db()
     # Onder _data_lock: geen schrijver halverwege de export, zodat de
     # JSON-bestanden en de db-kopie hetzelfde consistente moment vastleggen.
@@ -881,6 +894,10 @@ def _run_backup() -> str:
             gelezen = _lees_key_bytes(key)
             if gelezen is not None:
                 _atomic_write_bytes(dest / f'{key}.json', gelezen[0])
+                try:
+                    os.chmod(dest / f'{key}.json', 0o600)
+                except OSError:
+                    pass
         # sqlite-backup-API: consistente kopie, ook met een open WAL.
         kopie = sqlite3.connect(str(dest / DB_NAAM))
         try:
@@ -915,6 +932,8 @@ def _offsite_backup(dest: Path, today: str) -> None:
             for f in sorted(dest.rglob('*')):
                 if f.is_file():
                     zf.write(f, str(f.relative_to(dest)))
+        # Volledige snapshot incl. credentials — alleen de addon-gebruiker.
+        os.chmod(tmp, 0o600)
         os.replace(tmp, OFFSITE_BACKUP_DIR / f'brewadmin_backup_{today}.zip')
     except OSError as exc:
         _log('backup', f'offsite backup failed: {exc}', level=logging.ERROR)
@@ -1078,10 +1097,101 @@ def _maak_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _zonder_niet_eindig(waarde):
+    """Kopie van `waarde` waarin NaN/±Infinity door None vervangen zijn —
+    zoals JSON.stringify ze in de browser ook als null schrijft."""
+    if isinstance(waarde, float):
+        return waarde if math.isfinite(waarde) else None
+    if isinstance(waarde, dict):
+        return {k: _zonder_niet_eindig(v) for k, v in waarde.items()}
+    if isinstance(waarde, (list, tuple)):
+        return [_zonder_niet_eindig(v) for v in waarde]
+    return waarde
+
+
 def _json_compact(waarde) -> str:
     """Compacte, deterministische JSON-serialisatie (zelfde vorm als
-    JSON.stringify in de frontend)."""
-    return json.dumps(waarde, ensure_ascii=False, separators=(',', ':'))
+    JSON.stringify in de frontend).
+
+    Nooit NaN/Infinity in de opslag: Python schrijft die als letterlijke
+    `NaN`, wat geen JSON is — JSON.parse in de browser faalt dan op de hele
+    key (en op /api/bulk). Inkomende data wordt al geweigerd
+    (_json_laden_strikt) en HA-waarden gefilterd (_eindig_of_none); dit is
+    het vangnet voor een servertick die er toch één aanlevert: die waarde
+    wordt null, net als bij JSON.stringify, in plaats van een schrijffout."""
+    try:
+        return json.dumps(waarde, ensure_ascii=False, separators=(',', ':'),
+                          allow_nan=False)
+    except ValueError:
+        return json.dumps(_zonder_niet_eindig(waarde), ensure_ascii=False,
+                          separators=(',', ':'), allow_nan=False)
+
+
+def _weiger_niet_eindig(token: str):
+    raise ValueError(f'niet-eindig getal in JSON: {token}')
+
+
+def _eindige_float(tekst: str) -> float:
+    waarde = float(tekst)
+    if not math.isfinite(waarde):  # 1e999 loopt over naar inf
+        raise ValueError(f'niet-eindig getal in JSON: {tekst}')
+    return waarde
+
+
+def _json_laden_strikt(body):
+    """json.loads voor data die de opslag in gaat: weigert NaN, Infinity,
+    -Infinity en een getal dat overloopt naar oneindig met een ValueError
+    (de aanroeper antwoordt 400). JSON.stringify maakt zulke waarden nooit;
+    alleen een zelfgebouwd verzoek kan ze sturen."""
+    return json.loads(body, parse_constant=_weiger_niet_eindig,
+                      parse_float=_eindige_float)
+
+
+def _herstel_niet_eindige_getallen(conn: sqlite3.Connection) -> None:
+    """Eenmalige opschoning bij de start: een key die van vóór de NaN-filter
+    een letterlijke NaN/Infinity bevat (een HA-sensor die 'nan' meldde) was
+    voor de app onleesbaar. Zulke waarden worden null en de key wordt
+    herschreven — daarna is hij weer geldige JSON. Geldt voor elke key, ook
+    een append-only key: een NaN had geen betekenis en was nergens leesbaar;
+    null is precies wat JSON.stringify ervan maakt. Elke herstelde key komt in
+    de server-audit. Draait op `conn` zelf (vanuit _db(), vóór de verbinding
+    thread-lokaal klaarstaat)."""
+    patroon = "(data GLOB '*NaN*' OR data GLOB '*Infinity*')"
+    verdacht = [r[0] for r in conn.execute(
+        f'SELECT DISTINCT key FROM records WHERE {patroon} '
+        f'UNION SELECT key FROM kv WHERE {patroon}')]
+    hersteld = 0
+    for key in verdacht:
+        rij = conn.execute('SELECT soort, versie FROM versies WHERE key=?',
+                           (key,)).fetchone()
+        if rij is None:
+            continue
+        if rij[0] == 'array':
+            delen = [r[0] for r in conn.execute(
+                'SELECT data FROM records WHERE key=? ORDER BY seq', (key,))]
+            tekst = '[' + ','.join(delen) + ']'
+        else:
+            kv = conn.execute('SELECT data FROM kv WHERE key=?', (key,)).fetchone()
+            if kv is None:
+                continue
+            tekst = kv[0]
+        try:
+            _json_laden_strikt(tekst)
+            continue  # 'NaN' stond alleen in een tekst — niets mis
+        except ValueError:
+            pass
+        try:
+            waarde = json.loads(tekst)
+        except ValueError:
+            continue
+        with conn:
+            versie, nbytes = _schrijf_key(conn, key, waarde)  # _json_compact maakt er null van
+        _audit_write('nan_herstel', key, bytes=nbytes, versie_van=rij[1],
+                     versie_naar=versie)
+        hersteld += 1
+    if hersteld:
+        _log('sqlite', f'{hersteld} key(s) met NaN/Infinity hersteld naar null',
+             level=logging.WARNING)
 
 
 def _schrijf_key(conn: sqlite3.Connection, key: str, waarde) -> tuple[str, int]:
@@ -1189,6 +1299,10 @@ def _db() -> sqlite3.Connection:
         if eerste:
             _maak_schema(conn)
             _migreer_json_bestanden(conn)
+            try:
+                _herstel_niet_eindige_getallen(conn)
+            except sqlite3.Error as exc:
+                _log('sqlite', f'NaN-opschoning mislukt: {exc}', level=logging.ERROR)
             _chmod_db_bestanden()
             _db_geinitialiseerd.add(pad)
     _db_local.conn = conn
@@ -1373,24 +1487,109 @@ _APPEND_ONLY = (
 )
 
 
+def _append_only_groepen(regels) -> tuple[dict, list]:
+    """Regels per id (zelfde normalisatie als `record_id` in _schrijf_key:
+    None of str(id)) als lijst van canonieke JSON-vormen, plus de canonieke
+    vormen van elementen die geen object zijn."""
+    per_id: dict = {}
+    los: list = []
+    for r in regels:
+        canon = json.dumps(r, sort_keys=True)
+        if isinstance(r, dict):
+            rid = None if r.get('id') is None else str(r['id'])
+            per_id.setdefault(rid, []).append(canon)
+        else:
+            los.append(canon)
+    return per_id, los
+
+
 def _append_only_ok(key: str, parsed) -> bool:
     """True wanneer de nieuwe payload alle bestaande regels ongewijzigd bevat
-    (vergelijking per id). Alleen relevant voor keys in _APPEND_ONLY."""
+    en alleen nieuwe regels toevoegt met een eigen, unieke id. Alleen relevant
+    voor keys in _APPEND_ONLY.
+
+    Vergelijkt per id als multiset, niet via een dict: met een dict hield een
+    dubbele id alleen de laatste over, zodat `[vervalsing_X, origineel_X]`
+    door de controle kwam en beide records werden opgeslagen — waarna geen
+    enkele payload meer kon voldoen en de key voorgoed op slot zat (422 op
+    elke write, 400 op elke delta). Nu:
+    - elke bestaande id moet met precies dezelfde varianten terugkomen (niets
+      weglaten, wijzigen of er een variant naast zetten);
+    - een nieuwe regel heeft een id die nog niet bestaat en één keer voorkomt;
+    - een nieuwe regel zonder id, of een nieuw element dat geen object is,
+      wordt geweigerd.
+    Een key die van vóór deze controle al dubbelen bevat blijft beschrijfbaar
+    zolang beide varianten ongewijzigd meekomen (de client stuurt de
+    GET-stand terug) — de dubbel zelf blijft, zoals append-only hoort."""
     if key not in _APPEND_ONLY or not isinstance(parsed, list):
         return True
     huidig = _read_json(key)
     if not isinstance(huidig, list):
-        return True  # onbestaande/afwijkende inhoud nooit een reden om een write te blokkeren
-    nieuw_per_id = {r.get('id'): r for r in parsed if isinstance(r, dict)}
-    for regel in huidig:
-        if not isinstance(regel, dict):
+        huidig = []  # ook de allereerste write valt onder de controle
+    oud, oud_los = _append_only_groepen(huidig)
+    nieuw, nieuw_los = _append_only_groepen(parsed)
+    for rid, varianten in oud.items():
+        if sorted(nieuw.get(rid, [])) != sorted(varianten):
+            return False
+    for rid, varianten in nieuw.items():
+        if rid in oud:
             continue
-        nieuw = nieuw_per_id.get(regel.get('id'))
-        if nieuw is None:
+        if rid is None or len(varianten) > 1:
             return False
-        if json.dumps(nieuw, sort_keys=True) != json.dumps(regel, sort_keys=True):
+    # Elementen die geen object zijn: alleen wat er al stond mag terugkomen.
+    resterend = list(oud_los)
+    for canon in nieuw_los:
+        if canon not in resterend:
             return False
+        resterend.remove(canon)
     return True
+
+
+# ── Unieke lotcodes van afvulsessies (HACCP-handboek §11.1) ─────────────
+# Eén lotcode hoort bij precies één afvulsessie: een recall op L2431-B1 mag
+# niet ook de flessen van een andere sessie raken. De app nummert de sessies
+# zelf, maar een tweede apparaat met een oudere stand kiest dan hetzelfde
+# nummer — en de conflict-samenvoeging van de client (merge.ts) neemt twee
+# nieuwe records met verschillende id's gewoon allebei over. Daarom bewaakt de
+# server het, onder _data_lock, in elke schrijfweg: een schrijfactie die een
+# lotcode vaker laat voorkomen dan hij al stond wordt geweigerd (422). Een
+# dubbele code van vóór deze controle blokkeert latere wijzigingen aan andere
+# sessies niet — een sessie afsluiten moet altijd kunnen.
+
+_LOTCODE_KEYS = ('afvul_sessies',)
+
+
+def _lotcode_telling(sessies) -> dict:
+    """Aantal sessies per (genormaliseerde) lotcode; lege codes tellen niet."""
+    teller: dict = {}
+    for s in sessies if isinstance(sessies, list) else []:
+        if not isinstance(s, dict):
+            continue
+        code = str(s.get('lotcode') or '').strip().upper()
+        if code:
+            teller[code] = teller.get(code, 0) + 1
+    return teller
+
+
+def _lotcode_dubbel(huidig, nieuw) -> list:
+    """De lotcodes die in `nieuw` dubbel voorkomen én vaker dan in `huidig`."""
+    oud = _lotcode_telling(huidig)
+    return sorted(code for code, n in _lotcode_telling(nieuw).items()
+                  if n > 1 and n > oud.get(code, 0))
+
+
+def _lotcode_guard_fout(key: str, nieuw, huidig=None) -> dict | None:
+    """None = in orde, anders het 422-antwoord. Aanroepen onder _data_lock;
+    zonder `huidig` wordt de opgeslagen stand gelezen."""
+    if key not in _LOTCODE_KEYS or not isinstance(nieuw, list):
+        return None
+    if huidig is None:
+        huidig = _read_json(key)
+    dubbel = _lotcode_dubbel(huidig, nieuw)
+    if dubbel:
+        return {'error': 'lotcode_dubbel', 'reden': 'lotcode_dubbel',
+                'key': key, 'lotcodes': dubbel}
+    return None
 
 
 # ── Secrets afschermen (ERP-plan 0.6) ────────────────────────────────────
@@ -1421,8 +1620,49 @@ def _mask_secrets(key: str, data):
     return masked
 
 
+# Velden die bepalen wáár een geheim naartoe gaat (ERP-plan 5.1). Wijzigt er
+# één, dan vult de server de sentinel niet meer in: anders gaat het opgeslagen
+# geheim mee naar een nieuw — misschien verkeerd getypt — adres. Brewfather,
+# Claude en Mollie hebben een vaste upstream en staan hier dus niet in.
+# `security` hoort erbij: 'none' stuurt het wachtwoord onversleuteld.
+_SECRET_BESTEMMING = {
+    'woocommerce_creds': ('storeUrl',),
+    'smtp_creds':        ('host', 'port', 'username', 'security'),
+}
+
+
+class SecretBestemmingGewijzigd(ValueError):
+    """Sentinel bij een gewijzigde bestemming: het geheim moet opnieuw
+    ingevoerd worden (400 `secret_opnieuw_invoeren`)."""
+
+    def __init__(self, key: str):
+        super().__init__(key)
+        self.key = key
+
+
+def _bestemming_normaal(veld: str, waarde) -> str:
+    """Vergelijkingsvorm van een bestemmingsveld, zoals de server het gebruikt
+    (_load_wc_creds/_load_smtp_creds): schrijfverschillen tellen niet."""
+    if veld == 'storeUrl':
+        return str(waarde or '').strip().rstrip('/').lower()
+    if veld == 'host':
+        return str(waarde or '').strip().lower()
+    if veld == 'port':
+        try:
+            return str(int(waarde))
+        except (TypeError, ValueError):
+            return ''
+    if veld == 'security':
+        s = str(waarde or 'starttls').strip().lower()
+        return s if s in MAIL_SECURITY_VALUES else 'starttls'
+    return str(waarde or '').strip()
+
+
 def _unmask_secrets(key: str, data):
-    """Vervang sentinel-waarden door de eerder opgeslagen geheimen (bij POST)."""
+    """Vervang sentinel-waarden door de eerder opgeslagen geheimen (bij POST).
+    Raises SecretBestemmingGewijzigd wanneer er een echt geheim ingevuld zou
+    worden terwijl de bestemming (host/poort/gebruiker/beveiliging resp.
+    storeUrl) afwijkt van de opgeslagen stand."""
     velden = _SECURE_FIELDS.get(key)
     if not velden or not isinstance(data, dict):
         return data
@@ -1431,6 +1671,12 @@ def _unmask_secrets(key: str, data):
     stored = _read_json(key, {})
     if not isinstance(stored, dict):
         stored = {}
+    vult_geheim_in = any(data.get(v) == _SECRET_SENTINEL and stored.get(v)
+                         for v in velden)
+    if vult_geheim_in and any(
+            _bestemming_normaal(veld, data.get(veld)) != _bestemming_normaal(veld, stored.get(veld))
+            for veld in _SECRET_BESTEMMING.get(key, ())):
+        raise SecretBestemmingGewijzigd(key)
     result = dict(data)
     for veld in velden:
         if result.get(veld) == _SECRET_SENTINEL:
@@ -1497,21 +1743,44 @@ SESSIE_BESTAND_NAAM = 'brewadmin_sessies.json'
 _LOGIN_RATE_WINDOW = 300  # 5 minuten
 _LOGIN_RATE_MAX = 5       # max mislukte pogingen per IP per venster
 _login_pogingen: dict = defaultdict(list)
+_login_lock = threading.Lock()
 
 _sessies: dict = {}
 _sessie_lock = threading.Lock()
 _sessies_laatst_bewaard = 0.0  # monotone tijd van de laatste schrijfronde
 
 
-def _login_rate_ok(ip: str) -> bool:
-    now = time.monotonic()
-    _login_pogingen[ip] = [t for t in _login_pogingen[ip]
-                           if now - t < _LOGIN_RATE_WINDOW]
-    return len(_login_pogingen[ip]) < _LOGIN_RATE_MAX
+def _login_poging_reserveer(ip: str) -> float | None:
+    """Reserveer atomair een loginpoging voor dit IP, vóór de (trage)
+    wachtwoordcontrole. Een lopende poging telt zo meteen mee: gelijktijdige
+    verzoeken kunnen niet allemaal langs de limiet voordat er één mislukking
+    geteld is. None = limiet bereikt; anders de stempel voor
+    _login_poging_vrijgeven."""
+    with _login_lock:
+        now = time.monotonic()
+        pogingen = [t for t in _login_pogingen.get(ip, ())
+                    if now - t < _LOGIN_RATE_WINDOW]
+        if len(pogingen) >= _LOGIN_RATE_MAX:
+            _login_pogingen[ip] = pogingen
+            return None
+        pogingen.append(now)
+        _login_pogingen[ip] = pogingen
+        return now
 
 
-def _login_poging_registreer(ip: str) -> None:
-    _login_pogingen[ip].append(time.monotonic())
+def _login_poging_vrijgeven(ip: str, stempel: float) -> None:
+    """Geef een reservering terug: alleen een échte verkeerde combinatie
+    blijft meetellen (geen geslaagde login, geen backend-fout)."""
+    with _login_lock:
+        pogingen = _login_pogingen.get(ip)
+        if not pogingen:
+            return
+        try:
+            pogingen.remove(stempel)
+        except ValueError:
+            pass
+        if not pogingen:
+            _login_pogingen.pop(ip, None)
 
 
 def _sessie_bestand() -> Path:
@@ -2146,22 +2415,51 @@ _FINANCIELE_KEYS = frozenset((
 ))
 # Alle overige keys (batches, voorraad, recepten, bestellingen, picks,
 # HACCP, …) zijn gedeeld: `boekhouding` én `productie` mogen ze schrijven —
-# productiewerk (afvullen, uitslag, picken) raakt onvermijdelijk dezelfde
-# stores als de administratie erachter.
+# productiewerk (afvullen, picken) raakt onvermijdelijk dezelfde stores als
+# de administratie erachter. Let op: uitslaan (en een afboeking uit de AGP)
+# schrijft ook een `accijns`-record. De app stuurt die handeling als één
+# commit en breekt hem bij een 403 niet meer op (utils/commit.ts), dus voor
+# `productie` wordt zo'n handeling in zijn geheel geweigerd — nooit meer een
+# verplaatsing zonder accijnsrecord.
+
+
+def _normaliseer_gebruiker(naam) -> str:
+    """Gebruikersnaam zoals Home Assistant hem vergelijkt (`normalize_username`
+    van de homeassistant-authprovider: strip + casefold). HA accepteert 'Jan'
+    bij het account 'jan'; zonder deze normalisatie viel zo'n login buiten de
+    rollentabel en kreeg hij de standaardrol."""
+    return str(naam or '').strip().casefold()
+
+
+def _rol_uit_tabel(rollen, gebruiker: str):
+    """Rol van `gebruiker` in de tabel `gebruikers_rollen.gebruikers`, of None.
+    Eerst exact (houdt afwijkende legacy-sleutels gelijk), dan genormaliseerd.
+    Staan er twee schrijfwijzen met een verschillende rol in (van vóór de
+    schrijfvalidatie hierop), dan is dat dubbelzinnig → `alleen_lezen`."""
+    if not isinstance(rollen, dict) or not gebruiker:
+        return None
+    if gebruiker in rollen:
+        return rollen[gebruiker]
+    doel = _normaliseer_gebruiker(gebruiker)
+    gevonden = {rol for naam, rol in rollen.items()
+                if _normaliseer_gebruiker(naam) == doel}
+    if not gevonden:
+        return None
+    return gevonden.pop() if len(gevonden) == 1 else 'alleen_lezen'
 
 
 def _gebruiker_rol(gebruiker: str) -> str:
     """Rol van deze ingress-gebruiker. Buiten HA (geen ingress-user) en
     zonder rollenconfiguratie geldt `beheer` (het oude gedrag). Een
     ongeldige rolwaarde in de config valt terug op `alleen_lezen`
-    (fail-closed) — al voorkomt de schrijfvalidatie dat die er ooit komt."""
+    (fail-closed) — al voorkomt de schrijfvalidatie dat die er ooit komt.
+    De naam wordt hoofdletterongevoelig opgezocht, net als HA hem controleert."""
     if not gebruiker:
         return 'beheer'
     conf = _read_json('gebruikers_rollen')
     if not isinstance(conf, dict):
         return 'beheer'
-    rollen = conf.get('gebruikers')
-    rol = rollen.get(gebruiker) if isinstance(rollen, dict) else None
+    rol = _rol_uit_tabel(conf.get('gebruikers'), gebruiker)
     if rol is None:
         rol = conf.get('standaard_rol') or 'beheer'
     return rol if rol in ROLLEN else 'alleen_lezen'
@@ -2190,8 +2488,13 @@ def _rollen_config_geldig(conf) -> bool:
     gebruikers = conf.get('gebruikers') or {}
     if not isinstance(gebruikers, dict):
         return False
-    return all(isinstance(naam, str) and naam and rol in ROLLEN
-               for naam, rol in gebruikers.items())
+    if not all(isinstance(naam, str) and naam and rol in ROLLEN
+               for naam, rol in gebruikers.items()):
+        return False
+    # Twee schrijfwijzen van dezelfde naam ('jan' en 'Jan') zijn voor HA één
+    # account — welke rol geldt is dan dubbelzinnig, dus weigeren.
+    genormaliseerd = {_normaliseer_gebruiker(naam) for naam in gebruikers}
+    return len(genormaliseerd) == len(gebruikers)
 
 
 def _rollen_lockout(gebruiker: str, conf) -> bool:
@@ -2200,9 +2503,26 @@ def _rollen_lockout(gebruiker: str, conf) -> bool:
     Buiten HA (geen ingress-user) is er geen lockout-risico."""
     if not gebruiker or not isinstance(conf, dict):
         return False
-    rollen = conf.get('gebruikers') if isinstance(conf.get('gebruikers'), dict) else {}
-    rol = rollen.get(gebruiker) or conf.get('standaard_rol') or 'beheer'
+    # Zelfde opzoeking als _gebruiker_rol, zodat de guard dezelfde rol ziet
+    # als de afdwinging.
+    rol = (_rol_uit_tabel(conf.get('gebruikers'), gebruiker)
+           or conf.get('standaard_rol') or 'beheer')
     return rol != 'beheer'
+
+
+def _key_guard_fout(key: str, waarde, gebruiker: str) -> dict | None:
+    """Key-specifieke schrijfcontrole die voor élke schrijfweg geldt
+    (/api/data, /api/commit, /api/backups/restore): None = in orde, anders
+    het 422-antwoord. Eén plek, zodat de schrijfwegen niet uit elkaar lopen
+    — de restore sloeg de rollencontrole eerder over."""
+    if key == 'gebruikers_rollen':
+        if not _rollen_config_geldig(waarde):
+            return {'error': 'invalid payload', 'key': key, 'expected': 'rollen'}
+        if _rollen_lockout(gebruiker, waarde):
+            # De beheerder mag zichzelf niet uit `beheer` zetten — daarna zou
+            # niemand het rollenbeheer meer kunnen wijzigen.
+            return {'error': 'rollen-lockout', 'key': key}
+    return None
 
 
 # ── Factuurnummering (ERP-plan 0.2) ──────────────────────────────────────
@@ -2220,6 +2540,16 @@ _NUMMER_REEKSEN = {
 # jaarlijkse reset). Handmatige bestellingen zijn geen fiscaal document en
 # houden — net als het oude oplopende record-id — één doorlopende reeks.
 _REEKS_DOORLOPEND = {'bestelling'}
+
+# Fiscale reeksen: alleen beheer/boekhouding mag een nummer trekken. Het
+# M-bestelnummer van een handmatige bestelling mag productie ook — die maakt
+# de bestelling zelf aan (gedeelde key `bestellingen`).
+_REEKS_FINANCIEEL = frozenset(('factuur', 'creditnota'))
+
+# Bijlagen die productie mag uploaden/verwijderen: die bij een afboeking of
+# vernietiging (Douane §7.2.3). Factuurbijlagen (`<factuurId>_…`,
+# `ontvangst_…`) blijven bij boekhouding.
+_PRODUCTIE_UPLOAD_PREFIXEN = ('verlies_', 'afboek_')
 
 
 def _max_bestaand_nummer(reeks: str, prefix: str) -> int:
@@ -2311,8 +2641,22 @@ def _write_json(key: str, data) -> str:
     return versie
 
 
+def _eindig_of_none(waarde) -> float | None:
+    """float(waarde) als dat een eindig getal is, anders None. Een HA-state is
+    altijd tekst, en 'nan'/'inf' (een DS18B20/DHT die bij een leesfout NAN
+    publiceert) zijn voor float() geldig — die mogen nooit als meting in de
+    opslag belanden: de app kan zo'n key dan niet meer lezen, en voor de
+    bewaking leek een kapotte sensor 'ok'."""
+    try:
+        val = float(waarde)
+    except (TypeError, ValueError):
+        return None
+    return val if math.isfinite(val) else None
+
+
 def _ha_fetch_state(entity_id: str) -> float | None:
-    """Haal de huidige waarde van een HA-entiteit op. Geeft None terug bij fout."""
+    """Haal de huidige waarde van een HA-entiteit op. Geeft None terug bij een
+    fout of een waarde die geen eindig getal is (dan: 'niet te lezen')."""
     token = os.environ.get('SUPERVISOR_TOKEN', '')
     if not token:
         return None
@@ -2323,9 +2667,8 @@ def _ha_fetch_state(entity_id: str) -> float | None:
         )
         with urllib.request.urlopen(req, timeout=5) as r:
             data = json.loads(r.read())
-            val = float(data.get('state', ''))
-            return val
-    except (urllib.error.URLError, ValueError, TypeError, OSError):
+            return _eindig_of_none(data.get('state', ''))
+    except (urllib.error.URLError, ValueError, TypeError, OSError, AttributeError):
         return None
 
 
@@ -2343,8 +2686,8 @@ def _ha_fetch_climate_setpoint(entity_id: str) -> float | None:
             data = json.loads(r.read())
             attrs = data.get('attributes', {}) or {}
             sp = attrs.get('temperature')
-            return float(sp) if sp is not None else None
-    except (urllib.error.URLError, ValueError, TypeError, OSError):
+            return _eindig_of_none(sp) if sp is not None else None
+    except (urllib.error.URLError, ValueError, TypeError, OSError, AttributeError):
         return None
 
 
@@ -2879,7 +3222,8 @@ def _voorraad_per_locatie(afv: dict, locaties: list, uitleveringen: list,
     wijzig hem hier ook. Alles begint op de AGP; verplaatsingen, uitleveringen
     en afboekingen volgen op datum, elk gecapt op wat er op de bron staat; een
     afboeking zonder locatie die niet op de AGP past, schuift door naar de
-    locaties die wél voorraad hebben."""
+    locaties die wél voorraad hebben. Een afboeking met een negatief aantal is
+    een bijboeking (inventarisatie-overschot) en komt er op die locatie bij."""
     agp = next((l for l in locaties if isinstance(l, dict) and l.get('is_agp')), None)
     if agp is None:
         agp = next((l for l in locaties if isinstance(l, dict)), None) or {'id': 1}
@@ -2887,26 +3231,26 @@ def _voorraad_per_locatie(afv: dict, locaties: list, uitleveringen: list,
     result: dict = {agp_id: _afv_aantal(afv)}
     aid = afv.get('id')
 
-    bewegingen = []  # (datum, van, naar|None, aantal, bron_onbekend)
+    bewegingen = []  # (datum, van, naar|None, aantal, bron_onbekend, is_afboeking)
     for v in verplaatsingen:
         if isinstance(v, dict) and v.get('afvulling_id') == aid:
             # Een ontbrekend doel is in JS `undefined` (niets erbij), een
             # expliciete null wordt een sleutel 'null' — zelfde hier.
             naar = _loc_sleutel(v['naar_locatie_id']) if 'naar_locatie_id' in v else None
             bewegingen.append((str(v.get('datum') or ''), _loc_sleutel(v.get('van_locatie_id')),
-                               naar, _website_getal(v.get('aantal')), False))
+                               naar, _website_getal(v.get('aantal')), False, False))
     for u in uitleveringen:
         if isinstance(u, dict) and u.get('afvulling_id') == aid:
             bron = u.get('bron_locatie_id')
             bewegingen.append((str(u.get('datum') or ''),
                                agp_id if bron is None else _loc_sleutel(bron),
-                               None, _website_getal(u.get('aantal')), False))
+                               None, _website_getal(u.get('aantal')), False, False))
     for a in afboekingen:
         if isinstance(a, dict) and a.get('afvulling_id') == aid:
             bron = a.get('bron_locatie_id')
             bewegingen.append((str(a.get('datum') or ''),
                                agp_id if bron is None else _loc_sleutel(bron),
-                               None, _website_getal(a.get('aantal')), bron is None))
+                               None, _website_getal(a.get('aantal')), bron is None, True))
     bewegingen.sort(key=lambda b: b[0])  # stabiel, zoals Array.sort
 
     def neem_af(loc: str, hoeveel: float) -> float:
@@ -2921,7 +3265,11 @@ def _voorraad_per_locatie(afv: dict, locaties: list, uitleveringen: list,
         except ValueError:
             return (1, k)
 
-    for _datum, van, naar, aantal, onbekend in bewegingen:
+    for _datum, van, naar, aantal, onbekend, is_afboeking in bewegingen:
+        if is_afboeking and aantal < 0:
+            # Bijboeking: de gevonden flesjes komen erbij op die locatie.
+            result[van] = result.get(van, 0.0) - aantal
+            continue
         if aantal <= 0:
             continue
         genomen = neem_af(van, aantal)
@@ -3352,21 +3700,23 @@ def _vergisting_start_iso(batch: dict) -> str | None:
 
 
 def _iso_naar_epoch(iso: str | None) -> float | None:
-    """ISO-timestamp of dag-datum (YYYY-MM-DD) → epoch-seconden (UTC). Dag-datums
-    worden op middernacht UTC geijkt. None bij een onparseerbare waarde."""
+    """ISO-timestamp of dag-datum (YYYY-MM-DD) → epoch-seconden. Rekent zoals
+    de app (`new Date(...)` in vergisting.ts: vergistStartMs/huidigeStapStartMs):
+    een dag-datum is lokale middernacht (`${iso}T00:00`), een tijdstip zonder
+    tijdzone is lokale tijd; met Z of een offset telt die. Dezelfde aanname
+    over lokale tijd als _meting_epoch — met UTC-middernacht liepen app en
+    server bij de start van stap 1 één (winter) of twee (zomer) uur uiteen.
+    None bij een onparseerbare waarde."""
     if not iso or not isinstance(iso, str):
         return None
     s = iso.strip()
     try:
         if 'T' in s:
-            dt = datetime.datetime.fromisoformat(s.replace('Z', '+00:00'))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=datetime.timezone.utc)
-            return dt.timestamp()
+            # Naïef = lokale tijd; timestamp() rekent dat zelf om.
+            return datetime.datetime.fromisoformat(s.replace('Z', '+00:00')).timestamp()
         d = datetime.date.fromisoformat(s[:10])
-        return datetime.datetime(d.year, d.month, d.day,
-                                 tzinfo=datetime.timezone.utc).timestamp()
-    except (ValueError, TypeError):
+        return datetime.datetime(d.year, d.month, d.day).timestamp()
+    except (ValueError, TypeError, OverflowError, OSError):
         return None
 
 
@@ -3539,6 +3889,9 @@ def _auto_metingen_tick() -> None:
     now = datetime.datetime.now()
     datum = now.strftime('%Y-%m-%d')
     tijd = now.strftime('%H:%M')
+    # Absoluut tijdstip naast de lokale kloktijd: datum/tijd blijven voor de
+    # weergave en de backup, `ts` voor de rekenkant (_meting_epoch/metingTs).
+    ts = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
 
     for batch in active:
         sensor = next((s for s in sensors if s.get('tank') == batch.get('tank')), None)
@@ -3551,6 +3904,7 @@ def _auto_metingen_tick() -> None:
             'batch_id': batch['id'],
             'datum': datum,
             'tijd': tijd,
+            'ts': ts,
             'temp': val,
             'auto': True,
         })
@@ -3558,6 +3912,7 @@ def _auto_metingen_tick() -> None:
     if not new_entries:
         return
 
+    global _auto_metingen_gedund_op
     with _data_lock:
         metingen = _read_json('gist_metingen', [])
         max_id = max((m.get('id', 0) for m in metingen), default=0)
@@ -3565,9 +3920,69 @@ def _auto_metingen_tick() -> None:
             max_id += 1
             entry['id'] = max_id
             metingen.append(entry)
+        # Eens per dag de oude automatische metingen uitdunnen, in dezelfde
+        # schrijfactie (zie _dun_auto_metingen).
+        klok = time.time()
+        if klok - _auto_metingen_gedund_op >= _AUTO_METINGEN_DUN_INTERVAL_S:
+            _auto_metingen_gedund_op = klok
+            voor = len(metingen)
+            metingen = _dun_auto_metingen(metingen, klok, _auto_metingen_vers_uren(ha_inst))
+            if len(metingen) != voor:
+                _log('auto-metingen', f'{voor - len(metingen)} oude automatische meting(en) uitgedund')
         _write_json('gist_metingen', metingen)
 
     _log('auto-metingen', f'{len(new_entries)} meting(en) opgeslagen')
+
+
+# ── Uitdunnen van automatische metingen ─────────────────────────────────────
+# Elke tien minuten een rij per bewaakte tank is ~5,9 MB per tank per jaar.
+# Zonder grens liep `gist_metingen` na zo'n 650 tankdagen boven de 10 MB die
+# een request mag zijn, en werd elke handmatige SG/pH-meting (die als commit
+# met de volledige array gaat) geweigerd. Voor de bewaking telt alleen het
+# recente venster (trend 3 u, duur 60 min, sensor stil 45 min, terugblik 24 u);
+# voor de grafiek en het batchdossier volstaat van ouder materiaal één punt
+# per uur. Handmatige rijen (SG, pH, FG, opmerkingen) blijven altijd staan.
+
+_AUTO_METINGEN_VERS_UREN = 48.0
+_AUTO_METINGEN_DUN_INTERVAL_S = 24 * 3600
+_auto_metingen_gedund_op = 0.0  # time.time() van de laatste uitdunronde
+
+
+def _auto_metingen_vers_uren(ha_inst) -> float:
+    """Hoe ver terug de automatische metingen volledig blijven: minstens 48 u,
+    en altijd ruim boven de terugblik van de bewaking (max(3 × trend-uren, 24)
+    in _tank_bewaking_tick / beoordeelBatches) — ook bij een ruim ingestelde
+    trendperiode dunt het uitdunnen nooit in wat de bewaking beoordeelt."""
+    cfg = _bewaking_cfg(ha_inst if isinstance(ha_inst, dict) else {})
+    return max(_AUTO_METINGEN_VERS_UREN, max(cfg['trend_uren'] * 3, 24) + 24)
+
+
+def _dun_auto_metingen(metingen: list, nu: float,
+                       vers_uren: float = _AUTO_METINGEN_VERS_UREN) -> list:
+    """`metingen` met de automatische rijen (`auto: True`) van vóór de laatste
+    `vers_uren` uitgedund tot één rij per batch per klokuur: de laatste van dat
+    uur. Handmatige rijen, recente rijen en rijen zonder leesbaar tijdstip
+    blijven onaangeroerd (de nieuwste rij, met de hoogste id, dus ook — de
+    server nummert nooit een id opnieuw uit); de volgorde blijft gelijk.
+    Idempotent: een tweede aanroep met dezelfde `nu` verandert niets meer."""
+    grens = nu - vers_uren * _UUR_S
+    kandidaten: dict = {}   # index -> epoch
+    laatste: dict = {}      # (batch, uur) -> (epoch, index)
+    for i, m in enumerate(metingen):
+        if not isinstance(m, dict) or m.get('auto') is not True:
+            continue
+        epoch = _meting_epoch(m)
+        if epoch is None or epoch >= grens:
+            continue
+        kandidaten[i] = epoch
+        sleutel = (str(m.get('batch_id')), int(epoch // _UUR_S))
+        vorige = laatste.get(sleutel)
+        if vorige is None or epoch >= vorige[0]:
+            laatste[sleutel] = (epoch, i)
+    if not kandidaten:
+        return metingen
+    bewaar = {i for _epoch, i in laatste.values()}
+    return [m for i, m in enumerate(metingen) if i not in kandidaten or i in bewaar]
 
 
 # ── Tanktemperatuur-bewaking ────────────────────────────────────────────────
@@ -3613,8 +4028,21 @@ def _bewaking_cfg(ha_inst: dict) -> dict:
 
 
 def _meting_epoch(meting: dict) -> float | None:
-    """Tijdstip van een `gist_metingen`-rij in epoch-seconden. Datum en tijd zijn
-    lokaal weggeschreven (zie _auto_metingen_tick), dus lokaal terugparsen."""
+    """Tijdstip van een `gist_metingen`-rij in epoch-seconden. Spiegelt
+    metingTs in tankbewaking.ts.
+
+    Een automatische meting draagt `ts`: het absolute tijdstip (ISO met
+    offset). Dat gaat voor: `datum`/`tijd` zijn lokale kloktijd zonder offset,
+    en in het herhaalde uur van de wintertijdwissel is die dubbelzinnig —
+    terugparsen kiest dan het eerdere (zomertijd)moment, waardoor de laatste
+    meting een uur ouder leek en de bewaking elk jaar vals 'sensor stil'
+    meldde. Rijen zonder `ts` (handmatig, of van vóór dit veld) vallen terug
+    op datum/tijd, lokaal teruggeparst."""
+    ts = meting.get('ts')
+    if isinstance(ts, str) and 'T' in ts:
+        epoch = _iso_naar_epoch(ts)
+        if epoch is not None:
+            return epoch
     datum = meting.get('datum')
     if not datum or not isinstance(datum, str):
         return None
@@ -3952,9 +4380,11 @@ def _tank_bewaking_tick() -> None:
     for m in (metingen if actief else []):
         if not isinstance(m, dict):
             continue
-        try:
-            temp = float(m.get('temp'))
-        except (TypeError, ValueError):
+        # Alleen eindige getallen, zoals tempReeks (Number.isFinite): een
+        # NaN-rij als laatste meting leek anders 'ok' (abs(nan - doel) >
+        # tolerantie is False) en sloot een open alarm.
+        temp = _eindig_of_none(m.get('temp'))
+        if temp is None:
             continue
         ts = _meting_epoch(m)
         if ts is None or ts < vanaf:
@@ -4236,18 +4666,45 @@ def _list_backups() -> list[dict]:
 
 
 def _backup_to_zip(date_str: str) -> bytes | None:
-    """Create a ZIP archive of a backup directory. Returns bytes or None."""
+    """ZIP van een backupmap voor de download in de browser (bytes of None).
+    Credentials gaan er gemaskeerd in (zelfde sentinel als GET /api/data) en
+    de db-kopie blijft weg — die bevat ze onversleuteld. De backup op schijf
+    en de offsite-ZIP blijven volledig: /api/backups/restore leest van schijf,
+    en die zijn niet via de API bereikbaar."""
     backup_path = BACKUP_DIR / date_str
     if not backup_path.is_dir():
         return None
+    db_bestanden = {DB_NAAM, f'{DB_NAAM}-wal', f'{DB_NAAM}-shm'}
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
         # rglob: sinds de upload-map wordt meegeback-upt bevat de snapshot
         # ook een submap met bijlagen — die moet mee in de download-ZIP.
         for f in sorted(backup_path.rglob('*')):
-            if f.is_file():
-                zf.write(f, str(f.relative_to(backup_path)))
+            if not f.is_file():
+                continue
+            naam = str(f.relative_to(backup_path))
+            if f.parent == backup_path and f.name in db_bestanden:
+                continue
+            key = f.name[:-len('.json')] if f.name.endswith('.json') else ''
+            if f.parent == backup_path and key in _SECURE_FIELDS:
+                try:
+                    gemaskeerd = _mask_secrets(key, json.loads(f.read_bytes()))
+                except (OSError, ValueError):
+                    continue  # onleesbaar: liever weglaten dan ongemaskeerd
+                zf.writestr(naam, json.dumps(gemaskeerd, ensure_ascii=False))
+                continue
+            zf.write(f, naam)
     return buf.getvalue()
+
+
+# Server-beheerde keys die /api/backups/restore nooit terugzet: een
+# nummerreeks mag niet teruglopen (hergebruik van een uitgegeven nummer), en de
+# rest is afgeleide serverdata die vanzelf regenereert (setpoints, import-
+# lease, telemetriestand, app-icoon).
+_NIET_TERUGZETBAAR = frozenset((
+    'nummer_reeksen', 'tank_setpoints', 'wc_import_status',
+    'website_telemetrie_status', 'app_logo_icoon',
+))
 
 
 class BrouwerijServer(http.server.ThreadingHTTPServer):
@@ -4257,6 +4714,27 @@ class BrouwerijServer(http.server.ThreadingHTTPServer):
     kernel overlopen → ConnectionResetError bij de client vóór er ook maar
     één handler draaide."""
     request_queue_size = 64
+    # HTTPS op de directe poort: de handshake gebeurt per verbinding in de
+    # worker-thread, met een timeout. Met een ingepakte luistersocket deed
+    # accept() hem in de serve_forever-thread zelf — één stille TCP-verbinding
+    # legde dan de hele poort stil.
+    tls_context = None
+    tls_handshake_timeout = 10.0
+
+    def finish_request(self, request, client_address):
+        if self.tls_context is None:
+            super().finish_request(request, client_address)
+            return
+        request.settimeout(self.tls_handshake_timeout)
+        try:
+            tls = self.tls_context.wrap_socket(request, server_side=True)
+        except OSError:  # ssl.SSLError, timeout, verbroken verbinding
+            return  # process_request_thread ruimt de socket op
+        tls.settimeout(None)
+        try:
+            super().finish_request(tls, client_address)
+        finally:
+            self.shutdown_request(tls)
 
 
 class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
@@ -4409,22 +4887,29 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if not gebruiker or not wachtwoord:
             self._json(400, {'error': 'missing credentials'})
             return
-        if not _login_rate_ok(ip):
+        if not os.environ.get('SUPERVISOR_TOKEN'):
+            self._json(503, {'error': 'HA auth not available'})
+            return
+        # Reserveer de poging vóór de wachtwoordcontrole (atomair), zodat een
+        # burst gelijktijdige verzoeken de limiet niet voorbijloopt.
+        stempel = _login_poging_reserveer(ip)
+        if stempel is None:
             _audit_write('login_geblokkeerd', '-', ip=ip, gebruiker=gebruiker)
             self._json(429, {'error': 'too many attempts'},
                        extra_headers=[('Retry-After', str(_LOGIN_RATE_WINDOW))])
             return
-        if not os.environ.get('SUPERVISOR_TOKEN'):
-            self._json(503, {'error': 'HA auth not available'})
-            return
-        uitkomst = _ha_auth_check(gebruiker, wachtwoord)
+        uitkomst = 'fout'
+        try:
+            uitkomst = _ha_auth_check(gebruiker, wachtwoord)
+        finally:
+            # Alleen échte verkeerde credentials blijven meetellen voor de
+            # brute-force-limiet; een geslaagde login en backend-fouten niet.
+            if uitkomst != 'ongeldig':
+                _login_poging_vrijgeven(ip, stempel)
         if uitkomst != 'ok':
             _audit_write('login_mislukt', '-', ip=ip, gebruiker=gebruiker,
                          reden=uitkomst)
             if uitkomst == 'ongeldig':
-                # Alleen échte verkeerde credentials tellen mee voor de
-                # brute-force-limiet; backend-fouten niet.
-                _login_poging_registreer(ip)
                 self._json(401, {'error': 'invalid credentials'})
             else:
                 # Backend-probleem (auth_api niet actief / Supervisor
@@ -4432,6 +4917,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 # wachtwoord zodat de gebruiker weet wáár hij moet kijken.
                 self._json(502, {'error': 'auth backend', 'detail': uitkomst})
             return
+        # HA vergelijkt gebruikersnamen hoofdletterongevoelig: 'Jan' logt in
+        # op het account 'jan'. De sessie krijgt de genormaliseerde naam, zodat
+        # rol en audit dezelfde identiteit zien als via ingress.
+        gebruiker = _normaliseer_gebruiker(gebruiker)
         token = _sessie_maak(gebruiker, lang=onthoud)
         _audit_write('login', '-', ip=ip, gebruiker=gebruiker,
                      rol=_gebruiker_rol(gebruiker), onthoud=onthoud)
@@ -4467,8 +4956,24 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _read_body(self, max_len: int = MAX_CONTENT_LENGTH) -> bytes | None:
-        length = int(self.headers.get('Content-Length', 0))
+        """Lees de body, begrensd op max_len. None = er is al geantwoord.
+        Content-Length wordt strikt gelezen: alleen gewone cijfers. Een
+        negatieve waarde liet rfile.read(-1) tot het einde van de stream lezen
+        (geen limiet meer, ook vóór het inloggen op de directe poort). Een
+        ontbrekende header = lege body (urllib stuurt hem niet bij een lege
+        POST)."""
+        raw = self.headers.get('Content-Length')
+        if raw is None:
+            return b''
+        raw = raw.strip()
+        if not (raw.isascii() and raw.isdigit()):
+            # Body niet gelezen: de verbinding kan niet hergebruikt worden.
+            self.close_connection = True
+            self._json(400, {'error': 'invalid content-length'})
+            return None
+        length = int(raw)
         if length > max_len:
+            self.close_connection = True
             self._json(413, {'error': 'request too large'})
             return None
         return self.rfile.read(length)
@@ -4561,8 +5066,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if BACKUPS_PREFIX in path and BACKUPS_TRIGGER_PATH not in path:
-            # Backup-ZIP's bevatten de complete administratie inclusief
-            # (onmaskeerde) credentials — alleen beheer mag ze ophalen.
+            # Backup-ZIP's bevatten de complete administratie (credentials
+            # gemaskeerd, zonder db-kopie — zie _backup_to_zip) — alleen
+            # beheer mag ze ophalen.
             rol = self._rol()
             if rol != 'beheer':
                 self._rol_geweigerd(rol)
@@ -4651,9 +5157,12 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return
 
         # Rollen (ERP-plan 4.2): alleen-lezen mag geen enkel mutatie-endpoint
-        # aanraken; test-/backup-endpoints zijn beheer-only en nummeruitgifte
-        # + factuurbijlagen horen bij boekhouding. Data-keys worden verderop
-        # per key gecontroleerd (_rol_mag_key).
+        # aanraken; test-/backup-endpoints zijn beheer-only en de Mollie-
+        # betaallink hoort bij boekhouding. Nummeruitgifte en bijlagen worden
+        # per reeks resp. bestandsnaam gecontroleerd (_handle_nextnr,
+        # _upload_rol_ok): productie mag een bestelnummer en de bijlagen bij
+        # een afboeking/vernietiging. Data-keys worden verderop per key
+        # gecontroleerd (_rol_mag_key).
         rol = self._rol()
         if rol == 'alleen_lezen':
             self._rol_geweigerd(rol)
@@ -4664,8 +5173,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 WEBSITE_VOORBEELD_PATH, WEBSITE_TEST_PATH, WEBSITE_VERSTUUR_PATH)):
             self._rol_geweigerd(rol)
             return
-        if rol not in ('beheer', 'boekhouding') and any(p in path for p in (
-                NEXTNR_PATH, UPLOAD_PREFIX, DELETE_UPLOAD_PREFIX, MOLLIE_PAYMENT_PATH)):
+        if rol not in ('beheer', 'boekhouding') and MOLLIE_PAYMENT_PATH in path:
             self._rol_geweigerd(rol)
             return
 
@@ -4764,8 +5272,8 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             if body is None:
                 return
             try:
-                parsed = json.loads(body)  # validate JSON
-            except json.JSONDecodeError:
+                parsed = _json_laden_strikt(body)  # validate JSON (geen NaN/Infinity)
+            except ValueError:
                 self._json(400, {'error': 'invalid json'})
                 return
             if not _payload_geldig(key, parsed):
@@ -4775,16 +5283,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             if not _rol_mag_key(rol, key):
                 self._rol_geweigerd(rol, key)
                 return
-            if key == 'gebruikers_rollen':
-                if not _rollen_config_geldig(parsed):
-                    self._json(422, {'error': 'invalid payload', 'key': key,
-                                     'expected': 'rollen'})
-                    return
-                if _rollen_lockout(self._ingress_user(), parsed):
-                    # De beheerder mag zichzelf niet uit `beheer` zetten —
-                    # daarna zou niemand het rollenbeheer meer kunnen wijzigen.
-                    self._json(422, {'error': 'rollen-lockout', 'key': key})
-                    return
+            guard = _key_guard_fout(key, parsed, self._ingress_user())
+            if guard:
+                self._json(422, guard)
+                return
             # Onder _data_lock zodat de achtergrondthreads (cold-crash,
             # auto-metingen) die read-modify-write doen op dezelfde keys
             # geen halve merge overschrijven.
@@ -4802,10 +5304,19 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 if not _append_only_ok(key, parsed):
                     self._json(422, {'error': 'append-only', 'key': key})
                     return
+                lotcode_fout = _lotcode_guard_fout(key, parsed)
+                if lotcode_fout:
+                    self._json(422, lotcode_fout)
+                    return
                 if key in _SECURE_FIELDS:
                     # Sentinel-waarden terugvervangen door de opgeslagen
-                    # geheimen (de client kent die bewust niet).
-                    parsed = _unmask_secrets(key, parsed)
+                    # geheimen (de client kent die bewust niet) — niet als de
+                    # bestemming gewijzigd is (ERP-plan 5.1).
+                    try:
+                        parsed = _unmask_secrets(key, parsed)
+                    except SecretBestemmingGewijzigd:
+                        self._json(400, {'error': 'secret_opnieuw_invoeren', 'key': key})
+                        return
                 try:
                     with conn:
                         nieuwe_versie, nbytes = _schrijf_key(conn, key, parsed)
@@ -4978,6 +5489,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             url    = str(body.get('storeUrl', '')).strip().rstrip('/')
             key    = str(body.get('consumerKey', '')).strip()
             secret = str(body.get('consumerSecret', '')).strip()
+        except SecretBestemmingGewijzigd:
+            # Opgeslagen sleutels nooit naar een ander winkeladres sturen.
+            self._json(400, {'error': 'secret_opnieuw_invoeren', 'key': 'woocommerce_creds'})
+            return
         except Exception:
             self._json(400, {'error': 'invalid json'})
             return
@@ -4994,13 +5509,21 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         # Use products endpoint — works with any read-capable API key (no admin required)
         status, body = _wc_request(creds, 'GET', 'products?per_page=1&_fields=id')
         detail = ''
+        antwoord = {'ok': status in (200, 201), 'status': status}
         try:
             parsed = json.loads(body)
             if isinstance(parsed, dict) and parsed.get('message'):
                 detail = parsed['message']
+            # Netwerkfout richting de winkel: de oorzaakscode van
+            # _wc_request doorgeven (timeout, dns, certificaat …), anders ziet
+            # de gebruiker alleen 'HTTP 502' zonder te weten wát er misgaat.
+            if isinstance(parsed, dict) and parsed.get('oorzaak') in _WC_TEST_OORZAKEN:
+                antwoord['oorzaak'] = parsed['oorzaak']
+                antwoord['timeout'] = WC_TIMEOUT
         except Exception:
             pass
-        self._json(200, {'ok': status in (200, 201), 'status': status, 'detail': detail})
+        antwoord['detail'] = detail
+        self._json(200, antwoord)
 
     # ── Website-telemetrie ─────────────────────────────────────────────────
 
@@ -5446,11 +5969,25 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             'wc_orders': {'laatste_check': wc_check, 'laatste_fout': _wc_orders_laatste_fout},
         })
 
+    def _upload_rol_ok(self, filename: str) -> bool:
+        """Mag de huidige rol deze bijlage uploaden/verwijderen? Beheer en
+        boekhouding alles; productie alleen de bijlagen bij een afboeking of
+        vernietiging (_PRODUCTIE_UPLOAD_PREFIXEN). False = er is al 403
+        geantwoord (body niet gelezen, dus de verbinding sluit)."""
+        rol = self._rol()
+        if rol in ('beheer', 'boekhouding') or filename.startswith(_PRODUCTIE_UPLOAD_PREFIXEN):
+            return True
+        self.close_connection = True
+        self._rol_geweigerd(rol)
+        return False
+
     def _handle_upload(self):
         """Accept a base64-encoded file upload and save it to UPLOAD_DIR."""
         filename = _extract_upload_filename(self.path.split('?')[0], UPLOAD_PREFIX)
         if filename is None:
             self._json(400, {'error': 'invalid filename'})
+            return
+        if not self._upload_rol_ok(filename):
             return
         body = self._read_body(max_len=MAX_CONTENT_LENGTH)
         if body is None:
@@ -5487,6 +6024,8 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         filename = _extract_upload_filename(self.path.split('?')[0], DELETE_UPLOAD_PREFIX)
         if filename is None:
             self._json(400, {'error': 'invalid filename'})
+            return
+        if not self._upload_rol_ok(filename):
             return
         body = self._read_body(max_len=256)
         if body is None:
@@ -5670,6 +6209,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return
         try:
             body = _unmask_secrets('smtp_creds', json.loads(raw))
+        except SecretBestemmingGewijzigd:
+            # Het opgeslagen wachtwoord nooit naar een andere server/poort/
+            # gebruiker of onversleuteld sturen.
+            self._json(400, {'error': 'secret_opnieuw_invoeren', 'key': 'smtp_creds'})
+            return
         except Exception:
             self._json(400, {'error': 'invalid json'})
             return
@@ -5790,6 +6334,12 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if reeks not in _NUMMER_REEKSEN or not isinstance(jaar, int) or not 2000 <= jaar <= 2200:
             self._json(400, {'error': 'invalid reeks/jaar'})
             return
+        # Factuur-/creditnotanummers horen bij boekhouding; het M-nummer van
+        # een handmatige bestelling mag productie ook trekken.
+        rol = self._rol()
+        if reeks in _REEKS_FINANCIEEL and rol not in ('beheer', 'boekhouding'):
+            self._rol_geweigerd(rol)
+            return
         try:
             resultaat = _volgend_nummer(reeks, jaar)
             _audit_write('nextnr', 'nummer_reeksen', ip=self.client_address[0],
@@ -5810,8 +6360,8 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if body is None:
             return
         try:
-            req = json.loads(body)
-        except json.JSONDecodeError:
+            req = _json_laden_strikt(body)  # geen NaN/Infinity in de opslag
+        except ValueError:
             self._json(400, {'error': 'invalid json'})
             return
         data = req.get('data') if isinstance(req, dict) else None
@@ -5836,14 +6386,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             if not _rol_mag_key(rol, key):
                 self._rol_geweigerd(rol, key)
                 return
-            if key == 'gebruikers_rollen':
-                if not _rollen_config_geldig(value):
-                    self._json(422, {'error': 'invalid payload', 'key': key,
-                                     'expected': 'rollen'})
-                    return
-                if _rollen_lockout(self._ingress_user(), value):
-                    self._json(422, {'error': 'rollen-lockout', 'key': key})
-                    return
+            guard = _key_guard_fout(key, value, self._ingress_user())
+            if guard:
+                self._json(422, guard)
+                return
         with _data_lock:
             conn = _db()
             conflicts = {}
@@ -5861,14 +6407,26 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 if not _append_only_ok(key, value):
                     self._json(422, {'error': 'append-only', 'key': key})
                     return
+                lotcode_fout = _lotcode_guard_fout(key, value)
+                if lotcode_fout:
+                    self._json(422, lotcode_fout)
+                    return
+            # Sentinels vóór de transactie terugvullen: een gewijzigde
+            # bestemming weigert de hele commit zonder iets half te schrijven.
+            te_schrijven = {}
+            for key, value in data.items():
+                try:
+                    te_schrijven[key] = (_unmask_secrets(key, value)
+                                         if key in _SECURE_FIELDS else value)
+                except SecretBestemmingGewijzigd:
+                    self._json(400, {'error': 'secret_opnieuw_invoeren', 'key': key})
+                    return
             # Eén databasetransactie: alles-of-niets. Een sqlite-fout rolt
             # alle keys terug (verving de twee-fasen tempfile-aanpak).
             resultaten: dict[str, tuple[str, int]] = {}
             try:
                 with conn:
-                    for key, value in data.items():
-                        if key in _SECURE_FIELDS:
-                            value = _unmask_secrets(key, value)
+                    for key, value in te_schrijven.items():
                         resultaten[key] = _schrijf_key(conn, key, value)
             except sqlite3.Error:
                 self._json(500, {'error': 'commit failed'})
@@ -5911,8 +6469,8 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if body is None:
             return
         try:
-            req = json.loads(body)
-        except json.JSONDecodeError:
+            req = _json_laden_strikt(body)  # geen NaN/Infinity in de opslag
+        except ValueError:
             self._json(400, {'error': 'invalid json'})
             return
         upserts = req.get('upsert') if isinstance(req, dict) else None
@@ -5972,6 +6530,19 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 if deletes or any(str(rec['id']) in bestaand for rec in upserts):
                     self._json(400, {'error': 'append-only'})
                     return
+            if key in _LOTCODE_KEYS:
+                # Toets de stand ná deze delta, niet de delta zelf: de dubbele
+                # code staat meestal al in een record dat hier niet meekomt.
+                huidig_rec = [(r[0], json.loads(r[1])) for r in conn.execute(
+                    'SELECT record_id, data FROM records WHERE key=? ORDER BY seq', (key,))]
+                weg = {str(d) for d in deletes}
+                per_id = {str(rec['id']): rec for rec in upserts}
+                na = [per_id.pop(rid, rec) for rid, rec in huidig_rec if rid not in weg]
+                na.extend(per_id.values())
+                lotcode_fout = _lotcode_guard_fout(key, na, [rec for _rid, rec in huidig_rec])
+                if lotcode_fout:
+                    self._json(422, lotcode_fout)
+                    return
             try:
                 with conn:
                     for d in deletes:
@@ -6009,8 +6580,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
     def _handle_backup_trigger(self):
         """POST /api/backups/trigger — run an immediate manual backup."""
-        # Read (and discard) body if any
-        self._read_body(max_len=256)
+        # Read (and discard) body if any; None = er is al geantwoord (400/413)
+        if self._read_body(max_len=256) is None:
+            return
         try:
             date_str = _run_backup()
             self._json(200, {'ok': True, 'date': date_str})
@@ -6025,9 +6597,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         (zoals de producten na de migratiefout van 1.12.59) wil de rest van de
         administratie — bestellingen, facturen, metingen van ná de backup —
         houden. Beheer-only (gate in do_POST). Geweigerd voor append-only
-        keys (bewijs richting de NVWA/journaal wordt nooit teruggedraaid) en
-        voor credentials (die staan onmaskeerd in de backup). De schrijfweg is
-        dezelfde als /api/data: schemavalidatie, versie-hash, audit."""
+        keys (bewijs richting de NVWA/journaal wordt nooit teruggedraaid), voor
+        credentials (die staan onmaskeerd in de backup) en voor server-beheerde
+        keys (_NIET_TERUGZETBAAR). De schrijfweg is dezelfde als /api/data:
+        schemavalidatie, key-bewaking (rollenvalidatie + lockout-guard),
+        versie-hash, audit."""
         body = self._read_body(max_len=1024)
         if body is None:
             return
@@ -6044,7 +6618,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if not isinstance(key, str) or not _valid_key(key) or key not in _KEY_TYPES:
             self._json(400, {'error': 'invalid key'})
             return
-        if key in _APPEND_ONLY or key in _SECURE_FIELDS:
+        if key in _APPEND_ONLY or key in _SECURE_FIELDS or key in _NIET_TERUGZETBAAR:
             self._json(422, {'error': 'key not restorable', 'key': key})
             return
         bron = BACKUP_DIR / datum / f'{key}.json'
@@ -6059,6 +6633,12 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if not _payload_geldig(key, parsed):
             self._json(422, {'error': 'invalid payload', 'key': key,
                              'expected': _KEY_TYPES.get(key)})
+            return
+        # Zelfde key-specifieke bewaking als /api/data: een oude rollentabel
+        # mag de terugzettende beheerder niet buitensluiten.
+        guard = _key_guard_fout(key, parsed, self._ingress_user())
+        if guard:
+            self._json(422, guard)
             return
         with _data_lock:
             conn = _db()
@@ -6218,7 +6798,9 @@ if __name__ == '__main__':
         direct_server = BrouwerijServer(('0.0.0.0', DIRECT_PORT), BrouwerijHandler)
         direct_server.brewadmin_direct = True
         if direct_ctx is not None:
-            direct_server.socket = direct_ctx.wrap_socket(direct_server.socket, server_side=True)
+            # Handshake per verbinding in de worker (zie BrouwerijServer);
+            # _ssl_reload_loop herlaadt ditzelfde context-object.
+            direct_server.tls_context = direct_ctx
             direct_server.brewadmin_ssl = True
             _threads['ssl_reload'] = threading.Thread(
                 target=_ssl_reload_loop,

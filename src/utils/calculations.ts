@@ -1,7 +1,7 @@
 import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot, Batch, TankStatusMap, TankReinigingLog, TankReinigingStatus } from '../types'
 import { convertEenheid, ZuurMiddel } from './constants'
 import { ymd, tod } from './format'
-import { verpakkingKostenPerStuk } from './verpakkingKosten'
+import { verpakkingKostenPerStuk, vindVerpakking } from './verpakkingKosten'
 import { SkuRefData, skuDubbelzinnig, productVoorRegel, artikelProductId } from './sku'
 
 // ── Gereedschap: pH-correctie ───────────────────────────────────────────────
@@ -536,6 +536,12 @@ export interface ProductKostprijsResult {
   totaal_kosten: number
   totaal_liter: number
   // ── Opbouw (alleen gevuld door `berekenBatchKostprijs`) ────────────────────
+  // Ingrediënten (vastgelegde kosten, anders de omgerekende lotprijs) en de
+  // vaste kosten van de brouwdag (elektra, water, schoonmaak, overig). Het
+  // batchdossier en de batchpagina lezen hun posten hieruit, zodat er één
+  // kostprijs van een batch bestaat.
+  ingredienten_kosten?: number
+  overhead_kosten?: number
   // Accijns is geen productiekostenpost maar een belasting die pas bij uitslag
   // ontstaat. Hij zit wél in `totaal_kosten` — zo staat het al jaren in het
   // kostprijsoverzicht — maar apart erbij, zodat een scherm hem kan splitsen
@@ -556,14 +562,150 @@ export interface ProductKostprijsResult {
   verpakking_kosten?: number
   kostprijs_per_liter_excl_verpakking?: number
   /**
-   * `geboekt`  = de werkelijke accijns uit de uitslagen;
-   * `voorcalc` = de snapshot die bij het afvullen is bevroren;
+   * `geboekt`  = de werkelijke accijns uit de uitslagen — alleen wanneer álle
+   *              afgevulde liters een accijnsrecord hebben;
+   * `voorcalc` = (een deel komt uit) de snapshot die bij het afvullen is
+   *              bevroren: het bier dat nog in de AGP ligt;
    * `geschat`  = geen van beide bekend, dus berekend uit ABV/Plato (alleen
    *              wanneer de aanroeper `accijnsInst` meegeeft);
    * `geen`     = niets bekend, accijns telt als nul.
    * Bij meerdere verpakkingstypen wint de zwakste bron.
    */
-  accijns_bron?: 'geboekt' | 'voorcalc' | 'geschat' | 'geen'
+  accijns_bron?: AccijnsKostprijsBron
+}
+
+export type AccijnsKostprijsBron = 'geboekt' | 'voorcalc' | 'geschat' | 'geen'
+
+// Id's komen als getal én als tekst voor (import, Excel, oude records).
+const zelfdeId = (a: unknown, b: unknown): boolean =>
+  a != null && b != null && a !== '' && b !== '' && String(a) === String(b)
+
+// ── Ingrediëntkosten van een batchregel ─────────────────────────────────────
+// Een lot heeft een prijs per eigen eenheid (€/kg), een batchregel een
+// hoeveelheid in zíjn eenheid (hop uit een recept staat in g). De prijs moet
+// dus eerst naar de eenheid van de regel: 100 g hop uit een lot van € 40/kg
+// kost € 4, niet € 4000. Dezelfde omrekening als `ingredientPrijs` in
+// receptKostprijs.ts, zodat voorcalculatie en nacalculatie hetzelfde zeggen.
+
+/** Hoeveel regel-eenheden er in één lot-eenheid gaan (kg → g = 1000). Een
+ *  ontbrekende eenheid rekent zoals altijd: gelijk. Null bij een andere
+ *  grootheid (pkg tegenover g). */
+const eenheidFactor = (lotEenheid: unknown, regelEenheid: unknown): number | null => {
+  const van = String(lotEenheid ?? '').trim()
+  const naar = String(regelEenheid ?? '').trim()
+  if (!van || !naar || van.toLowerCase() === naar.toLowerCase()) return 1
+  const f = convertEenheid(1, van, naar)
+  return f === null || !Number.isFinite(f) || f <= 0 ? null : f
+}
+
+/** Kosten van een hoeveelheid uit een lot, in de eenheid van de regel. Null
+ *  wanneer er niets te rekenen valt: geen lot, geen prijs, of eenheden die
+ *  niet om te rekenen zijn — liever niet meetellen dan fout rekenen. */
+export const lotKostenVoorRegel = (
+  regel: {hoeveelheid?: unknown, eenheid?: unknown} | null | undefined,
+  lot: {prijs_per_eenheid?: unknown, eenheid?: unknown} | null | undefined,
+): number | null => {
+  if (!regel || !lot) return null
+  const prijs = Number(lot.prijs_per_eenheid)
+  if (!Number.isFinite(prijs) || prijs <= 0) return null
+  const factor = eenheidFactor(lot.eenheid, regel.eenheid)
+  if (factor === null) return null
+  return (prijs / factor) * (Number(regel.hoeveelheid) || 0)
+}
+
+/** Kosten van één batchregel: het bij het afboeken vastgelegde bedrag, anders
+ *  de omgerekende lotprijs. Eén definitie voor de batchpagina, het dossier, de
+ *  productmarges en de COGS. Een vastgelegd bedrag van 0 telt als "niet
+ *  vastgelegd", zoals altijd in de kostprijs. */
+export const batchRegelKosten = (
+  regel: {kosten?: unknown, lot_id?: unknown, hoeveelheid?: unknown, eenheid?: unknown} | null | undefined,
+  lots?: Array<{id?: unknown, prijs_per_eenheid?: unknown, eenheid?: unknown}> | null,
+): number | null => {
+  if (!regel) return null
+  const lot = (lots || []).find(l => zelfdeId(l?.id, regel.lot_id)) || null
+  const vast = regel.kosten == null || regel.kosten === '' ? NaN : Number(regel.kosten)
+  if (Number.isFinite(vast) && vast !== 0) {
+    // Een gedeeltelijke afboeking legde vroeger `lotprijs × hoeveelheid` vast
+    // zónder de eenheid om te rekenen (hop in g uit een lot in kg: × 1000).
+    // Dat bedrag is precies te herkennen — die som bij eenheden die
+    // verschillen; een goed omgerekend bedrag valt er nooit mee samen. Dan
+    // rekenen we opnieuw in plaats van het over te nemen.
+    const factor = lot ? eenheidFactor(lot.eenheid, regel.eenheid) : 1
+    if (lot && factor !== null && factor !== 1) {
+      const onomgerekend = Number(lot.prijs_per_eenheid) * (Number(regel.hoeveelheid) || 0)
+      if (onomgerekend > 0 && Math.abs(vast - onomgerekend) <= 0.001) return lotKostenVoorRegel(regel, lot)
+    }
+    return vast
+  }
+  return lotKostenVoorRegel(regel, lot)
+}
+
+// ── Accijns in de kostprijs ─────────────────────────────────────────────────
+// Accijns wordt per uitslag geboekt, en alleen over wat er uitgaat: een batch
+// die in porties verkocht wordt heeft het grootste deel van zijn leven maar
+// een deel van zijn accijns geboekt. De kostprijs telt daarom de geboekte
+// accijns vóór de uitgeslagen liters, plus de voorcalculatie (de snapshot van
+// het afvullen) naar rato van de liters waarvoor nog niets geboekt is. Anders
+// zakt de kostprijs bij de eerste uitslag in en loopt hij daarna per uitslag
+// weer op, terwijl het bier zelf niets anders kost.
+
+export interface AccijnsKostprijs {
+  /** Accijns voor de kostprijs: geboekt + het deel voor de rest. */
+  accijns: number
+  /** Som van de accijnsrecords. */
+  geboekt: number
+  /** Afgevulde liters waarvoor nog geen accijnsrecord bestaat. */
+  restLiter: number
+  bron: AccijnsKostprijsBron
+}
+
+const afvulLiter = (a: any): number =>
+  (Number(a?.inhoud_per_eenheid) || Number(a?.inhoud_liter) || 0) * (Number(a?.hoeveelheid) || Number(a?.aantal) || 0)
+
+/**
+ * Accijns in de kostprijs van een groep afvullingen (één verpakkingstype) en
+ * de accijnsrecords die daarbij horen.
+ *
+ * `schatting` rekent de accijns over een aantal liters uit ABV/Plato; alleen
+ * schermen geven die mee — de W&V en de COGS draaien nooit op een schatting,
+ * wel op de bevroren voorcalculatie.
+ *
+ * Oude accijnsrecords zonder liters zeggen niet welk deel geboekt is: dan wint
+ * het geboekte bedrag, zoals vroeger. Liters die zonder Nederlandse accijns de
+ * AGP verlieten (export, vernietiging met toestemming) houden hun deel van de
+ * voorcalculatie — de schatting is dan iets aan de hoge kant, nooit te laag.
+ */
+export const accijnsVoorKostprijs = (
+  afvullingen: any[],
+  accijnsRecords: any[],
+  schatting?: ((liters: number) => number) | null,
+): AccijnsKostprijs => {
+  const recs = accijnsRecords || []
+  const bedragVan = (r: any): number => Number(r?.accijns ?? r?.totaal_accijns ?? 0) || 0
+  const literVan = (r: any): number => Number(r?.liter ?? r?.totaal_liter)
+  const geboekt = recs.reduce((s, r) => s + bedragVan(r), 0)
+  const voorcalc = (afvullingen || []).reduce((s, a) => s + (Number(a?.voorcalc_accijns_totaal) || 0), 0)
+  const liters = (afvullingen || []).reduce((s, a) => s + afvulLiter(a), 0)
+
+  const zonderLiter = recs.some(r => bedragVan(r) !== 0 && !(Number.isFinite(literVan(r)) && literVan(r) !== 0))
+  if (geboekt > 0 && (zonderLiter || liters <= 0)) {
+    return {accijns: geboekt, geboekt, restLiter: 0, bron: 'geboekt'}
+  }
+
+  const geboekteLiter = recs.reduce((s, r) => s + (Number.isFinite(literVan(r)) ? literVan(r) : 0), 0)
+  const restLiter = liters > 0 ? Math.max(0, liters - geboekteLiter) : 0
+  // Minder dan een milliliter over: volledig geboekt (afronding).
+  if (recs.length && restLiter < 0.001) return {accijns: geboekt, geboekt, restLiter: 0, bron: 'geboekt'}
+  const restFractie = recs.length && liters > 0 ? restLiter / liters : 1
+
+  if (voorcalc > 0) {
+    return {accijns: geboekt + voorcalc * restFractie, geboekt, restLiter, bron: 'voorcalc'}
+  }
+  if (schatting && restLiter > 0) {
+    const rest = schatting(restLiter)
+    if (rest > 0) return {accijns: geboekt + rest, geboekt, restLiter, bron: 'geschat'}
+  }
+  return {accijns: geboekt, geboekt, restLiter, bron: 'geen'}
 }
 
 // Productkostprijs/liter dezelfde scope als het kostprijsoverzicht op de
@@ -571,7 +713,8 @@ export interface ProductKostprijsResult {
 // werkelijk afgevulde liters uit `afvullingen`. Batches zonder afvullingen
 // tellen niet mee — anders zou hun volume 0 zijn en zou alleen hun kostpost de
 // uitkomst vertekenen. Voor accijns gebruiken we de geboekte waarde uit
-// `accijns`; zo niet, vallen we terug op de voorcalc-snapshot op de afvulling.
+// `accijns` voor wat is uitgeslagen, en de voorcalc-snapshot op de afvulling
+// voor wat nog in de AGP ligt (`accijnsVoorKostprijs`).
 // Kostprijs van één batch (ingrediënten + utility + verpakking + accijns) en
 // de werkelijk afgevulde liters. Batches zonder afvullingen geven liter 0 en
 // kostprijs_per_liter 0 — de aanroeper beslist wat daarmee gebeurt.
@@ -589,75 +732,98 @@ export const berekenBatchKostprijs = (
   // ongewijzigd — de W&V en de COGS mogen niet op een schatting draaien.
   accijnsInst?: AccijnsInst | null
 ): ProductKostprijsResult => {
-  const bAv = (afvullingen||[]).filter((a: any) => a.batch_id === b.id)
+  const bAv = (afvullingen||[]).filter((a: any) => zelfdeId(a?.batch_id, b?.id))
   const batchLiter = bAv.reduce((s: number, a: any) =>
     s + Number(a.inhoud_per_eenheid||0) * Number(a.hoeveelheid||0), 0)
 
-  let batchKosten =
+  const overheadTotaal =
     Number(b.electra_kosten || 0) + Number(b.water_kosten || 0) +
     Number(b.schoonmaak_kosten || 0) + Number(b.overige_kosten || 0)
+  let batchKosten = overheadTotaal
 
-  const bBi = (batchIngredienten||[]).filter((i: any) => i.batch_id === b.id)
-  for (const ing of bBi) {
-    if (ing.kosten) {
-      batchKosten += Number(ing.kosten)
-    } else {
-      const lot = (lots||[]).find((l: any) => l.id === ing.lot_id)
-      if (lot?.prijs_per_eenheid) batchKosten += Number(lot.prijs_per_eenheid) * Number(ing.hoeveelheid || 0)
+  // Ingrediënten: vastgelegde kosten, anders de lotprijs omgerekend naar de
+  // eenheid van de regel (hop in g uit een lot in kg).
+  let ingredientenTotaal = 0
+  const bBi = (batchIngredienten||[]).filter((i: any) => zelfdeId(i?.batch_id, b?.id))
+  for (const ing of bBi) ingredientenTotaal += batchRegelKosten(ing, lots) || 0
+  batchKosten += ingredientenTotaal
+
+  // Verpakking per afvulling, met de verpakking van díe afvulling — dezelfde
+  // opzoeking als de COGS per uitlevering, zodat die twee optellen tot hier.
+  let verpakkingTotaal = 0
+  for (const a of bAv) {
+    const vp = verpakkingen ? vindVerpakking(a, verpakkingen) : null
+    verpakkingTotaal += verpakkingKostenPerStuk(vp, onderdelen) * Number(a.hoeveelheid || 0)
+  }
+  batchKosten += verpakkingTotaal
+
+  // Accijns per verpakkingstype (zie `accijnsVoorKostprijs`), met de zwakste
+  // bron over alle typen: één geschat type maakt het hele cijfer een schatting.
+  const bAcc = (accijns||[]).filter((a: any) => zelfdeId(a?.batch_id, b?.id))
+  const typeSleutel = (x: any): string => String(x?.verpakking_type ?? '')
+  const naamSleutel = (x: unknown): string => String(x ?? '').trim().toLowerCase()
+  const groepen = [...new Set(bAv.map(typeSleutel))].map(type => {
+    const rows = bAv.filter((a: any) => typeSleutel(a) === type)
+    return {
+      type, rows, acc: [] as any[],
+      liter: rows.reduce((s: number, a: any) => s + afvulLiter(a), 0),
+      namen: new Set(rows.flatMap((a: any) => [naamSleutel(a.verpakking_naam), naamSleutel(a.verpakking_type)]).filter(Boolean)),
+    }
+  })
+  // Een uitslag draagt het `verpakking_type` van zijn afvulling. Heel oude
+  // records niet: die gaan naar de enige groep, anders op verpakkingsnaam, en
+  // anders naar rato van de liters over alle groepen — het blijft geboekte
+  // accijns van deze batch.
+  const ongeplaatst: any[] = []
+  for (const rec of bAcc) {
+    const g = groepen.find(x => x.type === typeSleutel(rec))
+      || (groepen.length === 1 ? groepen[0] : undefined)
+      || (naamSleutel(rec.verpakking_naam) ? groepen.find(x => x.namen.has(naamSleutel(rec.verpakking_naam))) : undefined)
+    if (g) g.acc.push(rec)
+    else ongeplaatst.push(rec)
+  }
+  if (ongeplaatst.length && groepen.length) {
+    const totaalLiter = groepen.reduce((s, g) => s + g.liter, 0)
+    for (const g of groepen) {
+      const deel = totaalLiter > 0 ? g.liter / totaalLiter : 1 / groepen.length
+      for (const rec of ongeplaatst) {
+        const liter = rec.liter ?? rec.totaal_liter
+        g.acc.push({
+          accijns: Number(rec.accijns ?? rec.totaal_accijns ?? 0) * deel,
+          liter: liter == null || liter === '' ? undefined : Number(liter) * deel,
+        })
+      }
     }
   }
 
-  const bAcc = (accijns||[]).filter((a: any) => a.batch_id === b.id)
-  const avTypes = [...new Set(bAv.map((a: any) => a.verpakking_type))] as string[]
-
-  // Accijns apart bijhouden, met de zwakste bron over alle verpakkingstypen:
-  // één geschat type maakt het hele cijfer een schatting.
   let accijnsTotaal = 0
-  let verpakkingTotaal = 0
   let accijnsBron: ProductKostprijsResult['accijns_bron'] = undefined
   const RANG = {geboekt: 3, voorcalc: 2, geschat: 1, geen: 0} as const
-  const noteerBron = (bron: NonNullable<ProductKostprijsResult['accijns_bron']>) => {
+  const noteerBron = (bron: AccijnsKostprijsBron) => {
     if (!accijnsBron || RANG[bron] < RANG[accijnsBron]) accijnsBron = bron
   }
   const abvBatch = Number(b?.ABV || 0)
   const platoBatch = Number(b?.platogehalte || 0)
   const tar = tariefVoorDatum(accijnsInst, b?.datum)
   const tarEff: AccijnsInst = {...(accijnsInst || {}), tarief_per_hl_plato: tar.r3}
-  for (const type of avTypes) {
-    const rows = bAv.filter((a: any) => a.verpakking_type === type)
-    const stuks = rows.reduce((s: number, a: any) => s + Number(a.hoeveelheid||0), 0)
-    const vpId = rows.find((r: any) => r.verpakking_id)?.verpakking_id
-    const vp = verpakkingen
-      ? (vpId ? verpakkingen.find((v: any) => v.id === vpId) : verpakkingen.find((v: any) => v.naam === type))
-      : null
-    const kPerStuk = verpakkingKostenPerStuk(vp, onderdelen)
-    batchKosten += kPerStuk * stuks
-    verpakkingTotaal += kPerStuk * stuks
-
-    const accRows = bAcc.filter((a: any) => a.verpakking_type === type)
-    const totAccActueel = accRows.reduce((s: number, a: any) => s + Number(a.accijns ?? a.totaal_accijns ?? 0), 0)
-    const totAccVoorcalc = rows.reduce((s: number, a: any) => s + Number(a.voorcalc_accijns_totaal || 0), 0)
-
-    let accVoorType = 0
-    if (totAccActueel > 0) { accVoorType = totAccActueel; noteerBron('geboekt') }
-    else if (totAccVoorcalc > 0) { accVoorType = totAccVoorcalc; noteerBron('voorcalc') }
-    else if (accijnsInst && (abvBatch > 0 || platoBatch > 0)) {
-      // Oude afvulling zonder snapshot: reken hem alsnog uit in plaats van
-      // hem stil als nul te laten meetellen.
-      const liters = rows.reduce((s: number, a: any) =>
-        s + Number(a.inhoud_per_eenheid || 0) * Number(a.hoeveelheid || 0), 0)
-      accVoorType = liters > 0 ? accijnsCalc(liters, abvBatch, tar.r1, tar.r2, tarEff, platoBatch) : 0
-      noteerBron(accVoorType > 0 ? 'geschat' : 'geen')
-    } else noteerBron('geen')
-
-    accijnsTotaal += accVoorType
-    batchKosten += accVoorType
+  // Alleen met `accijnsInst` (schermen): afvullingen van vóór v2.4 hebben geen
+  // snapshot; reken die alsnog uit in plaats van ze stil als nul mee te tellen.
+  const schatting = accijnsInst && (abvBatch > 0 || platoBatch > 0)
+    ? (liters: number) => liters > 0 ? accijnsCalc(liters, abvBatch, tar.r1, tar.r2, tarEff, platoBatch) : 0
+    : null
+  for (const g of groepen) {
+    const r = accijnsVoorKostprijs(g.rows, g.acc, schatting)
+    noteerBron(r.bron)
+    accijnsTotaal += r.accijns
   }
+  batchKosten += accijnsTotaal
 
   return {
     kostprijs_per_liter: batchLiter > 0 ? batchKosten / batchLiter : 0,
     totaal_kosten: batchKosten,
     totaal_liter: batchLiter,
+    ingredienten_kosten: ingredientenTotaal,
+    overhead_kosten: overheadTotaal,
     accijns: accijnsTotaal,
     totaal_kosten_excl_accijns: batchKosten - accijnsTotaal,
     kostprijs_per_liter_excl_accijns: batchLiter > 0 ? (batchKosten - accijnsTotaal) / batchLiter : 0,
@@ -725,7 +891,8 @@ export const berekenProductKostprijs = (
 
 // ── COGS op werkelijke kostprijs (ERP-plan 2.6) ─────────────────────────────
 // Koppelt de batchkostprijs aan de uitleveringen in een periode: elke
-// uitgeleverde liter telt tegen de kostprijs/liter van zijn batch. Interne
+// uitgeleverde liter telt tegen de kostprijs/liter (zonder verpakking) van
+// zijn batch, plus de verpakking van de geleverde eenheden zelf. Interne
 // uitleveringen (eigen gebruik) tellen niet mee — daar staat geen omzet
 // tegenover. Liters uit batches zonder bekende kostprijs (geen afvullingen of
 // kosten) worden apart gerapporteerd zodat de marge niet stil geflatteerd
@@ -749,13 +916,16 @@ export const berekenCogs = (
   van: string,
   tot: string,
 ): CogsResult => {
-  const kostprijsCache = new Map<any, number>()
-  const kostprijsVoorBatch = (batchId: any): number => {
-    if (kostprijsCache.has(batchId)) return kostprijsCache.get(batchId) as number
-    const b = (batches||[]).find((x: any) => x.id === batchId)
-    const kpl = b ? berekenBatchKostprijs(b, batchIngredienten, lots, afvullingen, verpakkingen, onderdelen, accijns).kostprijs_per_liter : 0
-    kostprijsCache.set(batchId, kpl)
-    return kpl
+  const kostprijsCache = new Map<string, {kpl: number, kplExcl: number}>()
+  const kostprijsVoorBatch = (batchId: any): {kpl: number, kplExcl: number} => {
+    const sleutel = String(batchId ?? '')
+    const gecached = kostprijsCache.get(sleutel)
+    if (gecached) return gecached
+    const b = (batches||[]).find((x: any) => zelfdeId(x?.id, batchId))
+    const r = b ? berekenBatchKostprijs(b, batchIngredienten, lots, afvullingen, verpakkingen, onderdelen, accijns) : null
+    const waarde = {kpl: r?.kostprijs_per_liter || 0, kplExcl: r?.kostprijs_per_liter_excl_verpakking || 0}
+    kostprijsCache.set(sleutel, waarde)
+    return waarde
   }
   let cogs = 0
   let liters = 0
@@ -764,6 +934,9 @@ export const berekenCogs = (
   for (const u of uitleveringen || []) {
     if (!u?.datum || u.datum < van || u.datum > tot) continue
     if (u.type_uitlevering === 'intern') continue
+    const afv = u.afvulling_id != null
+      ? (afvullingen||[]).find((a: any) => zelfdeId(a?.id, u.afvulling_id))
+      : undefined
     // Inhoud van één verpakking — alleen die mag met `aantal` vermenigvuldigd
     // worden. `inhoud_liter` op een uitlevering is daar géén betrouwbare bron
     // voor: de bestellingen- en kassaflow schrijven er het régeltotaal in
@@ -773,16 +946,25 @@ export const berekenCogs = (
     // Vandaar deze volgorde: eerst het veld dat altijd per stuk is, dan de
     // afvulling, en pas als die beide ontbreken het oude veld.
     const perStuk = Number(u.inhoud_per_eenheid)
-      || Number((afvullingen||[]).find((a: any) => a.id === u.afvulling_id)?.inhoud_per_eenheid)
+      || Number(afv?.inhoud_per_eenheid)
       || Number(u.inhoud_liter)
       || 0
-    const l = perStuk * (Number(u.aantal) || 0)
+    const aantal = Number(u.aantal) || 0
+    const l = perStuk * aantal
     if (l <= 0) continue
     aantalUitleveringen++
     liters += l
-    const kpl = kostprijsVoorBatch(u.batch_id)
-    if (kpl > 0) cogs += l * kpl
-    else litersZonderKostprijs += l
+    const {kpl, kplExcl} = kostprijsVoorBatch(u.batch_id ?? afv?.batch_id)
+    if (kpl <= 0) { litersZonderKostprijs += l; continue }
+    // Verpakking hoort bij de eenheid, niet bij de liter: in `kpl` is het
+    // glas van de flesjes over álle liters van de batch uitgesmeerd, ook over
+    // de fusten. Reken dus bier per liter plus de verpakking van díe
+    // afvulling — zo tellen de uitleveringen van een batch samen op tot zijn
+    // totale kostprijs, en betaalt een fust niet mee aan het flessenglas.
+    // Zonder afvulling (heel oude records) blijft het de prijs per liter.
+    cogs += afv
+      ? l * kplExcl + aantal * verpakkingKostenPerStuk(vindVerpakking(afv, verpakkingen), onderdelen)
+      : l * kpl
   }
   return { cogs, liters, litersZonderKostprijs, aantalUitleveringen }
 }
@@ -1510,8 +1692,12 @@ export const getAgpLocatie = (locaties: Locatie[] = []): Locatie => {
  *  `bronOnbekend` staat op een afboeking: die legt nergens vast wáár het bier
  *  stond toen het brak of vermist raakte (`Afboeking` heeft geen locatieveld),
  *  dus die nemen we standaard van de AGP. Past hij daar niet, dan mag hij
- *  doorschuiven naar een locatie waar de voorraad wél staat. */
-interface VoorraadBeweging { datum: string; van: number; naar?: number; aantal: number; bronOnbekend?: boolean }
+ *  doorschuiven naar een locatie waar de voorraad wél staat.
+ *
+ *  `afboeking` markeert een afboeking: met een negatief aantal is dat een
+ *  bijboeking (een geteld overschot bij de inventarisatie), die er op `van`
+ *  bij komt in plaats van af te gaan. */
+interface VoorraadBeweging { datum: string; van: number; naar?: number; aantal: number; bronOnbekend?: boolean; afboeking?: boolean }
 
 /** Verplaatsingen, uitleveringen en afboekingen van één afvulling als één
  *  lijst op datum. De sortering is stabiel, dus bij een gelijke datum blijft
@@ -1543,6 +1729,7 @@ const bouwVoorraadBewegingen = (
       van: bron ?? agpId,
       aantal: Number(a.aantal || 0),
       bronOnbekend: bron == null,
+      afboeking: true,
     })
   }
   return uit.sort((x, y) => x.datum.localeCompare(y.datum))
@@ -1557,12 +1744,17 @@ const bouwVoorraadBewegingen = (
 // bestemming op 2× zetten en de bron-clamp naar 0 — wat resulteert in
 // phantom voorraad (totaal > werkelijk afgevuld). Voor de eerlijke ruwe
 // waarden zonder cap, zie `voorraadPerLocatieRaw`.
+//
+// `peildatum` (YYYY-MM-DD, optioneel): alleen bewegingen tot en met die dag
+// tellen mee — de stand op die dag. Een verkoop kan zo alleen putten uit bier
+// dat er op de verkoopdatum al lag; zonder peildatum telt alles mee.
 export const voorraadPerLocatie = (
   afv: Afvulling,
   locaties: Locatie[],
   uitleveringen: Uitlevering[] = [],
   verplaatsingen: Verplaatsing[] = [],
-  afboekingen: Afboeking[] = []
+  afboekingen: Afboeking[] = [],
+  peildatum?: string
 ): Record<number, number> => {
   const agp = getAgpLocatie(locaties)
   const result: Record<number, number> = {}
@@ -1583,6 +1775,14 @@ export const voorraadPerLocatie = (
     return werkelijk
   }
   for (const b of bewegingen) {
+    if (peildatum && b.datum.slice(0, 10) > peildatum) continue
+    // Een negatieve afboeking is een bijboeking (inventarisatie-overschot):
+    // de gevonden flesjes komen erbij op de plek waar ze geteld zijn, anders
+    // zijn ze nooit uit te slaan of te verkopen.
+    if (b.afboeking && b.aantal < 0) {
+      result[b.van] = (result[b.van] || 0) - b.aantal
+      continue
+    }
     if (b.aantal <= 0) continue
     let genomen = neemAf(b.van, b.aantal)
     // Een afboeking zonder locatie die niet op de AGP past, stond ergens
@@ -1776,7 +1976,15 @@ export const agpOverzicht = (
 // ── Historische AGP-waarde ──────────────────────────────────────────────────
 // Berekent de AGP-waarde (tank + verpakt) op een specifieke datum. Bouwt
 // snapshot op uit historische events (afvullingen, uitleveringen, verplaatsingen,
-// afboekingen) — geen status-history vereist.
+// afboekingen, verliesposten) — geen status-history vereist. Volgt dezelfde
+// regels als `agpOverzicht` (de actuele stand), zodat de gemiddelden op de
+// AGP-pagina met hetzelfde getal rekenen als de tegel erboven:
+//  - tank: `tankRestVolume` (mét verliezen) van batches die op D in de tank
+//    zaten — een batch in TANK_STATUSSEN, of een afgevulde/gesloten batch tot
+//    zijn laatste afvuldag. Een batch die nooit is afgevuld en niet in de tank
+//    staat (gepland…) heeft op geen enkele dag bier bevat.
+//  - verpakt: `voorraadPerLocatie` op peildatum D, dus mét de locatie van een
+//    afboeking, de cap en het doorschuiven van oude afboekingen.
 export const agpValueAt = (
   datum: string,
   batches: any[],
@@ -1785,23 +1993,30 @@ export const agpValueAt = (
   verplaatsingen: Verplaatsing[],
   afboekingen: Afboeking[],
   locaties: Locatie[],
-  inst: AccijnsInst | null = null
+  inst: AccijnsInst | null = null,
+  verliezen: VerliesRegistratie[] = []
 ): { tank: number; verpakt: number; totaal: number } => {
   const agp = getAgpLocatie(locaties)
   const D = String(datum)
+  const afvTotD = (afvullingen || []).filter(a => String(a?.datum || '').slice(0, 10) <= D)
+  const verliesTotD = (verliezen || []).filter(r => String(r?.datum || '').slice(0, 10) <= D)
 
-  // Tank: voor elke batch — liter_vergist minus afvullingen tot en met D.
+  // Tank: liter_vergist minus afgevuld en verloren tot en met D.
   // We tellen alleen mee als batch.datum <= D (anders bestond de batch nog niet).
   let tankAcc = 0
   for (const b of batches || []) {
     const bDatum = String(b?.datum || '')
     if (bDatum && bDatum > D) continue
-    const totaal = Number(b?.liter_vergist || b?.kook_volume || 0)
-    if (!totaal) continue
-    const afgevuld = (afvullingen || [])
-      .filter(a => a.batch_id === b.id && String(a.datum || '') <= D)
-      .reduce((s, a) => s + afvAantal(a) * afvInhoud(a), 0)
-    const rest = totaal - afgevuld
+    if (!TANK_STATUSSEN.includes(String(b?.status))) {
+      const laatsteAfvulling = (afvullingen || [])
+        .filter(a => a.batch_id === b?.id)
+        .reduce((max, a) => {
+          const d = String(a?.datum || '').slice(0, 10)
+          return d > max ? d : max
+        }, '')
+      if (!laatsteAfvulling || D >= laatsteAfvulling) continue
+    }
+    const rest = tankRestVolume(b, afvTotD, verliesTotD)
     if (rest <= 0) continue
     const { abv } = schatABV(b)
     const plato = Number(b?.platogehalte || 0)
@@ -1811,25 +2026,13 @@ export const agpValueAt = (
     tankAcc += accijnsCalc(rest, abv, _t.r1, _t.r2, _eff, plato)
   }
 
-  // Verpakt in AGP: voor elke afvulling met datum <= D, bereken hoeveelheid
-  // op AGP-locatie op datum D.
+  // Verpakt in AGP: voor elke afvulling met datum <= D de stand op de
+  // AGP-locatie op datum D — met exact de regels van de actuele stand.
   let verpaktAcc = 0
   for (const av of afvullingen || []) {
     const avDatum = String(av?.datum || '')
     if (avDatum && avDatum > D) continue
-    let inAgp = afvAantal(av)
-    for (const v of (verplaatsingen || []).filter(x => x.afvulling_id === av.id && String(x.datum || '') <= D)) {
-      const aantal = Number(v.aantal || 0)
-      if (v.van_locatie_id === agp.id) inAgp -= aantal
-      if (v.naar_locatie_id === agp.id) inAgp += aantal
-    }
-    for (const u of (uitleveringen || []).filter(x => x.afvulling_id === av.id && String((x as any).datum || '') <= D)) {
-      const locId = u.bron_locatie_id ?? agp.id
-      if (locId === agp.id) inAgp -= Number(u.aantal || 0)
-    }
-    for (const af of (afboekingen || []).filter(x => x.afvulling_id === av.id && String((x as any).datum || '') <= D)) {
-      inAgp -= Number(af.aantal || 0)
-    }
+    const inAgp = Number(voorraadPerLocatie(av, locaties, uitleveringen, verplaatsingen, afboekingen, D)[agp.id] || 0)
     if (inAgp <= 0) continue
     const liter = inAgp * afvInhoud(av)
     if (liter <= 0) continue
@@ -1855,7 +2058,8 @@ export const gemAgpInPeriode = (
   verplaatsingen: Verplaatsing[],
   afboekingen: Afboeking[],
   locaties: Locatie[],
-  inst: AccijnsInst | null = null
+  inst: AccijnsInst | null = null,
+  verliezen: VerliesRegistratie[] = []
 ): { tank: number; verpakt: number; totaal: number } => {
   if (!start || !end || start > end) return { tank: 0, verpakt: 0, totaal: 0 }
   let nDays = 0, sTank = 0, sVerp = 0, sTot = 0
@@ -1865,7 +2069,7 @@ export const gemAgpInPeriode = (
     // Lokale YYYY-MM-DD: cur is opgebouwd uit lokale dag-componenten, dus
     // toISOString() zou hier de UTC-dag teruggeven (mogelijk één dag eerder).
     const ds = ymd(cur)
-    const v = agpValueAt(ds, batches, afvullingen, uitleveringen, verplaatsingen, afboekingen, locaties, inst)
+    const v = agpValueAt(ds, batches, afvullingen, uitleveringen, verplaatsingen, afboekingen, locaties, inst, verliezen)
     sTank += v.tank; sVerp += v.verpakt; sTot += v.totaal; nDays++
     cur.setDate(cur.getDate() + 1)
   }

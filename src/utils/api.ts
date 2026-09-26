@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { lsSet, t } from '../i18n'
 import { bouwSyncSnapshot, berekenDelta, deltaIsKleiner, SyncSnapshot } from './delta'
 import { bouwMergeBasis, voegSamen, MergeBasis } from './merge'
+import { COMMIT_MAX_BYTES, COMMIT_MAX_KEYS, CommitResultaat, commitVervolg, utf8Lengte, verdeelCommit } from './commit'
 import { parseWcFout } from './wcFout'
 import { bfFermType } from './ingTypes'
 
@@ -352,6 +353,25 @@ const _saveSeq = new Map<string, number>()
 const _pendingSaves = new Map<string, _BufEntry>()
 let _retryTimer: ReturnType<typeof setInterval> | null = null
 
+// Het seq-nummer van de laatste save per key waarvan de uitkomst definitief
+// is (ok, geweigerd, conflict afgehandeld). Zolang `_saveSeq` daarboven ligt,
+// is er een save die de server nog niet bevestigd heeft.
+const _afgerondSeq = new Map<string, number>()
+
+// Staat er voor deze key een wijziging die de server nog niet heeft
+// bevestigd: nog in de commit-buffer, onderweg, of mislukt en wachtend op een
+// herkansing? Dan is een serverstand die nu binnenkomt ouder dan wat de
+// gebruiker ziet — `refresh` mag hem dan niet overnemen.
+export const _heeftOnbevestigdeSave = (key: string): boolean =>
+  _commitBuffer.has(key) || _pendingSaves.has(key)
+  || (_saveSeq.get(key) || 0) > (_afgerondSeq.get(key) || 0)
+
+// Een melding buiten een useStore-haak (vanuit de verzendketen). In een
+// omgeving zonder `alert` (Vitest) stil.
+const _meld = (tekst: string): void => {
+  if (typeof alert === 'function') alert(tekst)
+}
+
 const _flushPendingSaves = () => {
   if (_pendingSaves.size === 0) {
     if (_retryTimer) { clearInterval(_retryTimer); _retryTimer = null }
@@ -387,8 +407,10 @@ type _BufEntry = {
   // Conflict dat wél is samengevoegd: `data` is de nieuwe, weggeschreven
   // stand; `botsingen` telt de records waarvoor de server won (0 = stil).
   onSamengevoegd: (data: any, botsingen: number) => void
-  onReject: () => void
-  onForbidden: () => void
+  // `stil` = serverstand wel terugzetten, maar geen melding: die heeft een
+  // andere key van dezelfde handeling al getoond.
+  onReject: (stil?: boolean) => void
+  onForbidden: (stil?: boolean) => void
 }
 const _commitBuffer = new Map<string, _BufEntry>()
 let _flushScheduled = false
@@ -416,8 +438,10 @@ const _haalServerStand = async (key: string): Promise<{data: any, versie: string
 // ── Conflict oplossen door samen te voegen ──────────────────────────────────
 // Het versieslot zit op de hele key, terwijl een conflict bijna altijd over
 // een ánder record gaat dan het record dat de gebruiker net wijzigde (de
-// server schrijft zelf in `batches`, `gist_metingen` en `carbonatie_sessies`,
-// en een tweede tab of de telefoon schrijft ook mee). We halen daarom de
+// server schrijft zelf in `batches`, `gist_metingen` en `carbonatie_sessies`
+// — in `gist_metingen` dunt hij ook oude automatische metingen uit, dus daar
+// verdwijnen records aan serverkant — en een tweede tab of de telefoon
+// schrijft ook mee). We halen daarom de
 // verse serverstand op en leggen onze eigen wijziging daar per record
 // overheen (utils/merge.ts). Alleen als hetzelfde record aan beide kanten
 // anders werd, wint de server — en pas dán ziet de gebruiker een melding.
@@ -444,6 +468,23 @@ export const _losConflictOp = async (key: string, e: _BufEntry): Promise<void> =
   _rememberSynced(key, stand.data)
   const res = await _doPost(key, samen ? samen.data : e.data)
   if (res === 'ok') {
+    // Is er tíjdens deze her-POST alweer opgeslagen (een toetsaanslag), dan
+    // is die nieuwere save gebouwd op onze stand van vóór het samenvoegen:
+    // zonder de serverwijzigingen. Zetten we nu de samengevoegde stand in
+    // beeld, dan verdwijnt die toetsaanslag; en gaat de nieuwere save straks
+    // gewoon met de verse versie de deur uit, dan draait hij de overgenomen
+    // serverwijzigingen weer terug. Daarom: niets in beeld zetten, het
+    // ijkpunt op de stand leggen waarop de nieuwere save voortbouwt, en de
+    // versie op 'onbekend' — dan krijgt die save gegarandeerd een 409 en
+    // voegt hij zich per record samen met wat er nu op de server staat.
+    if ((_saveSeq.get(key) || 0) > e.seq) {
+      if (samen) {
+        if (samen.botsingen.length > 0) _meld(t('sync_merge_botsing').replace('{n}', String(samen.botsingen.length)))
+        _rememberSynced(key, e.data)
+        _setVersion(key, VERSIE_ONBEKEND)
+      }
+      return
+    }
     if (samen) e.onSamengevoegd(samen.data, samen.botsingen.length)
     else e.onOk()
     return
@@ -453,16 +494,19 @@ export const _losConflictOp = async (key: string, e: _BufEntry): Promise<void> =
   await _handleSaveResult(key, e, res)
 }
 
-const _handleSaveResult = async (key: string, e: _BufEntry, res: SaveResult): Promise<void> => {
+const _handleSaveResult = async (key: string, e: _BufEntry, res: SaveResult, stil = false): Promise<void> => {
   if (_saveSeq.get(key) !== e.seq) return // er is al een nieuwere save
   if (res === 'ok') e.onOk()
   else if (res === 'conflict') await _losConflictOp(key, e)
-  else if (res === 'reject') e.onReject()
-  else if (res === 'forbidden') e.onForbidden()
+  else if (res === 'reject') e.onReject(stil)
+  else if (res === 'forbidden') e.onForbidden(stil)
   else {
     _pendingSaves.set(key, e)
     _scheduleRetry()
   }
+  // Uitkomst definitief voor de nieuwste save van deze key (niet: wachtend op
+  // een herkansing, of ingehaald door een nieuwere save die zelf afrondt).
+  if (_saveSeq.get(key) === e.seq && !_pendingSaves.has(key)) _afgerondSeq.set(key, e.seq)
 }
 
 const _flushCommitBuffer = () => {
@@ -470,45 +514,65 @@ const _flushCommitBuffer = () => {
   _commitBuffer.clear()
   if (!entries.length) return
   _opChain(async () => {
-    if (entries.length === 1) {
-      const [key, e] = entries[0]
-      await _handleSaveResult(key, e, await _doPost(key, e.data))
-      return
-    }
-    const res = await _doCommit(entries)
-    if (res.status === 'ok') {
-      for (const [k, e] of entries) { _rememberSynced(k, e.data); await _handleSaveResult(k, e, 'ok') }
-    } else if (res.status === 'conflict') {
-      // Alleen de conflicterende keys vervallen; de rest alsnog los proberen.
-      for (const [k, e] of entries) {
-        if (res.conflicts.includes(k)) await _handleSaveResult(k, e, 'conflict')
-        else await _handleSaveResult(k, e, await _doPost(k, e.data))
-      }
-    } else if (res.status === 'reject') {
-      // Eén key is door schemavalidatie afgewezen; de rest alsnog los proberen.
-      for (const [k, e] of entries) {
-        if (k === res.key || !res.key) await _handleSaveResult(k, e, 'reject')
-        else await _handleSaveResult(k, e, await _doPost(k, e.data))
-      }
-    } else if (res.status === 'forbidden') {
-      // Eén key is door de rol geweigerd (403); de rest alsnog los proberen.
-      for (const [k, e] of entries) {
-        if (k === res.key || !res.key) await _handleSaveResult(k, e, 'forbidden')
-        else await _handleSaveResult(k, e, await _doPost(k, e.data))
-      }
-    } else if (res.status === 'notfound') {
-      // Oudere server zonder /api/commit → terugvallen op losse POSTs.
-      for (const [k, e] of entries) await _handleSaveResult(k, e, await _doPost(k, e.data))
-    } else {
-      // Netwerk-/serverfout: niets is geschreven; per key in de retry-queue.
-      for (const [k, e] of entries) await _handleSaveResult(k, e, 'fail')
-    }
+    // Eén melding per soort weigering per handeling: de keys die met de
+    // weigering meevallen herladen wel hun serverstand, maar zwijgen.
+    const gemeld = new Set<SaveResult>()
+    // Meer keys dan de server in één commit aanneemt (backup terugzetten,
+    // fabrieksreset): in groepen die ook qua bytes passen, achter elkaar.
+    // Een gewone handeling gaat in zijn geheel — de grootte meten kost dan
+    // alleen tijd, en een body boven de servergrens (413, zonder key) valt
+    // toch al terug op losse POSTs.
+    const bulk = entries.length > COMMIT_MAX_KEYS
+    const groepen = bulk
+      ? verdeelCommit(entries, COMMIT_MAX_KEYS, COMMIT_MAX_BYTES, ([, e]) => utf8Lengte(JSON.stringify(e.data) ?? ''))
+      : [entries]
+    for (const groep of groepen) await _verwerkGroep(groep, bulk, gemeld)
   })
+}
+
+// Eén groep uit de commit-buffer wegschrijven: één key als losse POST (waar
+// mogelijk een delta), meer keys als atomaire /api/commit. Wat er na het
+// antwoord met elke key gebeurt staat in `commitVervolg` (utils/commit.ts):
+// een 403/422 op één key laat bij een gewone handeling de hele groep vallen
+// — nooit de rest alsnog los wegschrijven, dat gaf halve boekingen (een
+// uitslag zonder accijnsrecord).
+const _verwerkGroep = async (groep: Array<[string, _BufEntry]>, bulk: boolean, gemeld: Set<SaveResult>): Promise<void> => {
+  const afhandelen = (k: string, e: _BufEntry, res: SaveResult): Promise<void> => {
+    const weigering = res === 'reject' || res === 'forbidden'
+    const stil = weigering && gemeld.has(res)
+    if (weigering) gemeld.add(res)
+    return _handleSaveResult(k, e, res, stil)
+  }
+  if (groep.length === 1) {
+    const [k, e] = groep[0]
+    await afhandelen(k, e, await _doPost(k, e.data))
+    return
+  }
+  const res = await _doCommit(groep)
+  const vervolg = commitVervolg(res, groep.map(([k]) => k), bulk)
+  const opnieuw: Array<[string, _BufEntry]> = []
+  for (const [k, e] of groep) {
+    const v = vervolg.get(k) ?? 'fail'
+    if (v === 'opnieuw') { opnieuw.push([k, e]); continue }
+    if (v === 'los') { await afhandelen(k, e, await _doPost(k, e.data)); continue }
+    if (v === 'ok') _rememberSynced(k, e.data)
+    await afhandelen(k, e, v)
+  }
+  // Alleen bij een bulk: de geweigerde key is eruit, de rest gaat opnieuw
+  // (altijd kleiner, dus dit eindigt).
+  if (opnieuw.length) await _verwerkGroep(opnieuw, bulk, gemeld)
+}
+
+// Test-hook (Vitest): wacht tot de commit-buffer van deze tick de deur uit is
+// en de verzendketen leeg is.
+export const _wachtOpVerzending = async (): Promise<void> => {
+  await new Promise(r => setTimeout(r, 0))
+  await _sendChain
 }
 
 const _doCommit = async (
   entries: Array<[string, _BufEntry]>,
-): Promise<{status: 'ok' | 'fail' | 'notfound'} | {status: 'conflict', conflicts: string[]} | {status: 'reject' | 'forbidden', key?: string}> => {
+): Promise<CommitResultaat> => {
   _syncPending++
   const data: Record<string, any> = {}
   const versions: Record<string, string> = {}
@@ -607,19 +671,23 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
     const perKeyFetch = () => {
       const stempel = _versieStempel(key)
       _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
-        .then(r => {
+        .then(async r => {
           _serverReachable = true
           // De versie hoort bij de ínhoud van dit antwoord. Nemen we die
           // inhoud niet over (er is intussen lokaal geschreven), dan mogen we
           // de versie ook niet overnemen — anders zegt de app "ik ben bij" bij
           // een stand die ze nooit gezien heeft, en schrijft de volgende save
-          // die stand zonder tegenspraak over de serverdata heen.
-          if (!modified.current) _updateVersion(key, r, stempel)
+          // die stand zonder tegenspraak over de serverdata heen. Daarom ook
+          // pas ná het lezen van de inhoud: een onleesbaar antwoord (JSON.parse
+          // faalt) liet anders de nieuwe versie achter bij de oude inhoud.
           if (r.ok) {
             _syncErrors = 0
             if (secure) localStorage.removeItem('craftery_' + key)
-            return r.json()
+            const d = await r.json()
+            if (!modified.current) _updateVersion(key, r, stempel)
+            return d
           }
+          if (!modified.current) _updateVersion(key, r, stempel)
           if (r.status === 404) {
             const localRaw = localStorage.getItem('craftery_' + key)
             const toSync = localRaw !== null ? JSON.parse(localRaw) : initial
@@ -690,24 +758,32 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
   // (409: andere client/tab schreef tussendoor) en bij een afwijzing
   // (422: schemavalidatie) — in beide gevallen is de serverstand leidend en
   // vervalt de lokale wijziging bewust, met een duidelijke melding.
-  const herstelVanServer = (meldingKey: string) => {
+  // `stil`: wel terugzetten, geen melding — een andere key van dezelfde
+  // handeling heeft hem al getoond (één handeling = één melding).
+  const herstelVanServer = (meldingKey: string, stil = false) => {
     modified.current = false
     const stempel = _versieStempel(key)
     _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
-      .then(r => { _updateVersion(key, r, stempel); return r.ok ? r.json() : null })
+      .then(async r => {
+        if (!r.ok) { _updateVersion(key, r, stempel); return null }
+        // Versie pas na een leesbare inhoud (zie perKeyFetch).
+        const d = await r.json()
+        _updateVersion(key, r, stempel)
+        return d
+      })
       .then(d => {
         if (d !== null && d !== undefined) {
           _rememberSynced(key, d)
           setData(d)
           if (!secure) lsSet(key, d)
         }
-        alert(t(meldingKey))
+        if (!stil) alert(t(meldingKey))
       })
-      .catch(() => { alert(t(meldingKey)) })
+      .catch(() => { if (!stil) alert(t(meldingKey)) })
   }
   const onConflict = () => herstelVanServer('sync_conflict_melding')
-  const onReject = () => herstelVanServer('err_save_geweigerd')
-  const onForbidden = () => herstelVanServer('err_geen_rechten')
+  const onReject = (stil?: boolean) => herstelVanServer('err_save_geweigerd', !!stil)
+  const onForbidden = (stil?: boolean) => herstelVanServer('err_geen_rechten', !!stil)
 
   // Het conflict is per record opgelost: de samengevoegde stand staat al op
   // de server en komt nu ook in beeld. Zonder botsingen gebeurt dat stil —
@@ -739,29 +815,38 @@ export const useStore = (key: string, initial: any = [], opts: {secure?: boolean
     })
   }
 
-  // Geeft de verse serverstand terug (of null als die niet gebruikt is: intussen
-  // zelf geschreven, of server onbereikbaar), zodat een aanroeper die éérst de
-  // laatste stand nodig heeft — de automatische WooCommerce-import — erop kan
-  // wachten. Bestaande aanroepers negeren de waarde.
+  // Geeft de verse serverstand terug (of null als die niet gebruikt is: er
+  // staat een eigen wijziging open, of server onbereikbaar), zodat een
+  // aanroeper die éérst de laatste stand nodig heeft — de automatische
+  // WooCommerce-import — erop kan wachten. Bestaande aanroepers negeren de
+  // waarde.
   const refresh = (): Promise<any> => {
     const stempel = _versieStempel(key)
+    const seq0 = _saveSeq.get(key) || 0
+    // Het antwoord is verouderd zodra er een eigen wijziging openstaat die de
+    // server nog niet bevestigd heeft (in de buffer, onderweg, of mislukt en
+    // wachtend op een herkansing), of zodra er sinds het vertrek van deze GET
+    // is opgeslagen. Dan niets overnemen — geen inhoud, geen ijkpunt, geen
+    // versie: anders verdwijnt die wijziging uit beeld, en rekent de volgende
+    // save vanaf een stand zonder haar (een delta die haar wist, of een
+    // herkansing die vervalt).
+    const verouderd = () => modified.current || _heeftOnbevestigdeSave(key)
+      || (_saveSeq.get(key) || 0) !== seq0 || _versieStempel(key) !== stempel
     return _fetchWithRetry(API_BASE + key, { headers: { 'Cache-Control': 'no-cache' } }, 2)
-      .then(r => {
+      .then(async r => {
         _serverReachable = true
-        // Is er intussen geschreven, dan is dit antwoord verouderd: niets
-        // terugzetten, anders verdwijnt de zojuist opgeslagen wijziging weer.
-        if (_versieStempel(key) !== stempel) return null
+        if (verouderd()) return null
+        if (!r.ok) { _updateVersion(key, r, stempel); return null }
+        const d = await r.json()
+        // Tussen de headers en de body kan nog een save vertrokken zijn:
+        // versie en inhoud horen bij elkaar, dus allebei of geen van beide.
+        if (verouderd()) return null
         _updateVersion(key, r, stempel)
-        return r.ok ? r.json() : null
-      })
-      .then(d => {
-        if (d !== null && d !== undefined) {
-          _rememberSynced(key, d)
-          setData(d)
-          if (!secure) lsSet(key, d)
-          return d
-        }
-        return null
+        if (d === null || d === undefined) return null
+        _rememberSynced(key, d)
+        setData(d)
+        if (!secure) lsSet(key, d)
+        return d
       })
       .catch(() => { _serverReachable = false; return null })
   }
@@ -935,7 +1020,9 @@ export const wcTestCreds = async (body: any) => {
     const r = await fetch(_WC_TEST, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
     const d = await r.json().catch(() => ({}))
     if (!r.ok) return {ok: false, status: r.status, detail: (d as any).error||''}
-    return {ok: (d as any).ok === true, status: (d as any).status, detail: (d as any).detail||''}
+    // `oorzaak`/`timeout`: netwerkfout richting de winkel (utils/wcFout.ts).
+    return {ok: (d as any).ok === true, status: (d as any).status, detail: (d as any).detail||'',
+      oorzaak: (d as any).oorzaak || '', timeout: (d as any).timeout}
   } catch(e: any) { return {ok: false, status: 0, detail: e.message} }
 }
 

@@ -4,16 +4,19 @@
  * Opens a new window with embedded CSS and triggers window.print().
  */
 import { t } from '../i18n'
-import { fmtQty, fmtEuroDoc, fmtDatumDoc } from '../utils/format'
-import { renderTemplateOfFallback } from '../utils/template'
+import { fmtQty, fmtEuroDoc, fmtDatumDoc, tod } from '../utils/format'
+import { renderTemplateOfFallback, escapeHtml } from '../utils/template'
 import { onGepickteRegels } from '../utils/picking'
 import type { Picklijst, PicklijstRegel, PicklijstOrder } from '../utils/picking'
 import {
   FACTUUR_CSS_DEFAULT,
   FACTUUR_HTML_DEFAULT,
   bouwFactuurContext,
+  btwOverzichtVan,
   eigenFactuurTemplate,
+  klantRegels,
 } from '../utils/factuurTemplate'
+import { betalingstermijnVoor, vervaldatumTekst, isoDag } from '../utils/facturen'
 
 // Basisopmaak van elk document dat deze app uitprint. Gedeeld met het
 // batchdossier (`BatchRapportExport.tsx`), zodat een pakbon, een factuur en een
@@ -85,9 +88,8 @@ export const DOC_CSS = `
 // Klant-/ordervelden komen rechtstreeks uit WooCommerce; zonder escaping zou
 // een kwaadwillende bedrijfsnaam of opmerking scripts kunnen uitvoeren in de
 // app-origin zodra het printvenster opent (document.write erft de origin).
-export const esc = (v: any): string => String(v ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+// Eén escaper voor de hele app: `escapeHtml` uit utils/template.ts (getest).
+export const esc = escapeHtml
 
 // Documentopmaak staat in utils/format.ts, zodat factuur, pakbon, herinnering
 // en de factuurtemplate exact dezelfde bedragen en datums produceren.
@@ -131,41 +133,20 @@ export function breweryBlock(brewery: any, appName: string, logo: string | null 
     </div>`
 }
 
+// Adresblok van de afnemer: dezelfde regels als op de factuur (klantRegels),
+// ook op pakbon en herinnering.
 function klantBlock(order: any): string {
-  const lines: string[] = []
-  if (order.klant_bedrijf) lines.push(`<strong>${esc(order.klant_bedrijf)}</strong>`)
-  if (order.klant_naam) lines.push(esc(order.klant_naam))
-  const straat = order.klant_straat && order.klant_huisnummer
-    ? `${order.klant_straat} ${order.klant_huisnummer}`
-    : (order.klant_straat || '')
-  if (straat) lines.push(esc(straat))
-  const plaats = [order.klant_postcode, order.klant_stad].filter(Boolean).join('  ')
-  if (plaats) lines.push(esc(plaats))
-  if (order.klant_btw_nummer) lines.push(`${t('lbl_btw')}: ${esc(order.klant_btw_nummer)}`)
-  if (order.klant_email) lines.push(esc(order.klant_email))
-  if (!lines.length) lines.push('—')
-  const [first, ...rest] = lines
-  return `<div class="kn">${first}</div>${rest.map(l => `<p>${l}</p>`).join('')}`
+  const {titel, rest} = klantRegels(order)
+  return `<div class="kn">${esc(titel)}</div>${rest.map(l => `<p>${esc(l)}</p>`).join('')}`
 }
 
-// Regeltabel + BTW-overzicht + totalen van een factuur. Gedeeld door de
-// factuur-PDF en de betalingsherinnering, zodat beide exact dezelfde regels
-// tonen.
+// Regeltabel + BTW-overzicht + totalen van de betalingsherinnering. De factuur
+// zelf rendert via de factuurtemplate (utils/factuurTemplate.ts); het
+// BTW-overzicht komt uit dezelfde functie (`btwOverzichtVan`), zodat factuur
+// en herinnering hetzelfde overzicht tonen.
 function factuurRegelsHtml(factuur: any): string {
   const regels: any[] = factuur.regels || []
-
-  // Bereken btw_overzicht uit regels als niet opgeslagen
-  const btwOverzicht: any[] = (() => {
-    if (factuur.btw_overzicht && factuur.btw_overzicht.length > 0) return factuur.btw_overzicht
-    const map: Record<number, {tarief:number,netto:number,btw:number}> = {}
-    regels.forEach((r: any) => {
-      const pct = r.btw_pct ?? 0
-      if (!map[pct]) map[pct] = {tarief:pct, netto:0, btw:0}
-      map[pct].netto += r.netto || 0
-      map[pct].btw += r.btw_bedrag || 0
-    })
-    return Object.values(map).sort((a,b) => a.tarief - b.tarief)
-  })()
+  const btwOverzicht: any[] = btwOverzichtVan(factuur)
 
   const regelRows = regels.map((r: any) => `<tr>
     <td>${esc(r.omschrijving || '—')}</td>
@@ -181,7 +162,7 @@ function factuurRegelsHtml(factuur: any): string {
     <td>${t('lbl_btw')} ${esc(b.tarief)}%</td>
     <td class="r">${fmtEuro(b.netto)}</td>
     <td class="r">${fmtEuro(b.btw)}</td>
-    <td class="r">${fmtEuro(b.netto + b.btw)}</td>
+    <td class="r">${fmtEuro((b.netto || 0) + (b.btw || 0))}</td>
   </tr>`).join('')
 
   const netto = factuur.netto ?? 0
@@ -263,7 +244,7 @@ function buildPakbonBody(
       <td>${esc(batch?.batch_nummer || '—')}</td>
       <td>${esc(afvulling?.verpakking_type || '—')}</td>
       <td>${afvulling?.inhoud_per_eenheid ? `${esc(afvulling.inhoud_per_eenheid)}L` : '—'}</td>
-      <td>${afvulling?.tht ? fmtDate(afvulling.tht) : '—'}</td>
+      <td>${afvulling?.tht ? esc(fmtDate(afvulling.tht)) : '—'}</td>
       <td class="r">${esc(p.aantal)}</td>
     </tr>`
   })
@@ -288,7 +269,7 @@ function buildPakbonBody(
     <div class="hdr">
       ${breweryBlock(brewery, appName, factuurLogo)}
       <div class="hdr-right">
-        <div class="doc-title">PAKBON</div>
+        <div class="doc-title">${esc(t('lbl_pakbon_document'))}</div>
         <div class="doc-nr">${esc(pakbonNr)}</div>
         ${isConcept ? `<div class="badge badge-concept">${t('lbl_pakbon_concept')}</div>` : ''}
         <div class="hdr-party">
@@ -382,12 +363,13 @@ function buildPicklijstBody(
   appName: string,
   factuurLogo: string | null | undefined
 ): {bodyHtml: string, filename: string} {
-  const vandaag = new Date().toISOString().slice(0, 10)
+  // Lokale kalenderdag (niet UTC): een picklijst van 00:30 hoort bij vandaag.
+  const vandaag = tod()
   const datum = fmtDate(vandaag)
 
   const regelRows = lijst.regels.map((g: PicklijstRegel) => {
     const pakUit = g.suggesties.map(s =>
-      `<div>${esc(s.batch_nummer || '—')} · ${t('lbl_tht')} ${s.tht ? fmtDate(s.tht) : '—'} · <strong>${esc(s.aantal)}×</strong></div>`)
+      `<div>${esc(s.batch_nummer || '—')} · ${t('lbl_tht')} ${s.tht ? esc(fmtDate(s.tht)) : '—'} · <strong>${esc(s.aantal)}×</strong></div>`)
     if (g.tekort > 0) {
       pakUit.push(`<div class="tekort">${esc(g.suggesties.length
         ? t('lbl_picklijst_tekort').replace('{n}', String(g.tekort))
@@ -571,18 +553,15 @@ function buildHerinneringBody(
   const fv = brewery?.factuur_velden || {}
   const factuurnummer = factuur.factuurnummer || `F-${factuur.id}`
   const factuurdatum = fmtDate(factuur.datum)
-  const betalingstermijn = brewery?.betalingstermijn ?? 14
+  // De aanroeper geeft de termijn van déze factuur mee (`breweryMetTermijn`);
+  // leeg of 0 valt terug op de standaard, zoals op de factuur zelf.
+  const betalingstermijn = betalingstermijnVoor(null, [], brewery)
   const bruto = factuur.bruto ?? 0
   const naam = brewery?.naam || appName || ''
 
-  // Originele vervaldatum
-  const origVerval = (() => {
-    try {
-      const d = new Date(factuur.datum || new Date().toISOString())
-      d.setDate(d.getDate() + Number(betalingstermijn))
-      return d.toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
-    } catch { return '—' }
-  })()
+  // Originele vervaldatum — dezelfde dagrekening als de factuur en de badge
+  const origVerval = vervaldatumTekst(
+    {datum: factuur.datum || isoDag(new Date())}, [], {betalingstermijn}) || '—'
 
   // Nieuwe betalingsdatum (7 dagen vanaf vandaag)
   const nieuweVerval = (() => {
@@ -621,14 +600,6 @@ function buildHerinneringBody(
 
   const vandaag = new Date().toLocaleDateString('nl-NL', {day:'2-digit', month:'2-digit', year:'numeric'})
 
-  const klantOrder = {
-    klant_naam: factuur.klant_naam,
-    klant_straat: factuur.klant_straat,
-    klant_postcode: factuur.klant_postcode,
-    klant_stad: factuur.klant_stad,
-    klant_btw_nummer: factuur.klant_btw_nummer,
-  }
-
   const bodyHtml = `<div class="page">
     <div class="hdr">
       ${breweryBlock(brewery, appName, factuurLogo)}
@@ -637,7 +608,7 @@ function buildHerinneringBody(
         <div class="doc-nr" style="color:#888">${t('lbl_date')}: ${vandaag}</div>
         <div class="hdr-party">
           <div class="party-label">${t('lbl_factuuradres')}</div>
-          ${klantBlock(klantOrder)}
+          ${klantBlock(factuur)}
         </div>
       </div>
     </div>

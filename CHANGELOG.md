@@ -4,6 +4,204 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.81] — 2026-09-26
+
+### Controle van de hele app: fouten, dubbele dingen, veiligheid en logica
+
+Een volledige doorlichting van de app leverde 127 bevestigde bevindingen op.
+Die zijn in deze versie hersteld; wat een eigen keuze vraagt staat onderaan
+onder *Let op*. Er zijn ruim 540 nieuwe tests bij gekomen.
+
+#### Beveiliging
+
+- **Rollen op de directe poort.** Inloggen met een andere schrijfwijze van je
+  HA-naam ("Jan" i.p.v. "jan") gaf de standaardrol, meestal *beheer*. Rollen
+  worden nu hoofdletterongevoelig opgezocht, net als in Home Assistant.
+- **Directe poort robuuster.** Een negatieve `Content-Length` wordt meteen
+  geweigerd, een TLS-verbinding die de handshake nooit afmaakt legt de poort
+  niet meer stil, en gelijktijdige inlogpogingen tellen direct mee voor de
+  limiet van 5 per 5 minuten.
+- **Geheimen gaan niet naar een ander adres.** Wijzig je alleen de winkel-URL of
+  de SMTP-server, dan stuurt de app het opgeslagen wachtwoord niet meer mee naar
+  het nieuwe adres; je vult het geheim dan opnieuw in.
+- **Backup-download zonder geheimen.** De ZIP uit de browser bevat de
+  credentials nu gemaskeerd en geen databasekopie meer. De backup op de server
+  blijft volledig (en is alleen nog leesbaar voor de addon).
+- **Terugzetten veilig.** Een rollentabel terugzetten gaat door dezelfde
+  controle als opslaan (je kunt jezelf niet buitensluiten); door de server
+  beheerde gegevens zoals de factuurnummerreeks kunnen niet meer worden
+  teruggezet.
+- **Append-only blijft append-only**, ook bij twee records met dezelfde id.
+- **Printdocumenten en CSV.** Een ongeldige datum met HTML erin kon in pakbon,
+  picklijst of batchdossier script uitvoeren; alle datums worden nu ge-escaped
+  en er is één gedeelde escaper. Klantnamen uit de webshop kunnen in de
+  CSV-exports geen Excel-formule meer worden.
+- **Rol productie** kan nu wel de verklaring bij een vernietiging of afboeking
+  uploaden en een bestelnummer ophalen; factuurbijlagen en factuurnummers
+  blijven bij boekhouding. Een mislukte upload geeft een duidelijke melding.
+
+#### Gegevens en synchronisatie
+
+- **Backup terugzetten en fabrieksreset werken weer.** Ze liepen vast op de
+  grens van 50 gegevenssoorten per opslag; de app splitst zo'n bulk nu op.
+- **Excel-backup** mislukt niet meer als één instelling langer is dan 32.767
+  tekens, en lijsten van losse waarden (bijv. tags) komen na terugzetten
+  ongeschonden terug.
+- **Geen verloren invoer bij verversen.** Een periodieke verversing kon een
+  eigen wijziging die de server nog niet had overschrijven; een toetsaanslag
+  tijdens het samenvoegen van een conflict verdween.
+- **Eén handeling = één geheel.** Weigert de server één onderdeel van een
+  handeling (rol of inhoud), dan wordt de hele handeling teruggedraaid in plaats
+  van half opgeslagen (bijv. een uitslag zonder accijnsrecord).
+- **Geen 'geen rechten'-meldingen bij het opstarten** voor medewerkers zonder
+  beheerrol; de automatische klantkoppeling en de Brewfather-sync schrijven
+  alleen nog waar de rol dat mag.
+- **Auditlogboek** zet een handeling op naam van de ingelogde gebruiker, niet
+  meer van de accijnsverantwoordelijke.
+- **Automatische gistmetingen** groeiden onbegrensd tot opslaan na ongeveer een
+  jaar werd geweigerd. Ouder dan 48 uur blijft er één punt per uur over.
+- Een sensor die `nan` meldt kan de gegevens niet meer onleesbaar maken; de
+  wintertijdwissel geeft geen vals *sensor stil*-alarm meer; de melding
+  *gistingsstap gereed* komt niet meer uren te vroeg.
+
+#### Boekhouding en BTW
+
+- **Webshoporders telden twee keer in de BTW-aangifte** (als WooCommerce-order
+  én als verkoopfactuur). Dat is hersteld.
+- **Balans** heeft nu een post *Af te dragen BTW*; het eigen vermogen klopt en
+  het aansluitverschil verdwijnt.
+- **Voorbelasting** bij handmatig overgenomen factuurtotalen is nu overal
+  hetzelfde bedrag (periodekaart, journaal, rubriek 5b).
+- **Bijschrijving boeken** ('+ Nieuwe boeking') maakt een verkoop in plaats van
+  een inkoop; een factuur in een al ingediende BTW-periode schuift door naar de
+  eerstvolgende open periode.
+- **Losse verkoopfactuur** krijgt zijn nummer uit de doorlopende serverreeks —
+  nooit meer leeg of dubbel.
+- **Bank.** Automatisch koppelen hangt geen tweede betaling meer aan een al
+  gekoppelde factuur; 'Betaald' laat de bankkoppeling staan; de MT940-import
+  leest terugboekingen (RC/RD) en bedragen als `100,`; een boeking vanuit een
+  banktransactie verwerkt ook ingrediënt- en onderdeelregels.
+- **SNd-afdracht** is te koppelen aan een afschrijving en kan nu op
+  *afgedragen* komen.
+- **Vervaldatum** volgt overal dezelfde regel (termijn klant → brouwerij → 14
+  dagen), ook bij printen/mailen vanuit Bestellingen en de kassa. De
+  betalingsherinnering toont weer bedrijfsnaam en huisnummer.
+- **Mollie:** elke herinnering maakte een nieuwe betaallink; de eerste link
+  wordt nu hergebruikt zolang de factuur openstaat.
+- 'Alles exporteren' vult in `inkoopfacturen.csv` de kolommen Omschrijving,
+  BTW% en Bruto weer; de UBL-creditnota voor statiegeldretour voldoet aan
+  PEPPOL; een klantkaart opslaan overschrijft geen afgeronde bestellingen meer.
+
+#### Voorraad, uitslag en accijns
+
+- **Periode-lock op de uitslagdatum.** Een uitslag kon in een accijnsmaand
+  belanden waarvan de aangifte al was ingediend. De controle staat nu op één
+  plek en toetst de gekozen datum.
+- **Geen spookvoorraad.** Een uitslag in de toekomst of vóór de afvuldatum
+  wordt geweigerd; een uitslag verwijderen terwijl het bier al verkocht is kan
+  niet meer.
+- **Deelrebrand** zet al veraccijnsd bier niet meer terug in de AGP.
+- **Inventarisatie:** een geteld overschot komt nu op de voorraad, en
+  verkopen tijdens een open telling worden bij afronden niet meer als
+  vermissing (met accijns) geboekt.
+- **Voorraadverloop:** intra-EU staat bij *Export / intra-EU* en is niet
+  belastbaar; een afboeking telt alleen voor de AGP als het bier daar lag.
+- De historische AGP-gemiddelden rekenen met dezelfde regels als de tegel, en
+  verplaatsen houdt rekening met bier dat al voor een exportorder is gepickt.
+
+#### Kassa en bestellingen
+
+- **Dubbelklik boekt niet meer dubbel** — niet in de kassa, niet bij Afronden
+  en niet bij het opslaan van een handmatige order.
+- **Door CCP 2 geblokkeerde verpakkingen** worden niet meer verkocht of als
+  eerste uitgeslagen.
+- **Eén beschikbaarheidstelling** voor kassa, pickscherm en productpagina,
+  inclusief afboekingen en open picks.
+- **Kassabedrag** is nu cent-exact gelijk aan factuur en journaal.
+- **Opnieuw picken** leverde dubbel uit; er is nu *Picks terugdraaien*.
+  **Annuleren** na het picken zet de voorraad terug.
+- Webshopfacturen krijgen geen statiegeld meer bovenop het betaalde bedrag;
+  'SKU toevoegen' gebruikt het standaard BTW-tarief en weigert een dubbele SKU;
+  de tijdelijke diagnoseweergave in de pickmodal is weg; de badge op het
+  tabblad Bestellingen telt hetzelfde als de Verkoop-badge.
+
+#### WooCommerce
+
+- **Geannuleerde of terugbetaalde webshoporders** worden bijgewerkt: een nog
+  niet gepickte order wordt geannuleerd, anders volgt een rode badge en een
+  attentiepunt. Terugbetaald telt niet meer als betaald.
+- **'Markeer verzonden' ≠ betaald.** De eigen status *completed* op een
+  onbetaalde order werd bij de volgende import als betaling gelezen.
+- Webshopregels zonder BTW (EU-vrijstelling, coupons) worden gefactureerd zoals
+  de klant betaalde; ophalen en pushen verschuift de winkelprijs geen cent meer;
+  de merch-voorraadpush trekt open orders af; een melding van nieuwe orders
+  start de import meteen; een tijdelijke fout herschrijft de bestellink niet
+  meer; productfoto's in de WC-productkaart openen als link.
+
+#### Productie en HACCP
+
+- **CCP 3 per product.** Afvullen kan alleen voor een product met een
+  goedgekeurde etiketcontrole in de sessie, en een sessie sluit pas als elk
+  afgevuld product gedekt is. Ingrediënten die alleen op naam gekoppeld zijn
+  tellen nu mee voor allergenen (CCP 3) en risicoklasse (CCP 1).
+- **Lotcodes zijn uniek**, ook met twee apparaten tegelijk (de server
+  controleert het).
+- **Afvulling verwijderen** kan niet meer als er al van is uitgeslagen,
+  afgeboekt of gepickt; anders met vijf seconden terugweg, en de
+  verpakkingsvoorraad komt terug.
+- **Achteraf vastleggen** schrijft sessie, CCP-registraties en afvulling in één
+  keer, en pas als alle controles slagen.
+- Recept opnieuw toepassen gooit geen al afgeboekte ingrediënten meer weg; een
+  tank zonder status geldt niet meer als ontsmet; een handmatige THT zonder
+  datum kan niet meer onder 10% vol.; traceren op lotcode `L2431-B1` neemt
+  `B10`–`B19` niet meer mee; de volgende traceeroefening krijgt de juiste datum.
+- **Brewfather-sync** zet een batchstatus alleen nog vooruit via dezelfde regels
+  als de batch-flow (tankclaim, CCP 1, tank vuil, logboek).
+- De Priming sugar-calculator verschijnt weer als hij aan staat; vier
+  ongebruikte batchcomponenten zijn verwijderd. Picklijst en batchdossier
+  gebruiken de lokale datum.
+
+#### Kostprijs en ingrediënten
+
+- **Ingrediëntkosten ×1000.** Een lotprijs per kg werd met grammen
+  vermenigvuldigd. Batchkostprijs, marges, COGS en dossier rekenen de eenheid
+  nu om, net als de receptvoorcalculatie.
+- **Accijns in de kostprijs** zakt niet meer weg na een gedeeltelijke uitslag;
+  de COGS rekent verpakking per geleverde eenheid; batchpagina en dossier
+  gebruiken dezelfde berekening als productmarges en COGS (bedragen kunnen
+  daardoor verschuiven).
+- **Eenheden in de voorraad:** de ingrediëntenlijst, de voorraadcheck bij een
+  recept en de push naar Brewfather rekenen lots in verschillende eenheden om
+  (1 kg + 500 g = 1,5 kg).
+- Ontvangst via Ingrediënten boekt regelbedrag en kostensoort zoals de
+  boekhoudpagina; geplande batches tellen niet meer mee in de afgeleide
+  brouwkosten; de afgeleide ingrediëntenlijst herkent suiker, honing en
+  lactose; een lokaal aangepast hopschema blijft bij een Brewfather-sync staan
+  (klik op *lokaal* om Brewfather weer leidend te maken); het waterprofiel
+  stelt weer keukenzout voor.
+
+#### Vertalingen
+
+- Ontbrekende vertalingen aangevuld (onderdeeltypen, vernietigingsreview,
+  ingrediëntenmodals, WooCommerce-/Brewfather-/Claude-meldingen, pakbontitel en
+  losse labels op meerdere pagina's); in het Frans en Spaans ontbrak het aantal
+  facturen per periode. Emoji-tekens zijn vervangen door lijn-iconen. Nieuwe
+  tests bewaken plaatshouders en emoji in de taalbestanden.
+
+#### Let op — gedragswijzigingen
+
+- De rol **productie** kan niet uitslaan of accijnsplichtig afboeken: de server
+  staat die rol niet toe accijnsrecords te schrijven, en zo'n handeling wordt
+  nu in zijn geheel geweigerd in plaats van half opgeslagen.
+- Webshoporders krijgen bij afronden **geen automatisch statiegeld** meer.
+- Een afboeking op de productpagina kan niet meer negatief zijn; bijboeken
+  gaat via de inventarisatie.
+- De backup-ZIP uit de browser bevat geen databasekopie en geen leesbare
+  geheimen meer; volledig terugzetten gaat via de serverbackup.
+- Automatische gistmetingen ouder dan 48 uur worden uitgedund tot één per uur.
+
+---
+
 ## [1.12.80] — 2026-09-23
 
 ### Uitslaan en verkopen: twee aparte stappen

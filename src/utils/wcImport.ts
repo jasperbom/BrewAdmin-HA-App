@@ -108,6 +108,13 @@ export function wcOrdersPad(opts: {
 // de rekening en de factuur hoort gewoon open te staan.
 export const WC_BETAALDE_STATUSSEN: string[] = ['processing', 'completed']
 export const WC_NIET_BETAALD_STATUSSEN: string[] = ['cancelled', 'failed', 'refunded', 'trash']
+// Daarvan de statussen waar de klant niet meer uit terugkomt: een mislukte
+// betaling (`failed`) kan hij nog opnieuw proberen, een geannuleerde of
+// terugbetaalde order niet. Alleen die mag de import hier zelf annuleren.
+export const WC_AFGEBROKEN_STATUSSEN: string[] = ['cancelled', 'refunded', 'trash']
+
+/** De WooCommerce-status van een order, genormaliseerd (`''` als hij ontbreekt). */
+export const wcOrderStatus = (order: any): string => norm(order?.status)
 
 export interface WcBetaling {
   betaald: boolean
@@ -164,6 +171,49 @@ export function betaalVeldenGewijzigd(bestelling: any, velden: WcBetaalVelden): 
     || !zelfde(bestelling.wc_betaald_datum, velden.wc_betaald_datum)
     || !zelfde(bestelling.wc_betaal_methode, velden.wc_betaal_methode)
     || !zelfde(bestelling.wc_transactie_id, velden.wc_transactie_id)
+}
+
+// Speling tussen de klok van de winkel en die van de browser: een betaaldatum
+// die ruim vóór onze eigen statuswissel ligt, is een echte eerdere betaling.
+export const WC_EIGEN_SYNC_MARGE_MS = 10 * 60_000
+
+/** `date_paid_gmt` als tijdstip in ms, of null (ontbreekt of onleesbaar). */
+const betaaldGmtMs = (order: any): number | null => {
+  const s = String(order?.date_paid_gmt || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) return null
+  const ms = Date.parse(/(Z|[+-]\d{2}:?\d{2})$/i.test(s) ? s : `${s}Z`)
+  return Number.isFinite(ms) ? ms : null
+}
+
+/**
+ * De betaalvelden van een bekende order, gecorrigeerd voor BrewAdmin's eigen
+ * terugschrijfactie (utils/wcTerugschrijven). "Markeer verzonden" zet een nog
+ * onbetaalde webshoporder (bankoverschrijving, op rekening) in de winkel op
+ * `completed`; WooCommerce vult daarbij zelf `date_paid` in, en `completed`
+ * telt in `wcBetaalStatus` als betaald. Zonder deze correctie las de volgende
+ * import onze eigen statuswissel terug als ontvangen geld — en werd de factuur
+ * bij het afronden "betaald" terwijl er nooit iets binnenkwam.
+ *
+ * Alleen als álles klopt blijft de order onbetaald: wíj schreven `completed`
+ * op een order die toen onbetaald was (`wc_sync.onbetaald`), hier staat hij
+ * nog steeds onbetaald, de winkel staat op `completed`, er is geen nieuwe
+ * gateway-transactie en de betaaldatum ligt niet ruim vóór onze wissel. Een
+ * latere betaling komt binnen via de bankkoppeling of het handmatig betaald
+ * zetten van de factuur.
+ */
+export function betaalVeldenNaEigenSync(bestaand: any, order: any, velden: WcBetaalVelden): WcBetaalVelden {
+  if (!velden.wc_betaald) return velden
+  const sync = bestaand?.wc_sync
+  if (!sync || sync.status !== 'completed' || !sync.onbetaald) return velden
+  if (bestaand?.wc_betaald) return velden
+  if (norm(order?.status) !== 'completed') return velden
+  const transactie = String(velden.wc_transactie_id || '').trim()
+  if (transactie && transactie !== String(bestaand?.wc_transactie_id ?? '').trim()) return velden
+  const betaald = betaaldGmtMs(order)
+  const syncMs = Date.parse(String(sync.datum || ''))
+  if (betaald !== null && Number.isFinite(syncMs) && betaald < syncMs - WC_EIGEN_SYNC_MARGE_MS) return velden
+  const {wc_betaald_datum: _datum, ...rest} = velden
+  return {...rest, wc_betaald: false}
 }
 
 export interface WcArtikelMatch {
@@ -246,15 +296,51 @@ const afgeleidBtwPct = (netto: number, btw: number, tarieven?: Array<number | st
     ? snapNaarTarief((Math.abs(btw) / Math.abs(netto)) * 100, tarieven)
     : null
 
-// Autoritatieve WooCommerce-bedragen — alleen als er écht BTW is berekend;
-// anders blijft de klassieke reconstructie uit aantal × prijs gelden.
-const wcBedragen = (netto: number, btw: number) => (Math.abs(btw) > 0 ? {wc_netto: netto, wc_btw: btw} : {})
+/** De order is BTW-vrijgesteld (EU-BTW-plugin: intracommunautaire levering). */
+export const wcOrderBtwVrijgesteld = (order: any): boolean =>
+  (Array.isArray(order?.meta_data) ? order.meta_data : []).some((m: any) =>
+    norm(m?.key).replace(/^_/, '') === 'is_vat_exempt' && norm(m?.value) === 'yes')
+
+/**
+ * Rekent de winkel BTW op deze order? Ja zodra er ergens BTW op staat (order,
+ * een regel of `tax_lines`) of de order uitdrukkelijk vrijgesteld is. Dan is
+ * een regel zónder BTW een bewuste 0 (gratis regel, vrijstelling, 0%-tarief)
+ * en geen ontbrekende informatie. Een winkel die helemaal geen BTW rekent
+ * houdt de klassieke reconstructie uit de eigen prijslijst.
+ */
+export function wcRekentBtw(order: any): boolean {
+  if (Math.abs(Number(order?.total_tax) || 0) > 0) return true
+  if (Array.isArray(order?.tax_lines) && order.tax_lines.length > 0) return true
+  if (wcOrderBtwVrijgesteld(order)) return true
+  const regels = [...(order?.line_items || []), ...(order?.shipping_lines || []), ...(order?.fee_lines || [])]
+  return regels.some((r: any) => Math.abs(Number(parseFloat(r?.total_tax ?? r?.subtotal_tax ?? '0')) || 0) > 0)
+}
+
+// Autoritatieve WooCommerce-bedragen: zodra de winkel BTW rekent zijn ze
+// leidend, ook bij een regel zonder BTW (anders factureerde de app een
+// vrijgestelde of gratis regel op de prijslijstprijs plus Nederlandse BTW).
+// Rekent de winkel geen BTW, dan blijft de reconstructie uit aantal × prijs.
+const wcBedragen = (netto: number, btw: number, rekentBtw: boolean) =>
+  (rekentBtw || Math.abs(btw) > 0 ? {wc_netto: netto, wc_btw: btw} : {})
+
+// Tarief van een regel waarop de winkel (die wél BTW rekent) niets rekende:
+// 0%. Behalve als het gewone tarief op dit bedrag ook op nul cent uitkwam
+// (een regel van nul euro, of een paar cent): dan zegt het ontbreken van BTW
+// niets over het tarief en blijft het gewone tarief staan.
+const nulTarief = (rekentBtw: boolean, netto: number, btw: number, gewoonPct: number): boolean =>
+  rekentBtw && Math.abs(btw) === 0 && Math.round(Math.abs(netto) * gewoonPct) >= 1
 
 // Alle regels van een WooCommerce-order: producten, verzendkosten en toeslagen.
 export function mapWcOrderRegels(order: any, refs: WcRefs = {}): WcOrderRegel[] {
   const stdBtw = Number.isFinite(Number(refs.standaardBtw)) ? Number(refs.standaardBtw) : 21
   const regels: WcOrderRegel[] = []
   let id = 0
+  const rekentBtw = wcRekentBtw(order)
+  // Tarief van een verzend- of toeslagregel (geen eigen artikel).
+  const losPct = (netto: number, btw: number): number => {
+    const gewoon = afgeleidBtwPct(netto, btw, refs.btwTarieven) ?? stdBtw
+    return nulTarief(rekentBtw, netto, btw, gewoon) ? 0 : gewoon
+  }
 
   for (const item of (order?.line_items || [])) {
     const sku = String(item?.sku || '').trim() || null
@@ -270,7 +356,10 @@ export function mapWcOrderRegels(order: any, refs: WcRefs = {}): WcOrderRegel[] 
     // Prijs per stuk: het eigen artikeltarief wint (consistente prijslijst),
     // anders het werkelijk gefactureerde bedrag ná korting.
     const prijs = match?.verkoopprijs != null ? match.verkoopprijs : (aantal > 0 ? netto / aantal : 0)
-    const btwPct = match?.btw_pct != null ? match.btw_pct : (afgeleidBtwPct(netto, btw, refs.btwTarieven) ?? stdBtw)
+    // Rekende de winkel op deze regel geen BTW (vrijgesteld, 0%), dan is dat
+    // het tarief — niet dat van het eigen artikel.
+    const gewoonPct = match?.btw_pct != null ? match.btw_pct : (afgeleidBtwPct(netto, btw, refs.btwTarieven) ?? stdBtw)
+    const btwPct = nulTarief(rekentBtw, netto, btw, gewoonPct) ? 0 : gewoonPct
     regels.push({
       id: ++id,
       // Zonder match is het geen eigen bier: als vrije regel importeren, zodat
@@ -288,7 +377,7 @@ export function mapWcOrderRegels(order: any, refs: WcRefs = {}): WcOrderRegel[] 
       // `wc_onbekend` is een váág signaal ("controleer dit even"); een bekend
       // merch-artikel is juist een bewuste keuze en krijgt die vlag niet.
       ...(merchRegel ? {merch: true} : match ? {} : {wc_onbekend: true}),
-      ...wcBedragen(netto, btw),
+      ...wcBedragen(netto, btw, rekentBtw),
     })
   }
 
@@ -307,9 +396,9 @@ export function mapWcOrderRegels(order: any, refs: WcRefs = {}): WcOrderRegel[] 
       verpakking_type: '',
       aantal: 1,
       prijs_per_stuk: netto,
-      btw_pct: afgeleidBtwPct(netto, btw, refs.btwTarieven) ?? stdBtw,
+      btw_pct: losPct(netto, btw),
       omschrijving: naam,
-      ...wcBedragen(netto, btw),
+      ...wcBedragen(netto, btw, rekentBtw),
     })
   }
 
@@ -328,9 +417,9 @@ export function mapWcOrderRegels(order: any, refs: WcRefs = {}): WcOrderRegel[] 
       verpakking_type: '',
       aantal: 1,
       prijs_per_stuk: netto,
-      btw_pct: afgeleidBtwPct(netto, btw, refs.btwTarieven) ?? stdBtw,
+      btw_pct: losPct(netto, btw),
       omschrijving: naam,
-      ...wcBedragen(netto, btw),
+      ...wcBedragen(netto, btw, rekentBtw),
     })
   }
 

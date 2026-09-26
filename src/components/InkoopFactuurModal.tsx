@@ -364,8 +364,15 @@ function InkoopFactuurModal({
     if (!initialData?.regels) return []
     return initialData.regels.filter((r: any) => r.type==='overig').map((r: any, i: number) => ({
       naam: r.naam, netto: String(r.netto||''), btw_tarief: Number(r.btw_tarief??21), kostensoort: r.kostensoort || 'Overig', _id: Date.now()+i+2000,
+      // Correctieregel (handmatige factuurtotalen): het opgeslagen BTW-bedrag
+      // is leidend, niet netto × tarief — anders verandert bewerken de BTW.
+      ...(r.correctie ? {correctie: true, btw_bedrag: Number(r.btw_bedrag) || 0} : {}),
     }))
   })
+  // BTW van een vrije regel: netto × tarief, behalve bij de correctieregel.
+  const vrijeRegelBtw = (r: any): number => r?.correctie
+    ? (Number(r.btw_bedrag) || 0)
+    : (parseFloat(r?.netto) || 0) * (Number(r?.btw_tarief) || 0) / 100
 
   const [productTotInclBtw, setProductTotInclBtw] = useState(false)
   const [productBrutoStr, setProductBrutoStr] = useState('')
@@ -661,12 +668,16 @@ function InkoopFactuurModal({
       } catch(e) { /* upload failed silently */ }
       setUploading(false)
     }
+    // Alleen de velden die de gebruiker zelf aanpaste gaan mee; een leeg veld
+    // (null) valt bij het opslaan terug op de som van de regels, zodat een
+    // niet-aangeraakt totaal nooit een spookcorrectie van een cent oplevert
+    // (zie inkoopRegelsMetCorrectie in utils/centen.ts).
     onSave({
       factuurForm, productLijst, verpakkingLijst, vrijeRegels: vrijeList, bijlage,
       totaalManual: (manualNetto !== null || manualBtw !== null || manualBruto !== null)
-        ? { netto: parseFloat(manualNetto ?? String(totaalNetto)),
-            btw: parseFloat(manualBtw ?? String(totaalBtw)),
-            bruto: parseFloat(manualBruto ?? String(totaalNetto + totaalBtw)) }
+        ? { netto: manualNetto !== null ? parseFloat(manualNetto) : null,
+            btw: manualBtw !== null ? parseFloat(manualBtw) : null,
+            bruto: manualBruto !== null ? parseFloat(manualBruto) : null }
         : null,
     })
   }
@@ -681,7 +692,7 @@ function InkoopFactuurModal({
   const totaalBtw = isVerlegd ? 0 : (
     productLijst.reduce((s: number, p: any) => s+(parseFloat(p.totaalprijs)||0)*(Number(p.btw_tarief)||0)/100, 0)
     + verpakkingLijst.reduce((s: number, v: any) => s+(parseFloat(v.totaalprijs)||0)*(Number(v.btw_tarief)||0)/100, 0)
-    + vrijeList.reduce((s: number, r: any) => s+(parseFloat(r.netto)||0)*(Number(r.btw_tarief)||0)/100, 0)
+    + vrijeList.reduce((s: number, r: any) => s+vrijeRegelBtw(r), 0)
   )
 
   const btwTarieven = (() => {
@@ -693,7 +704,7 @@ function InkoopFactuurModal({
     })
     vrijeList.forEach((r: any) => {
       const k = Number(r.btw_tarief||0); if (!map[k]) map[k] = 0
-      map[k] += (parseFloat(r.netto)||0) * k / 100
+      map[k] += vrijeRegelBtw(r)
     })
     return Object.entries(map).filter(([,v]) => v>0).sort(([a],[b]) => Number(a)-Number(b))
   })()

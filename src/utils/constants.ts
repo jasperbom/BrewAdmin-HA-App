@@ -130,6 +130,11 @@ export const ONDERDEEL_TYPES = [
   {type:'overig',    label:'ing_type_overig'},
 ]
 
+/** i18n-sleutel van een onderdeeltype; `null` bij een onbekend (eigen) type —
+ *  toon dan het type zelf. */
+export const onderdeelTypeLabel = (type: string | null | undefined): string | null =>
+  ONDERDEEL_TYPES.find(o => o.type === type)?.label ?? null
+
 // Kleurenthema's van de navigatiebalk. `p1`…`p5` = het staaltje in de
 // instellingen, `label` = de i18n-sleutel; de rest zijn de CSS-variabelen
 // (`--t-*`) plus de headergradient (`from`/`to`).

@@ -2,14 +2,16 @@ import React, { useState, useRef } from 'react'
 import { t, setLang as i18nSetLang } from './i18n'
 import { WerkruimteId, WERKRUIMTE_IDS, PAGINA_WERKRUIMTE, Route, parseRoute, bouwHash, routeGelijk, isDetailRoute } from './utils/route'
 import { afgeleideThemaKleuren } from './utils/kleurContrast'
-import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet } from './utils/api'
+import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet, newId } from './utils/api'
 import { maakAppIcoon } from './utils/icoon'
 import { tod } from './utils/format'
 import { crafteryLees } from './utils/craftery'
-import { excelExport, excelImport } from './utils/excel'
-import { logAudit, setAuditUser } from './utils/audit'
+import { excelExport, excelImport, voegToeOpId } from './utils/excel'
+import { logAudit, setAuditUser, auditGebruiker } from './utils/audit'
+import { rolMagKey } from './utils/rollen'
+import { bfStatusOvergang } from './utils/bfStatus'
+import { migreerInternGebruik } from './utils/internGebruik'
 import { findKlantVoorOrder } from './utils/klant'
-import { accijnsCalc, tariefVoorDatum } from './utils/calculations'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, accijnsAangifteBoeking, btwAangifteBoeking, voegBoekingToe } from './utils/journaal'
 import { periodeKeyLabel, standaardBtwPct } from './utils/btw'
 import { wcFoutMelding } from './utils/wcFout'
@@ -20,9 +22,8 @@ import {
 import { schoonTakenOp, deactiveerStandaardMetingen } from './utils/taken'
 import { batchStapGereed, huidigeStapIdx, huidigeStapStartMs, dagenInStap } from './utils/vergisting'
 import { BEWAAKTE_STATUSSEN, beoordeelBatches, tankAlarmTekst } from './utils/tankbewaking'
-import { attentiePosten, attentieDoel, AttentieDoel } from './utils/attentie'
-import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, groepFase, BF_TO_APP, NAV_THEMES, STATUSSEN, detectLang } from './utils/constants'
-import type { HAUser } from './types'
+import { attentiePosten, attentieDoel, AttentieDoel, attentieVoorPagina, attentieTotaal } from './utils/attentie'
+import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, groepFase, BF_TO_APP, NAV_THEMES, detectLang } from './utils/constants'
 import Rail from './components/ui/Rail'
 import Onderbalk from './components/ui/Onderbalk'
 import AttentieSheet from './components/ui/AttentieSheet'
@@ -81,11 +82,11 @@ const NU_ACTIEF_DOT: Record<string, string> = {
   brouwen: 'bg-blue-500', carboniseren: 'bg-purple-500',
   stap: 'bg-orange-600', carb_doel: 'bg-green-600', alarm: 'bg-red-600', waarschuwing: 'bg-orange-600', webshop: 'bg-blue-600',
 };
-// Per-apparaat, bewust NIET via useStore/server gesynchroniseerd (zelfde
-// rechtstreekse localStorage-patroon als de negeer-lijst in
-// StatusSuggestion.tsx) — zo blijft de telefoon in de brouwerij op Productie
-// staan terwijl de kantoorlaptop op Administratie blijft, elk met zijn eigen
-// laatst gekozen werkruimte.
+// Per-apparaat, bewust NIET via useStore/server gesynchroniseerd: rechtstreeks
+// in localStorage (met try/catch — een privévenster kan het weigeren). Zo
+// blijft de telefoon in de brouwerij op Productie staan terwijl de
+// kantoorlaptop op Administratie blijft, elk met zijn eigen laatst gekozen
+// werkruimte.
 const WERKRUIMTE_KEY = 'brewadmin_werkruimte';
 const leesWerkruimte = (): WerkruimteId => {
   try {
@@ -186,7 +187,7 @@ function App() {
   // Stand van de automatische WooCommerce-import (server: nieuwe orders +
   // meldingen; tabbladen: lease en laatste import) — zie utils/wcOrderImport.ts.
   const [wcImportStatus, setWcImportStatus, refreshWcImportStatus] = useStore('wc_import_status', {});
-  const [bestellingPicks, setBestellingPicks] = useStore('bestelling_picks', []);
+  const [bestellingPicks, setBestellingPicks, refreshBestellingPicks] = useStore('bestelling_picks', []);
   const [afboekingen, setAfboekingen] = useStore('afboekingen', []);
   const [breweryDetails, setBreweryDetails] = useStore('brewery_details', {naam:'',straat:'',huisnummer:'',postcode:'',stad:'',btw_nummer:'',kvk_nummer:'',iban:'',betalingstermijn:14});
   const [mailTemplates, setMailTemplates] = useStore('mail_templates', {pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}});
@@ -247,7 +248,7 @@ function App() {
   // Kritische beheerspunten (CCP 1/2/3) en de afvulsessies waar CCP 2 en 3 aan
   // hangen. De drie registratie-keys zijn server-side append-only.
   const [haccpVrijgaven, setHaccpVrijgaven] = useStore('haccp_vrijgaven', []);
-  const [afvulSessies, setAfvulSessies] = useStore('afvul_sessies', []);
+  const [afvulSessies, setAfvulSessies, refreshAfvulSessies] = useStore('afvul_sessies', []);
   const [haccpSluitcontroles, setHaccpSluitcontroles] = useStore('haccp_sluitcontroles', []);
   const [haccpEtiketcontroles, setHaccpEtiketcontroles] = useStore('haccp_etiketcontroles', []);
   const [haccpAfwijkingen, setHaccpAfwijkingen] = useStore('haccp_afwijkingen', []);
@@ -264,69 +265,55 @@ function App() {
     i18nSetLang(l);
   };
 
-  // HA-gebruiker state en login-tracking
-  const [currentUser, setCurrentUser] = useState<HAUser | null>(null);
   // Door de server bevestigde gebruiker en rol. Dit is de bron voor de paraaf
-  // op HACCP-registraties: die mag nooit uit een handmatig veld komen.
+  // op HACCP-registraties: die mag nooit uit een handmatig veld komen — en
+  // net zo min voor de naam in het auditlogboek. `whoamiKlaar` = het antwoord
+  // is binnen (ook als het mislukte: dan blijft `whoami` null en geldt het
+  // oude gedrag, zie rolMagKey). Automatische schrijfacties bij het openen
+  // wachten hierop, zodat ze de rol kennen.
   const [whoami, setWhoami] = useState<{gebruiker: string, rol: string} | null>(null);
+  const [whoamiKlaar, setWhoamiKlaar] = useState(false);
   React.useEffect(() => {
     let actief = true;
-    getWhoami().then(w => { if (actief && w) setWhoami({gebruiker: w.gebruiker, rol: w.rol}); });
+    getWhoami().then(w => {
+      if (!actief) return;
+      if (w) {
+        setWhoami({gebruiker: w.gebruiker, rol: w.rol});
+        setAuditUser(auditGebruiker(w));
+      }
+      setWhoamiKlaar(true);
+    });
     return () => { actief = false; };
   }, []);
   const loginLoggedRef = React.useRef(false);
 
+  // Eén 'ingelogd'-regel per sessie, op naam van de ingelogde HA-gebruiker
+  // (ingress-header of sessie op de directe poort). Buiten HA is er geen
+  // naam, en dan geen regel: een handeling hoort nooit op naam van een
+  // ingevuld instellingsveld te staan. Wacht op de serverstand van het
+  // logboek, anders ziet de dedup alleen de lokale cache.
   React.useEffect(() => {
-    if (loginLoggedRef.current) return;
-    if (!auditLog) return;
+    if (loginLoggedRef.current || !whoamiKlaar || !_fetchedKeys.has('audit_log')) return;
+    loginLoggedRef.current = true;
+    const userName = auditGebruiker(whoami);
+    if (!userName || !rolMagKey(whoami?.rol, 'audit_log')) return;
 
-    const detect = () => {
-      let user: HAUser | null = null;
-      try {
-        const hass = (window as any).__hass;
-        if (hass?.user) {
-          user = {
-            id: hass.user.id || '',
-            name: hass.user.name || '',
-            is_admin: !!hass.user.is_admin,
-            is_owner: !!hass.user.is_owner,
-          };
-        }
-      } catch (_) { /* geen HA omgeving */ }
-
-      setCurrentUser(user);
-      loginLoggedRef.current = true;
-
-      const userName = user?.name || breweryDetails?.accijns_verantwoordelijke || undefined;
-      setAuditUser(userName);
-
-      if (!userName) return;
-
-      // Dedup: log niet opnieuw als dezelfde gebruiker binnen 5 min al ingelogd was
-      const recentLogin = (auditLog || [])
-        .filter((e: any) => e.actie === 'ingelogd' && e.gebruiker === userName)
-        .sort((a: any, b: any) => (b.timestamp || '').localeCompare(a.timestamp || ''))
-        [0];
-      const DEDUP_MS = 5 * 60 * 1000;
-      if (recentLogin?.timestamp) {
-        const elapsed = Date.now() - new Date(recentLogin.timestamp).getTime();
-        if (elapsed < DEDUP_MS) return;
-      }
-
-      logAudit(auditLog, setAuditLog, {
-        entiteit: 'Sessie', entiteit_id: 0, actie: 'ingelogd',
-        omschrijving: t('audit_app_geopend'), gebruiker: userName,
-      });
-    };
-
-    // window.__hass kan iets later beschikbaar zijn in ingress iframe
-    if ((window as any).__hass?.user) {
-      detect();
-    } else {
-      const timer = setTimeout(detect, 1000);
-      return () => clearTimeout(timer);
+    // Dedup: log niet opnieuw als dezelfde gebruiker binnen 5 min al ingelogd was
+    const recentLogin = (auditLog || [])
+      .filter((e: any) => e.actie === 'ingelogd' && e.gebruiker === userName)
+      .sort((a: any, b: any) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+      [0];
+    const DEDUP_MS = 5 * 60 * 1000;
+    if (recentLogin?.timestamp) {
+      const elapsed = Date.now() - new Date(recentLogin.timestamp).getTime();
+      if (elapsed < DEDUP_MS) return;
     }
-  }, [auditLog, breweryDetails?.accijns_verantwoordelijke]);
+
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Sessie', entiteit_id: 0, actie: 'ingelogd',
+      omschrijving: t('audit_app_geopend'), gebruiker: userName,
+    });
+  }, [auditLog, whoami, whoamiKlaar]);
 
   // Startpunt: de URL-hash (`#/verkoop/bestellingen`) wint van de per-apparaat
   // onthouden werkruimte — een gedeelde link of een herlaad landt dan precies
@@ -342,8 +329,11 @@ function App() {
   // (via setPage hieronder) wint de daaropvolgende setPageIntern(id)-call in
   // dezelfde tick alsnog van deze dashboard-sprong (React batcht synchrone
   // setState-aanroepen; de laatste wint).
+  // De actuele stand komt uit `routeRef` (bij elke render bijgewerkt), niet
+  // uit deze closure: handlers die in een useMemo zijn vastgelegd (de "Nu
+  // actief"-chips) zouden anders een verouderde werkruimte/pagina zien.
   const kiesWerkruimte = (w: WerkruimteId) => {
-    if (w !== werkruimte) setPageIntern('dashboard');
+    if (w !== routeRef.current.werkruimte) setPageIntern('dashboard');
     setWerkruimteState(w);
     try { localStorage.setItem(WERKRUIMTE_KEY, w); } catch (_) { /* localStorage niet beschikbaar */ }
   };
@@ -361,8 +351,8 @@ function App() {
   const [navNonce, setNavNonce] = useState(0);
   const setPage = (id: string) => {
     const w = PAGINA_WERKRUIMTE[id];
-    if (w && w !== werkruimte) kiesWerkruimte(w);
-    if (id === page) {
+    if (w && w !== routeRef.current.werkruimte) kiesWerkruimte(w);
+    if (id === routeRef.current.pagina) {
       setNavBatchId(null);
       setOpenOrderId(null);
       setNavNonce(n => n + 1);
@@ -434,7 +424,7 @@ function App() {
   // opent. Bewust niet via setPage: die wist bij "zelfde pagina" juist de
   // batchselectie.
   const openBatchOpBrouwzaal = (id: number) => {
-    if (werkruimte !== 'productie') kiesWerkruimte('productie');
+    if (routeRef.current.werkruimte !== 'productie') kiesWerkruimte('productie');
     setNavBatchId(id);
     setPageIntern('dashboard');
   };
@@ -556,23 +546,33 @@ function App() {
   // Wacht op de server-fetch van beide stores (`_fetchedKeys`) — anders zou
   // een write op basis van de localStorage-cache de echte server-data
   // verwerpen (zie recept-backfill hierboven voor het data-loss risico).
+  //
+  // Alleen voor een rol die de key mag schrijven (whoami): anders weigert de
+  // server (403), zet herstelVanServer de ongekoppelde stand terug, draait dit
+  // effect opnieuw — en zo verder, met elke ronde een melding en een valse
+  // auditregel. `koppelPogingRef` is het tweede vangnet: per sessie hooguit
+  // één poging per record, ook als een schrijfactie om een andere reden faalt.
+  const koppelPogingRef = React.useRef({bestellingen: new Set<any>(), facturen: new Set<any>()});
   React.useEffect(() => {
+    if (!whoamiKlaar || !rolMagKey(whoami?.rol, 'bestellingen')) return;
     if (!_fetchedKeys.has('bestellingen') || !_fetchedKeys.has('klanten')) return;
     if (!Array.isArray(bestellingen) || !Array.isArray(klanten) || klanten.length === 0) return;
+    const geprobeerd = koppelPogingRef.current.bestellingen;
     let gekoppeld = 0;
     const patched = bestellingen.map((b: any) => {
-      if (!b || b.klant_id != null) return b;
+      if (!b || b.klant_id != null || geprobeerd.has(b.id)) return b;
       const k = findKlantVoorOrder(b, klanten);
       if (!k) return b;
+      geprobeerd.add(b.id);
       gekoppeld++;
       return {...b, klant_id: k.id};
     });
     if (gekoppeld > 0) {
       setBestellingen(patched);
-      logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:0, actie:'gewijzigd',
+      if (rolMagKey(whoami?.rol, 'audit_log')) logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:0, actie:'gewijzigd',
         omschrijving:`${gekoppeld} bestelling(en) automatisch aan klantkaart gekoppeld`});
     }
-  }, [bestellingen, klanten]);
+  }, [bestellingen, klanten, whoami, whoamiKlaar]);
 
   // Zelfde auto-koppeling voor verkoopfacturen. Facturen erven bij aanmaak de
   // `klant_id` van hun bestelling, maar facturen van vóór de order-koppeling
@@ -581,25 +581,30 @@ function App() {
   // Koppeling: eerst via de eigen bestelling (`bestelling_id`, betrouwbaarste
   // bron — de order is hierboven al gekoppeld), anders op e-mail/unieke naam
   // van de factuur-snapshot zelf.
+  // Zelfde rolcheck en vangnet als hierboven: `verkoop_facturen` is financieel,
+  // dus productie en alleen_lezen koppelen hier niets.
   React.useEffect(() => {
+    if (!whoamiKlaar || !rolMagKey(whoami?.rol, 'verkoop_facturen')) return;
     if (!_fetchedKeys.has('verkoop_facturen') || !_fetchedKeys.has('bestellingen') || !_fetchedKeys.has('klanten')) return;
     if (!Array.isArray(verkoopFacturen) || !Array.isArray(klanten) || klanten.length === 0) return;
+    const geprobeerd = koppelPogingRef.current.facturen;
     let gekoppeld = 0;
     const patched = verkoopFacturen.map((f: any) => {
-      if (!f || f.klant_id != null) return f;
+      if (!f || f.klant_id != null || geprobeerd.has(f.id)) return f;
       const best = f.bestelling_id != null
         ? (bestellingen || []).find((b: any) => b.id === f.bestelling_id) : null;
       const klantId = best?.klant_id ?? findKlantVoorOrder(f, klanten)?.id ?? null;
       if (klantId == null) return f;
+      geprobeerd.add(f.id);
       gekoppeld++;
       return {...f, klant_id: klantId};
     });
     if (gekoppeld > 0) {
       setVerkoopFacturen(patched);
-      logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:0, actie:'gewijzigd',
+      if (rolMagKey(whoami?.rol, 'audit_log')) logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:0, actie:'gewijzigd',
         omschrijving:`${gekoppeld} verkoopfactu(u)r(en) automatisch aan klantkaart gekoppeld`});
     }
-  }, [verkoopFacturen, bestellingen, klanten]);
+  }, [verkoopFacturen, bestellingen, klanten, whoami, whoamiKlaar]);
 
   // Eénmalige migratie: oude hygiëne/brouwdag/botteldag-checklists en CCP-
   // definities samenvoegen tot het unified `batch_taken_items` + `batch_taken_groepen`
@@ -1037,19 +1042,48 @@ function App() {
     setJournaalMigratie('done');
   }, [journaalStoresGeladen, journaalMigratie, journaal, verkoopFacturen, inkoopFacturen, accijnsAangiftes, btwAangiftes, btwInst]);
 
+  // Brewfather-autosync: één keer per mount, pas als de rol bekend is en de
+  // stores waarmee de statusovername rekent (tanks, vrijgaven, afvullingen,
+  // log) van de server zijn — een poller, want een 404-fetch verandert geen
+  // state. Een rol die geen batches mag schrijven slaat de sync over.
+  // `lastSync` staat in de beheer-only credentials-key: alleen beheer werkt
+  // hem bij, anders volgt bij elke start een 403 en een "geen rechten"-melding.
+  const tankStatussenRef = React.useRef<any>(tankStatussen);
+  tankStatussenRef.current = tankStatussen;
+  const tankLogRef = React.useRef<any[]>(tankReinigingLog);
+  tankLogRef.current = tankReinigingLog;
+  const [bfSyncStoresGeladen, setBfSyncStoresGeladen] = useState(false);
+  React.useEffect(() => {
+    const needed = ['batches', 'tank_statussen', 'tank_reinigingslog', 'haccp_vrijgaven', 'afvullingen', 'voorraad_log', 'audit_log'];
+    const ready = () => needed.every(k => _fetchedKeys.has(k));
+    if (ready()) { setBfSyncStoresGeladen(true); return; }
+    const int = setInterval(() => { if (ready()) { clearInterval(int); setBfSyncStoresGeladen(true); } }, 500);
+    const timeout = setTimeout(() => clearInterval(int), 30000);
+    return () => { clearInterval(int); clearTimeout(timeout); };
+  }, []);
   React.useEffect(() => {
     if (bfAutoSynced.current || !bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) return;
-    if (!bat || !bi) return;
+    if (!whoamiKlaar || !bfSyncStoresGeladen) return;
     bfAutoSynced.current = true;
+    const rol = whoami?.rol;
+    if (!rolMagKey(rol, 'batches')) return;
     (async () => {
       try {
         const bfBatches = await bfGetBatches();
         const updBatches: any[] = [];
+        // Statusovername langs de regels van de batch-flow (utils/bfStatus.ts),
+        // batch na batch op de al bijgewerkte stand: twee batches mogen niet
+        // allebei dezelfde tank claimen.
+        let werkBatches: any[] = [...(batRef.current || [])];
+        let tankSt = tankStatussenRef.current;
+        let tankLg = tankLogRef.current;
+        let tankGewijzigd = false;
+        const statusWissels: Array<{id: number, oud: string, nieuw: string}> = [];
         for (const bfB of bfBatches) {
           // Matchen gebeurt uitsluitend op brewfather_id om te voorkomen dat
           // een toevallige gelijkenis tussen app-`batch_nummer` en BF-`batchNo`
           // twee verschillende batches aan elkaar koppelt.
-          const existing = bat.find((b: any) => b.brewfather_id === bfB._id);
+          const existing = werkBatches.find((b: any) => b.brewfather_id === bfB._id);
           const appStatus = BF_TO_APP[bfB.status] || 'Gepland';
           if (!existing) {
             // Auto-sync importeert geen nieuwe batches meer — die komen via
@@ -1060,7 +1094,20 @@ function App() {
             if (bfB.batchNo != null && !existing.brewfather_batch_nummer) {
               ch.brewfather_batch_nummer = String(bfB.batchNo);
             }
-            if (existing.status !== appStatus && STATUSSEN.indexOf(appStatus) > STATUSSEN.indexOf(existing.status)) ch.status = appStatus;
+            // Alleen vooruit, en niet als de batch-flow hier zou blokkeren of
+            // een bevestiging zou vragen (tank bezet/niet ontsmet, geen CCP 1-
+            // vrijgave). Dan blijft de status staan tot de brouwer hem zelf
+            // doorzet in de batch-flow.
+            const overgang = bfStatusOvergang(existing, appStatus, {
+              batches: werkBatches, tankStatussen: tankSt, tankLog: tankLg,
+              vrijgaven: haccpVrijgaven || [], afvullingen: av || [], datum: tod(),
+            });
+            if (overgang.status) {
+              ch.status = overgang.status;
+              statusWissels.push({id: existing.id, oud: existing.status, nieuw: overgang.status});
+              werkBatches = werkBatches.map((b: any) => b.id === existing.id ? {...b, status: overgang.status} : b);
+              if (overgang.tankGewijzigd) { tankSt = overgang.tankStatussen; tankLg = overgang.tankLog; tankGewijzigd = true; }
+            }
             if (bfB.measuredBatchSize) ch.liter_vergist = bfNumSafe(bfB.measuredBatchSize);
             // Gravity op 3 dec, ABV op 2 dec afronden; een door de gebruiker
             // bevestigde definitieve ABV (abv_definitief) NOOIT overschrijven.
@@ -1092,10 +1139,26 @@ function App() {
         if (updBatches.length) setBat((prev: any) => prev.map((b: any) => {
           const u = updBatches.find((x: any)=>x.id===b.id); return u ? {...b, ...u.ch} : b;
         }));
-        setBfCreds((prev: any) => ({...prev, lastSync: tod()}));
+        // Zelfde neveneffecten als gaNaarFase: tank op Vuil bij vertrek, een
+        // statusregel (de tijdlijn van het batchdossier leest 'Oud → Nieuw')
+        // en een auditregel.
+        if (tankGewijzigd) { setTankStatussen(tankSt); setTankReinigingLog(tankLg); }
+        if (statusWissels.length) {
+          const datum = tod();
+          setLog((prev: any[]) => {
+            const lijst = [...(prev || [])];
+            for (const w of statusWissels) lijst.push({id: newId(lijst), datum, type: 'status', batch_id: w.id, referentie: `${w.oud} → ${w.nieuw}`});
+            return lijst;
+          });
+          for (const w of statusWissels) logAudit(auditLog, setAuditLog, {
+            entiteit: 'Batch', entiteit_id: w.id, actie: 'gewijzigd', velden: {status: {oud: w.oud, nieuw: w.nieuw}},
+            omschrijving: t('audit_status_brewfather').replace('{oud}', w.oud).replace('{nieuw}', w.nieuw),
+          });
+        }
+        if (rolMagKey(rol, 'brewfather_creds')) setBfCreds((prev: any) => ({...prev, lastSync: tod()}));
       } catch(e) { /* silent */ }
     })();
-  }, [bfCreds?.enabled, bfCreds?.userId]);
+  }, [bfCreds?.enabled, bfCreds?.userId, whoamiKlaar, bfSyncStoresGeladen]);
 
   // Live tank temps for dashboard: refresh every 60s, all sensors regardless of batch status
   const [haTankTemps, setHaTankTemps] = React.useState<Record<string, number>>({})
@@ -1115,17 +1178,16 @@ function App() {
     if (Object.keys(updates).length) setHaTankTemps(prev => ({ ...prev, ...updates }))
   }, [haInst])
 
-  // Eenmalige migratie: uitslagen → uitleveringen + accijns veldrenames +
-  // afboekingen(reden='intern_gebruik') → uitleveringen(type='intern') + accijns
+  // Migratie: uitslagen → uitleveringen + accijns veldrenames (stap 1-2,
+  // eenmalig per apparaat) + afboekingen(reden='intern_gebruik') →
+  // uitleveringen(type='intern') + accijns (stap 3, utils/internGebruik.ts).
+  // Stap 3 hangt níét aan de vlag per apparaat: hij doet alleen iets zolang er
+  // zulke afboekingen bestaan, dus ook een teruggezette oude backup wordt
+  // alsnog gemigreerd. Hij schrijft een accijnsrecord (financieel), dus alleen
+  // voor een rol die uitleveringen, accijns én afboekingen mag schrijven.
   const uitleveringMigrated = React.useRef(false);
   React.useEffect(() => {
     if (uitleveringMigrated.current) return;
-    try {
-      if (localStorage.getItem('brewadmin_migrated_uitlevering_v1') === '1') {
-        uitleveringMigrated.current = true;
-        return;
-      }
-    } catch (_) {}
     // Wachten tot de betrokken sleutels écht van de server zijn (1.12.62).
     // De oude check `if (!uit || !acc || !afboekingen) return` deed niets: een
     // lege array is truthy, dus de migratie draaide juist tijdens het laden.
@@ -1133,17 +1195,24 @@ function App() {
     // die "nog niet geladen" als "leeg", dan verving de oude uitslagen-sleutel
     // de complete uitleveringenlijst, en een afboeking voor intern gebruik
     // maakte er een lijst van uitsluitend de nieuw afgeleide regels van.
-    const migratieSleutels = ['uitleveringen', 'accijns', 'afboekingen', 'afvullingen', 'batches'];
-    if (!migratieSleutels.every(k => _fetchedKeys.has(k))) return;
+    const migratieSleutels = ['uitleveringen', 'accijns', 'afboekingen', 'afvullingen', 'batches', 'accijns_aangiftes'];
+    if (!migratieSleutels.every(k => _fetchedKeys.has(k)) || !whoamiKlaar) return;
+    let vlagGezet = false;
+    try { vlagGezet = localStorage.getItem('brewadmin_migrated_uitlevering_v1') === '1'; } catch (_) {}
+    const heeftIntern = ['uitleveringen', 'accijns', 'afboekingen'].every(k => rolMagKey(whoami?.rol, k))
+      && (afboekingen || []).some((a: any) => a?.reden === 'intern_gebruik');
     uitleveringMigrated.current = true;
+    if (vlagGezet && !heeftIntern) return;
     (async () => {
       try {
         // 1) Oude uitslagen-sleutel ophalen en migreren naar uitleveringen
         let oudeUitslagen: any[] = [];
-        try {
-          const res = await fetch(API_BASE + 'uitslagen');
-          if (res.ok) oudeUitslagen = await res.json();
-        } catch (_) {}
+        if (!vlagGezet) {
+          try {
+            const res = await fetch(API_BASE + 'uitslagen');
+            if (res.ok) oudeUitslagen = await res.json();
+          } catch (_) {}
+        }
         const gemigreerdeUitl = (Array.isArray(oudeUitslagen) ? oudeUitslagen : []).map((u: any) => {
           const {type_uitslag, ...rest} = u || {};
           const out: any = {...rest};
@@ -1160,7 +1229,8 @@ function App() {
         }
 
         // 2) Accijns veldrenames: uitslag_id → uitlevering_id, bron 'uitslag' → 'uitlevering'
-        const nieuweAcc = (acc||[]).map((a: any) => {
+        const accHernoemd = !vlagGezet && (acc||[]).some((a: any) => a.uitslag_id !== undefined || a.bron === 'uitslag');
+        let nieuweAcc = !accHernoemd ? [...(acc||[])] : (acc||[]).map((a: any) => {
           const out: any = {...a};
           if (out.uitslag_id !== undefined && out.uitlevering_id === undefined) {
             out.uitlevering_id = out.uitslag_id;
@@ -1170,61 +1240,25 @@ function App() {
           return out;
         });
 
-        // 3) Afboekingen(reden='intern_gebruik') → Uitleveringen(type='intern') + accijns
-        const internAfb = (afboekingen||[]).filter((a: any) => a.reden === 'intern_gebruik');
-        const overigeAfb = (afboekingen||[]).filter((a: any) => a.reden !== 'intern_gebruik');
-        let nextUitId = (nieuweUit.reduce((m: number, u: any) => Math.max(m, u.id || 0), 0) || 0) + 1;
-        let nextAccId = (nieuweAcc.reduce((m: number, a: any) => Math.max(m, a.id || 0), 0) || 0) + 1;
-        for (const afb of internAfb) {
-          const afv = (av||[]).find((x: any) => x.id === afb.afvulling_id) || {};
-          const batch = (bat||[]).find((b: any) => b.id === afb.batch_id) || {};
-          const inhoud = Number(afv.inhoud_liter) || 0;
-          const aantal = Number(afb.aantal) || 0;
-          const liter = inhoud * aantal;
-          const abv = Number(batch.abv) || 0;
-          const plato = Number(batch.plato) || undefined;
-          const uitlId = nextUitId++;
-          const uitl: any = {
-            id: uitlId,
-            batch_id: afb.batch_id,
-            afvulling_id: afb.afvulling_id,
-            batch_naam: batch.naam || afv.batch_naam || '',
-            verpakking_naam: afv.verpakking_naam || afv.verpakking_type || '',
-            inhoud_liter: inhoud,
-            aantal,
-            datum: afb.datum || (afb.created_at ? afb.created_at.slice(0,10) : tod()),
-            type_uitlevering: 'intern',
-            accijns_betaald: false,
-            created_at: afb.created_at || new Date().toISOString(),
-            bestemming_naam: afb.opmerking || 'Intern gebruik',
-          };
-          nieuweUit.push(uitl);
-          if (liter > 0 && abv > 0) {
-            // Intern gebruik = uitslag tot verbruik: tarief van de
-            // verbruiksdatum, niet van de brouwdatum.
-            const {r1: _r1, r2: _r2, r3: _r3} = tariefVoorDatum(accijnsInst, uitl.datum);
-            const _effInst = {...(accijnsInst || {}), tarief_per_hl_plato: _r3};
-            const accBedrag = accijnsCalc(liter, abv, _r1, _r2, _effInst, plato);
-            nieuweAcc.push({
-              id: nextAccId++,
-              batch_id: afb.batch_id,
-              batch_naam: batch.naam || '',
-              verpakking_naam: afv.verpakking_naam || afv.verpakking_type || '',
-              liter,
-              abv,
-              totaal_accijns: accBedrag,
-              datum: uitl.datum,
-              betaald: false,
-              uitlevering_id: uitlId,
-              bron: 'uitlevering',
-            });
-          }
+        // 3) Afboekingen(reden='intern_gebruik') → Uitleveringen(type='intern')
+        //    + accijns — alleen de afboekingen waarvan de accijns te bepalen
+        //    is; de rest blijft staan (zie utils/internGebruik.ts).
+        let gemigreerdIntern = 0;
+        let overigeAfb: any[] = afboekingen || [];
+        if (heeftIntern) {
+          const r = migreerInternGebruik({
+            afboekingen: afboekingen || [], afvullingen: av || [], batches: bat || [],
+            uitleveringen: nieuweUit, accijns: nieuweAcc, accijnsInst,
+            accijnsAangiftes: accijnsAangiftes || [], vandaag: tod(), nieuwId: newId,
+          });
+          gemigreerdIntern = r.gemigreerd;
+          if (gemigreerdIntern) { nieuweUit = r.uitleveringen; nieuweAcc = r.accijns; overigeAfb = r.afboekingen; }
         }
 
         // Persisteer migraties
-        if (gemigreerdeUitl.length || internAfb.length) setUit(nieuweUit);
-        if ((acc||[]).some((a: any) => a.uitslag_id !== undefined || a.bron === 'uitslag') || internAfb.length) setAcc(nieuweAcc);
-        if (internAfb.length) setAfboekingen(overigeAfb);
+        if (gemigreerdeUitl.length || gemigreerdIntern) setUit(nieuweUit);
+        if (accHernoemd || gemigreerdIntern) setAcc(nieuweAcc);
+        if (gemigreerdIntern) setAfboekingen(overigeAfb);
 
         // Leeg oude sleutel zodat hij niet nog eens gemigreerd wordt
         if (gemigreerdeUitl.length) {
@@ -1242,7 +1276,7 @@ function App() {
         console.error('Uitlevering-migratie fout:', err);
       }
     })();
-  }, [uit, acc, afboekingen, av, bat, accijnsInst]);
+  }, [uit, acc, afboekingen, av, bat, accijnsInst, accijnsAangiftes, whoami, whoamiKlaar]);
 
   // Eenmalige migratie: maak Product-entiteiten aan uit bestaande biernamen en
   // artikelen — alléén op een installatie die nog nooit producten heeft gehad.
@@ -1411,6 +1445,11 @@ function App() {
   // Nooit in `woocommerce_creds` schrijven: die key is beheer-only.
   const wcImportInterval = Math.max(0, Number(wcCreds?.importInterval ?? 15) || 0)
   const wcAutoImportAan = !!(wcCreds?.enabled && wcCreds?.storeUrl && wcImportInterval > 0 && whoami?.rol !== 'alleen_lezen')
+  // Zelfde regel voor de productenpagina: na een voorraadpush zet die
+  // `lastSync` in de credentials. Voor een rol die de key niet mag schrijven
+  // krijgt hij een no-op, anders volgt na elke geslaagde push een
+  // "geen rechten"-melding.
+  const wcCredsSchrijfbaar = rolMagKey(whoami?.rol, 'woocommerce_creds')
   const [wcAutoMelding, setWcAutoMelding] = React.useState('')
   const wcImportBezig = React.useRef(false)
   // De stores die de import nodig heeft, altijd de laatste stand (tegen
@@ -1418,7 +1457,10 @@ function App() {
   const wcImportRefs = React.useRef<any>({})
   wcImportRefs.current = {artikelen, productArtikelen, producten, bat, btwTarieven, merchArtikelen, btwInst,
     klanten, bestellingen, bestellingPicks, wcCreds, auditLog}
-  const autoImportWc = React.useCallback(async () => {
+  // `opMelding`: aangeroepen omdat de server een order meldt die hier nog
+  // ontbreekt — dan niet op het interval wachten (utils/wcOrderImport →
+  // importLeaseVrij). Timers roepen hem zonder argument aan.
+  const autoImportWc = React.useCallback(async (opMelding: boolean = false) => {
     if (wcImportBezig.current) return
     wcImportBezig.current = true
     const r0 = wcImportRefs.current
@@ -1426,7 +1468,12 @@ function App() {
     let leaseGezet = false
     try {
       const status = (await refreshWcImportStatus()) ?? wcImportStatus
-      if (!importLeaseVrij(status, Date.now(), TAB_ID, interval)) return
+      // Heeft een ander tabblad de gemelde order intussen al binnengehaald,
+      // dan is dit 0 en geldt gewoon het interval (geen dubbele import).
+      const ontbrekend = opMelding
+        ? telNieuweWebshopOrders(status, (await refreshBestellingen()) ?? wcImportRefs.current.bestellingen)
+        : 0
+      if (!importLeaseVrij(status, Date.now(), TAB_ID, interval, ontbrekend)) return
       setWcImportStatus((prev: any) => ({...(prev || {}), bezig_tot: Date.now() + WC_IMPORT_LEASE_MS, door: TAB_ID}))
       leaseGezet = true
       // Verse bestellingen van de server (null = dit tabblad schreef net
@@ -1435,7 +1482,11 @@ function App() {
       const r = wcImportRefs.current
       const refs = {artikelen: r.artikelen, productArtikelen: r.productArtikelen, producten: r.producten, bat: r.bat,
         standaardBtw: standaardBtwPct(r.btwInst, r.btwTarieven), btwTarieven: r.btwTarieven, merch: r.merchArtikelen}
-      const res = await importeerWcOrders({wcGet, refs, bestellingen: vers || [], klanten: r.klanten || [], wcCreds: r.wcCreds, t})
+      // Verse picks: een in de winkel geannuleerde order annuleert de import
+      // alleen zelf als er hier nog niets voor gepickt is.
+      const picks = (await refreshBestellingPicks()) ?? wcImportRefs.current.bestellingPicks
+      const res = await importeerWcOrders({wcGet, refs, bestellingen: vers || [], klanten: r.klanten || [], wcCreds: r.wcCreds, t,
+        bestellingPicks: picks || []})
       if (res.nieuw.length || Object.keys(res.updates).length) {
         setBestellingen((prev: any[]) => pasImportToe(prev, res))
         importAuditRegels(res).forEach(a => logAudit(r.auditLog, setAuditLog, {entiteit: 'Bestelling', ...a}))
@@ -1471,8 +1522,8 @@ function App() {
     if (!wcAutoImportAan) return
     // Eerste ronde kort na het laden, met wat spreiding zodat twee tabbladen
     // die tegelijk openen niet op dezelfde tel beginnen.
-    const start = setTimeout(autoImportWc, 20_000 + Math.random() * 20_000)
-    const id = setInterval(autoImportWc, wcImportInterval * 60_000)
+    const start = setTimeout(() => { void autoImportWc() }, 20_000 + Math.random() * 20_000)
+    const id = setInterval(() => { void autoImportWc() }, wcImportInterval * 60_000)
     return () => { clearTimeout(start); clearInterval(id) }
   }, [wcAutoImportAan, wcImportInterval])
   React.useEffect(() => {
@@ -1482,7 +1533,7 @@ function App() {
   }, [wcAutoImportAan])
   const nieuweWebshopOrders = telNieuweWebshopOrders(wcImportStatus, bestellingen)
   React.useEffect(() => {
-    if (wcAutoImportAan && nieuweWebshopOrders > 0) void autoImportWc()
+    if (wcAutoImportAan && nieuweWebshopOrders > 0) void autoImportWc(true)
   }, [wcAutoImportAan, nieuweWebshopOrders])
 
   // Live oordeel per tank voor het dashboard. De server-tick rekent hetzelfde
@@ -1724,11 +1775,9 @@ function App() {
       if (Array.isArray(d.btw_aangiftes)) setBtwAangiftes(d.btw_aangiftes);
       // Het journaal is append-only (server-side afgedwongen): een import mag
       // regels toevoegen die hier nog niet bestaan, maar nooit bestaande
-      // regels vervangen of verwijderen — daarom een union-merge op id.
-      if (Array.isArray(d.journaal)) setJournaal((prev: any[]) => {
-        const bestaand = new Set((prev || []).map((r: any) => r?.id));
-        return [...(prev || []), ...d.journaal.filter((r: any) => r && !bestaand.has(r.id))];
-      });
+      // regels vervangen of verwijderen — daarom een union-merge op id
+      // (`voegToeOpId`; zelfde voor de CCP-registraties hieronder).
+      if (Array.isArray(d.journaal)) setJournaal((prev: any[]) => voegToeOpId(prev, d.journaal));
       if (Array.isArray(d.jaarafsluitingen)) setJaarafsluitingen(d.jaarafsluitingen);
       if (d.bank_saldi && typeof d.bank_saldi === 'object' && !Array.isArray(d.bank_saldi)) setBankSaldi(d.bank_saldi);
       if (Array.isArray(d.locaties)) setLocaties(d.locaties);
@@ -1743,12 +1792,14 @@ function App() {
       if (Array.isArray(d.haccp_waterkwaliteit)) setHaccpWaterkwaliteit(d.haccp_waterkwaliteit);
       if (Array.isArray(d.haccp_ongedierte)) setHaccpOngedierte(d.haccp_ongedierte);
       if (Array.isArray(d.haccp_opleidingen)) setHaccpOpleidingen(d.haccp_opleidingen);
-      if (Array.isArray(d.haccp_vrijgaven)) setHaccpVrijgaven(d.haccp_vrijgaven);
+      // CCP-registraties en traceeroefeningen zijn append-only (APPEND_ONLY_KEYS):
+      // alleen ontbrekende regels erbij, bestaande blijven zoals ze zijn.
+      if (Array.isArray(d.haccp_vrijgaven)) setHaccpVrijgaven((prev: any[]) => voegToeOpId(prev, d.haccp_vrijgaven));
       if (Array.isArray(d.afvul_sessies)) setAfvulSessies(d.afvul_sessies);
-      if (Array.isArray(d.haccp_sluitcontroles)) setHaccpSluitcontroles(d.haccp_sluitcontroles);
-      if (Array.isArray(d.haccp_etiketcontroles)) setHaccpEtiketcontroles(d.haccp_etiketcontroles);
-      if (Array.isArray(d.haccp_afwijkingen)) setHaccpAfwijkingen(d.haccp_afwijkingen);
-      if (Array.isArray(d.haccp_trace_oefeningen)) setHaccpTraceOefeningen(d.haccp_trace_oefeningen);
+      if (Array.isArray(d.haccp_sluitcontroles)) setHaccpSluitcontroles((prev: any[]) => voegToeOpId(prev, d.haccp_sluitcontroles));
+      if (Array.isArray(d.haccp_etiketcontroles)) setHaccpEtiketcontroles((prev: any[]) => voegToeOpId(prev, d.haccp_etiketcontroles));
+      if (Array.isArray(d.haccp_afwijkingen)) setHaccpAfwijkingen((prev: any[]) => voegToeOpId(prev, d.haccp_afwijkingen));
+      if (Array.isArray(d.haccp_trace_oefeningen)) setHaccpTraceOefeningen((prev: any[]) => voegToeOpId(prev, d.haccp_trace_oefeningen));
       if (d.haccp_instellingen) setHaccpInst(d.haccp_instellingen);
       if (d.btw_instellingen) setBtwInst(d.btw_instellingen);
       if (Array.isArray(d.btw_tarieven) && d.btw_tarieven.length) setBtwTarieven(d.btw_tarieven);
@@ -1845,7 +1896,37 @@ function App() {
   };
 
   const openAcc = acc.filter((a: any)=>!a.betaald).reduce((s: any,a: any)=>s+Number(a.accijns??a.totaal_accijns??0),0);
-  const openBestellingen = (bestellingen||[]).filter((b: any) => b.status==='nieuw'||b.status==='gepickt').length;
+
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  // Attentiebadges per werkruimte: tellen wat om aandacht vraagt, ook als die
+  // werkruimte niet actief is (zie WERKRUIMTE_IDS-knoppen in de header). De
+  // opsplitsing per post staat in utils/attentie.ts — de badge is uitklapbaar,
+  // zodat zichtbaar is wáár het getal vandaan komt en één klik naar de
+  // bijbehorende pagina springt.
+  // "Ongekoppelde banktransacties" ontbreekt bewust in Administratie:
+  // bankafschriften worden nooit opgeslagen (alleen zichtbaar binnen de
+  // sessie na een MT940-import, zie BoekhoudingPage) en dat alsnog
+  // persistent tellen zou een nieuwe opslaglaag vergen — dat raakt
+  // server.py, wat voor deze werkruimte-herstructurering uitdrukkelijk
+  // buiten scope is.
+  const attentie = attentiePosten({
+    batches: bat, batchTakenItems, batchTakenGroepen,
+    schoonmaakTaken: haccpSchoonmaakTaken, schoonmaakLog: haccpSchoonmaakLog,
+    lots,
+    bestellingen, bestellingPicks, wcImportStatus,
+    btwPeriode: btwInst?.periode === 'maand' ? 'maand' : 'kwartaal',
+    btwAangiftes, bankKoppelingen,
+    verkoopFacturen, inkoopFacturen,
+    accijnsAangiftes, accijns: acc,
+    klanten, breweryDetails,
+    vandaag: today, vandaagIso: tod(),
+  });
+  // De badge op het tabblad Bestellingen: dezelfde posten als in de
+  // Verkoop-badge (te picken + nieuwe webshoporders), geen eigen telling.
+  const bestellingPosten = attentieVoorPagina(attentie.verkoop, 'bestellingen');
+  const openBestellingen = attentieTotaal(bestellingPosten);
+  const bestellingenTitel = bestellingPosten.map(p => `${p.aantal}× ${t(p.sleutel)}`).join(' · ');
 
   // Per-werkruimte nav-items — de actieve werkruimte (hierboven) bepaalt welke
   // lijst getoond wordt; de andere twee blijven één tik verwijderd via de
@@ -1885,7 +1966,7 @@ function App() {
     id: n.id, label: n.l,
     sub: n.sub?.map(s => ({ id: s.id, label: s.l })),
     badge: n.id === 'bestellingen' ? openBestellingen : undefined,
-    badgeTitel: n.id === 'bestellingen' ? t('attentie_openstaande_bestellingen').replace('{n}', String(openBestellingen)) : undefined,
+    badgeTitel: n.id === 'bestellingen' && openBestellingen > 0 ? bestellingenTitel : undefined,
   }));
   // Titel van het huidige scherm: de werkruimte op haar dashboard, anders de
   // naam van de pagina (ook een sub-item van een groep).
@@ -1901,32 +1982,6 @@ function App() {
     return appName || t('app_title');
   })();
   const isDetail = isDetailRoute(huidigeRoute);
-
-  const today = new Date(); today.setHours(0,0,0,0);
-
-  // Attentiebadges per werkruimte: tellen wat om aandacht vraagt, ook als die
-  // werkruimte niet actief is (zie WERKRUIMTE_IDS-knoppen in de header). De
-  // opsplitsing per post staat in utils/attentie.ts — de badge is uitklapbaar,
-  // zodat zichtbaar is wáár het getal vandaan komt en één klik naar de
-  // bijbehorende pagina springt.
-  // "Ongekoppelde banktransacties" ontbreekt bewust in Administratie:
-  // bankafschriften worden nooit opgeslagen (alleen zichtbaar binnen de
-  // sessie na een MT940-import, zie BoekhoudingPage) en dat alsnog
-  // persistent tellen zou een nieuwe opslaglaag vergen — dat raakt
-  // server.py, wat voor deze werkruimte-herstructurering uitdrukkelijk
-  // buiten scope is.
-  const attentie = attentiePosten({
-    batches: bat, batchTakenItems, batchTakenGroepen,
-    schoonmaakTaken: haccpSchoonmaakTaken, schoonmaakLog: haccpSchoonmaakLog,
-    lots,
-    bestellingen, bestellingPicks, wcImportStatus,
-    btwPeriode: btwInst?.periode === 'maand' ? 'maand' : 'kwartaal',
-    btwAangiftes, bankKoppelingen,
-    verkoopFacturen, inkoopFacturen,
-    accijnsAangiftes, accijns: acc,
-    klanten, breweryDetails,
-    vandaag: today, vandaagIso: tod(),
-  });
 
   // Header-logo: zolang de data nog laadt komt het logo uit de HTTP-cache
   // via api/app_icoon (ETag); pas als dat 404't valt hij terug op het
@@ -2049,6 +2104,12 @@ function App() {
     av,
     setAv,
     uit,
+    // Wat er aan een afvulling hangt en haar niet laat verwijderen
+    // (utils/afvullingVerwijderen.ts).
+    verplaatsingen,
+    afboekingen,
+    bestellingPicks,
+    bestellingen,
     verpakkingen,
     setVerpakkingen,
     onderdelen,
@@ -2057,6 +2118,11 @@ function App() {
     setProducten,
     productArtikelen,
     artikelen,
+    // Snel-SKU in het afvulformulier: standaard-BTW en de SKU-controle
+    // (merch telt mee) zoals in het productformulier.
+    merchArtikelen,
+    btwInst,
+    btwTarieven,
     accijnsInst,
     acc,
     recepten,
@@ -2096,6 +2162,7 @@ function App() {
     setHaccpVrijgaven,
     afvulSessies,
     setAfvulSessies,
+    refreshAfvulSessies,
     haccpSluitcontroles,
     setHaccpSluitcontroles,
     haccpEtiketcontroles,
@@ -2228,7 +2295,7 @@ function App() {
         {page==='dashboard' && werkruimte==='administratie' && <AdministratieDashboard btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} accijnsAangiftes={accijnsAangiftes} acc={acc} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} klanten={klanten} breweryDetails={breweryDetails} attentie={attentie.administratie} gaNaarDoel={gaNaarDoel} setPage={setPage} setBoekhoudingTab={setBoekhoudingTab} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} kostenSoorten={kostenSoorten} bfCreds={bfCreds} auditLog={auditLog} setAuditLog={setAuditLog} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} setJournaal={setJournaal} navDoel={doelVoor('ingredienten')} onNavDoelConsumed={wisNavDoel} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bat={bat} av={av} verliesRegistraties={verliesRegistraties} inkoopFacturen={inkoopFacturen} verpakkingen={verpakkingen} onderdelen={onderdelen} accijnsInst={accijnsInst} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} />}
-        {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} onderdelen={onderdelen} av={av} setAv={setAv} uit={uit} bi={bi} lots={lots} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} />}
+        {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} ing={ing} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} onderdelen={onderdelen} av={av} setAv={setAv} uit={uit} bi={bi} lots={lots} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={wcCredsSchrijfbaar ? setWcCreds : undefined} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} />}
         {(page==='batchflow' || page==='planning') && <BatchFlowPage {...batchFlowProps} onTerug={() => { setNavBatchId(null); setPageIntern('dashboard') }} />}
         {page==='tool_phcorrectie' && <GereedschapPage tool="ph" />}
         {page==='tool_waterprofiel' && <GereedschapPage tool="water" waterProfielen={waterProfielen} setWaterProfielen={setWaterProfielen} waterDoelprofielen={waterDoelprofielen} setWaterDoelprofielen={setWaterDoelprofielen} claudeCreds={claudeCreds} />}
@@ -2239,7 +2306,7 @@ function App() {
         {page==='inventarisatie' && <InventarisatiePage lots={lots} ing={ing} av={av} bat={bat} uit={uit} afboekingen={afboekingen} setAfboekingen={setAfboekingen} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingPicks={bestellingPicks} bestellingen={bestellingen} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} setLots={setLots} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} accijnsInst={accijnsInst} />}
         {page==='voorraadverloop' && <VoorraadverloopPage lots={lots} bat={bat} bi={bi} av={av} uit={uit} afboekingen={afboekingen} log={log} ing={ing} accijnsInst={accijnsInst} producten={producten} locaties={locaties} verplaatsingen={verplaatsingen} />}
         {page==='rapporten' && <RapportenPage gaNaarDoel={gaNaarDoel} />}
-        {page==='agp' && <AgpPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} producten={producten} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsInst={accijnsInst} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} accijnsAangiftes={accijnsAangiftes} />}
+        {page==='agp' && <AgpPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} producten={producten} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsInst={accijnsInst} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} accijnsAangiftes={accijnsAangiftes} verliezen={verliesRegistraties} bestellingen={bestellingen} bestellingPicks={bestellingPicks} />}
         {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} tankStatussen={tankStatussen} tankLog={tankReinigingLog} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} producten={producten} setProducten={setProducten} setBat={setBat} vrijgaven={haccpVrijgaven} sessies={afvulSessies} sluitcontroles={haccpSluitcontroles} etiketcontroles={haccpEtiketcontroles} afwijkingen={haccpAfwijkingen} traceOefeningen={haccpTraceOefeningen} setTraceOefeningen={setHaccpTraceOefeningen} whoami={whoami} afboekingen={afboekingen} klanten={klanten} bestellingen={bestellingen} bestellingPicks={bestellingPicks} haccpInst={haccpInst} breweryDetails={breweryDetails} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('haccp')} onNavDoelConsumed={wisNavDoel} />}
         {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} verpakkingen={verpakkingen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} mollieCreds={mollieCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} journaal={journaal} setJournaal={setJournaal} bankSaldi={bankSaldi} setBankSaldi={setBankSaldi} jaarafsluitingen={jaarafsluitingen} setJaarafsluitingen={setJaarafsluitingen} initialTab={boekhoudingTab} initialRapportTab={boekhoudingRapportTab} onInitialTabConsumed={() => { setBoekhoudingTab(null); setBoekhoudingRapportTab(null) }} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} />}
         {page==='instellingen' && <InstellingenPage haccpSchoonmaakTaken={haccpSchoonmaakTaken} accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} wcImportStatus={wcImportStatus} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} mollieCreds={mollieCreds} setMollieCreds={setMollieCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} acc={acc} accijnsAangiftes={accijnsAangiftes} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} notificatieInst={notificatieInst} setNotificatieInst={setNotificatieInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} websiteTelemetrie={websiteTelemetrie} setWebsiteTelemetrie={setWebsiteTelemetrie} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} haccpInst={haccpInst} setHaccpInst={setHaccpInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} gebruikersRollen={gebruikersRollen} setGebruikersRollen={setGebruikersRollen} loginInst={loginInst} setLoginInst={setLoginInst} resetApp={resetApp} integriteitData={{ingredienten: ing, lots, batches: bat, batch_ingredienten: bi, afvullingen: av, uitleveringen: uit, accijns: acc, bestellingen, bestelling_picks: bestellingPicks, verkoop_facturen: verkoopFacturen, afboekingen, klanten, producten, product_artikelen: productArtikelen, locaties, verplaatsingen, verpakkingen}} />}

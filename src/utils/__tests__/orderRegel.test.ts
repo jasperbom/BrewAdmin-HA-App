@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { regelBedrag, heeftAutoritair } from '../orderRegel'
+import { regelBedrag, heeftAutoritair, corrigeerRegelBtw } from '../orderRegel'
 
 describe('heeftAutoritair', () => {
   it('is waar zodra beide WooCommerce-bedragen aanwezig zijn', () => {
@@ -57,5 +57,23 @@ describe('regelBedrag — fallback (geen WooCommerce-bedragen)', () => {
     expect(b.netto_cent).toBe(0)
     expect(b.btw_cent).toBe(0)
     expect(b.bruto_cent).toBe(0)
+  })
+})
+
+describe('corrigeerRegelBtw', () => {
+  it('houdt het WooCommerce-netto (ná coupon) vast en rekent alleen de BTW opnieuw', () => {
+    // 6 stuks à 1,85 met 10% coupon: WooCommerce netto 9,88 + 0,89 (9%).
+    const r = {aantal: 6, prijs_per_stuk: 1.85, btw_pct: 9, wc_netto: 9.88, wc_btw: 0.89}
+    const c = corrigeerRegelBtw(r, 21)
+    expect(c).toMatchObject({btw_pct: 21, wc_netto: 9.88, wc_btw: 2.07})
+    expect(regelBedrag(c).bruto).toBe(11.95)
+    // Niet het oude gedrag: terug naar aantal × prijslijst (11,10 + 2,33).
+    expect(regelBedrag(c).netto).not.toBe(11.1)
+    expect(corrigeerRegelBtw(r, 0)).toMatchObject({wc_netto: 9.88, wc_btw: 0})
+  })
+
+  it('zonder autoritatieve bedragen alleen het tarief', () => {
+    const r = {hoeveelheid: 2, prijs_per_stuk: 5, btw_pct: 21}
+    expect(corrigeerRegelBtw(r, 9)).toEqual({hoeveelheid: 2, prijs_per_stuk: 5, btw_pct: 9})
   })
 })

@@ -37,9 +37,19 @@ BrewAdmin-HA-App/
 │   │   ├── route.ts        # Hash-routing van de schil: werkruimte/pagina/batch ↔ `#/…`, PAGINA_WERKRUIMTE, isDetailRoute
 │   │   ├── kleurContrast.ts # WCAG-luminantie/contrast; `afgeleideThemaKleuren` maakt het accent donkerder tot het als tekst (4,5:1) en rand (3:1) leesbaar is
 │   │   ├── undo.ts         # `UitgesteldeActiePlanner`: terugweg van vijf seconden i.p.v. confirm() (UI: components/ui/UndoBar.tsx)
+│   │   ├── rollen.ts       # Rollentabel hoofdletterongevoelig (zoals HA gebruikersnamen vergelijkt):
+│   │   │                   # spiegel van `_rol_uit_tabel`/`_rollen_lockout` in server.py voor het rollenbeheer
+│   │   ├── geheimen.ts     # Sentinel `__SECRET__` alleen bij een ongewijzigde bestemming (storeUrl;
+│   │   │                   # SMTP-host/-poort/-gebruiker/-beveiliging) — spiegel van `_SECRET_BESTEMMING`
+│   │   ├── bijlage.ts      # `uploadBijlage` (afboeking/vernietiging): servernaam bewaren, mislukte
+│   │   │                   # upload melden (`uploadFoutSleutel`) i.p.v. stil laten vallen
 │   │   ├── merge.ts        # Conflict-samenvoeging bij een 409: lokale en serverwijziging op
 │   │   │                   # verschillende records gaan beide mee; alleen hetzelfde record aan
 │   │   │                   # beide kanten is een botsing (server wint). Arrays met `id` + objecten
+│   │   ├── commit.ts       # Commit-buffer: `verdeelCommit` knipt een bundel boven `COMMIT_MAX_KEYS`
+│   │   │                   # (= server.py, pytest bewaakt het) in groepen (backup terugzetten,
+│   │   │                   # fabrieksreset); `commitVervolg`: een 403/422 op één key laat een gewone
+│   │   │                   # handeling in zijn geheel vallen — nooit de rest los nasturen
 │   │   ├── audit.ts        # Auditlogboek: `logAudit` (losse gebeurtenis) en
 │   │   │                   # `logAuditVeld` (velden die tijdens het typen opslaan —
 │   │   │                   # voegt een reeks samen tot één regel per veld). `AUDIT_SOORTEN`
@@ -50,6 +60,8 @@ BrewAdmin-HA-App/
 │   │   ├── calculations.ts # Business logic calculations
 │   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
 │   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
+│   │   ├── balans.ts       # Balansposten uit het journaal: `btwPositieCent` = nog af te dragen
+│   │   │                   # BTW (verkoop − voorbelasting) over de niet-afgerekende periodes
 │   │   ├── tankbewaking.ts # Bewaking tanktemperatuur: getoetst aan het wérkelijke setpoint van de
 │   │   │                   # gekoppelde koeling (key `tank_setpoints`, terugval = vergistings-
 │   │   │                   # schema/cold-crash), tolerantieband, instelruimte na een setpoint-/
@@ -62,7 +74,18 @@ BrewAdmin-HA-App/
 │   │   │                   # bestellingen); `verkoopUitAgpToegestaan` = de regel "verkoop nooit
 │   │   │                   # rechtstreeks uit de AGP, behalve export/intra-EU"
 │   │   ├── uitlevering.ts  # Verkoop → uitleveringen (kassa én bestellingen): vrije voorraad eerst,
-│   │   │                   # nooit uit de AGP (behalve export/intra-EU), nooit accijns
+│   │   │                   # nooit uit de AGP (behalve export/intra-EU), nooit accijns.
+│   │   │                   # `bouwPickTerugdraaiing`: picks van een nog niet verzonden order
+│   │   │                   # terugdraaien (annuleren, "Picks terugdraaien") — uitleveringen
+│   │   │                   # vervallen, picks worden concept, tegenregel `verkoop` met negatieve
+│   │   │                   # hoeveelheid; `orderUitgeleverd` blokkeert opnieuw picken
+│   │   ├── statiegeld.ts   # Statiegeldregels op de orderfactuur (SND/fust, 0% BTW) — nooit bij een
+│   │   │                   # webshoporder: daar zijn de WooCommerce-bedragen leidend
+│   │   ├── beschikbaarheid.ts # Wat er van een afvulling nog vrij is na open picks (totaal: afgevuld −
+│   │   │                   # picks − uitgeleverd − afgeboekt; per locatie). Een pick zonder
+│   │   │                   # bronlocatie legt eerst vrije voorraad vast, net als de uitlevering —
+│   │   │                   # alleen de rest telt op de AGP. Gedeeld door kassa, bestellingen,
+│   │   │                   # producten en `agpGereserveerdPerAfvulling` (kassa.ts)
 │   │   ├── trace.ts        # Traceerbaarheid & recall (hoofdstuk 11): één stap terug/vooruit, massabalans, traceergaten, traceeroefening
 │   │   ├── merch.ts        # Merch-artikelen: herkenning op SKU/naam (onthouden vanuit een orderregel) + eigen voorraad (mutaties, tekorten, waardering) voor merch die je zélf op voorraad hebt
 │   │   ├── sku.ts          # SKU-identiteit: één SKU hoort bij één artikel. Spoort dubbele
@@ -164,7 +187,13 @@ BrewAdmin-HA-App/
 │   │   ├── facturen.ts     # Vervallen verkoopfacturen (factuurdatum + betalingstermijn klant →
 │   │   │                   # brouwerij → 14 dagen, dagen te laat) en achterstallige
 │   │   │                   # inkoopfacturen (onbetaald > `INKOOP_ACHTERSTALLIG_DAGEN`); gedeeld
-│   │   │                   # door de badge, het Administratie-dashboard en de boekhoudpagina
+│   │   │                   # door de badge, het Administratie-dashboard en de boekhoudpagina.
+│   │   │                   # `breweryMetTermijn`/`vervaldatumTekst`: geef díe mee aan élke
+│   │   │                   # factuur-, herinnerings- en mailopbouw (Boekhouding, Bestellingen,
+│   │   │                   # kassa) — nooit een eigen `?? 14`, anders noemt het document een
+│   │   │                   # andere vervaldatum dan de badge
+│   │   ├── sndAfdracht.ts  # SNd-statiegeld per periode + afdrachtstatus uit de bankkoppeling
+│   │   │                   # `{soort:'snd', periodeKey}` (Statiegeld-pagina, banktabel Boekhouding)
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
 │   │   ├── template.ts     # Mustache-subset renderer ({{waarde}}, {{{ruw}}}, {{#sectie}}, {{^omgekeerd}}) — documentlayouts als data
 │   │   ├── factuurTemplate.ts # Standaard factuurlayout + contextbouwer; eigen layout via brewery_details.factuur_template, bij een fout stille terugval
@@ -172,7 +201,13 @@ BrewAdmin-HA-App/
 │   │   │                   # (al voldaan — webshoporder betaald in WooCommerce, kassa, vinkje) + de
 │   │   │                   # betaalvariabelen {betaalregel}/{betaaldatum}/{betaalwijze}; gedeeld door
 │   │   │                   # de boekhoud- en de bestellingenpagina
+│   │   ├── mollieLink.ts   # Eén Mollie-betaallink per verkoopfactuur (`mollie_link`), hergebruikt door elke volgende mail
 │   │   ├── ubl.ts          # E-factuur in UBL 2.1 / PEPPOL BIS Billing 3.0: cent-exact, multi-tarief TaxSubtotals, kortingen als AllowanceCharge, creditnota als CreditNote-document
+│   │   ├── csv.ts          # CSV-export: `csvCel`/`csvRij`/`csvTekst` zijn formule-veilig (apostrof vóór = + - @ tab/CR,
+│   │   │                   # een getal blijft een getal) — gebruik ze voor élke CSV-export, nooit eigen quoting;
+│   │   │                   # `inkoopRegelExport` leest de kolommen van een inkoopregel (ook oude boekingen)
+│   │   ├── inkoopOntvangst.ts # Inkoopformulier → lots + ontvangst-log, onderdelenvoorraad, factuurregels en
+│   │   │                   # merch-inkopen; gedeeld door de gewone inkoopfactuur en de boeking vanuit de bank
 │   │   └── excel.ts        # Volledige backup export/import als Excel (.xlsx) via SheetJS
 │   ├── types/index.ts      # TypeScript interfaces
 │   ├── i18n/               # Translation JSON files (nl/en/de/fr/es)
@@ -228,7 +263,8 @@ werkruimtes, het **tweede menu** de pagina's van de gekozen werkruimte.
   server valt de client stil terug op de volledige POST
 - Conflict-samenvoeging: het versieslot van de optimistic locking zit op de
   hele key, terwijl een 409 bijna altijd over een ánder record gaat (de
-  servertick schrijft zelf in `batches`/`gist_metingen`, en een tweede tab of
+  servertick schrijft zelf in `batches`/`gist_metingen` — en verwijdert daar
+  ook oude automatische metingen — en een tweede tab of
   de telefoon schrijft ook mee). `_losConflictOp` in `api.ts` haalt daarom de
   verse serverstand op en legt de eigen wijziging er per record overheen
   (pure logica in `src/utils/merge.ts`, werkt op arrays met `id` én op
@@ -605,8 +641,17 @@ de batch uitgesmeerd, dus daar mag je de prijs van één verpakking niet uit
 afleiden: een fust betaalt dan mee aan de flesjes en de flesjes komen te goedkoop
 uit, waardoor artikelmarges onderling niet meer kloppen. Reken altijd met
 `kostprijs_per_liter_excl_verpakking × inhoud + verpakkingKostenPerStuk(vp,
-onderdelen)` — zo doet `receptKostprijs.ts` het al (`kostprijsPerEenheid`) en
-sinds v1.12.48 ook de artikelmarge op de productenpagina.
+onderdelen)` — zo doet `receptKostprijs.ts` het al (`kostprijsPerEenheid`),
+sinds v1.12.48 ook de artikelmarge op de productenpagina, en de COGS
+(`berekenCogs`, per uitlevering met de verpakking van díe afvulling).
+
+**Eén batchkostprijs.** `berekenBatchKostprijs` is de enige afleiding van wat
+een batch kost; de batchpagina ("Financieel resultaat"), het batchdossier, de
+productmarges en de COGS lezen hun posten eruit. Ingrediëntkosten lopen via
+`batchRegelKosten`/`lotKostenVoorRegel` (lotprijs omgerekend naar de eenheid
+van de regel: hop in g uit een lot in kg), accijns via `accijnsVoorKostprijs`
+(geboekt voor wat is uitgeslagen + voorcalc naar rato van wat nog in de AGP
+ligt). Geen eigen sommetje in een pagina.
 
 Hetzelfde principe geldt voor de andere afgeleide cijfers die er al zijn: het
 verliespercentage (`gemiddeldVerlies` in `utils/receptKostprijs.ts`), de
@@ -718,7 +763,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `accijns` | array | Accijnsrecords |
 | `verpakkingen` | array | Verpakkingstypen |
 | `onderdelen` | array | Apparatuur-onderdelen |
-| `voorraad_log` | array | Mutatielog ingrediënten én bier: `afvullen`, `uitslaan` (AGP → vrije voorraad, met accijns), `verkoop` (uitlevering aan een klant; vóór v1.12.80 stond een verkoop óók als `uitslaan` gelogd), `afboeking`, `rebrand` |
+| `voorraad_log` | array | Mutatielog ingrediënten én bier: `afvullen`, `uitslaan` (AGP → vrije voorraad, met accijns), `verkoop` (uitlevering aan een klant; vóór v1.12.80 stond een verkoop óók als `uitslaan` gelogd; een teruggedraaide pick krijgt een tegenregel `verkoop` met negatieve hoeveelheid), `afboeking`, `rebrand` |
 | `voorraad_archief` | array | Gearchiveerde voorraadmutaties |
 | `voorraad_gesloten_bieren` | array | Afgesloten biersoorten |
 | `recepten` | array | Recepten (lokaal + Brewfather). Eigen velden van de app (`kostprijs_overig` = vaste kosten per brouw, `kostprijs_verlies_pct` = handmatig verliespercentage) blijven bij een Brewfather-sync behouden — zie `EIGEN_VELDEN` in `runSync` |
@@ -754,7 +799,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `bestelling_picks` | array | Pickregels per bestelling |
 | `afboekingen` | array | Biervoorraadbewegingen (vermis, vernietiging, overig). `bron_locatie_id` = waar het bier lág — bepaalt van welke locatie het afgaat én of er accijns verschuldigd wordt. Ontbreekt op records van vóór v1.12.52; die gelden als AGP |
 | `klanten` | array | Klanten |
-| `gist_metingen` | array | Gistingsmetingen per batch |
+| `gist_metingen` | array | Gistingsmetingen per batch. Automatische metingen (`auto: true`, server-tick `_auto_metingen_tick`) dragen naast de lokale `datum`/`tijd` een absoluut `ts` (ISO met offset) — dat gaat in de bewaking voor (`_meting_epoch`/`metingTs`), anders geeft de wintertijdwissel een vals "sensor stil". De server dunt automatische metingen ouder dan 48 u eens per dag uit tot één per batch per uur (`_dun_auto_metingen`); handmatige rijen blijven altijd staan |
 | `tank_setpoints` | array | Werkelijk setpoint per tank, gelezen van de gekoppelde climate-entity door de server-tick `_lees_tank_setpoints`: `{tank, entity, setpoint, sinds, gezien}`. `sinds` = moment van de laatste setpoint-wissel (leeg bij de eerste waarneming — een herstart mag geen instelvenster starten), `gezien` = laatste geslaagde uitlezing (ouder dan 2 uur = terugval op het schema). Alleen de server schrijft hier; bewust **niet** in de Excel-backup (regenereert vanzelf) |
 | `wc_import_status` | object | Stand van de automatische WooCommerce-import. Server (`_wc_orders_tick`, interval = `woocommerce_creds.importInterval`): `nieuw` = webshoporders die nog niet als bestelling bestaan, `gemeld_ids` = waarvoor al een HA-melding ging, `laatste_check`/`laatste_fout`. Tabbladen: `bezig_tot`/`door` = import-lease, `laatste_import*`. Bewust **niet** beheer-only (elke schrijvende rol importeert) en niet in de backup (regenereert). De import zelf blijft in de app (`utils/wcOrderImport.ts`) |
 | `website_telemetrie` | object | Website-telemetrie naar de plugin Craftery Brouwerij: `{enabled, interval_min (15–240, default 60), onderdelen: {gisting, sensoren, hop_kg, mout_kg, liters_tank, liters_verpakt, batches_gebrouwen}}` — alles standaard uit, alleen een echte `true` telt. **Beheer-only**; wel in de Excel-backup |
@@ -805,7 +850,7 @@ Backup en restore gaan via Excel (`.xlsx`) — **niet** via JSON. De functies `e
 - **UI:** Instellingen → App → Data import & export (`accept=".xlsx"`)
 - **Bestandsstructuur:** 31 array-sheets (één per datasleutel) + één `Instellingen`-sheet voor objects, primitieven en logo's
 - **Geneste objecten** binnen array-items worden als JSON-string opgeslagen en bij import teruggeparsed
-- **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`) zitten **nooit** in de backup
+- **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`) zitten **nooit** in de Excel-backup en alleen gemaskeerd in de download-ZIP van een serverbackup (zonder db-kopie, `_backup_to_zip`); de serverbackup op schijf en offsite bevat ze wél (0600/0700), zodat die volledig herstelbaar blijft
 - **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`, `website_telemetrie_status`) staat bewust niet in de backup — die regenereert vanzelf
 
 Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `excelExport` (nieuw sheet of rij in Instellingen) én aan de import-callback in `doImport`.
@@ -816,7 +861,11 @@ Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `ex
 
 ### Periodeberekening
 
-`getPeriodes(year, periode)` in `BoekhoudingPage.tsx` berekent kwartaal- of maandperiodes. De geselecteerde periode wordt bijgehouden in `selectedPeriode` (lokale state). De memo's `btwPerTariefAangifte` en `omzetBtwPerTarief` filteren altijd op het datumbereik van de geselecteerde periode (of het hele jaar als niets geselecteerd is).
+`getPeriodes(year, periode)` in `BoekhoudingPage.tsx` berekent kwartaal- of maandperiodes. De geselecteerde periode wordt bijgehouden in `selectedPeriode` (lokale state). De memo's `btwPerTariefAangifte` en `omzetBtwPerTarief` filteren altijd op de geselecteerde periode (of het hele jaar als niets geselecteerd is).
+
+- **Facturen tellen op hun effectieve periode** (`inBtwPeriode`/`inBtwJaar` in `utils/btw.ts`), inkoop én verkoop: een factuur met een datum in een al ingediende of betaalde periode krijgt bij aanmaken `btw_periode` (rollover) en telt in de lopende aangifte. WooCommerce-orders blijven op betaaldatum.
+- **Eén bron per verkoop:** een opgehaalde WooCommerce-order telt alleen mee zolang er in de app geen verkoopfactuur voor bestaat (`wcOrdersNogNietGefactureerd`); een afgeronde webshoporder telt via zijn factuur.
+- **Handmatige inkooptotalen** worden een correctieregel (`inkoopRegelsMetCorrectie` in `utils/centen.ts`), zodat journaal, W&V, rubriek 5b en de periodekaart dezelfde voorbelasting tellen.
 
 ### Periodestatus
 
@@ -844,6 +893,11 @@ Het `bankKoppelingen` object (sleutel: `txKey(tx)`) ondersteunt drie soorten kop
 
 // BTW-afdracht (koppelt een debettransactie aan een BTW-periode)
 { soort: 'btw', periodeKey: string }  // bijv. '2026-Q1' of '2026-M04'
+
+// SNd-afdracht (statiegeld aan Statiegeld Nederland): debettransactie ↔
+// SNd-periode; zet die periode op de Statiegeld-pagina op "afgedragen".
+// Een kwartaalkoppeling dekt de maanden erin (utils/sndAfdracht.ts)
+{ soort: 'snd', periodeKey: string }
 
 // PSP-uitbetaling (Mollie e.d.): één credittransactie dekt meerdere
 // verkoopfacturen; het verschil (transactiekosten) wordt automatisch als
@@ -885,9 +939,9 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
 | POST | `/api/mollie/test` | Test een Mollie API-key (beheer-only, niets opslaan); key mag de sentinel zijn |
 | POST | `/api/mollie/payment` | Maak een Mollie **betaallink** (Payment Links API, `/v2/payment-links`) aan voor een factuur (boekhouding); `{amountCent, description, redirectUrl}` → `{checkoutUrl, id, expiresAt}`. Key wordt server-side toegevoegd. Bewust géén Payments API: die levert een kortlevende checkout die na verlopen naar de website doorstuurt |
-| GET | `/api/backups[/<datum>]` | Serverbackups (`/data/backups/JJJJ-MM-DD/`, dagelijks, elke key als `<key>.json` + db-kopie) opsommen of als ZIP downloaden — beheer-only |
+| GET | `/api/backups[/<datum>]` | Serverbackups (`/data/backups/JJJJ-MM-DD/`, dagelijks, elke key als `<key>.json` + db-kopie, 0600 in een 0700-map) opsommen of als ZIP downloaden — beheer-only. De download-ZIP bevat geen db-kopie en de credentials gemaskeerd (`__SECRET__`) |
 | POST | `/api/backups/trigger` | Nu een backup maken (beheer-only) |
-| POST | `/api/backups/restore` | Eén data-key terugzetten uit een serverbackup (`{date, key}`) — beheer-only, geweigerd voor append-only keys en credentials, zelfde schrijfweg als `/api/data` (schemavalidatie, versie, audit `backup_restore`). De rest van de administratie blijft staan |
+| POST | `/api/backups/restore` | Eén data-key terugzetten uit een serverbackup (`{date, key}`) — beheer-only, geweigerd voor append-only keys, credentials en server-beheerde keys (`_NIET_TERUGZETBAAR`: `nummer_reeksen` + afgeleide serverdata), zelfde schrijfweg als `/api/data` (schemavalidatie, rollenvalidatie + lockout-guard via `_key_guard_fout`, versie, audit `backup_restore`). De rest van de administratie blijft staan |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB). Overschrijft nooit een bestaande bijlage: bij een botsing wijkt de server uit naar een vrije naam en geeft die terug als `bestand` — de client bewaart díé naam |
 | POST | `/api/delete_upload/<naam>` | Bijlage verwijderen; 409 zolang een inkoopfactuur, afboeking of verliesregistratie ernaar verwijst (`_bijlage_in_gebruik`) |
 | GET | `/*` | Serve `index.html` (SPA fallback) |
@@ -912,10 +966,11 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   directe-toegangspoort) staan in de uitzonderingslijst van
   `_migreer_json_bestanden` — een nieuw infrastructuurbestand in `/data/` hoort
   daar ook bij, anders verhuist het bij de eerstvolgende start
-- Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan
+- Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan. Wijkt de bestemming af (`_SECRET_BESTEMMING`: `storeUrl`; SMTP-host/-poort/-gebruiker/-beveiliging), dan vult hij níét in maar antwoordt 400 `secret_opnieuw_invoeren` (data-POST, commit, mail-/WC-test; UI-spiegel `utils/geheimen.ts`)
 - Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
 - Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`
-- Append-only keys: `_APPEND_ONLY` (`journaal` + de HACCP-registraties `haccp_vrijgaven`, `haccp_sluitcontroles`, `haccp_etiketcontroles`, `haccp_afwijkingen`, `haccp_trace_oefeningen`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno- resp. vervangende regels. Nooit omzeilen. Een CCP-registratie is bewijs richting de NVWA (HACCP-handboek bijlage A.1): wie en wanneer worden automatisch vastgelegd en zijn niet handmatig invulbaar
+- Geen NaN/Infinity in de opslag: de schrijfwegen lezen via `_json_laden_strikt` (400), HA-waarden gaan door `_eindig_of_none`, en `_json_compact` maakt van een toch binnengekomen niet-eindig getal `null` (Python schreef anders letterlijk `NaN`, wat de app niet kan parsen)
+- Append-only keys: `_APPEND_ONLY` (`journaal` + de HACCP-registraties `haccp_vrijgaven`, `haccp_sluitcontroles`, `haccp_etiketcontroles`, `haccp_afwijkingen`, `haccp_trace_oefeningen`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno- resp. vervangende regels. `_append_only_ok` vergelijkt per id als multiset: een dubbele id, een nieuw record zonder id of een extra variant naast een bestaande id wordt ook geweigerd. Nooit omzeilen. Een CCP-registratie is bewijs richting de NVWA (HACCP-handboek bijlage A.1): wie en wanneer worden automatisch vastgelegd en zijn niet handmatig invulbaar
 - Gebruikers & rollen (ERP 4.2): mutaties worden per rol afgedwongen (`_rol_mag_key` + endpoint-gates in do_GET/do_POST, 403 met `reden: rol` + audit). Nieuwe financiële key? Voeg hem toe aan `_FINANCIELE_KEYS`; nieuwe instellingen-key aan `_BEHEER_KEYS`. Nooit omzeilen
 - Optimistic locking + atomaire commit: `X-Data-Version`-conflictdetectie op `/api/data`; multi-key writes via `POST /api/commit` (client bundelt saves per event-tick automatisch)
 - CSP headers: strict `default-src 'none'` policy
@@ -950,6 +1005,14 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   op een interval; een nieuwe sync vergt een herlaad of de handmatige knop.
   Let op: de sync overschrijft `vergistingsprofiel`/`maischprofiel`/OG/FG
   onvoorwaardelijk — zie `docs/ERP-VERBETERPLAN-2.md` W6 (fase 7.4)
+- De status gaat alleen vooruit langs de regels van de batch-flow
+  (`bfStatusOvergang` in `utils/bfStatus.ts`): tankclaim bij Vergisten, CCP 1
+  vóór Afgevuld, tank op Vuil bij vertrek, statusregel + audit. Wat daar
+  zou blokkeren of een bevestiging vraagt wordt níét overgenomen
+- Automatische schrijfacties bij het openen (deze sync, de klantkoppeling,
+  de 'ingelogd'-auditregel) wachten op `whoami` en slaan een key over die de
+  rol niet mag schrijven (`rolMagKey` in `utils/rollen.ts`, spiegel van
+  `_rol_mag_key`); `lastSync` in de creds schrijft alleen beheer
 
 ### WooCommerce API
 
@@ -960,6 +1023,15 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   binnenkwam kan later betaald zijn. Een order die in WooCommerce betaald is,
   levert bij afronden een verkoopfactuur met status `betaald` (die factuur
   vraagt niet meer om een overboeking, in de mail noch op de PDF)
+- **Annulering in de winkel** (`utils/wcOrderImport.ts`): open bestellingen
+  die niet in de statusselectie zaten, haalt elke import apart per id op
+  (`include=…&status=any`, alleen verversen, nooit nieuw). Geannuleerd, mislukt
+  of terugbetaald → `wc_status` op de bestelling (badge + attentiepost
+  `webshop_afgebroken`); `cancelled`/`refunded` zonder picks bij status
+  `nieuw`/`bevestigd` → de import zet hem zelf op `geannuleerd` (zonder terug
+  te schrijven). Onze eigen `completed` (terugschrijven) op een onbetaalde
+  order telt niet als betaling: `wc_sync.onbetaald` →
+  `betaalVeldenNaEigenSync` in `utils/wcImport.ts`
 - **Afhalen of verzenden** (`utils/levering.ts`): de verzendregel van de order
   zegt of de klant afhaalt (`local_pickup`/`pickup_location`) of laat bezorgen.
   Het Craftery-thema bewaart bij een afhaalorder het gekozen afhaalmoment
@@ -1083,6 +1155,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - API-key + `enabled` + `redirectUrl` in de secure key `mollie_creds`; server voegt de key server-side toe (proxy — key nooit naar de browser)
 - Flow: `mailVerkoopFactuur` (BoekhoudingPage) bouwt de Mollie-context (bedrag in centen, omschrijving, redirect-URL) → `MailModal` toont een checkbox **"Mollie betaallink toevoegen"** → bij verzenden roept `mollieCreatePayment` (`POST /api/mollie/payment`) de betaal-URL op → knop in de HTML-mail (`buildMailHtml` `payButton`) + kale link in de platte tekst
 - Server gebruikt de **Payment Links API** (`/v2/payment-links`), niet de Payments API: een betaallink **verloopt standaard niet** en blijft geldig tot de klant betaalt. De deelbare URL komt uit `_links.paymentLink.href` (pure helper `_mollie_link_url`). Een Payments-checkout zou kortlevend zijn en na verlopen naar de `redirectUrl` (de website/homepagina) leiden
+- **Eén link per factuur** (`utils/mollieLink.ts`): omdat een link niet verloopt, komt de eerste link op de verkoopfactuur (`mollie_link: {id, url, amount_cent, aangemaakt}`) en gebruikt elke volgende mail (herinnering, aanmaning, opnieuw versturen) díe link zolang de factuur openstaat en het bedrag gelijk is (`herbruikbareBetaallink`). Maak nooit per mail een nieuwe link: twee links = de klant kan dezelfde factuur twee keer betalen. Een link die na betaling via de bank of een creditnota nog openstaat, wordt (nog) niet bij Mollie gearchiveerd
 - Redirect-URL valt terug op `brewery_details.website`; zonder een geldige URL blijft de checkbox uitgeschakeld (Mollie vereist een `redirectUrl`)
 - Betaling-terugkoppeling loopt via de bestaande **PSP-bankreconciliatie** (`bank.ts`): een Mollie-uitbetaling op het afschrift wordt aan de factuur/facturen gekoppeld — er is (bewust) geen webhook, want de addon is doorgaans niet publiek bereikbaar
 

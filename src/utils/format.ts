@@ -12,14 +12,20 @@ export const fmtEuroDoc = (v: any): string =>
   '€ ' + Number(v || 0).toFixed(2).replace('.', ',')
 
 // Datum als dd-mm-jjjj voor documenten; leeg wordt een liggend streepje.
+// Een datum die niet te lezen is komt alleen terug als hij uit cijfers en
+// datumscheidingstekens bestaat (een oude notatie als "25-09-2026"); al het
+// andere wordt een streepje. Deze uitkomst gaat in print-/PDF-HTML die in de
+// app-origin draait — ruwe invoer teruggeven zou daar HTML/script injecteren.
+const _DATUM_TEKENS = /^[0-9./\- ]{1,20}$/
 export const fmtDatumDoc = (d: string | undefined | null): string => {
   if (!d) return '—'
+  const terugval = (): string => _DATUM_TEKENS.test(String(d)) ? String(d) : '—'
   try {
     const date = new Date(d)
-    if (isNaN(date.getTime())) return String(d)
+    if (isNaN(date.getTime())) return terugval()
     return date.toLocaleDateString('nl-NL', {day: '2-digit', month: '2-digit', year: 'numeric'})
   } catch {
-    return String(d)
+    return terugval()
   }
 }
 

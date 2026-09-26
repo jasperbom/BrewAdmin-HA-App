@@ -9,6 +9,7 @@ import SectionHeader from '../components/ui/SectionHeader'
 import { logAudit } from '../utils/audit'
 import { berekenVoorcalcVoorAfvulling, accijnsMaandGesloten } from '../utils/calculations'
 import { bouwAfboekingAccijnsRecord } from '../utils/afboeking'
+import { bierBeschikbaarPerAfvulling, verouderdeTellingen, herijkTelling } from '../utils/inventarisatie'
 
 interface InventarisatieTelling {
   id: number
@@ -22,6 +23,8 @@ interface InventarisatieTelling {
   eenheid?: string
   voorcalc_accijns_per_eenheid?: number
   accijns_impact?: number
+  // Zelf ingevuld (en niet de voorgevulde administratieve stand)?
+  geteld_ingevoerd?: boolean
 }
 
 interface Inventarisatie {
@@ -70,26 +73,21 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
 
   const addLog = (entry: any) => setLog((prev: any[]) => [...prev, { id: newId(prev || []), datum: tod(), ...entry }])
 
-  // Calculate available beer stock per afvulling
-  const afvullingBeschikbaar = useMemo(() => {
-    const map: Record<number, number> = {}
-    for (const a of av) {
-      const uitgeleverd = (uit || [])
-        .filter((u: any) => u.afvulling_id === a.id)
-        .reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
-      const afgeboekt = (afboekingen || [])
-        .filter((ab: any) => ab.afvulling_id === a.id)
-        .reduce((s: number, ab: any) => s + Number(ab.aantal || 0), 0)
-      const openOrders = (bestellingen || [])
-        .filter((b: any) => b.status === 'open')
-        .map((b: any) => b.id)
-      const gepickt = (bestellingPicks || [])
-        .filter((p: any) => p.afvulling_id === a.id && openOrders.includes(p.bestelling_id))
-        .reduce((s: number, p: any) => s + Number(p.aantal || 0), 0)
-      map[a.id] = Math.max(0, Number(a.hoeveelheid || 0) - gepickt - uitgeleverd - afgeboekt)
-    }
-    return map
-  }, [av, uit, afboekingen, bestellingPicks, bestellingen])
+  // Beschikbare biervoorraad per afvulling (utils/inventarisatie.ts)
+  const afvullingBeschikbaar = useMemo(
+    () => bierBeschikbaarPerAfvulling(av, uit, afboekingen, bestellingPicks, bestellingen),
+    [av, uit, afboekingen, bestellingPicks, bestellingen]
+  )
+
+  // Regels waarvan de administratie sinds het aanmaken is veranderd (verkoop,
+  // uitslag, afboeking, lotverbruik). Die mogen niet tegen de bevroren stand
+  // afgerond worden: dan boekt de app dezelfde mutatie nog eens als verschil.
+  const verouderd = useMemo(
+    () => selected && selected.status === 'open'
+      ? verouderdeTellingen(selected.tellingen, afvullingBeschikbaar, lots)
+      : [],
+    [selected, afvullingBeschikbaar, lots]
+  )
 
   // Build ingredient tellingen
   const buildIngredientTellingen = (): InventarisatieTelling[] => {
@@ -178,7 +176,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
           // Accijnsimpact (Douane v2.4 §7.3): verschil × voorcalc per eenheid.
           // Negatief = tekort = potentiële vermisaccijns; positief = overschot (administratieve correctie).
           const accijns_impact = (tel.voorcalc_accijns_per_eenheid || 0) * verschil
-          return { ...tel, geteld, verschil, accijns_impact }
+          return { ...tel, geteld, verschil, accijns_impact, geteld_ingevoerd: true }
         }
         return { ...tel, [field]: value }
       })
@@ -198,8 +196,31 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
     )
   }
 
+  // Zet de bevroren administratieve stand van de verouderde regels op de
+  // actuele. De gebruiker controleert daarna de tellingen en rondt opnieuw af.
+  const herijken = () => {
+    if (!selected || verouderd.length === 0) return
+    const actueel = new Map(verouderd.map(v => [v.tellingId, v.actueel]))
+    const updated: Inventarisatie = {
+      ...selected,
+      tellingen: selected.tellingen.map(tel =>
+        actueel.has(tel.id) ? herijkTelling(tel, actueel.get(tel.id) as number) : tel),
+    }
+    setSelected(updated)
+    setInventarisaties((prev: Inventarisatie[]) =>
+      (prev || []).map(inv => inv.id === updated.id ? updated : inv)
+    )
+    logAudit(auditLog, setAuditLog, {entiteit:'Inventarisatie', entiteit_id:updated.id, actie:'gewijzigd',
+      omschrijving: verouderd.map(v => `${v.naam || v.tellingId}: ${v.bevroren} → ${v.actueel}`).join('; ')})
+    setShowConfirm(false)
+  }
+
   const afronden = () => {
     if (!selected) return
+
+    // Een verouderde administratieve stand zou tussentijdse verkopen,
+    // uitslagen en afboekingen nog eens als telverschil boeken (met accijns).
+    if (correcties && verouderd.length > 0) return
 
     // Periode-lock (ERP-plan 0.4): een geteld biertekort boekt accijns in de
     // lopende maand — geblokkeerd zodra die aangifte is ingediend of betaald.
@@ -325,8 +346,8 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
         {/* Info bar */}
         <div className="bg-white rounded-xl shadow-card p-4 flex gap-6 flex-wrap text-sm text-gray-600">
           <div><span className="font-medium text-gray-500">{t('lbl_date')}:</span> {selected.datum}</div>
-          <div><span className="font-medium text-gray-500">Type:</span> {typeLabel(selected.type)}</div>
-          <div><span className="font-medium text-gray-500">{t('inv_verschil')}:</span> {countDiffs(selected)} items</div>
+          <div><span className="font-medium text-gray-500">{t('lbl_type')}:</span> {typeLabel(selected.type)}</div>
+          <div><span className="font-medium text-gray-500">{t('inv_verschil')}:</span> {countDiffs(selected)} {t('lbl_items')}</div>
         </div>
 
         {/* Tellingen table */}
@@ -336,7 +357,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-gray-500 text-xs">
-                  <th className="text-left px-4 py-2.5 font-semibold">Item</th>
+                  <th className="text-left px-4 py-2.5 font-semibold">{t('inv_col_item')}</th>
                   <th className="text-left px-4 py-2.5 font-semibold">{t('inv_administratief')}</th>
                   <th className="text-left px-4 py-2.5 font-semibold">{t('inv_geteld')}</th>
                   <th className="text-left px-4 py-2.5 font-semibold">{t('inv_verschil')}</th>
@@ -467,12 +488,24 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
             <p className="text-sm text-gray-600 mb-4">{t('inv_bevestig_afronden')}</p>
             {correcties && (
               <p className="text-sm t-accent-text mb-4">
-                {t('inv_correcties_doorvoeren')}: {selected.tellingen.filter(tel => tel.verschil !== 0 && tel.ref_type === 'lot').length} items
+                {t('inv_correcties_doorvoeren')}: {selected.tellingen.filter(tel => tel.verschil !== 0 && tel.ref_type === 'lot').length} {t('lbl_items')}
               </p>
+            )}
+            {correcties && verouderd.length > 0 && (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4 text-sm text-orange-800 space-y-2">
+                <p>{t('inv_err_verouderd').replace('{n}', String(verouderd.length))}</p>
+                <ul className="text-xs space-y-0.5">
+                  {verouderd.map(v => (
+                    <li key={v.tellingId}>{v.naam || t('lbl_onbekend')}: {v.bevroren} → {v.actueel}</li>
+                  ))}
+                </ul>
+              </div>
             )}
             <div className="flex gap-2 justify-end">
               <Btn v="secondary" onClick={() => setShowConfirm(false)}>{t('btn_cancel')}</Btn>
-              <Btn v="green" onClick={afronden}>{t('inv_afronden')}</Btn>
+              {correcties && verouderd.length > 0
+                ? <Btn onClick={herijken}>{t('inv_btn_herijken')}</Btn>
+                : <Btn v="green" onClick={afronden}>{t('inv_afronden')}</Btn>}
             </div>
           </Modal>
         )}
@@ -524,7 +557,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
               </div>
             </div>
             <div className="text-xs text-gray-400 mt-1">
-              {inv.tellingen.length} items
+              {inv.tellingen.length} {t('lbl_items')}
             </div>
           </div>
         )
@@ -535,7 +568,7 @@ const InventarisatiePage: React.FC<InventarisatiePageProps> = ({
         <Modal title={t('inv_nieuwe_telling')} onClose={() => setShowNew(false)}>
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-2">Type</label>
+              <label className="block text-xs font-semibold text-gray-500 mb-2">{t('lbl_type')}</label>
               <div className="flex flex-col gap-2">
                 {(['ingredienten', 'bier', 'volledig'] as const).map(tp => (
                   <label key={tp} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">

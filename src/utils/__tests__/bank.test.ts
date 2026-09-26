@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parseMT940, scoreMatch, besteMatch, saldoControle,
+  parseMT940, scoreMatch, besteMatch, saldoControle, mt940Richting, gekoppeldeFactuurIds,
   isPspTransactie, zoekPspCombinatie, pspKandidaten, isBelastingdienstTransactie,
 } from '../bank'
 
@@ -41,6 +41,69 @@ describe('parseMT940', () => {
     expect(d.beginsaldo).toBe(-100)
     expect(d.eindsaldo).toBe(-50)
   })
+
+  describe('terugboekingen en korte bedragen (SWIFT)', () => {
+    const afschrift = parseMT940([
+      ':25:NL91ABNA0417164300',
+      ':60F:C260501EUR1000,00',
+      ':61:2605010501C50,00NTRFNONREF',
+      ':86:/NAME/Klant A/REMI/F2026-0001',
+      ':61:2605020502D100,NTRFNONREF',
+      ':86:/NAME/Verhuurder/REMI/huur',
+      ':61:2605030503C12,5NTRFNONREF',
+      ':86:/NAME/Klant B/REMI/fooi',
+      ':61:2605040504RD25,00NTRFNONREF',
+      ':86:/NAME/Energie BV/REMI/storno incasso',
+      ':61:2605050505RC30,00NTRFNONREF',
+      ':86:/NAME/Klant C/REMI/storno bijschrijving',
+      ':61:2605060506DR12,50NTRFNONREF',
+      ':86:/NAME/Bank/REMI/kosten',
+      ':62F:C260506EUR945,00',
+    ].join('\n'))
+    const tx = afschrift.transacties
+
+    it('leest alle zes transacties', () => {
+      expect(tx).toHaveLength(6)
+      expect(afschrift.overgeslagen).toBe(0)
+    })
+    it('bedrag zonder of met één decimaal', () => {
+      expect(tx[1]).toMatchObject({type: 'D', bedrag: 100})
+      expect(tx[2]).toMatchObject({type: 'C', bedrag: 12.5})
+    })
+    it('RD = storno van een afschrijving → credit; RC = storno van een bijschrijving → debet', () => {
+      expect(tx[3]).toMatchObject({type: 'C', bedrag: 25, storno: true})
+      expect(tx[4]).toMatchObject({type: 'D', bedrag: 30, storno: true})
+    })
+    it("'DR' is debet met fondscode, geen terugboeking", () => {
+      expect(tx[5]).toMatchObject({type: 'D', bedrag: 12.5})
+      expect(tx[5].storno).toBeUndefined()
+      expect(tx[0].storno).toBeUndefined()
+    })
+    it('het afschrift sluit intern weer aan', () => {
+      expect(saldoControle(afschrift, tx).verschilIntern).toBe(0)
+    })
+  })
+
+  it('telt onleesbare transactieregels en hangt hun :86: niet aan een andere transactie', () => {
+    const r = parseMT940([
+      ':61:2605010501C50,00NTRFNONREF',
+      ':61:2605020502X100,00NTRFNONREF',
+      ':86:/NAME/Onleesbaar/REMI/weg',
+      ':61:2605030503D10,00NTRFNONREF',
+      ':86:/NAME/Leverancier/REMI/ok',
+    ].join('\n'))
+    expect(r.overgeslagen).toBe(1)
+    expect(r.transacties).toHaveLength(2)
+    expect(r.transacties[0]).toMatchObject({type: 'C', bedrag: 50, tegenpartij: ''})
+    expect(r.transacties[1]).toMatchObject({type: 'D', bedrag: 10, tegenpartij: 'Leverancier'})
+  })
+
+  it('mt940Richting', () => {
+    expect(mt940Richting('C')).toBe('C')
+    expect(mt940Richting('D')).toBe('D')
+    expect(mt940Richting('RC')).toBe('D')
+    expect(mt940Richting('RD')).toBe('C')
+  })
 })
 
 describe('scoreMatch / besteMatch (ERP 2.4)', () => {
@@ -71,6 +134,57 @@ describe('scoreMatch / besteMatch (ERP 2.4)', () => {
   it('één kandidaat op alleen bedrag koppelt gewoon (oude gedrag blijft)', () => {
     expect(besteMatch({bedrag: 42.5}, [{id: 7, bedrag: 42.5}]).kandidaat?.id).toBe(7)
   })
+  it('slaat uitgesloten (elders gekoppelde) facturen over, ook voor "ambigu"', () => {
+    const kandidaten = [{id: 1, bedrag: 100, naam: 'X BV'}, {id: 2, bedrag: 100, naam: 'Y BV'}]
+    const r = besteMatch({bedrag: 100}, kandidaten, new Set([1]))
+    expect(r.kandidaat?.id).toBe(2)
+    expect(r.ambigu).toBe(false)
+    expect(besteMatch({bedrag: 100}, kandidaten, new Set([1, 2]))).toEqual({kandidaat: null, ambigu: false})
+  })
+})
+
+describe('gekoppeldeFactuurIds', () => {
+  const koppelingen = {
+    'a': {soort: 'verkoop', factuurId: 11},
+    'b': {soort: 'inkoop', factuurId: 21},
+    'c': {soort: 'psp', factuurIds: [12, 13], kostenFactuurId: 22, gemarkeerdBetaald: []},
+    'd': {soort: 'btw', periodeKey: '2026-Q1'},
+    'e': {soort: 'kapitaal', factuurId: 99},
+  }
+  it('verkoop: losse koppelingen plus PSP-bundels', () => {
+    expect([...gekoppeldeFactuurIds(koppelingen, 'verkoop')].sort()).toEqual([11, 12, 13])
+  })
+  it('inkoop: losse koppelingen plus de PSP-kostenfactuur', () => {
+    expect([...gekoppeldeFactuurIds(koppelingen, 'inkoop')].sort()).toEqual([21, 22])
+  })
+  it('laat de koppeling van de eigen transactie buiten beschouwing', () => {
+    expect([...gekoppeldeFactuurIds(koppelingen, 'verkoop', 'c')]).toEqual([11])
+    expect(gekoppeldeFactuurIds(null, 'inkoop').size).toBe(0)
+  })
+
+  it('twee bijschrijvingen van € 30 en één factuur: alleen de eerste wordt gekoppeld', () => {
+    // Zoals importMT940 het doet: de set groeit met elke nieuwe koppeling.
+    const bezet = gekoppeldeFactuurIds({}, 'verkoop')
+    const facturen = [{id: 21, bedrag: 30, nummer: 'F2026-0021', naam: 'Jansen'}]
+    const gekoppeld: (number | null)[] = []
+    for (const tx of [
+      {bedrag: 30, omschrijving: 'F2026-0021', tegenpartij: 'Jansen'},
+      {bedrag: 30, omschrijving: 'bier', tegenpartij: 'Pietersen'},
+    ]) {
+      const m = besteMatch(tx, facturen, bezet)
+      if (m.kandidaat) bezet.add(m.kandidaat.id)
+      gekoppeld.push(m.kandidaat?.id ?? null)
+    }
+    expect(gekoppeld).toEqual([21, null])
+  })
+
+  it('een betaalde, al gekoppelde factuur wordt niet nog eens retro gekoppeld', () => {
+    // Energievoorschot: januari is gekoppeld; de februari-afschrijving van
+    // hetzelfde bedrag mag niet aan de januarifactuur blijven hangen.
+    const bezet = gekoppeldeFactuurIds({'2026-01-05|D|150|x': {soort: 'inkoop', factuurId: 11}}, 'inkoop')
+    const retro = besteMatch({bedrag: 150, tegenpartij: 'Energie BV'}, [{id: 11, bedrag: 150, naam: 'Energie BV'}], bezet)
+    expect(retro.kandidaat).toBeNull()
+  })
 })
 
 describe('saldoControle (ERP 2.4)', () => {
@@ -95,6 +209,11 @@ describe('saldoControle (ERP 2.4)', () => {
     const c = saldoControle({beginsaldo: 0, eindsaldo: 100}, [{type: 'C', bedrag: 60}], null)
     expect(c.verschilIntern).toBe(-40)
     expect(c.aansluitVerschil).toBeNull()
+  })
+  it('telt een SNd-afdracht als gekoppeld', () => {
+    const c = saldoControle({beginsaldo: 100, eindsaldo: 89.2}, [{type: 'D', bedrag: 10.8, gekoppeldSndPeriode: '2026-Q1'}], null)
+    expect(c.aantalGekoppeld).toBe(1)
+    expect(c.ongekoppeldBedrag).toBe(0)
   })
 })
 

@@ -4,6 +4,7 @@ import { newId, ADDON_BASE } from '../../utils/api'
 import { fmtD, tod } from '../../utils/format'
 import { VERLIES_BRONNEN } from '../../utils/constants'
 import { logAudit } from '../../utils/audit'
+import { uploadBijlage, uploadFoutSleutel } from '../../utils/bijlage'
 import Btn from '../ui/Btn'
 import Inp from '../ui/Inp'
 import Modal from '../ui/Modal'
@@ -29,27 +30,6 @@ const VERN_STATUS_COLOR: Record<VernietigingStatus, string> = {
   aangevraagd: 'bg-yellow-50 text-yellow-700 border border-yellow-200',
   toegestaan:  'bg-blue-50 text-blue-700 border border-blue-200',
   uitgevoerd:  'bg-green-50 text-green-700 border border-green-200',
-}
-
-// Upload-helper voor bijlagen (foto's / PDF) bij een vernietiging.
-const uploadBijlage = async (file: File, prefix: string): Promise<Bijlage | null> => {
-  try {
-    const ext = (file.name.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '')
-    if (!['pdf','jpg','jpeg','png','gif','webp','tiff','bmp','heic','heif'].includes(ext)) return null
-    const filename = `${prefix}_${Date.now()}_${Math.floor(Math.random()*9999)}.${ext}`
-    const b64 = await new Promise<string>((res, rej) => {
-      const reader = new FileReader()
-      reader.onload = () => res((reader.result as string).split(',')[1])
-      reader.onerror = rej
-      reader.readAsDataURL(file)
-    })
-    const resp = await fetch(`${ADDON_BASE}api/upload/${filename}`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({data: b64}),
-    })
-    if (!resp.ok) return null
-    return { naam: file.name, bestand: filename }
-  } catch { return null }
 }
 
 // Zelfstandige, herbruikbare sectie voor de vernietigingsflow van afgekeurd
@@ -84,11 +64,14 @@ const VernietigingSection: React.FC<{
     if (!files || files.length === 0) return
     setVerliesUploading(true)
     const nieuwe: Bijlage[] = []
+    let fout = ''
     for (let i = 0; i < files.length; i++) {
-      const b = await uploadBijlage(files[i], 'verlies')
-      if (b) nieuwe.push({...b, rol, geupload_op: new Date().toISOString()})
+      const u = await uploadBijlage(files[i], 'verlies')
+      if (u.ok && u.bijlage) nieuwe.push({...u.bijlage, rol, geupload_op: new Date().toISOString()})
+      else fout = t(uploadFoutSleutel(u.status)).replace('{naam}', u.naam)
     }
     if (nieuwe.length > 0) setVerliesForm((f: any) => ({...f, bijlagen: [...(f.bijlagen||[]), ...nieuwe]}))
+    setVerliesError(fout)
     setVerliesUploading(false)
   }
   const doVerliesRemoveBijlage = (idx: number) => {
@@ -100,11 +83,14 @@ const VernietigingSection: React.FC<{
     if (!files || files.length === 0) return
     setVernReviewUploading(true)
     const nieuwe: Bijlage[] = []
+    let fout = ''
     for (let i = 0; i < files.length; i++) {
-      const b = await uploadBijlage(files[i], 'verlies')
-      if (b) nieuwe.push({...b, rol: 'bewijs', geupload_op: new Date().toISOString()})
+      const u = await uploadBijlage(files[i], 'verlies')
+      if (u.ok && u.bijlage) nieuwe.push({...u.bijlage, rol: 'bewijs', geupload_op: new Date().toISOString()})
+      else fout = t(uploadFoutSleutel(u.status)).replace('{naam}', u.naam)
     }
     if (nieuwe.length > 0) setVernReviewForm((f: any) => ({...f, bewijsBijlagen: [...(f.bewijsBijlagen||[]), ...nieuwe]}))
+    setVernReviewError(fout)
     setVernReviewUploading(false)
   }
   const doVernBewijsRemove = (idx: number) => {

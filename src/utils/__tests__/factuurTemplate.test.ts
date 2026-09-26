@@ -3,7 +3,9 @@ import {
   FACTUUR_CSS_DEFAULT,
   FACTUUR_HTML_DEFAULT,
   bouwFactuurContext,
+  btwOverzichtVan,
   eigenFactuurTemplate,
+  klantRegels,
 } from '../factuurTemplate'
 import { controleerTemplate, renderTemplate, renderTemplateOfFallback } from '../template'
 
@@ -106,6 +108,24 @@ describe('bouwFactuurContext — kop en partijen', () => {
   })
 })
 
+describe('klantRegels (adresblok van factuur, pakbon en herinnering)', () => {
+  it('bedrijf als kop, straat en huisnummer samen, e-mail erbij', () => {
+    expect(klantRegels(order)).toEqual({
+      titel: 'Café De Hoek',
+      rest: ['Jan Jansen', 'Marktplein 3', '5611 AA  Eindhoven', 'BTW: NL002345678B01', 'jan@dehoek.nl'],
+    })
+  })
+
+  it('zonder bedrijf is de naam de kop; zonder huisnummer alleen de straat', () => {
+    expect(klantRegels({klant_naam: 'Piet', klant_straat: 'Dorp'})).toEqual({titel: 'Piet', rest: ['Dorp']})
+  })
+
+  it('lege of ontbrekende invoer geeft een streepje', () => {
+    expect(klantRegels({})).toEqual({titel: '—', rest: []})
+    expect(klantRegels(null)).toEqual({titel: '—', rest: []})
+  })
+})
+
 describe('bouwFactuurContext — bedragen en datums', () => {
   it('maakt bedragen op als € met komma', () => {
     const ctx = bouwFactuurContext({order, factuur, brewery, appName: ''} as any)
@@ -121,6 +141,22 @@ describe('bouwFactuurContext — bedragen en datums', () => {
     expect(ctx.factuurdatum).toBe('10-03-2026')
     expect(ctx.vervaldatum).toBe('24-03-2026')
     expect(ctx.betalingstermijn).toBe(14)
+  })
+
+  it('neemt de termijn over die de aanroeper meegeeft (klantkaart via breweryMetTermijn)', () => {
+    const ctx = bouwFactuurContext({order, factuur, brewery: {...brewery, betalingstermijn: 30}, appName: ''} as any)
+    expect(ctx.betalingstermijn).toBe(30)
+    expect(ctx.vervaldatum).toBe('09-04-2026')
+    // Over de zomertijdwissel (29-03) heen: nog steeds precies 30 kalenderdagen
+    expect(ctx.meta).toContainEqual({label: expect.stringContaining('30'), waarde: '09-04-2026'})
+  })
+
+  it('een lege of 0-termijn geeft nooit "vervalt op de factuurdatum" maar de standaard', () => {
+    for (const leeg of [0, '', null, 'x']) {
+      const ctx = bouwFactuurContext({order, factuur, brewery: {...brewery, betalingstermijn: leeg}, appName: ''} as any)
+      expect(ctx.betalingstermijn).toBe(14)
+      expect(ctx.vervaldatum).toBe('24-03-2026')
+    }
   })
 
   it('berekent het BTW-overzicht uit de regels als het niet is opgeslagen', () => {
@@ -301,5 +337,31 @@ describe('bouwFactuurContext — meta bij een betaalde factuur', () => {
   it('houdt de vervaldatum op een openstaande factuur', () => {
     const labels = (ctxVan({}).meta as any[]).map(m => `${m.label}: ${m.waarde}`)
     expect(labels.some(l => l.startsWith('Vervaldatum'))).toBe(true)
+  })
+})
+
+// Gedeeld door de factuurtemplate en de betalingsherinnering (PakbonExport).
+describe('btwOverzichtVan', () => {
+  it('neemt een opgeslagen overzicht ongewijzigd over', () => {
+    const opgeslagen = [{tarief: 21, netto: 10, btw: 2.1}]
+    expect(btwOverzichtVan({btw_overzicht: opgeslagen, regels: [{btw_pct: 9, netto: 5, btw_bedrag: 0.45}]}))
+      .toBe(opgeslagen)
+  })
+
+  it('groepeert anders de regels per tarief, oplopend gesorteerd', () => {
+    const overzicht = btwOverzichtVan({regels: [
+      {btw_pct: 21, netto: 10, btw_bedrag: 2.1},
+      {btw_pct: 9, netto: 20, btw_bedrag: 1.8},
+      {btw_pct: 21, netto: 5, btw_bedrag: 1.05},
+    ]})
+    expect(overzicht.map(b => b.tarief)).toEqual([9, 21])
+    expect(overzicht[0]).toEqual({tarief: 9, netto: 20, btw: 1.8})
+    expect(overzicht[1].netto).toBe(15)
+    expect(overzicht[1].btw).toBeCloseTo(3.15, 10)
+  })
+
+  it('geeft een lege lijst zonder regels en zonder overzicht', () => {
+    expect(btwOverzichtVan({btw_overzicht: [], regels: []})).toEqual([])
+    expect(btwOverzichtVan(null)).toEqual([])
   })
 })

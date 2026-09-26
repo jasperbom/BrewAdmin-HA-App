@@ -9,6 +9,7 @@ import {
   markTankVuilBijVertrek, markTankVuilBijVerwijderen,
   registreerTankReiniging, laatsteTankReiniging,
   berekenVoorcalcVoorAfvulling, agpValueAt, agpOverzicht, berekenAccijnsImpact,
+  lotKostenVoorRegel, batchRegelKosten, accijnsVoorKostprijs,
 } from '../calculations'
 
 describe('accijnsCalc', () => {
@@ -408,6 +409,203 @@ describe('batchkostprijs en COGS (ERP 2.6)', () => {
     expect(c.liters).toBeCloseTo(24 * 0.33 + 3 * 20, 9)
     expect(c.cogs).toBeCloseTo((24 * 0.33 + 3 * 20) * (120 / 53), 9)
     expect(c.aantalUitleveringen).toBe(2)
+  })
+})
+
+describe('ingrediëntkosten: lotprijs omgerekend naar de eenheid van de regel', () => {
+  // Hop uit een recept staat in g, een hoplot uit de inkoop meestal in kg.
+  // Zonder omrekening kostte 100 g hop van € 40/kg € 4000 in plaats van € 4.
+  it('lotKostenVoorRegel: kg-lot en g-regel', () => {
+    expect(lotKostenVoorRegel({hoeveelheid: 100, eenheid: 'g'}, {prijs_per_eenheid: 40, eenheid: 'kg'})).toBeCloseTo(4, 9)
+  })
+  it('lotKostenVoorRegel: g-lot en kg-regel', () => {
+    expect(lotKostenVoorRegel({hoeveelheid: 2, eenheid: 'kg'}, {prijs_per_eenheid: 0.05, eenheid: 'g'})).toBeCloseTo(100, 9)
+    expect(lotKostenVoorRegel({hoeveelheid: 250, eenheid: 'mL'}, {prijs_per_eenheid: 8, eenheid: 'L'})).toBeCloseTo(2, 9)
+  })
+  it('lotKostenVoorRegel: een andere grootheid telt niet mee in plaats van fout', () => {
+    expect(lotKostenVoorRegel({hoeveelheid: 3, eenheid: 'pkg'}, {prijs_per_eenheid: 4, eenheid: 'g'})).toBeNull()
+  })
+  it('lotKostenVoorRegel: zonder eenheid of met dezelfde eenheid rekent hij zoals altijd', () => {
+    expect(lotKostenVoorRegel({hoeveelheid: 10}, {prijs_per_eenheid: 2})).toBe(20)
+    expect(lotKostenVoorRegel({hoeveelheid: 10, eenheid: 'kg'}, {prijs_per_eenheid: 2, eenheid: 'kg'})).toBe(20)
+    expect(lotKostenVoorRegel({hoeveelheid: 10, eenheid: 'kg'}, {prijs_per_eenheid: null})).toBeNull()
+    expect(lotKostenVoorRegel({hoeveelheid: 10, eenheid: 'kg'}, null)).toBeNull()
+  })
+
+  it('batchRegelKosten: vastgelegde kosten gaan voor, 0 telt als niet vastgelegd', () => {
+    const lots = [{id: 5, prijs_per_eenheid: 40, eenheid: 'kg'}]
+    expect(batchRegelKosten({lot_id: 5, hoeveelheid: 500, eenheid: 'g', kosten: 21.5}, lots)).toBe(21.5)
+    expect(batchRegelKosten({lot_id: 5, hoeveelheid: 500, eenheid: 'g', kosten: 0}, lots)).toBeCloseTo(20, 9)
+    expect(batchRegelKosten({lot_id: '5', hoeveelheid: 500, eenheid: 'g'}, lots)).toBeCloseTo(20, 9)
+    expect(batchRegelKosten({lot_id: 9, hoeveelheid: 500, eenheid: 'g'}, lots)).toBeNull()
+  })
+  it('batchRegelKosten: herkent een bij een deel-afboeking onomgerekend vastgelegd bedrag', () => {
+    // Vóór deze correctie legde de gesplitste afboeking 40 × 500 = 20000 vast.
+    const lots = [{id: 5, prijs_per_eenheid: 40, eenheid: 'kg'}]
+    expect(batchRegelKosten({lot_id: 5, hoeveelheid: 500, eenheid: 'g', kosten: 20000}, lots)).toBeCloseTo(20, 9)
+    // Een goed omgerekend bedrag blijft staan.
+    expect(batchRegelKosten({lot_id: 5, hoeveelheid: 500, eenheid: 'g', kosten: 20}, lots)).toBe(20)
+    // Bij gelijke eenheden is prijs × hoeveelheid gewoon juist.
+    expect(batchRegelKosten({lot_id: 5, hoeveelheid: 2, eenheid: 'kg', kosten: 80}, lots)).toBe(80)
+  })
+
+  it('berekenBatchKostprijs: rekent de lotprijs om en telt een onomrekenbare regel niet mee', () => {
+    const batch = {id: 600}
+    const bi = [
+      {batch_id: 600, lot_id: 7, hoeveelheid: 500, eenheid: 'g'},   // 500 g × € 40/kg = € 20
+      {batch_id: 600, lot_id: 8, hoeveelheid: 2, eenheid: 'kg'},    // 2 kg × € 0,05/g = € 100
+      {batch_id: 600, lot_id: 9, hoeveelheid: 3, eenheid: 'pkg'},   // pkg ↔ g: telt niet mee
+    ]
+    const lots = [
+      {id: 7, prijs_per_eenheid: 40, eenheid: 'kg'},
+      {id: 8, prijs_per_eenheid: 0.05, eenheid: 'g'},
+      {id: 9, prijs_per_eenheid: 4, eenheid: 'g'},
+    ]
+    const afv = [{id: 1, batch_id: 600, verpakking_type: 'Fles 33cL', inhoud_per_eenheid: 0.33, hoeveelheid: 300}]
+    const r = berekenBatchKostprijs(batch, bi, lots, afv, [], [], [])
+    expect(r.ingredienten_kosten).toBeCloseTo(120, 9)
+    expect(r.totaal_kosten).toBeCloseTo(120, 9)
+    expect(r.kostprijs_per_liter).toBeCloseTo(120 / 99, 9)
+  })
+  it('berekenBatchKostprijs: geeft de opbouw per post en vergelijkt id\'s als tekst', () => {
+    const batch = {id: 601, electra_kosten: 10, water_kosten: 5}
+    const bi = [{batch_id: '601', lot_id: '7', hoeveelheid: 4, eenheid: 'kg'}]
+    const lots = [{id: 7, prijs_per_eenheid: 2, eenheid: 'kg'}]
+    const afv = [{id: 1, batch_id: '601', verpakking_type: 'Fust 20L', inhoud_per_eenheid: 20, hoeveelheid: 1}]
+    const r = berekenBatchKostprijs(batch, bi, lots, afv, [], [], [])
+    expect(r.ingredienten_kosten).toBe(8)
+    expect(r.overhead_kosten).toBe(15)
+    expect(r.totaal_liter).toBe(20)
+    expect(r.totaal_kosten).toBe(23)
+  })
+})
+
+describe('accijns in de kostprijs bij een gedeeltelijke uitslag', () => {
+  // 300 flesjes van 0,33 L = 99 L, voorcalculatie € 99. Uitslaan gaat in
+  // porties: na de eerste 10 flesjes zakte de accijns in de kostprijs van € 99
+  // naar € 3,30 — de voorcalculatie van het bier dat nog in de AGP ligt viel weg.
+  const batch = {id: 900, datum: '2026-03-01', ABV: 6, overige_kosten: 100}
+  const afv = [{id: 1, batch_id: 900, verpakking_type: 'Fles 33cL', inhoud_per_eenheid: 0.33,
+                hoeveelheid: 300, voorcalc_accijns_totaal: 99}]
+  const uitslag = (n: number, bedrag: number, extra: Record<string, unknown> = {}) =>
+    ({batch_id: 900, verpakking_type: 'Fles 33cL', liter: n * 0.33, accijns: bedrag, bron: 'verplaatsing', ...extra})
+
+  it('telt de geboekte accijns plus de voorcalculatie van de rest', () => {
+    const r = berekenBatchKostprijs(batch, [], [], afv, [], [], [uitslag(10, 3.3)])
+    expect(r.accijns).toBeCloseTo(3.3 + 99 * 290 / 300, 9)   // = 99
+    expect(r.accijns_bron).toBe('voorcalc')
+    const zonder = berekenBatchKostprijs(batch, [], [], afv, [], [], [])
+    expect(r.kostprijs_per_liter).toBeCloseTo(zonder.kostprijs_per_liter, 9)
+  })
+  it('een tariefwijziging tussen afvullen en uitslag: geboekt deel tegen het nieuwe tarief', () => {
+    const r = berekenBatchKostprijs(batch, [], [], afv, [], [], [uitslag(10, 3.6)])
+    expect(r.accijns).toBeCloseTo(3.6 + 99 * 290 / 300, 9)
+  })
+  it('pas als alle liters geboekt zijn is het de werkelijke accijns', () => {
+    const r = berekenBatchKostprijs(batch, [], [], afv, [], [], [uitslag(100, 34), uitslag(200, 70)])
+    expect(r.accijns).toBeCloseTo(104, 9)
+    expect(r.accijns_bron).toBe('geboekt')
+  })
+  it('een vermissing uit de AGP telt als geboekte liters', () => {
+    const acc = [uitslag(10, 3.3), uitslag(5, 1.65, {bron: 'afboeking'})]
+    const r = berekenBatchKostprijs(batch, [], [], afv, [], [], acc)
+    expect(r.accijns).toBeCloseTo(4.95 + 99 * 285 / 300, 9)
+  })
+  it('een oud record zonder liters houdt het oude gedrag: geboekt wint', () => {
+    const r = berekenBatchKostprijs(batch, [], [], afv, [], [], [{batch_id: 900, verpakking_type: 'Fles 33cL', accijns: 3.3}])
+    expect(r.accijns).toBe(3.3)
+    expect(r.accijns_bron).toBe('geboekt')
+  })
+  it('flessen volledig geboekt, fust nog in de AGP: beide tellen mee', () => {
+    const afv2 = [
+      {id: 1, batch_id: 901, verpakking_type: 'Fles 33cL', inhoud_per_eenheid: 0.33, hoeveelheid: 100, voorcalc_accijns_totaal: 10},
+      {id: 2, batch_id: 901, verpakking_type: 'Fust 20L', inhoud_per_eenheid: 20, hoeveelheid: 3, voorcalc_accijns_totaal: 20},
+    ]
+    const acc = [{batch_id: 901, verpakking_type: 'Fles 33cL', liter: 33, accijns: 10}]
+    const r = berekenBatchKostprijs({id: 901}, [], [], afv2, [], [], acc)
+    expect(r.accijns).toBeCloseTo(30, 9)
+    expect(r.accijns_bron).toBe('voorcalc')
+  })
+  it('verdeelt oude records zonder verpakkingstype naar rato van de liters', () => {
+    const afv2 = [
+      {id: 1, batch_id: 902, verpakking_type: 'Fles 33cL', inhoud_per_eenheid: 0.5, hoeveelheid: 120, voorcalc_accijns_totaal: 60},
+      {id: 2, batch_id: 902, verpakking_type: 'Fust 20L', inhoud_per_eenheid: 20, hoeveelheid: 2, voorcalc_accijns_totaal: 40},
+    ]
+    // 50 L uitgeslagen, maar niet te zeggen van welke verpakking: de helft van
+    // de 100 L, dus de helft van de voorcalculatie blijft staan.
+    const acc = [{batch_id: 902, liter: 50, accijns: 55}]
+    const r = berekenBatchKostprijs({id: 902}, [], [], afv2, [], [], acc)
+    expect(r.accijns).toBeCloseTo(55 + 50, 9)
+  })
+  it('schat alleen de nog niet geboekte liters (schermen met accijnsInst)', () => {
+    const afv2 = [{id: 1, batch_id: 903, verpakking_type: 'Fles 33cL', inhoud_per_eenheid: 0.33, hoeveelheid: 1000}]
+    const acc = [{batch_id: 903, verpakking_type: 'Fles 33cL', liter: 33, accijns: 25}]
+    const b = {id: 903, datum: '2026-03-01', ABV: 8.1}
+    const r = berekenBatchKostprijs(b, [], [], afv2, [], [], acc, {})
+    expect(r.accijns).toBeCloseTo(25 + 297 * 0.6083, 1)
+    expect(r.accijns_bron).toBe('geschat')
+    // Zonder instellingen (W&V/COGS): geen schatting, alleen wat geboekt is.
+    const kaal = berekenBatchKostprijs(b, [], [], afv2, [], [], acc)
+    expect(kaal.accijns).toBe(25)
+    expect(kaal.accijns_bron).toBe('geen')
+  })
+  it('accijnsVoorKostprijs: de rest in liters en de bron', () => {
+    const rows = [{inhoud_per_eenheid: 0.33, hoeveelheid: 300, voorcalc_accijns_totaal: 99}]
+    const deel = accijnsVoorKostprijs(rows, [{liter: 33, accijns: 11}])
+    expect(deel.restLiter).toBeCloseTo(66, 9)
+    expect(deel.geboekt).toBe(11)
+    expect(deel.accijns).toBeCloseTo(11 + 66, 9)
+    expect(deel.bron).toBe('voorcalc')
+    expect(accijnsVoorKostprijs(rows, []).accijns).toBe(99)
+    expect(accijnsVoorKostprijs([{inhoud_per_eenheid: 1, hoeveelheid: 10}], [], l => l * 2))
+      .toEqual({accijns: 20, geboekt: 0, restLiter: 10, bron: 'geschat'})
+  })
+  it('berekenCogs: de COGS van 10 geleverde flesjes verschuift niet door een uitslag', () => {
+    const uit = [{batch_id: 900, afvulling_id: 1, aantal: 10, inhoud_per_eenheid: 0.33, datum: '2026-04-02'}]
+    const voor = berekenCogs(uit, [batch], [], [], afv, [], [], [], '2026-04-01', '2026-04-30')
+    const na = berekenCogs(uit, [batch], [], [], afv, [], [], [uitslag(10, 3.3)], '2026-04-01', '2026-04-30')
+    expect(na.cogs).toBeCloseTo(voor.cogs, 9)
+    expect(na.cogs).toBeCloseTo(3.3 * (100 + 99) / 99, 9)
+  })
+})
+
+describe('berekenCogs: verpakking per geleverde eenheid', () => {
+  // Eén brouwsel van € 100 bier, half in flesjes (glas € 0,40 per stuk) en half
+  // in een fust (€ 4). Met de prijs per liter (waarin het glas over alle liters
+  // is uitgesmeerd) betaalde het fust mee aan de flesjes.
+  const batch = {id: 800, overige_kosten: 100}
+  const afv = [
+    {id: 1, batch_id: 800, verpakking_id: 1, verpakking_type: 'Fles 33cL', inhoud_per_eenheid: 0.33, hoeveelheid: 150},
+    {id: 2, batch_id: 800, verpakking_id: 2, verpakking_type: 'Fust 50L', inhoud_per_eenheid: 50, hoeveelheid: 1},
+  ]
+  const vps = [
+    {id: 1, naam: 'Fles 33cL', inhoud_liter: 0.33, kosten_verpakking: 0.40},
+    {id: 2, naam: 'Fust 50L', inhoud_liter: 50, kosten_verpakking: 4},
+  ]
+  const uit = [
+    {batch_id: 800, afvulling_id: 1, aantal: 150, inhoud_per_eenheid: 0.33, datum: '2026-04-10'},
+    {batch_id: 800, afvulling_id: 2, aantal: 1, inhoud_per_eenheid: 50, datum: '2026-05-10'},
+  ]
+  const bierPerLiter = 100 / 99.5
+
+  it('een periode met alleen flesjes draagt het flessenglas', () => {
+    const c = berekenCogs(uit, [batch], [], [], afv, vps, [], [], '2026-04-01', '2026-04-30')
+    expect(c.cogs).toBeCloseTo(49.5 * bierPerLiter + 150 * 0.40, 9)
+  })
+  it('een periode met alleen het fust draagt alleen het fust', () => {
+    const c = berekenCogs(uit, [batch], [], [], afv, vps, [], [], '2026-05-01', '2026-05-31')
+    expect(c.cogs).toBeCloseTo(50 * bierPerLiter + 4, 9)
+  })
+  it('samen is het precies de kostprijs van de batch', () => {
+    const c = berekenCogs(uit, [batch], [], [], afv, vps, [], [], '2026-01-01', '2026-12-31')
+    const r = berekenBatchKostprijs(batch, [], [], afv, vps, [], [])
+    expect(c.cogs).toBeCloseTo(r.totaal_kosten, 9)
+    expect(r.totaal_kosten).toBeCloseTo(164, 9)
+  })
+  it('zonder afvulling (oud record) blijft het de prijs per liter', () => {
+    const oud = [{batch_id: 800, aantal: 10, inhoud_liter: 1, datum: '2026-04-10'}]
+    const c = berekenCogs(oud, [batch], [], [], afv, vps, [], [], '2026-04-01', '2026-04-30')
+    expect(c.cogs).toBeCloseTo(10 * 164 / 99.5, 9)
   })
 })
 

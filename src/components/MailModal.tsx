@@ -22,6 +22,14 @@ export interface MollieMailContext {
   description: string
   redirectUrl: string
   factuurnummer?: string
+  /** Al eerder met deze factuur meegestuurde link (`herbruikbareBetaallink`
+   *  in utils/mollieLink.ts). Aanwezig → die link gaat mee en er wordt géén
+   *  nieuwe aangemaakt: een Mollie-betaallink verloopt niet, dus elke extra
+   *  link is een extra manier om dezelfde factuur nog eens te betalen. */
+  bestaandeLink?: {url: string} | null
+  /** Direct na het aanmaken van een nieuwe link (vóór het verzenden), zodat
+   *  de aanroeper hem op de factuur bewaart — ook als de mail daarna mislukt. */
+  onLinkAangemaakt?: (link: {id: string, url: string}) => void
 }
 
 interface Props {
@@ -67,6 +75,9 @@ export default function MailModal({
   const [sending, setSending] = React.useState(false)
   const [status, setStatus] = React.useState<{type:'ok'|'err', msg:string} | null>(null)
   const [addMollie, setAddMollie] = React.useState(true)
+  // Een in deze modal al aangemaakte link: een tweede druk op "verzenden" na
+  // een mislukte SMTP-poging gebruikt hem opnieuw i.p.v. een nieuwe te maken.
+  const aangemaakteLink = React.useRef('')
 
   // Betaallink alleen mogelijk als er een geldige redirect-URL is (Mollie
   // vereist die). Zonder URL blijft de checkbox uitgeschakeld met een hint.
@@ -115,13 +126,17 @@ export default function MailModal({
       let payUrl = ''
       if (wantMollie && mollie) {
         try {
-          const res = await mollieCreatePayment({
-            amountCent: mollie.amountCent,
-            description: mollie.description,
-            redirectUrl: mollie.redirectUrl,
-            metadata: mollie.factuurnummer ? {factuurnummer: mollie.factuurnummer} : undefined,
-          })
-          payUrl = res.checkoutUrl
+          payUrl = mollie.bestaandeLink?.url || aangemaakteLink.current
+          if (!payUrl) {
+            const res = await mollieCreatePayment({
+              amountCent: mollie.amountCent,
+              description: mollie.description,
+              redirectUrl: mollie.redirectUrl,
+            })
+            payUrl = res.checkoutUrl
+            aangemaakteLink.current = payUrl
+            mollie.onLinkAangemaakt?.({id: String(res.id || ''), url: payUrl})
+          }
         } catch (e: any) {
           setStatus({type:'err', msg: `${t('mollie_link_failed')}: ${e?.message || ''}`})
           setSending(false)

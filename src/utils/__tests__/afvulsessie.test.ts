@@ -5,6 +5,7 @@ import {
   openSessiesVoorBatch, actieveSessie, magSessieStarten,
   magAfvullingRegistreren, vrijgegevenBatches,
   verwachteControleMomenten, controleDekking,
+  nieuweLotcode, thtHandmatigBlokkade, productVanLaatsteEtiketcontrole,
 } from '../afvulsessie'
 
 const codes = (r: {redenen: Array<{code: string}>}) => r.redenen.map(x => x.code)
@@ -190,6 +191,100 @@ describe('magAfvullingRegistreren', () => {
       ctrl(3, 'na_verstelling', 'goedgekeurd', '2026-07-25T09:50:00Z'),
     ]
     expect(magAfvullingRegistreren(sessie(1, 1, 1), controles).toegestaan).toBe(true)
+  })
+})
+
+// CCP 3 hoort bij het product dat werkelijk wordt afgevuld: het lactosebier
+// mocht als 'IPA' (zonder melk op het etiket) geregistreerd worden terwijl de
+// allergenen van 'Milkshake IPA' waren vergeleken.
+describe('magAfvullingRegistreren — etiketcontrole per product (CCP 3)', () => {
+  const start = [{id: 1, sessie_id: 1, batch_id: 1, aanleiding: 'start', resultaat: 'goedgekeurd',
+    paraaf: paraaf('2026-07-25T09:05:00Z')}] as any
+  const ec = (product_id: number, resultaat = 'goedgekeurd', extra: any = {}) =>
+    ({sessie_id: 1, product_id, resultaat, ...extra}) as any
+
+  it('blokkeert zonder etiketcontrole voor het product', () => {
+    const r = magAfvullingRegistreren(sessie(1, 1, 1), start, [], 5)
+    expect(codes(r)).toEqual(['geen_etiketcontrole_product'])
+  })
+
+  it('blokkeert bij een controle voor een ander product', () => {
+    const r = magAfvullingRegistreren(sessie(1, 1, 1), start, [ec(99)], 5)
+    expect(codes(r)).toEqual(['geen_etiketcontrole_product'])
+  })
+
+  it('blokkeert bij een controle van een andere sessie of een afkeuring zonder afwijking', () => {
+    expect(magAfvullingRegistreren(sessie(1, 1, 1), start,
+      [{...ec(5), sessie_id: 2}], 5).toegestaan).toBe(false)
+    expect(magAfvullingRegistreren(sessie(1, 1, 1), start, [ec(5, 'afgekeurd')], 5).toegestaan).toBe(false)
+  })
+
+  it('staat toe bij een goedgekeurde controle of een afwijking voor hetzelfde product', () => {
+    expect(magAfvullingRegistreren(sessie(1, 1, 1), start, [ec(5)], 5).toegestaan).toBe(true)
+    expect(magAfvullingRegistreren(sessie(1, 1, 1), start, [ec(5)], '5').toegestaan).toBe(true)
+    expect(magAfvullingRegistreren(sessie(1, 1, 1), start,
+      [ec(5, 'afgekeurd', {afwijking_id: 7})], 5).toegestaan).toBe(true)
+  })
+
+  it('houdt het oude gedrag zonder de nieuwe argumenten en zonder gekozen product', () => {
+    expect(magAfvullingRegistreren(sessie(1, 1, 1), start).toegestaan).toBe(true)
+    expect(magAfvullingRegistreren(sessie(1, 1, 1), start, [], '').toegestaan).toBe(true)
+  })
+
+  it('stelt het product van de laatste geldige etiketcontrole voor', () => {
+    const lijst = [
+      {...ec(5), paraaf: paraaf('2026-07-25T09:10:00Z')},
+      {...ec(6), paraaf: paraaf('2026-07-25T09:40:00Z')},
+      {...ec(7, 'afgekeurd'), paraaf: paraaf('2026-07-25T09:50:00Z')},
+      {...ec(8), sessie_id: 2, paraaf: paraaf('2026-07-25T10:00:00Z')},
+    ]
+    expect(productVanLaatsteEtiketcontrole(lijst, 1)).toBe(6)
+    expect(productVanLaatsteEtiketcontrole([], 1)).toBeNull()
+  })
+})
+
+describe('nieuweLotcode', () => {
+  it('neemt het volgende sessienummer van de batch', () => {
+    expect(nieuweLotcode([], {id: 1, batch_nummer: '2431'} as any))
+      .toEqual({sessie_nr: 1, lotcode: 'L2431-B1'})
+    expect(nieuweLotcode([sessie(1, 1, 1)], {id: 1, batch_nummer: '2431'} as any))
+      .toEqual({sessie_nr: 2, lotcode: 'L2431-B2'})
+  })
+
+  it('schuift door zolang de code al bestaat, ook bij een andere batch', () => {
+    // Batch 2 draagt per ongeluk hetzelfde batchnummer en heeft L2431-B1 al.
+    const bestaand = [{...sessie(9, 2, 1), lotcode: 'L2431-B1'}]
+    expect(nieuweLotcode(bestaand, {id: 1, batch_nummer: '2431'} as any))
+      .toEqual({sessie_nr: 2, lotcode: 'L2431-B2'})
+  })
+})
+
+describe('thtHandmatigBlokkade', () => {
+  it('zegt niets zolang de THT niet handmatig is', () => {
+    expect(thtHandmatigBlokkade(false, '', '', 'm9')).toBeNull()
+  })
+
+  it('vraagt altijd een reden', () => {
+    expect(thtHandmatigBlokkade(true, '2027-01-01', '  ', 'm9')).toBe('reden')
+  })
+
+  // Het gat: reden ingevuld, datum vergeten → sessie zonder THT voor een 5%-bier.
+  it('vraagt onder de alcoholgrens een datum', () => {
+    expect(thtHandmatigBlokkade(true, '', 'nieuw etiket', 'm9')).toBe('datum')
+    expect(thtHandmatigBlokkade(true, '', 'nieuw etiket', 'm3')).toBe('datum')
+  })
+
+  it('laat een lege datum toe boven de alcoholgrens', () => {
+    expect(thtHandmatigBlokkade(true, '', 'bewaaradvies', 'geen')).toBeNull()
+  })
+
+  it('weigert een ongeldige datum', () => {
+    expect(thtHandmatigBlokkade(true, 'morgen', 'nieuw etiket', 'm9')).toBe('datum')
+    expect(thtHandmatigBlokkade(true, 'morgen', 'nieuw etiket', 'geen')).toBe('datum')
+  })
+
+  it('staat toe als alles is ingevuld', () => {
+    expect(thtHandmatigBlokkade(true, '2027-03-01', 'nieuw etiket', 'm9')).toBeNull()
   })
 })
 

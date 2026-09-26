@@ -7,9 +7,10 @@ import Btn from './ui/Btn'
 import {
   WcVelden, WcCategorie, WcAfbeelding,
   bouwWcPayload, leesWcProduct, wcVerschillen, wcRegulierePrijsExcl,
-  ordenCategorieen, WC_VELD_LABEL,
+  ordenCategorieen, WC_VELD_LABEL, veiligeAfbeeldingUrl,
   WC_STATUSSEN, WC_ZICHTBAARHEDEN, WC_BACKORDERS, WC_BTW_STATUSSEN,
 } from '../utils/wcProduct'
+import Icon from './ui/Icon'
 import { BierVeld } from '../utils/bierinfo'
 import { crafteryLabel } from '../utils/craftery'
 import BierInfoForm from './BierInfoForm'
@@ -102,10 +103,12 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
 
   const zet = (patch: Partial<WcVelden>) => setV(f => ({...f, ...patch}))
 
+  // `winkel`: een prijs die lokaal niet echt gewijzigd is gaat ongewijzigd
+  // terug (utils/wcProduct → wcPrijsBehouden), anders schoof hij een cent.
   const payload = useMemo(() => bouwWcPayload({
     velden: {...v, meta: themaMeta || {}}, sku, naamFallback, omschrijvingFallback,
-    prijsExcl, btwPct, voorraad, prijzenInclBtw,
-  }), [v, themaMeta, sku, naamFallback, omschrijvingFallback, prijsExcl, btwPct, voorraad, prijzenInclBtw])
+    prijsExcl, btwPct, voorraad, prijzenInclBtw, winkel: wcProduct,
+  }), [v, themaMeta, sku, naamFallback, omschrijvingFallback, prijsExcl, btwPct, voorraad, prijzenInclBtw, wcProduct])
 
   const verschillen = useMemo(
     () => (wcProduct ? wcVerschillen(payload, wcProduct) : []),
@@ -152,7 +155,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
     try {
       const body = bouwWcPayload({
         velden: {...v, meta: themaMeta || {}}, sku, naamFallback, omschrijvingFallback,
-        prijsExcl, btwPct, voorraad, prijzenInclBtw, nieuw,
+        prijsExcl, btwPct, voorraad, prijzenInclBtw, nieuw, winkel: nieuw ? null : wcProduct,
       })
       const res = nieuw
         ? await wcPost('products', body)
@@ -390,13 +393,21 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
             {(v.afbeeldingen || []).length === 0 && (
               <div className="text-[11px] text-gray-400">{t('wc_lbl_geen_afbeeldingen')}</div>
             )}
-            {(v.afbeeldingen || []).map((a, i) => (
+            {(v.afbeeldingen || []).map((a, i) => {
+              // Geen inline <img>: de CSP (server.py `_CSP`, img-src) laat
+              // bewust geen externe afbeeldingen toe. De foto opent als link.
+              const href = veiligeAfbeeldingUrl(a.src)
+              return (
               <div key={`${a.id || a.src}-${i}`} className="flex items-center gap-2 border border-gray-200 rounded p-2">
-                {a.src
-                  ? <img src={a.src} alt={a.alt || ''} className="w-12 h-12 object-cover rounded" />
-                  : <div className="w-12 h-12 rounded bg-gray-100 flex items-center justify-center text-[10px] text-gray-400">#{a.id}</div>}
+                <div className="w-12 h-12 shrink-0 rounded bg-gray-100 flex flex-col items-center justify-center text-[10px] text-gray-400">
+                  <Icon n="image" cls="text-lg" />
+                  {!a.src && a.id ? <span>#{a.id}</span> : null}
+                </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[11px] text-gray-500 truncate">{a.naam || a.src || `#${a.id}`}</div>
+                  {href
+                    ? <a href={href} target="_blank" rel="noopener noreferrer" title={t('wc_afbeelding_openen')}
+                        className="block text-[11px] t-accent-text hover:underline truncate">{a.naam || a.src}</a>
+                    : <div className="text-[11px] text-gray-500 truncate">{a.naam || a.src || `#${a.id}`}</div>}
                   <input type="text" className={inputCls} placeholder={t('wc_ph_alt')}
                     value={a.alt || ''} onChange={e => {
                       const lijst = [...(v.afbeeldingen || [])]
@@ -412,7 +423,8 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
                   {t('btn_delete')}
                 </Btn>
               </div>
-            ))}
+              )
+            })}
             <div className="flex gap-2">
               <input type="url" className={inputCls} placeholder={t('wc_ph_afbeelding_url')}
                 value={nieuweAfb} onChange={e => setNieuweAfb(e.target.value)} />

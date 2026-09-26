@@ -443,11 +443,22 @@ export interface MetingRij {
   datum?: string | null
   tijd?: string | null
   temp?: number | string | null
+  // Absoluut tijdstip (ISO met offset) — zet de server bij elke automatische
+  // meting (_auto_metingen_tick).
+  ts?: string | null
 }
 
-// Tijdstip van een meetrij in ms. `datum` is dag-precies (YYYY-MM-DD) en
-// `tijd` HH:MM; beide lokaal, net als bij het wegschrijven door de server.
+// Tijdstip van een meetrij in ms. Spiegelt _meting_epoch in server.py.
+// `ts` gaat voor: `datum` (YYYY-MM-DD) en `tijd` (HH:MM) zijn lokale kloktijd
+// zonder offset, en in het herhaalde uur van de wintertijdwissel is die
+// dubbelzinnig — terugrekenen kiest dan het eerdere moment, zodat de laatste
+// meting een uur ouder leek ('sensor stil'). Zonder `ts` (handmatige of oude
+// rijen) datum + tijd, lokaal, net als bij het wegschrijven door de server.
 export function metingTs(m: MetingRij | null | undefined): number | null {
+  if (typeof m?.ts === 'string' && m.ts.includes('T')) {
+    const abs = new Date(m.ts).getTime()
+    if (Number.isFinite(abs)) return abs
+  }
   if (!m?.datum) return null
   const ms = new Date(`${m.datum}T${m.tijd || '00:00'}`).getTime()
   return isNaN(ms) ? null : ms

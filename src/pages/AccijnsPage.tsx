@@ -379,7 +379,7 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
                     <Btn v={nextStep[wfStatus]==='betaald'?'green':'blue'} onClick={()=>setAangifteStatus(monthKey, nextStep[wfStatus])}
                       cls={blocked ? 'opacity-50 cursor-not-allowed' : ''}>
                       {nextStep[wfStatus]==='betaald'?'✓ ':''}{t(nextLabel[wfStatus])}
-                      {blocked ? ' (reviewer akkoord vereist)' : ''}
+                      {blocked ? ` (${t('excise_reviewer_akkoord_vereist')})` : ''}
                     </Btn>
                   )
                 })()}

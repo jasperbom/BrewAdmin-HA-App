@@ -7,6 +7,7 @@
  * Alle gebruikersinput wordt escaped (XSS-veilig).
  */
 import { MailInlineImage } from './api'
+import { escapeHtml } from './template'
 
 export interface MailBrewery {
   naam?: string
@@ -29,21 +30,20 @@ const TEXT_MUTED  = '#6b7280'
 const BG_PAGE     = '#f5f5f4'
 const BORDER      = '#e5e7eb'
 
-const esc = (s: string): string => s
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
+// Eén HTML-escaper voor de hele app (utils/template.ts, getest): & < > " '.
+const esc = escapeHtml
 
 /**
  * Maakt van een kale https-link in (al ge-escapete) tekst een klikbare link.
  * Een afhaal- of track-&-trace-link in de mailtekst moet in élke mailclient
  * aanklikbaar zijn; niet alle clients herkennen een losse URL zelf. Leesteken
- * achter de link (punt, komma, haakje) hoort niet bij het adres.
+ * achter de link (punt, komma, haakje) hoort niet bij het adres — ook niet een
+ * geëscapet aanhalingsteken of haakje (`&quot;`, `&#39;`, `&gt;` …): een link
+ * tussen aanhalingstekens kreeg anders `&quot` in zijn adres.
  */
 export function linkify(escaped: string): string {
   return escaped.replace(/https?:\/\/[^\s<]+/g, (m) => {
-    const trail = /[.,;:!?)]+$/.exec(m)?.[0] || ''
+    const trail = /(?:[.,;:!?)]|&(?:quot|#39|amp|gt|lt);)+$/.exec(m)?.[0] || ''
     const url = trail ? m.slice(0, -trail.length) : m
     return `<a href="${url}" style="color:${ACCENT_DARK};" target="_blank" rel="noopener noreferrer">${url}</a>${trail}`
   })

@@ -12,11 +12,14 @@
  * bij `cancelled` de voorraad van de orderregels terug. BrewAdmin doet
  * hetzelfde zolang er nog niets is uitgeslagen: een geannuleerde order telt
  * niet meer als reservering, dus de volgende voorraadpush stijgt precies
- * zoveel als de winkel terugboekt. Is het bier al uitgeslagen (gepickt met
- * uitlevering, verzonden), dan is het fysiek weg en blijft BrewAdmin's
- * voorraad terecht lager — de winkel zou dan bier verkopen dat er niet is.
- * Daarom wordt in dat geval alléén een privé-notitie geplaatst en geen
- * status: zo'n order is in de winkel een terugbetaling, geen annulering.
+ * zoveel als de winkel terugboekt. Een gepickte maar nog niet verzonden order
+ * hoort daar ook bij: annuleren draait de picks terug (de uitleveringen
+ * vervallen, utils/uitlevering.ts → bouwPickTerugdraaiing), dus er is daarna
+ * niets meer uitgeslagen. Is het bier wél weg (verzonden, of het terugdraaien
+ * kon niet automatisch), dan blijft BrewAdmin's voorraad terecht lager — de
+ * winkel zou dan bier verkopen dat er niet is. Daarom wordt in dat geval
+ * alléén een privé-notitie geplaatst en geen status: zo'n order is in de
+ * winkel een terugbetaling, geen annulering.
  *
  * `completed` raakt de voorraad niet (die is bij `processing` al verlaagd;
  * bij een nog onbetaalde overboeking verlaagt WooCommerce hem nu alsnog, en
@@ -24,8 +27,15 @@
  * (`customer_note: false`) — de klant krijgt BrewAdmin's eigen mails, en
  * WooCommerce's "Voltooide bestelling"-mail zet je in de winkel uit.
  *
+ * Betaalstatus — `completed` op een nog onbetaalde order laat WooCommerce
+ * zelf een `date_paid` invullen. `wc_sync.onbetaald` legt vast dat de wissel
+ * van ons kwam, zodat de volgende import hem niet als ontvangen betaling
+ * terugleest (utils/wcImport → betaalVeldenNaEigenSync).
+ *
  * Bewaart zelf niets; de uitkomst komt als `wc_sync` op de bestelling.
  */
+
+import { WC_AFGEBROKEN_STATUSSEN } from './wcImport'
 
 export type WcSyncDoel = 'verzonden' | 'afgerond' | 'geannuleerd'
 export type WcOrderStatus = 'completed' | 'cancelled'
@@ -43,6 +53,8 @@ export interface WcSync {
   fout?: string | null
   /** Er is (ook) een ordernotitie geplaatst. */
   note?: boolean
+  /** BrewAdmin zette `completed` op een order die toen nog onbetaald was. */
+  onbetaald?: boolean
 }
 
 export interface WcTerugschrijfPlan {
@@ -85,6 +97,11 @@ export function wcTerugschrijfPlan(order: any, doel: WcSyncDoel, opts: WcTerugsc
   const orderId = Number(order?.wc_order_id)
   if (!Number.isFinite(orderId) || orderId <= 0) return null
 
+  // In de winkel al geannuleerd of terugbetaald (de import zag het, zie
+  // utils/wcOrderImport): niets meer te schrijven. Een `cancelled` over een
+  // terugbetaalde order heen zou de winkel bovendien voorraad laten terugboeken.
+  if (doel === 'geannuleerd' && WC_AFGEBROKEN_STATUSSEN.includes(str(order?.wc_status).toLowerCase())) return null
+
   if (doel === 'geannuleerd' && opts.uitgeslagen) {
     // Zie het kopje "Voorraad" hierboven: geen `cancelled`, alleen een notitie.
     if (order?.wc_sync?.note && order.wc_sync.status === null && !order.wc_sync.fout) return null
@@ -107,14 +124,19 @@ export function wcTerugschrijfPlan(order: any, doel: WcSyncDoel, opts: WcTerugsc
 
 export type WcTerugschrijfUitkomst = {ok: true} | {ok: false, fout: string}
 
-/** De velden die na een poging op de bestelling komen. */
-export function wcSyncVelden(plan: WcTerugschrijfPlan, uitkomst: WcTerugschrijfUitkomst, nu: string): {wc_sync: WcSync} {
+/**
+ * De velden die na een poging op de bestelling komen. Met de bestelling erbij
+ * wordt ook vastgelegd of `completed` op een nog onbetaalde order ging
+ * (`onbetaald`) — zie het kopje "Betaalstatus" hierboven.
+ */
+export function wcSyncVelden(plan: WcTerugschrijfPlan, uitkomst: WcTerugschrijfUitkomst, nu: string, order?: any): {wc_sync: WcSync} {
   return {
     wc_sync: {
       status: plan.wcStatus,
       datum: nu,
       fout: uitkomst.ok ? null : (uitkomst as {ok: false, fout: string}).fout,
       note: !!plan.note,
+      ...(order && plan.wcStatus === 'completed' && !order.wc_betaald ? {onbetaald: true} : {}),
     },
   }
 }

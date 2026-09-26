@@ -57,4 +57,16 @@ describe('bouwVerkoopUitleveringen', () => {
   it('onbekende afvulling telt als tekort', () => {
     expect(bouwVerkoopUitleveringen([pick({ afvulling_id: 99 })], {}, ctx(), 1).tekort).toBe(10)
   })
+
+  // Een vooruitgedateerde uitslag ligt op de verkoopdatum nog niet vrij. Werd
+  // hij toch meegeteld, dan zette voorraadPerLocatie de verkoop (die vóór de
+  // uitslag gesorteerd wordt) stil op nul en bleef de voorraad staan.
+  it('put niet uit een uitslag die pas na de verkoopdatum gedateerd is', () => {
+    const later = [{ id: 3, afvulling_id: 10, batch_id: 100, aantal: 24, van_locatie_id: 1, naar_locatie_id: 2, datum: '2026-09-24' }]
+    const r = bouwVerkoopUitleveringen([pick({ aantal: 24 })], {}, ctx({ verplaatsingen: later }), 1)
+    expect(r.uitleveringen).toEqual([])
+    expect(r.tekort).toBe(24)
+    // Op of na de uitslagdatum wel.
+    expect(bouwVerkoopUitleveringen([pick({ aantal: 24 })], {}, ctx({ verplaatsingen: later, datum: '2026-09-24' }), 1).tekort).toBe(0)
+  })
 })

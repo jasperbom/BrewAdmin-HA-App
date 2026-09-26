@@ -12,7 +12,7 @@ import BierInfoWeergave from '../components/BierInfoWeergave'
 import { batchSamenvatting, bierAfwijkingen } from '../utils/batchStats'
 import Sparkline from '../components/Sparkline'
 import { wcFoutMelding } from '../utils/wcFout'
-import { MerchArtikel, merchVoorraad, volgtVoorraad } from '../utils/merch'
+import { MerchArtikel, volgtVoorraad, merchGereserveerd, merchBeschikbaarVoorWc } from '../utils/merch'
 import { fmt, fmtD, tod, fmtQty } from '../utils/format'
 import { verpakkingKostenPerStuk } from '../utils/verpakkingKosten'
 import Btn from '../components/ui/Btn'
@@ -23,8 +23,13 @@ import SearchInput from '../components/ui/SearchInput'
 import VerplaatsModal from '../components/VerplaatsModal'
 import UitslagModal from '../components/UitslagModal'
 import { logAudit } from '../utils/audit'
-import { bouwVerplaatsing } from '../utils/agp'
-import { voorraadPerLocatie, getAgpLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, berekenBatchKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
+import { uploadBijlage, uploadFoutSleutel } from '../utils/bijlage'
+import { bouwVerplaatsing, valideerVerplaatsing, uitslagDatumFout, laatsteAfvulDatum, VERPLAATS_FOUT_KEYS } from '../utils/agp'
+import { rebrandMaxSplitsing, splitsAfvullingVoorRebrand } from '../utils/rebrand'
+import { agpGereserveerdPerAfvulling } from '../utils/kassa'
+import { beschikbaarVoorAfvulling as beschikbaarNaPicks, beschikbaarPerLocatieNaPicks } from '../utils/beschikbaarheid'
+import { afvullingVerkoopbaar } from '../utils/haccp'
+import { getAgpLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, berekenBatchKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
 import { bouwAfboekingAccijnsRecord } from '../utils/afboeking'
 import { standaardBtwPct } from '../utils/btw'
 import { SkuEigenaar, skuConflicten, vrijeSku, productVoorRegel } from '../utils/sku'
@@ -63,28 +68,9 @@ const REDEN_COLORS: Record<AfboekingReden, string> = {
   overig:         'text-gray-600 bg-gray-100',
 }
 
-// M-1: upload helper voor bijlagen (foto's / PDF) bij bijzondere mutaties
-const uploadBijlage = async (file: File, prefix: string): Promise<Bijlage | null> => {
-  try {
-    const ext = (file.name.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '')
-    if (!['pdf','jpg','jpeg','png','gif','webp','tiff','bmp','heic','heif'].includes(ext)) return null
-    const filename = `${prefix}_${Date.now()}_${Math.floor(Math.random()*9999)}.${ext}`
-    const b64 = await new Promise<string>((res, rej) => {
-      const reader = new FileReader()
-      reader.onload = () => res((reader.result as string).split(',')[1])
-      reader.onerror = rej
-      reader.readAsDataURL(file)
-    })
-    const resp = await fetch(`${ADDON_BASE}api/upload/${filename}`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({data: b64}),
-    })
-    if (!resp.ok) return null
-    return { naam: file.name, bestand: filename }
-  } catch { return null }
-}
+// M-1: bijlagen (foto's / PDF) bij bijzondere mutaties via utils/bijlage.ts
 
-function ProductenPage({producten, setProducten, productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], setVerplaatsingen=()=>{}, btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[]}: any) {
+function ProductenPage({producten, setProducten, ing=[], productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], setVerplaatsingen=()=>{}, btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[]}: any) {
   const {useState, useMemo, useEffect, useRef} = React;
   const [sel, setSel] = useState<number|null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -177,18 +163,10 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actieveProducten]);
 
-  // Voorraad helpers
-  const beschikbaarVoorAfvulling = (a: any): number => {
-    const gepickt = ((bestellingPicks||[]) as any[]).filter((p: any) => {
-      if (p.afvulling_id !== a.id) return false;
-      if (pickUitgeslagen(p)) return false; // uitlevering telt al mee hieronder
-      const b = ((bestellingen||[]) as any[]).find((bs: any) => bs.id === p.bestelling_id);
-      return b && b.status !== 'afgerond' && b.status !== 'geannuleerd';
-    }).reduce((s: number, p: any) => s + Number(p.aantal||0), 0);
-    const uitgeleverd = ((uit||[]) as any[]).filter((u: any) => u.afvulling_id === a.id).reduce((s: number, u: any) => s + Number(u.aantal||0), 0);
-    const afgeboekt = ((afboekingen||[]) as any[]).filter((ab: any) => ab.afvulling_id === a.id).reduce((s: number, ab: any) => s + Number(ab.aantal||0), 0);
-    return Math.max(0, Number(a.hoeveelheid||0) - gepickt - uitgeleverd - afgeboekt);
-  };
+  // Voorraad helpers — dezelfde telling als de kassa en de bestellingen
+  // (utils/beschikbaarheid.ts).
+  const voorraadData = {bestellingPicks, bestellingen, uit, afboekingen, locaties, verplaatsingen} as any;
+  const beschikbaarVoorAfvulling = (a: any): number => beschikbaarNaPicks(a, voorraadData);
 
   const gepicktVoorAfvulling = (a: any): number =>
     ((bestellingPicks||[]) as any[]).filter((p: any) => {
@@ -205,28 +183,9 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     ((afboekingen||[]) as any[]).filter((ab: any) => ab.afvulling_id === a.id).reduce((s: number, ab: any) => s + Number(ab.aantal||0), 0);
 
   // Beschikbaar per locatie voor één afvulling: fysieke voorraad per locatie
-  // (uit voorraadPerLocatie) minus de actieve picks per locatie.
-  const beschikbaarPerLocatie = (a: any): Record<number, number> => {
-    if (!a || !(locaties||[]).length) return {};
-    const fysiek = voorraadPerLocatie(a, locaties as any, uit as any, verplaatsingen as any, afboekingen as any);
-    const res: Record<number, number> = {...fysiek};
-    const agp = (locaties||[]).find((l: any) => l.is_agp) || (locaties||[])[0];
-    const agpId = agp?.id;
-    // Actieve picks op deze afvulling aftrekken op hun bron-locatie (of AGP)
-    for (const p of ((bestellingPicks||[]) as any[])) {
-      if (p.afvulling_id !== a.id) continue;
-      if (pickUitgeslagen(p)) continue; // uitlevering al verwerkt in voorraadPerLocatie
-      const b = ((bestellingen||[]) as any[]).find((bs: any) => bs.id === p.bestelling_id);
-      if (!b || b.status === 'afgerond' || b.status === 'geannuleerd') continue;
-      const locId = p.bron_locatie_id ?? agpId;
-      res[locId] = (res[locId] || 0) - Number(p.aantal || 0);
-    }
-    for (const k of Object.keys(res)) {
-      const id = Number(k);
-      if (res[id] < 0) res[id] = 0;
-    }
-    return res;
-  };
+  // (uit voorraadPerLocatie) minus de actieve picks. Een pick zonder
+  // bronlocatie legt eerst vrije voorraad vast, alleen de rest de AGP.
+  const beschikbaarPerLocatie = (a: any): Record<number, number> => beschikbaarPerLocatieNaPicks(a, voorraadData);
 
   // Zachte reserveringen uit open bestellingen (nog niet gepickt). Net als in
   // WooCommerce zelf telt een binnengekomen bestelling direct als gereserveerde
@@ -234,6 +193,13 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const openReserveringen = useMemo(
     () => openBestellingReserveringen(bestellingen || [], bestellingPicks || []),
     [bestellingen, bestellingPicks]
+  );
+  // Hetzelfde voor merch met eigen voorraad: die gaat pas bij het afronden
+  // van de order af, dus wat voor open orders klaarligt telt niet mee in de
+  // push naar de winkel (utils/merch → merchGereserveerd).
+  const merchKlaar = useMemo(
+    () => merchGereserveerd(bestellingen || [], merchArtikelen || []),
+    [bestellingen, merchArtikelen]
   );
 
   // Matcht het verpakkingstype van een bestelregel/artikel (bijv. "fles") op
@@ -384,16 +350,23 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   // + wat daarvan al voor open bestellingen gepickt is. Voer voor de
   // uitslag-modal, die zelf de juiste afvullingen kiest.
   const selAfvullingen = useMemo(() => selVoorraad.flatMap((v: any) => v.rows), [selVoorraad]);
-  const selGereserveerd = useMemo(() => {
-    const res: Record<number, number> = {};
-    for (const a of selAfvullingen) res[a.id] = gepicktVoorAfvulling(a);
-    return res;
-  }, [selAfvullingen, bestellingPicks, bestellingen]);
-  // Vrij uitslaanbare voorraad in de AGP over alle verpakkingen van dit product.
-  const agpTotaalProduct = useMemo(
-    () => selVoorraad.reduce((s: number, v: any) => s + (v.totInAgp || 0), 0),
-    [selVoorraad]
-  );
+  // Wat op de AGP voor open bestellingen vastligt — dezelfde telling als de
+  // kassa en de bestellingen. Een pick van een vrije locatie raakt de AGP niet;
+  // een pick zonder locatie alleen voor het deel dat niet vrij ligt.
+  const agpGereserveerd = useMemo(() => agpGereserveerdPerAfvulling(
+    bestellingPicks || [], bestellingen || [], getAgpLocatie(locaties as any).id,
+    {afvullingen: av || [], locaties: locaties || [], uit, verplaatsingen, afboekingen}),
+    [bestellingPicks, bestellingen, av, locaties, uit, verplaatsingen, afboekingen]);
+  const selGereserveerd = agpGereserveerd;
+  // Vrij uitslaanbare voorraad in de AGP over alle verpakkingen van dit
+  // product — zonder afvullingen die CCP 2 heeft geblokkeerd (niet uit te slaan).
+  const agpTotaalProduct = useMemo(() => {
+    const agpId = getAgpLocatie(locaties as any).id;
+    return selAfvullingen
+      .filter(afvullingVerkoopbaar)
+      .reduce((s: number, a: any) => s + Number(beschikbaarPerLocatie(a)[agpId] || 0), 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selAfvullingen, locaties, uit, verplaatsingen, afboekingen, bestellingPicks, bestellingen]);
 
   const startEdit = (product?: any) => {
     if (product) {
@@ -679,6 +652,12 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     const batch = (bat||[]).find((b: any) => b.id === invoer.batch_id);
     const naar = (locaties||[]).find((l: any) => l.id === invoer.naar_locatie_id);
     const van = (locaties||[]).find((l: any) => l.id === invoer.van_locatie_id);
+    // Tweede slot naast de modal (periode-lock, datum, voorraad).
+    const oordeel = valideerVerplaatsing(invoer, {afv, batch, locaties, uit, verplaatsingen, afboekingen, accijnsInst, accijnsAangiftes, gereserveerd: agpGereserveerd});
+    if (!oordeel.ok) {
+      alert(t(VERPLAATS_FOUT_KEYS[oordeel.fout]).replace('{n}', String(oordeel.beschikbaar)).replace('{datum}', fmtD(afv?.datum)));
+      return;
+    }
     const {nieuweVerpl, totaalAccijns} = boekVerplaatsingen([invoer], [{afv, batch}]);
     logAudit(auditLog, setAuditLog, {
       entiteit: 'Verplaatsing', entiteit_id: nieuweVerpl[0]?.id, actie: 'aangemaakt',
@@ -690,6 +669,12 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   // Uitslaan op productniveau: de modal heeft de afvullingen al gekozen
   // (oudste THT eerst); hier worden ze in één keer geboekt.
   const saveUitslag = ({allocaties, naar_locatie_id, datum, opmerking}: any) => {
+    // Tweede slot naast de modal: de gekozen datum wordt de accijnsdatum.
+    const datumFout = uitslagDatumFout(datum, allocaties, {accijnsAangiftes});
+    if (datumFout) {
+      alert(t(VERPLAATS_FOUT_KEYS[datumFout]).replace('{datum}', fmtD(laatsteAfvulDatum(allocaties))));
+      return;
+    }
     const agpId = getAgpLocatie(locaties).id;
     const naar = (locaties||[]).find((l: any) => l.id === naar_locatie_id);
     const invoerRegels = allocaties.map((alloc: any) => ({
@@ -728,9 +713,24 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   // daarmee de SKU) verandert. Volledige beschikbare voorraad zonder
   // verplichtingen → product_id in-place wijzigen (id blijft gelijk, dus geen
   // referentiebreuk); een deel → de afvulling splitsen in twee rijen.
+  //
+  // Een splitsing kan alleen uit de AGP: de nieuwe rij heeft geen eigen
+  // verplaatsingen en telt dus volledig als AGP-voorraad. Wat al is
+  // uitgeslagen blijft bij het origineel, anders staat veraccijnsd bier weer
+  // "in de AGP" en krijgt het bij de volgende uitslag nóg eens accijns.
+  const rebrandSplitsMax = (a: any): number => {
+    const agpId = getAgpLocatie(locaties as any).id;
+    const gereserveerdAgp = Number(agpGereserveerdPerAfvulling(bestellingPicks || [], bestellingen || [], agpId,
+      {afvullingen: [a], locaties, uit, verplaatsingen, afboekingen})[a.id] || 0);
+    return rebrandMaxSplitsing(a, {locaties, uit, verplaatsingen, afboekingen},
+      {beschikbaar: beschikbaarVoorAfvulling(a), gereserveerdAgp});
+  };
+
   const openRebrandModal = (a: any, e: React.MouseEvent) => {
     e.stopPropagation();
-    setRebrandForm({aantal: String(beschikbaarVoorAfvulling(a)), product_id: '', opmerking: '', toonNieuwProduct: false, nieuwProductNaam: ''});
+    const beschikbaar = beschikbaarVoorAfvulling(a);
+    const standaard = beschikbaar === Number(a.hoeveelheid||0) ? beschikbaar : rebrandSplitsMax(a);
+    setRebrandForm({aantal: String(standaard), product_id: '', opmerking: '', toonNieuwProduct: false, nieuwProductNaam: ''});
     setRebrandError('');
     setRebrandModal(a);
   };
@@ -752,6 +752,10 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     const max = beschikbaarVoorAfvulling(a);
     if (aantal > max) { setRebrandError(t('err_afboeking_max_available').replace('{max}', String(max)).replace('{unit}', t('unit_stuks'))); return; }
     const totaal = Number(a.hoeveelheid||0);
+    if (!(aantal === totaal && max === totaal)) {
+      const splitsMax = rebrandSplitsMax(a);
+      if (aantal > splitsMax) { setRebrandError(t('err_rebrand_alleen_agp').replace('{max}', String(splitsMax))); return; }
+    }
     const vanProduct = (producten||[]).find((p: any) => p.id === huidigId);
     const doelProduct = (producten||[]).find((p: any) => p.id === doelId);
     // SKU van het doelproduct voor deze verpakking (zelfde matching als bij
@@ -761,7 +765,6 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       (!a.verpakking_id && pa.verpakking_type && vpTypeMatch(pa.verpakking_type, a.verpakking_type))
     ));
     const nieuweSku = pArt?.artikelnummer || null;
-    const perEenheid = Number(a.voorcalc_accijns_per_eenheid) || 0;
     const rebrandVelden: any = {
       rebrand_van_afvulling_id: a.id,
       rebrand_datum: tod(),
@@ -776,31 +779,18 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         ? {...x, product_id: doelId, artikel_sku: nieuweSku, ...rebrandVelden}
         : x));
     } else {
-      // Deelrebrand: splitsen. Origineel krimpt (nooit onder de al vastgelegde
-      // picks/uitleveringen/afboekingen dankzij de max-check hierboven); de
-      // nieuwe rij erft alle verpakkings- en accijnsgegevens van de bron.
-      nieuwId = newId(av||[]);
-      const rest = totaal - aantal;
-      setAv((prev: any[]) => [
-        ...(prev||[]).map((x: any) => x.id === a.id
-          ? {
-              ...x,
-              hoeveelheid: rest,
-              ...(x.aantal !== undefined ? {aantal: rest} : {}),
-              ...(perEenheid > 0 ? {voorcalc_accijns_totaal: perEenheid * rest} : {}),
-            }
-          : x),
-        {
-          ...a,
-          id: nieuwId,
-          product_id: doelId,
-          artikel_sku: nieuweSku,
-          hoeveelheid: aantal,
-          ...(a.aantal !== undefined ? {aantal} : {}),
-          ...(perEenheid > 0 ? {voorcalc_accijns_totaal: perEenheid * aantal} : {}),
-          ...rebrandVelden,
-        },
-      ]);
+      // Deelrebrand: splitsen, alleen uit de AGP (rebrandSplitsMax hierboven).
+      // Origineel krimpt (nooit onder de al vastgelegde picks/uitleveringen/
+      // afboekingen of de al uitgeslagen voorraad); de nieuwe rij erft alle
+      // verpakkings- en accijnsgegevens van de bron.
+      const splitsId = newId(av||[]);
+      nieuwId = splitsId;
+      setAv((prev: any[]) => {
+        const bron = (prev||[]).find((x: any) => x.id === a.id) || a;
+        const {origineel, nieuw} = splitsAfvullingVoorRebrand(bron, aantal, splitsId,
+          {product_id: doelId, artikel_sku: nieuweSku}, rebrandVelden);
+        return [...(prev||[]).map((x: any) => x.id === a.id ? origineel : x), nieuw];
+      });
     }
     // Koppel de batch óók aan het doelproduct (extra product_ids). Zo verschijnt
     // de batch onder dat product en telt de kostprijs — die naar afgevuld volume
@@ -854,11 +844,14 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     if (!files || files.length === 0) return;
     setAfboekUploading(true);
     const nieuwe: Bijlage[] = [];
+    let fout = '';
     for (let i = 0; i < files.length; i++) {
-      const b = await uploadBijlage(files[i], 'afboek');
-      if (b) nieuwe.push({...b, rol, geupload_op: new Date().toISOString()});
+      const u = await uploadBijlage(files[i], 'afboek');
+      if (u.ok && u.bijlage) nieuwe.push({...u.bijlage, rol, geupload_op: new Date().toISOString()});
+      else fout = t(uploadFoutSleutel(u.status)).replace('{naam}', u.naam);
     }
     if (nieuwe.length > 0) setAfboekForm(f => ({...f, bijlagen: [...(f.bijlagen||[]), ...nieuwe]}));
+    setAfboekError(fout);
     setAfboekUploading(false);
   };
 
@@ -866,11 +859,14 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     if (!files || files.length === 0) return;
     setVernietigReviewUploading(true);
     const nieuwe: Bijlage[] = [];
+    let fout = '';
     for (let i = 0; i < files.length; i++) {
-      const b = await uploadBijlage(files[i], 'afboek');
-      if (b) nieuwe.push({...b, rol: 'bewijs', geupload_op: new Date().toISOString()});
+      const u = await uploadBijlage(files[i], 'afboek');
+      if (u.ok && u.bijlage) nieuwe.push({...u.bijlage, rol: 'bewijs', geupload_op: new Date().toISOString()});
+      else fout = t(uploadFoutSleutel(u.status)).replace('{naam}', u.naam);
     }
     if (nieuwe.length > 0) setVernietigReviewForm(f => ({...f, bewijsBijlagen: [...(f.bewijsBijlagen||[]), ...nieuwe]}));
+    setVernietigReviewError(fout);
     setVernietigReviewUploading(false);
   };
 
@@ -893,7 +889,9 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const doAfboeken = () => {
     const aantal = Number(afboekForm.aantal);
     if (!afboekForm.opmerking.trim()) { setAfboekError(t('err_afboeking_opmerking_required')); return; }
-    if (!aantal || aantal === 0) { setAfboekError(t('err_afboeking_aantal_min')); return; }
+    // Minimaal 1: een bijboeking (negatief aantal) loopt alleen via de
+    // inventarisatie, waar een geteld overschot wordt vastgelegd.
+    if (!aantal || aantal < 1 || !Number.isInteger(aantal)) { setAfboekError(t('err_afboeking_aantal_min')); return; }
     const bronLocId = afboekForm.bron_locatie_id === '' ? undefined : Number(afboekForm.bron_locatie_id);
     if (aantal > 0) {
       // Toets op de gekozen locatie: je kunt geen flesjes afboeken op een plek
@@ -986,7 +984,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const markVernietigingToegestaan = () => {
     if (!vernietigReviewModal) return;
     if (!vernietigReviewForm.toestemming_ontvangen_op) {
-      setVernietigReviewError('Datum waarop toestemming Douane is ontvangen is verplicht.'); return;
+      setVernietigReviewError(t('verlies_vern_err_datum_toestemming')); return;
     }
     const upd: any = {
       vernietiging_status: 'toegestaan',
@@ -1008,11 +1006,11 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   const markVernietigingUitgevoerd = () => {
     if (!vernietigReviewModal) return;
     if (!vernietigReviewForm.uitgevoerd_op) {
-      setVernietigReviewError('Uitvoeringsdatum is verplicht.'); return;
+      setVernietigReviewError(t('verlies_vern_err_datum_uitvoering')); return;
     }
     const bewijs = vernietigReviewForm.bewijsBijlagen || [];
     if (bewijs.length === 0) {
-      setVernietigReviewError('Upload minstens 1 bewijsstuk (foto/video) van de uitvoering.'); return;
+      setVernietigReviewError(t('verlies_vern_err_bewijs')); return;
     }
     const upd: any = {
       vernietiging_status: 'uitgevoerd',
@@ -1063,7 +1061,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
     const fysiek = (av||[]).filter((a: any) => {
       // Geblokkeerd na een afgekeurde sluitcontrole (CCP 2) mag nooit in de
       // webshop te koop staan.
-      if (a.geblokkeerd) return false;
+      if (!afvullingVerkoopbaar(a)) return false;
       // Tier 1: afvulling met artikel-SKU matcht uitsluitend op die SKU
       if (a.artikel_sku) return a.artikel_sku === art.artikelnummer;
       // Tier 2: product op de afvulling zelf
@@ -1115,7 +1113,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
   /** Alles wat de app zelf afleidt voor dit product/artikel. */
   const afgeleidVoor = (prod: any, a?: any) => afgeleideBierInfo({
     product: prod, inhoudLiter: a ? inhoudVanArtikel(a) : undefined,
-    recepten: receptenVoorProduct(prod),
+    recepten: receptenVoorProduct(prod), ingredienten: ing,
   });
 
   // Sla de WooCommerce-productkaart van één artikel op.
@@ -1141,7 +1139,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       bierInfo: bierInfoVoorArtikel({
         product: prod, artikel: a,
         inhoudLiter: vp?.inhoud_liter ?? a.inhoud_liter,
-        recepten: receptenVoorProduct(prod),
+        recepten: receptenVoorProduct(prod), ingredienten: ing,
       }),
     };
   };
@@ -1158,7 +1156,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         // De bierinformatie, vertaald naar de velden van het webshopthema.
         _themaMeta: themaAan ? crafteryMeta({
           product: prod, artikel: pa,
-          inhoudLiter: inhoudVanArtikel(pa), recepten: receptenVoorProduct(prod),
+          inhoudLiter: inhoudVanArtikel(pa), recepten: receptenVoorProduct(prod), ingredienten: ing,
         }) : null,
         _pa: true,
       };
@@ -1197,8 +1195,9 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
       for (const art of combis) {
         const naam = (art._merch ? String(art.biernaam || '') : `${art.biernaam} ${art.verpakking_type}`).trim();
         // Merch mag negatief staan (waarschuwing, geen blokkade); WooCommerce
-        // wil geen negatieve voorraad, dus daar wordt nul gepusht.
-        const beschikbaar = art._merch ? Math.max(0, merchVoorraad(art)) : wcBeschikbaarVoorArt(art);
+        // wil geen negatieve voorraad, dus daar wordt nul gepusht. Wat voor
+        // open orders klaarligt gaat eraf, net als bij bier (utils/merch).
+        const beschikbaar = art._merch ? merchBeschikbaarVoorWc(art, merchKlaar) : wcBeschikbaarVoorArt(art);
         addWcLog('debug', `${naam} → ${beschikbaar}×`, '');
         try {
           const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
@@ -1216,6 +1215,8 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                 naamFallback: naam, omschrijvingFallback: art._omschrijving,
                 prijsExcl: art.verkoopprijs, btwPct: art.btw_pct,
                 voorraad: beschikbaar, prijzenInclBtw: wcPrijzenInclBtw,
+                // Ongewijzigde prijzen gaan ongewijzigd terug (geen centverschuiving).
+                winkel: prods[0],
               })
             : {stock_quantity: beschikbaar, manage_stock: true};
           await wcPut(`products/${prods[0].id}`, body);
@@ -1247,7 +1248,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         setWcSyncMsg(`✓ ${pushMsg}`);
         addWcLog('push', `↑ ${pushMsg}`,
           combis.filter((a: any) => a.artikelnummer).map((a: any) =>
-            `${a.biernaam} ${a.verpakking_type || ''}`.trim() + `: ${a._merch ? Math.max(0, merchVoorraad(a)) : wcBeschikbaarVoorArt(a)}×`).join(', '));
+            `${a.biernaam} ${a.verpakking_type || ''}`.trim() + `: ${a._merch ? merchBeschikbaarVoorWc(a, merchKlaar) : wcBeschikbaarVoorArt(a)}×`).join(', '));
       }
     } catch(e: any) {
       const melding = wcFoutMelding(e, t);
@@ -1571,7 +1572,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                   velden={bierProductVelden}
                   waarden={form}
                   onChange={(veld, waarde) => setForm((f: any) => ({...f, [veld]: waarde}))}
-                  placeholders={afgeleideBierInfo({product: form, recepten: receptenVoorProduct(form)})}
+                  placeholders={afgeleideBierInfo({product: form, recepten: receptenVoorProduct(form), ingredienten: ing})}
                 />
               </div>
 
@@ -1628,7 +1629,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     smaakprofiel, de specs en de tekstblokken. Meteen zichtbaar
                     — bewerken doe je met de knop rechtsboven. */}
                 <div className="mt-4">
-                  <BierInfoWeergave info={bierInfoVoorArtikel({product: selProduct, recepten: selRecepten})} />
+                  <BierInfoWeergave info={bierInfoVoorArtikel({product: selProduct, recepten: selRecepten, ingredienten: ing})} />
                 </div>
                 {bierProductVelden.every((f: any) => {
                   const w = selProduct[f.veld];
@@ -2399,7 +2400,10 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                     }
                     const ts = LOG_TYPE_STYLES[l.type] || {icon: '•', cls: 'text-gray-600 bg-gray-100', label: l.type};
                     const qty = l.hoeveelheid != null
-                      ? `${l.type === 'afboeking' || l.type === 'verkoop' ? '−' : '+'}${fmtQty(Math.abs(Number(l.hoeveelheid)))} ${l.eenheid || t('unit_stuks')}`
+                      // Uitgaand (afboeking/verkoop) is een min — behalve een
+                      // tegenregel met negatieve hoeveelheid (teruggedraaide
+                      // pick): die komt juist terug in de voorraad.
+                      ? `${(l.type === 'afboeking' || l.type === 'verkoop') && Number(l.hoeveelheid) >= 0 ? '−' : '+'}${fmtQty(Math.abs(Number(l.hoeveelheid)))} ${l.eenheid || t('unit_stuks')}`
                       : '—';
                     return (
                       <tr key={`v-${l.id}`} className="hover:bg-gray-50">
@@ -2440,6 +2444,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
               artikel: wcModalArt,
               inhoudLiter: inhoudVanArtikel(wcModalArt),
               recepten: receptenVoorProduct((producten||[]).find((p: any) => p.id === wcModalArt.product_id)),
+              ingredienten: ing,
             }) : null}
             onLog={addWcLog}
             onOpslaan={(velden) => bewaarWcVelden(wcModalArt.id, velden)}
@@ -2455,7 +2460,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
           batch={(bat||[]).find((b: any) => b.id === verplaatsModal.afv.batch_id)}
           naam={selProduct?.naam || t('lbl_onbekend')}
           vanLocatieId={verplaatsModal.vanLocatieId}
-          ctx={{locaties, uit, verplaatsingen, afboekingen, accijnsInst}}
+          ctx={{locaties, uit, verplaatsingen, afboekingen, accijnsInst, accijnsAangiftes, gereserveerd: agpGereserveerd}}
           onClose={() => setVerplaatsModal(null)}
           onOpslaan={saveVerplaats}
         />
@@ -2471,6 +2476,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
           verplaatsingen={verplaatsingen}
           afboekingen={afboekingen}
           accijnsInst={accijnsInst}
+          accijnsAangiftes={accijnsAangiftes}
           gereserveerd={selGereserveerd}
           onClose={() => setUitslagOpen(false)}
           onOpslaan={saveUitslag}
@@ -2516,7 +2522,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t('lbl_quantity')} <span className="text-red-400">*</span></label>
-                <input type="number" value={afboekForm.aantal} onChange={e => { setAfboekForm(f => ({...f, aantal: e.target.value})); setAfboekError(''); }} placeholder="1"
+                <input type="number" min={1} value={afboekForm.aantal} onChange={e => { setAfboekForm(f => ({...f, aantal: e.target.value})); setAfboekError(''); }} placeholder="1"
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
               </div>
               <div>
@@ -2600,7 +2606,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                         <li key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1 text-xs">
                           <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 truncate">
                             <Icon n="paperclip" /> <span className="truncate">{b.naam}</span>
-                            {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? 'verklaring' : 'bewijs'}</span>}
+                            {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? t('verlies_vern_rol_verklaring') : t('verlies_vern_rol_bewijs')}</span>}
                           </a>
                           <button onClick={() => doAfboekRemoveBijlage(i)} className="text-gray-400 hover:text-red-500 ml-2" title={t('btn_remove_bijlage')}>✕</button>
                         </li>
@@ -2630,6 +2636,9 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         const huidigProduct = (producten||[]).find((p: any) => p.id === huidigId);
         const aantalNum = Number(rebrandForm.aantal);
         const wordtSplitsing = !(aantalNum === totaal && beschikbaar === totaal);
+        // Afsplitsen kan alleen uit de AGP; ligt er al iets uitgeslagen, dan
+        // is het maximum voor een splitsing lager dan wat er beschikbaar is.
+        const splitsMax = rebrandSplitsMax(a);
         const doelKandidaten = (producten||[])
           .filter((p: any) => p.status !== 'gearchiveerd' && p.id !== huidigId)
           .sort((x: any, y: any) => (x.naam||'').localeCompare(y.naam||''));
@@ -2693,6 +2702,9 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                   onChange={e => { setRebrandForm(f => ({...f, aantal: e.target.value})); setRebrandError(''); }}
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm t-input" />
                 <p className="text-xs text-gray-400 mt-1">{t('err_afboeking_max_available').replace('{max}', String(beschikbaar)).replace('{unit}', t('unit_stuks'))}</p>
+                {splitsMax < beschikbaar && (
+                  <p className="text-xs text-orange-700 mt-1">{t('err_rebrand_alleen_agp').replace('{max}', String(splitsMax))}</p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_datum')}</label>
@@ -2708,7 +2720,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm t-input resize-none" />
             </div>
 
-            {aantalNum >= 1 && aantalNum <= beschikbaar && (
+            {aantalNum >= 1 && aantalNum <= (wordtSplitsing ? splitsMax : beschikbaar) && (
               <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
                 {wordtSplitsing
                   ? t('info_rebrand_splitsing').replace('{n}', String(aantalNum)).replace('{rest}', String(totaal - aantalNum))
@@ -2733,24 +2745,24 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
         const naarToegestaan = status === 'aangevraagd';
         const naarUitgevoerd = status === 'toegestaan';
         return (
-          <Modal title={`Vernietiging — ${VERNIETIGING_STATUS_LABEL[status]} → ${naarToegestaan ? 'Toegestaan' : 'Uitgevoerd'}`} onClose={() => setVernietigReviewModal(null)}>
+          <Modal title={`${t('verlies_vern_review_titel')} — ${t(VERNIETIGING_STATUS_LABEL[status])} → ${naarToegestaan ? t('verlies_vern_status_toegestaan') : t('verlies_vern_status_uitgevoerd')}`} onClose={() => setVernietigReviewModal(null)}>
             <div className="space-y-4">
               <div className="bg-gray-50 rounded-lg px-4 py-2 text-sm text-gray-700 space-y-1">
-                <div><strong>Aantal:</strong> {ab.aantal}× &nbsp; <strong>Reden:</strong> {ab.opmerking || '—'}</div>
+                <div><strong>{t('agp_aantal')}:</strong> {ab.aantal}× &nbsp; <strong>{t('lbl_reden')}:</strong> {ab.opmerking || '—'}</div>
                 <div className="text-xs text-gray-500">
-                  Verklaring ingediend: {ab.verklaring_ingediend_op ? fmtD(ab.verklaring_ingediend_op) : '—'}
-                  {ab.toestemming_ontvangen_op && <> · Toestemming ontvangen: {fmtD(ab.toestemming_ontvangen_op)}</>}
-                  {ab.kenmerk_douane && <> · Kenmerk: {ab.kenmerk_douane}</>}
+                  {t('verlies_vern_verklaring_ingediend')}: {ab.verklaring_ingediend_op ? fmtD(ab.verklaring_ingediend_op) : '—'}
+                  {ab.toestemming_ontvangen_op && <> · {t('verlies_vern_toestemming_ontvangen')}: {fmtD(ab.toestemming_ontvangen_op)}</>}
+                  {ab.kenmerk_douane && <> · {t('verlies_vern_kenmerk')}: {ab.kenmerk_douane}</>}
                 </div>
                 {Number(ab.voorcalc_accijns_totaal||0) > 0 && (
-                  <div className="text-xs t-accent-text">Potentiële accijnsschuld onder schorsing: € {Number(ab.voorcalc_accijns_totaal).toFixed(2)} — vervalt bij correct uitgevoerde vernietiging.</div>
+                  <div className="text-xs t-accent-text">{t('verlies_vern_accijns_potentieel').replace('{bedrag}', fmt(ab.voorcalc_accijns_totaal))}</div>
                 )}
                 {(ab.bijlagen||[]).length > 0 && (
                   <ul className="mt-1 space-y-0.5">
                     {(ab.bijlagen||[]).map((b: Bijlage, i: number) => (
                       <li key={i} className="text-xs">
                         <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline"><Icon n="paperclip" /> {b.naam}</a>
-                        {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? 'verklaring' : 'bewijs'}</span>}
+                        {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? t('verlies_vern_rol_verklaring') : t('verlies_vern_rol_bewijs')}</span>}
                       </li>
                     ))}
                   </ul>
@@ -2805,7 +2817,7 @@ function ProductenPage({producten, setProducten, productArtikelen, setProductArt
                           <li key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1 text-xs">
                             <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 truncate">
                               <Icon n="paperclip" /> <span className="truncate">{b.naam}</span>
-                              <span className="ml-2 px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px] uppercase tracking-wide">bewijs</span>
+                              <span className="ml-2 px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px] uppercase tracking-wide">{t('verlies_vern_rol_bewijs')}</span>
                             </a>
                             <button onClick={() => doVernietigBewijsRemove(i)} className="text-gray-400 hover:text-red-500 ml-2">✕</button>
                           </li>

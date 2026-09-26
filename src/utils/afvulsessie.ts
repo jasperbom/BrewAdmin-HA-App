@@ -11,8 +11,8 @@
 import type {
   AfvulSessie, Batch, HaccpInst, HaccpVrijgave, SluitControle, ThtKlasse,
 } from '../types'
-import type { BlokkadeReden, BlokkadeResultaat, RisicoResultaat } from './haccp'
-import { haccpInst, magAfvullen } from './haccp'
+import type { BlokkadeReden, BlokkadeResultaat, EtiketDekking, RisicoResultaat } from './haccp'
+import { etiketDektProduct, haccpInst, magAfvullen } from './haccp'
 
 const blokkade = (redenen: BlokkadeReden[]): BlokkadeResultaat =>
   ({toegestaan: redenen.length === 0, redenen})
@@ -41,6 +41,27 @@ export const lotcodeVoorSessie = (
 
 export const lotcodeIsUniek = (code: string, sessies: AfvulSessie[]): boolean =>
   !(sessies || []).some(s => s.lotcode === code)
+
+/** Sessienummer en lotcode voor een nieuwe sessie van deze batch: het
+ *  volgende nummer, opgehoogd tot de code nergens anders voorkomt (ook niet
+ *  bij een andere batch met hetzelfde batchnummer). Eén plek voor het starten
+ *  van een sessie, het achteraf vastleggen en de voorvertoning in het
+ *  formulier. Uniek tegen de stand die je meegeeft — dat de code óók op de
+ *  server uniek is, bewaakt de server zelf (een tweede apparaat met een oude
+ *  stand kiest anders hetzelfde nummer). */
+export const nieuweLotcode = (
+  sessies: AfvulSessie[] | null | undefined,
+  batch: Pick<Batch, 'id' | 'batch_nummer'>,
+): {sessie_nr: number; lotcode: string} => {
+  const lijst = sessies || []
+  let nr = volgendSessieNr(lijst, batch.id)
+  let code = lotcodeVoorSessie(batch, nr)
+  while (!lotcodeIsUniek(code, lijst)) {
+    nr += 1
+    code = lotcodeVoorSessie(batch, nr)
+  }
+  return {sessie_nr: nr, lotcode: code}
+}
 
 // ── Houdbaarheidsdatum (handboek §3.3) ──────────────────────────────────────
 
@@ -105,6 +126,27 @@ export const berekenTht = (
   return {tht: tht || null, maanden, klasse}
 }
 
+/** Een handmatige THT overschrijft de berekening, maar schakelt de THT-plicht
+ *  niet uit: onder de alcoholgrens (klasse ≠ 'geen') is een geldige datum
+ *  verplicht, anders start de sessie zonder THT en erven alle afvullingen dat.
+ *  Een reden is altijd verplicht. Geeft terug wat er ontbreekt, of null. */
+export const thtHandmatigBlokkade = (
+  handmatig: boolean,
+  datum: string | null | undefined,
+  reden: string | null | undefined,
+  klasse: ThtKlasse,
+): 'reden' | 'datum' | null => {
+  if (!handmatig) return null
+  if (!String(reden || '').trim()) return 'reden'
+  const d = String(datum || '').trim()
+  if (d) {
+    // Een ingevulde datum moet een echte datum zijn, ook boven de grens.
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(new Date(`${d}T00:00:00`).getTime())
+      ? null : 'datum'
+  }
+  return klasse === 'geen' ? null : 'datum'
+}
+
 // ── Blokkades rond de sessie ────────────────────────────────────────────────
 
 /** Alle lopende sessies van een batch. Eén tank gaat vaak in twee verpakkingen
@@ -158,10 +200,18 @@ export const magSessieStarten = (
 }
 
 /** Afvullen mag alleen binnen een open sessie waarvan de startcontrole is
- *  gedaan en waarin geen afkeuring openstaat. */
+ *  gedaan en waarin geen afkeuring openstaat.
+ *
+ *  Met `etiketcontroles` erbij geldt ook CCP 3: het product dat je afvult moet
+ *  in deze sessie een goedgekeurde etiketcontrole hebben (of een met een
+ *  vastgelegde afwijking). Anders kon je flessen als 'IPA' registreren terwijl
+ *  de allergenen van 'Milkshake IPA' waren vergeleken. Zolang er nog geen
+ *  product gekozen is, zegt deze toets niets — dat vraagt het formulier zelf. */
 export const magAfvullingRegistreren = (
   sessie: AfvulSessie | null,
-  controles: SluitControle[]
+  controles: SluitControle[],
+  etiketcontroles?: EtiketDekking[] | null,
+  productId?: number | string | null,
 ): BlokkadeResultaat => {
   if (!sessie) {
     return blokkade([{code: 'geen_open_sessie', i18nKey: 'haccp_blok_geen_open_sessie'}])
@@ -176,7 +226,24 @@ export const magAfvullingRegistreren = (
   if (laatste.length && laatste[laatste.length - 1].resultaat === 'afgekeurd') {
     redenen.push({code: 'open_afkeur', i18nKey: 'haccp_blok_open_afkeur_afvullen'})
   }
+  if (etiketcontroles && productId != null && productId !== ''
+      && !etiketDektProduct(etiketcontroles, sessie.id, productId)) {
+    redenen.push({code: 'geen_etiketcontrole_product', i18nKey: 'haccp_blok_geen_etiketcontrole_product'})
+  }
   return blokkade(redenen)
+}
+
+/** Het product van de laatste etiketcontrole in deze sessie die het afvullen
+ *  toestaat — het voor de hand liggende product voor de volgende afvulling. */
+export const productVanLaatsteEtiketcontrole = (
+  etiketcontroles: Array<EtiketDekking & {paraaf?: {tijdstip?: string}}> | null | undefined,
+  sessieId: number,
+): number | null => {
+  const geldig = (etiketcontroles || [])
+    .filter(e => !!e && e.sessie_id === sessieId && !!Number(e.product_id)
+      && (e.resultaat === 'goedgekeurd' || e.afwijking_id != null))
+    .sort((a, b) => String(a.paraaf?.tijdstip || '').localeCompare(String(b.paraaf?.tijdstip || '')))
+  return geldig.length ? Number(geldig[geldig.length - 1].product_id) : null
 }
 
 // ── Dekking van de sluitcontroles (handboek §9.2) ───────────────────────────

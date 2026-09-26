@@ -57,6 +57,84 @@ export const findKlantVoorOrder = (order: any, klanten: any[] = []): any | null 
   return null
 }
 
+/** Orderstatussen waarin de klantgegevens op de order nog met de klantkaart
+ * meelopen. Een verzonden, afgeronde of geannuleerde order houdt zijn
+ * snapshot: die staat al op een uitgegeven pakbon of factuur en is de enige
+ * vastlegging van wat de klant destijds opgaf. */
+export const KLANT_SYNC_STATUSSEN: readonly string[] = ['nieuw', 'bevestigd', 'gepickt']
+
+/** Wat de klantkaart die opgeslagen wordt meebrengt voor het auto-koppelen. */
+export interface KlantKoppelBijOpslaan {
+  /** Id van de kaart; `null` bij een nieuwe kaart die nog geen id heeft. */
+  klantId: number | null
+  /** E-mailadres zoals het na opslaan op de kaart staat. */
+  email?: string | null
+  /** E-mailadres van vóór de wijziging (bij bewerken). */
+  oudEmail?: string | null
+  /** Naam zoals het na opslaan op de kaart staat. */
+  naam?: string | null
+  /** Groepssleutel van de synthetische klantrij ("Uit bestelling"). */
+  synthKey?: string | null
+}
+
+const kleineLetters = (v: unknown): string => (v ?? '').toString().trim().toLowerCase()
+
+/** Sleutel waarop de klantenlijst ongekoppelde orders groepeert: e-mail
+ * (kleine letters), anders de naam. Gelijk aan de synthetische klantrijen. */
+export const synthKlantSleutel = (b: any): string =>
+  (b?.klant_email || '').toString().toLowerCase() || kleineLetters(b?.klant_naam)
+
+/**
+ * Welke nog ongekoppelde bestellingen koppelt het opslaan van een klantkaart
+ * vanzelf? Op het (nieuwe of vorige) e-mailadres en op de synthetische rij
+ * waaruit de kaart is gemaakt — en op exact dezelfde naam, maar alleen als er
+ * na het opslaan precies één kaart met die naam is en het e-mailadres van de
+ * order niet bij een andere kaart hoort. Dat is dezelfde regel als
+ * `findKlantVoorOrder`: bij naamgenoten koppelt de app nooit uit zichzelf
+ * (de koppelknop op de klantkaart vraagt het dan wel).
+ */
+export function ordersTeKoppelenBijOpslaan(
+  bestellingen: any[] | null | undefined,
+  klanten: any[] | null | undefined,
+  kaart: KlantKoppelBijOpslaan,
+): any[] {
+  const email = kleineLetters(kaart.email)
+  const oud = kleineLetters(kaart.oudEmail)
+  const naam = kleineLetters(kaart.naam)
+  const synth = (kaart.synthKey ?? '').toString()
+  const anderen = (klanten || []).filter((k: any) => k && (kaart.klantId == null || k.id !== kaart.klantId))
+  const naamUniek = !!naam && !anderen.some((k: any) => kleineLetters(k.naam) === naam)
+  return (bestellingen || []).filter((b: any) => {
+    if (!b || b.klant_id != null) return false
+    const be = kleineLetters(b.klant_email)
+    if (email && be === email) return true
+    if (oud && oud !== email && be === oud) return true
+    if (synth && synthKlantSleutel(b) === synth) return true
+    if (naamUniek && kleineLetters(b.klant_naam) === naam) {
+      // Het e-mailadres van de order hoort bij een andere kaart: dáár hoort hij.
+      return !(be && anderen.some((k: any) => kleineLetters(k.email) === be))
+    }
+    return false
+  })
+}
+
+/**
+ * Koppel een order aan een klantkaart. `klant_id` gaat altijd mee; de
+ * klantgegevens van de kaart (`snap`) alleen zolang de order nog open is
+ * (`KLANT_SYNC_STATUSSEN`). Een verzonden of afgeronde order houdt wat er op
+ * zijn pakbon en factuur staat — nieuwe documenten volgen de kaart toch al via
+ * `resolveKlantSnapshot`.
+ */
+export function koppelOrderAanKlant<T extends Record<string, any>>(
+  b: T,
+  snap: Record<string, unknown>,
+  klantId: number,
+): T & {klant_id: number} {
+  return KLANT_SYNC_STATUSSEN.includes(String(b?.status))
+    ? {...b, ...snap, klant_id: klantId}
+    : {...b, klant_id: klantId}
+}
+
 /** Geeft een nieuwe snapshot waarin alle `klant_*`-velden zijn overschreven
  * met de actuele waarden van de gekoppelde klantkaart (gevonden via
  * `findLiveKlant`). Alleen niet-lege live waarden winnen; ontbrekende

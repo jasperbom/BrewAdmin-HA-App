@@ -93,7 +93,9 @@ export function bouwVerkoopUitleveringen(
     const batch: any = (ctx.batches || []).find(b => b.id === pick.batch_id)
     const inhoud = Number(afv.inhoud_per_eenheid || 0)
     pickResult[pick.id] = { uitlevering_ids: [], accijns_ids: [] }
-    const voorraad = voorraadPerLocatie(afv, ctx.locaties, lokaal, ctx.verplaatsingen || [], ctx.afboekingen || [])
+    // Stand op de verkoopdatum: bier dat pas later (vooruitgedateerd) wordt
+    // uitgeslagen, ligt er vandaag nog niet en kan dus niet verkocht worden.
+    const voorraad = voorraadPerLocatie(afv, ctx.locaties, lokaal, ctx.verplaatsingen || [], ctx.afboekingen || [], ctx.datum)
     let rest = Number(pick.aantal || 0)
     for (const locId of locatieVolgorde(pick, voorraad, ctx.locaties, agpId, agpToegestaan)) {
       if (rest <= 0) break
@@ -132,4 +134,94 @@ export function bouwVerkoopUitleveringen(
     tekort += rest
   }
   return { uitleveringen, pickResult, tekort }
+}
+
+// ── Picks terugdraaien ──────────────────────────────────────────────────────
+// Een volledig gepickte bestelling heeft haar uitleveringen al: het bier telt
+// vanaf dat moment als verkocht (voorraad, traceerbaarheid, COGS). Wordt zo'n
+// order vóór verzending geannuleerd, of klopt de pick niet, dan ligt het bier
+// nog gewoon in de brouwerij. Alleen de status omzetten liet de uitleveringen
+// staan: de voorraad bleef te laag en de klant stond als afnemer van het lot
+// in het recall-overzicht. En opnieuw picken maakte er een tweede uitlevering
+// bij, terwijl de eerste zonder pick achterbleef.
+
+/** Minimale vorm van een pick voor het terugdraaien. */
+export interface PickKoppeling {
+  bestelling_id: number
+  uitlevering_id?: number | null
+  uitlevering_ids?: number[] | null
+  accijns_id?: number | null
+  accijns_ids?: number[] | null
+}
+
+const uitleveringIdsVan = (p: PickKoppeling): number[] => {
+  const ids = Array.isArray(p?.uitlevering_ids) ? [...p.uitlevering_ids] : []
+  if (p?.uitlevering_id != null && !ids.includes(p.uitlevering_id)) ids.push(p.uitlevering_id)
+  return ids
+}
+
+/** Is er van deze bestelling al bier uitgeleverd (een pick met uitlevering)?
+ * Dan mag er niet opnieuw gepickt worden zonder eerst terug te draaien. */
+export const orderUitgeleverd = (picks: PickKoppeling[] | null | undefined, bestellingId: number): boolean =>
+  (picks || []).some(p => p?.bestelling_id === bestellingId && uitleveringIdsVan(p).length > 0)
+
+/** Dezelfde pick zonder koppeling naar uitleveringen of accijns: weer een concept. */
+export const pickZonderUitlevering = <P extends PickKoppeling>(p: P): P =>
+  ({ ...p, uitlevering_id: null, uitlevering_ids: [], accijns_id: null, accijns_ids: [] })
+
+/** Waarom terugdraaien niet automatisch kan.
+ * - `accijns`: een pick van vóór v1.12.80 boekte bij de verkoop accijns; die
+ *   hoort via een storno terug, niet door de uitlevering weg te halen.
+ * - `periode`: een uitlevering valt in een afgesloten periode (de pagina
+ *   bepaalt welke: een levering onder schorsing uit de AGP in een accijnsmaand
+ *   waarvan de aangifte al is ingediend); weghalen verandert die aangifte. */
+export type TerugdraaiBlokkade = 'accijns' | 'periode'
+
+export interface PickTerugdraaiing {
+  /** Id's van de uitleveringen die vervallen. */
+  uitleveringIds: number[]
+  /** Totaal aantal stuks dat terug in de voorraad komt. */
+  stuks: number
+  /** Tegenregels voor voorraad_log (zonder id): per uitlevering een
+   * `verkoop` met negatieve hoeveelheid — het log blijft sluitend en toont
+   * dat de verkoop is teruggedraaid, in plaats van de oude regel te wissen. */
+  tegenregels: any[]
+  /** Gezet = niet automatisch terug te draaien; er verandert dan niets. */
+  blokkade: TerugdraaiBlokkade | null
+}
+
+/** Wat het terugdraaien van de picks van één bestelling inhoudt. De
+ * uitleveringen waar de picks naar wijzen vervallen; de picks zelf blijven
+ * staan als concept (`pickZonderUitlevering`). */
+export function bouwPickTerugdraaiing(
+  bestellingId: number,
+  picks: PickKoppeling[] | null | undefined,
+  uit: any[] | null | undefined,
+  opts: { datum: string; omschrijving: string; referentie?: string; vergrendeld?: (uitlevering: any) => boolean },
+): PickTerugdraaiing {
+  const eigen = (picks || []).filter(p => p?.bestelling_id === bestellingId)
+  const ids = new Set<number>()
+  for (const p of eigen) for (const id of uitleveringIdsVan(p)) ids.add(id)
+  const vervallen = (uit || []).filter(u => u && ids.has(u.id))
+  const metAccijns = eigen.some(p =>
+    p.accijns_id != null || (Array.isArray(p.accijns_ids) && p.accijns_ids.length > 0))
+  const inGeslotenPeriode = !!opts.vergrendeld && vervallen.some(u => opts.vergrendeld!(u))
+  const blokkade: TerugdraaiBlokkade | null = metAccijns ? 'accijns' : inGeslotenPeriode ? 'periode' : null
+  return {
+    uitleveringIds: vervallen.map(u => u.id),
+    stuks: vervallen.reduce((s, u) => s + (Number(u.aantal) || 0), 0),
+    tegenregels: vervallen.map(u => ({
+      datum: opts.datum,
+      type: 'verkoop',
+      batch_id: u.batch_id,
+      batch_naam: u.batch_naam || '',
+      afvulling_id: u.afvulling_id,
+      verpakking_type: u.verpakking_type || u.verpakking_naam || '',
+      hoeveelheid: -(Number(u.aantal) || 0),
+      eenheid: 'stuks',
+      referentie: opts.referentie || '',
+      omschrijving: opts.omschrijving,
+    })),
+    blokkade,
+  }
 }

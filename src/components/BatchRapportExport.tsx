@@ -14,7 +14,7 @@
  * kerncijfers — die is het dossier.
  */
 import { t } from '../i18n'
-import { fmtEuroDoc, fmtDatumDoc, fmtQty } from '../utils/format'
+import { fmtEuroDoc, fmtDatumDoc, fmtQty, tod } from '../utils/format'
 import { DOC_CSS, esc, breweryBlock, openPrint } from './PakbonExport'
 import { htmlNaarPdfDownload } from '../utils/pdf'
 import { rapportBestandsnaam } from '../utils/batchRapport'
@@ -169,7 +169,7 @@ const ingredientenBlok = (rijen: RapportIngredient[]): string => tabel(
     <td class="r nw">${fmtQty(i.hoeveelheid)} ${esc(i.eenheid)}</td>
     <td>${i.lotnummer ? esc(i.lotnummer) : `<span class="muted">${LEEG}</span>`}</td>
     <td>${i.leverancier ? esc(i.leverancier) : `<span class="muted">${LEEG}</span>`}</td>
-    <td class="nw">${i.houdbaarheid ? fmtDate(i.houdbaarheid) : LEEG}</td>
+    <td class="nw">${i.houdbaarheid ? esc(fmtDate(i.houdbaarheid)) : LEEG}</td>
   </tr>`))
 
 const metingenBlok = (rijen: RapportMeting[]): string => tabel(
@@ -178,7 +178,7 @@ const metingenBlok = (rijen: RapportMeting[]): string => tabel(
     {label: 'pH', r: true, cls: 'kk-uit'}, {label: t('lbl_opmerking')},
   ],
   rijen.map(m => `<tr class="blok">
-    <td class="nw">${fmtDate(m.datum)}${m.tijd ? ` ${esc(m.tijd)}` : ''}</td>
+    <td class="nw">${esc(fmtDate(m.datum))}${m.tijd ? ` ${esc(m.tijd)}` : ''}</td>
     <td class="r">${getalOfLeeg(m.sg)}</td>
     <td class="r">${getalOfLeeg(m.temp)}</td>
     <td class="r">${getalOfLeeg(m.ph)}</td>
@@ -188,7 +188,7 @@ const metingenBlok = (rijen: RapportMeting[]): string => tabel(
 const vrijgaveBlok = (rijen: RapportVrijgave[]): string => rijen.map(v => `<div class="kaart blok">
     <div class="kaart-kop">
       <span>${esc(t(v.oordeelKey))}</span>
-      <span class="muted">${fmtDate(v.datum)}</span>
+      <span class="muted">${esc(fmtDate(v.datum))}</span>
     </div>
     <div class="kv">
       <div><span>${esc(t('haccp_ccp1_producttype'))}:</span> ${esc(t(v.risicoKey))}</div>
@@ -216,7 +216,7 @@ const sessieBlok = (rijen: RapportSessie[]): string => {
       <td class="nw"><strong>${esc(s.lotcode || LEEG)}</strong></td>
       <td>${esc(s.verpakking || LEEG)}</td>
       <td class="nw">${fmtPeriode(s.start, s.eind)}</td>
-      <td class="nw">${s.tht ? fmtDate(s.tht) : LEEG}</td>
+      <td class="nw">${s.tht ? esc(fmtDate(s.tht)) : LEEG}</td>
       <td>${esc(t(s.statusKey, s.statusKey))}</td>
       <td>${telling(s.sluitcontroles)}</td>
       <td>${telling(s.etiketcontroles)}</td>
@@ -230,12 +230,12 @@ const afvullingenBlok = (rijen: RapportAfvulling[]): string => tabel(
     {label: t('haccp_sessie_lotcode')}, {label: t('lbl_tht')}, {label: t('lbl_product_sku')},
   ],
   rijen.map(a => `<tr class="blok">
-    <td class="nw">${fmtDate(a.datum)}</td>
+    <td class="nw">${esc(fmtDate(a.datum))}</td>
     <td>${esc(a.verpakking || LEEG)}${a.geblokkeerd ? ` <span class="nok">${esc(t('haccp_geblokkeerd'))}</span>` : ''}</td>
     <td class="r">${a.inhoudPerEenheid != null ? `${fmtQty(a.inhoudPerEenheid)} L` : LEEG}</td>
     <td class="r">${esc(String(a.aantal))}</td>
     <td class="nw">${esc(a.lotcode || LEEG)}</td>
-    <td class="nw">${a.tht ? fmtDate(a.tht) : LEEG}</td>
+    <td class="nw">${a.tht ? esc(fmtDate(a.tht)) : LEEG}</td>
     <td>${esc(a.sku || LEEG)}</td>
   </tr>`))
 
@@ -280,7 +280,8 @@ function bouwDossierBody(
     {l: t('lbl_pakbon_bier'), v: rapport.titel || LEEG},
     {l: t('lbl_status'), v: (rapport.statusKey ? t(rapport.statusKey, rapport.status) : rapport.status) || LEEG},
     {l: t('lbl_tank'), v: rapport.tank || LEEG},
-    {l: t('batchdossier_geexporteerd'), v: fmtDate(new Date().toISOString().slice(0, 10))},
+    // Lokale kalenderdag, niet de UTC-dag: een dossier van 00:30 hoort bij vandaag.
+    {l: t('batchdossier_geexporteerd'), v: fmtDate(tod())},
   ]
   if (rapport.receptNaam && rapport.receptNaam !== rapport.titel) {
     meta.splice(1, 0, {l: t('batchdossier_kol_recept'), v: rapport.receptNaam})
@@ -310,13 +311,13 @@ function bouwDossierBody(
     ${sectie(esc(t('batchdossier_sec_verlies')), tabel(
       [{label: t('lbl_date')}, {label: t('lbl_bron')}, {label: t('lbl_liter_kort'), r: true}, {label: t('lbl_opmerking')}],
       rapport.verliezen.map(v => `<tr class="blok">
-        <td class="nw">${fmtDate(v.datum)}</td>
+        <td class="nw">${esc(fmtDate(v.datum))}</td>
         <td>${esc(t(v.bronKey, v.bronKey))}</td>
         <td class="r">${fmtQty(v.liter)}</td>
         <td>${esc(v.notitie)}</td>
       </tr>`)))}
     ${sectie(esc(t('haccp_afw_bekijken')), rapport.afwijkingen.map(a => `<div class="kaart afw blok">
-      <div class="kaart-kop"><span>${esc(t(a.bronKey, a.bronKey))}</span><span class="muted">${fmtDate(a.datum)}</span></div>
+      <div class="kaart-kop"><span>${esc(t(a.bronKey, a.bronKey))}</span><span class="muted">${esc(fmtDate(a.datum))}</span></div>
       <div class="kv"><div><span>${esc(t('haccp_afw_geblokkeerd_omdat'))}:</span> ${esc(a.omschrijving)}</div></div>
       <div class="remarks">${esc(a.onderbouwing)}</div>
       <div class="kv" style="margin-top:1.5mm"><div><span>${esc(t('haccp_ccp1_paraaf'))}:</span> ${esc(paraafTekst(a.paraaf))}</div></div>

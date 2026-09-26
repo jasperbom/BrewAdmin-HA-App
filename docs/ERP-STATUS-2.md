@@ -22,9 +22,11 @@
 
 ## Fase 5 — Dichten (beveiliging + halve transacties)
 
-- [ ] **5.1 Sentinel-exfiltratie** — `/api/mail/test` en `/api/woocommerce/test`
+- [x] **5.1 Sentinel-exfiltratie** — `/api/mail/test` en `/api/woocommerce/test`
       vullen `__SECRET__` alleen terug bij byte-gelijke host/port/username resp.
       storeUrl; anders 400. pytest: sentinel naar vreemde host → geen verbinding
+      *(gedaan: `_SECRET_BESTEMMING` in `_unmask_secrets`, ook op data-POST en
+      `/api/commit`, plus `security`; 400 `secret_opnieuw_invoeren`)*
 - [ ] **5.2 Append-only dubbele id's** — `_append_only_ok` weigert payloads met
       dubbele id's, in POST én `/api/commit`. pytest
 - [ ] **5.3 Leesautorisatie** — `_rol_mag_key_lezen` op `/api/data/<key>`,
@@ -44,6 +46,9 @@
       nooit de hele body doorsturen. pytest
 - [ ] **5.8 Backup-permissies** — 0600 op elke geëxporteerde JSON en de
       offsite-ZIP, 0700 op de dagmap; secure keys niet in de JSON-export. pytest
+      *(deels: rechten gezet; de download-ZIP maskeert de secure keys en laat
+      de db-kopie weg. Op schijf blijven ze ongemaskeerd staan zodat de
+      serverbackup volledig herstelbaar is — open punt: versleutelen)*
 - [ ] **5.9 app_icoon** — `svg+xml` uit `_DATA_IMG_RE`, vaste Content-Type uit
       allow-list, CSP `default-src 'none'; sandbox` op die route. pytest
 - [ ] **5.10 Sessie-/transporthygiëne** — absolute maximale sessieleeftijd, HSTS
@@ -53,6 +58,11 @@
       alle keys verversen, per key `voegSamen`, één nieuwe commit; bij
       reject/forbidden hele bundel vervalt + `herstelVanServer` + één melding die
       de bedrijfshandeling noemt. Vitest op 409/422/403 met bundel van 3 keys
+      *(deels: bij 403/422 vervalt de hele bundel met één (algemene) melding —
+      `commitVervolg` in `utils/commit.ts`, vitest `api-commit.test.ts`; een
+      bundel boven de 50 keys (backup, reset) gaat in groepen en daar valt
+      alleen de geweigerde key af. Open: bij een 409 nog steeds de rest los,
+      en een melding die de handeling noemt)*
 - [ ] **5.12 "Oude batches" dichten** — **[KEUZE: read-only of uit de nav?]**
       `doAfvullen` via `magAfvullingRegistreren` + actieve sessie;
       `handleStatusChange` via dezelfde fasevalidatie als `gaNaarFase`;

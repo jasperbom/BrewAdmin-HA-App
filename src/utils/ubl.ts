@@ -189,7 +189,8 @@ const regelNettoCent = (r: UblRegelInvoer): number => {
 /**
  * Normaliseert de factuurregels: categorie afleiden, bedragen naar centen en
  * — voor creditnota's met negatief opgeslagen bedragen — het teken omklappen
- * zodat een CreditNote positieve bedragen bevat (PEPPOL-eis).
+ * zodat een CreditNote positieve bedragen bevat (PEPPOL-eis). Het teken van
+ * de hoeveelheid volgt daarna het regelbedrag (R120).
  */
 export const verwerkUblRegels = (
   regels: UblRegelInvoer[],
@@ -234,7 +235,15 @@ export const verwerkUblRegels = (
     const prijsCent = prijsGezetCent ?? (r.hoeveelheid !== 0
       ? Math.round(Math.abs(nettoCent) / Math.abs(r.hoeveelheid))
       : Math.abs(nettoCent))
-    return { ...r, nettoCent, btwCent, prijsCent }
+    // Het teken van de hoeveelheid volgt het regelbedrag. Een regel die als
+    // InvoiceLine/CreditNoteLine in de XML komt heeft een regelbedrag ≥ 0 en
+    // een prijs ≥ 0, dus alleen een positieve hoeveelheid klopt met
+    // hoeveelheid × prijs = regelbedrag (PEPPOL-EN16931-R120). Een
+    // statiegeldretour staat opgeslagen als −3 × € 30 = −€ 90: na het omklappen
+    // wordt dat 3 × € 30 = € 90, niet −3 × € 30. Negatieve regels worden een
+    // AllowanceCharge zonder hoeveelheid en houden hun waarde.
+    const hoeveelheid = nettoCent >= 0 ? Math.abs(r.hoeveelheid) : r.hoeveelheid
+    return { ...r, hoeveelheid, nettoCent, btwCent, prijsCent }
   })
 }
 

@@ -286,6 +286,46 @@ describe('trace terug — van lotcode naar leverancier', () => {
     const r = traceTerug('Herfstbok', zonder)
     expect(r.gaten.map(g => g.code)).toContain('afvulling_zonder_lotcode')
   })
+
+  // Tien of meer sessies: 'L2431-B1' is een voorvoegsel van 'L2431-B10'.
+  describe('exacte lotcode', () => {
+    const b10 = {...sessies[0], id: 110, sessie_nr: 10, lotcode: 'L2431-B10'}
+    const av10 = {id: 220, batch_id: 1, sessie_id: 110, lotcode: 'L2431-B10', aantal: 500,
+      verpakking_naam: 'Blik 33cl', datum: '2026-05-01'}
+    const metB10 = {...data, sessies: [...sessies, b10], afvullingen: [...afvullingen, av10]} as any
+
+    it('neemt bij een volledige lotcode alleen die sessie mee', () => {
+      const r = traceTerug('L2431-B1', metB10)
+      expect(r.sessies.map(s => s.id)).toEqual([100])
+      expect(r.lotcodes).toEqual(['L2431-B1'])
+      expect(r.balans.geproduceerd).toBe(100)
+    })
+
+    it('zoekt de lotcode hoofdletterongevoelig', () => {
+      const r = traceTerug('l2431-b1', metB10)
+      expect(r.sessies.map(s => s.id)).toEqual([100])
+      expect(r.balans.geproduceerd).toBe(100)
+    })
+
+    it('vindt op een batchnummer de hele batch, ook afvullingen zonder sessie', () => {
+      const los = {id: 230, batch_id: 1, aantal: 30, verpakking_naam: 'Fust 20L', datum: '2026-02-01'}
+      const metLos = {...data, afvullingen: [...afvullingen, los]} as any
+      const opNummer = traceTerug('2431', metLos)
+      const opNaam = traceTerug('Zomerblond', metLos)
+      expect(opNummer.batches.map(b => b.id)).toEqual([1])
+      expect(opNummer.balans.geproduceerd).toBe(opNaam.balans.geproduceerd)
+      expect(opNummer.balans.geproduceerd).toBe(180)
+    })
+
+    it('vindt een lot vooruit op het volledige lotnummer, niet op een langer nummer', () => {
+      const extra = {...data, lots: [...lots,
+        {id: 9, ingredient_id: 10, lotnummer: 'MO-2026-1130', hoeveelheid: 1, eenheid: 'kg',
+         leverancier: 'De Mouterij'}]} as any
+      expect(traceVooruit('MO-2026-113', extra).lots.map(l => l.lotnummer)).toEqual(['MO-2026-113'])
+      // Een deel van het nummer vindt ze allebei.
+      expect(traceVooruit('MO-2026-11', extra).lots).toHaveLength(2)
+    })
+  })
 })
 
 // Uitleveringen uit een order kregen historisch geen `bestemming_naam`: dat
@@ -396,6 +436,20 @@ describe('traceeroefening', () => {
       new Date('2026-07-30T12:00:00Z'))
     expect(s.verlopen).toBe(true)
     expect(s.volgende_voor).toBe('2026-07-01')
+  })
+
+  // De vervaldatum is een datum in de agenda van de brouwer: dezelfde
+  // kalenderdag N maanden later, afgekapt op het maandeinde — ongeacht de
+  // tijdzone (eerder kwam er in NL-tijd een dag te vroeg uit).
+  it('kapt de vervaldatum af op het maandeinde', () => {
+    const s = oefeningStatus([oef(1, '2026-08-31')], {trace_oefening_maanden: 6},
+      new Date('2026-09-15T12:00:00Z'))
+    expect(s.volgende_voor).toBe('2027-02-28')
+  })
+
+  it('houdt midden in de maand dezelfde kalenderdag', () => {
+    const s = oefeningStatus([oef(1, '2026-03-15')], null, new Date('2026-07-30T12:00:00Z'))
+    expect(s.volgende_voor).toBe('2027-03-15')
   })
 
   it('pakt de laatste oefening ook bij ongesorteerde invoer', () => {

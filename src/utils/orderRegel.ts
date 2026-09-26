@@ -52,3 +52,15 @@ export const regelBedrag = (r: any): RegelBedrag => {
     bruto: centNaarEuro(bruto_cent),
   }
 }
+
+// Het BTW-tarief van een order- of factuurregel corrigeren. Bij een regel met
+// autoritatieve bedragen blijft het netto (wat WooCommerce als bedrag ex-BTW
+// rekende, ná korting) staan en wordt alleen de BTW opnieuw uitgerekend.
+// Vroeger vielen `wc_netto`/`wc_btw` weg, waarna het netto terugsprong naar
+// aantal × prijslijstprijs: een coupon of een afwijkende webshopprijs
+// verdween dan stil van de factuur.
+export function corrigeerRegelBtw<T extends Record<string, any>>(r: T, pct: number): T {
+  if (!heeftAutoritair(r)) return {...r, btw_pct: pct}
+  const netto_cent = toCent(r.wc_netto)
+  return {...r, btw_pct: pct, wc_btw: centNaarEuro(Math.round((netto_cent * Number(pct || 0)) / 100))}
+}

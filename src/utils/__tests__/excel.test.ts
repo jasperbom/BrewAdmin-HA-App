@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as XLSX from 'xlsx'
-import { bouwBackupWerkboek, parseBackupWerkboek } from '../excel'
+import { bouwBackupWerkboek, parseBackupWerkboek, voegToeOpId, APPEND_ONLY_KEYS, herstelPrimitieveLijst } from '../excel'
 
 // Round-trip zoals de app hem doet: werkboek bouwen → naar xlsx-bytes
 // schrijven → terug inlezen → parsen. Dit vangt zowel de sheet-indeling als
@@ -107,6 +107,97 @@ describe('Excel backup round-trip (ERP 0.8 / 3.1)', () => {
     expect(uit.app_logo).toBe(logo)
   })
 
+  it('knipt ook lange instellingen op i.p.v. de hele export te laten mislukken', () => {
+    // SheetJS weigert bij één cel boven 32.767 tekens het héle bestand.
+    const achtergrond = 'data:image/jpeg;base64,' + 'B'.repeat(100_000)
+    const bank: Record<string, any> = {}
+    for (let i = 0; i < 600; i++) {
+      bank[`2026-${String(1 + (i % 12)).padStart(2, '0')}-01|credit|${i}.50|Tegenpartij nummer ${i}`] =
+        i % 3 === 0
+          ? {soort: 'psp', factuurIds: [i, i + 1, i + 2], kostenFactuurId: 9000 + i, gemarkeerdBetaald: [i, i + 1]}
+          : {soort: 'verkoop', factuurId: i}
+    }
+    const html = '<div class="factuur">' + 'regel '.repeat(7_000) + '\u{1F37A}</div>'
+    const data = {
+      login_instellingen: {titel: 'Welkom', achtergrond_afbeelding: achtergrond},
+      bank_koppelingen: bank,
+      brewery_details: {naam: 'Brouwerij Test', factuur_template: {html, css: '.x{color:red}'}},
+    }
+    expect(JSON.stringify(bank).length).toBeGreaterThan(32_767)
+    const wb = bouwBackupWerkboek(data)
+    for (const naam of wb.SheetNames) {
+      for (const [ref, cel] of Object.entries(wb.Sheets[naam])) {
+        if (ref.startsWith('!')) continue
+        const v = (cel as any).v
+        if (typeof v === 'string') expect(v.length, `${naam}!${ref}`).toBeLessThanOrEqual(32_767)
+      }
+    }
+    const uit = roundTrip(data)
+    expect(uit.login_instellingen).toEqual(data.login_instellingen)
+    expect(uit.bank_koppelingen).toEqual(bank)
+    expect(uit.brewery_details).toEqual(data.brewery_details)
+  })
+
+  it('leest een instelling uit één cel (oude opbouw) nog gewoon; kleine waarden blijven één cel', () => {
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+      {sleutel: 'bank_koppelingen', waarde: JSON.stringify({'k': {soort: 'inkoop', factuurId: 3}})},
+      {sleutel: 'app_name', waarde: 'Oud'},
+    ]), 'Instellingen')
+    const uit = parseBackupWerkboek(XLSX.read(XLSX.write(wb, {bookType: 'xlsx', type: 'array'}), {type: 'array'}))
+    expect(uit.bank_koppelingen).toEqual({k: {soort: 'inkoop', factuurId: 3}})
+    expect(uit.app_name).toBe('Oud')
+    expect(uit.login_instellingen).toBeUndefined()
+
+    const sleutels = XLSX.utils.sheet_to_json(bouwBackupWerkboek({btw_instellingen: {periode: 'maand'}}).Sheets.Instellingen)
+      .map((r: any) => r.sleutel)
+    expect(sleutels).toContain('btw_instellingen')
+    expect(sleutels.some((s: string) => s.startsWith('btw_instellingen__'))).toBe(false)
+  })
+
+  it('knipt nooit midden in een emoji', () => {
+    const tekst = 'a'.repeat(29_999) + '\u{1F37A}' + 'b'.repeat(40_000)
+    const uit = roundTrip({batch_notities: [{id: 1, tekst}], mail_templates: {factuur: {body: tekst}}})
+    expect(uit.batch_notities[0].tekst).toBe(tekst)
+    expect(uit.mail_templates.factuur.body).toBe(tekst)
+  })
+
+  it('bewaart lijsten van losse waarden (recept-id\'s, tags) exact', () => {
+    const uit = roundTrip({
+      recepten_verborgen: ['abc123', 42, '0012'],
+      recepten_gearchiveerde_tags: ['IPA', 'Stout'],
+      recepten_tag_volgorde: ['Hazy IPA', 'Blond'],
+      recepten_gesloten_groepen: [],
+    })
+    expect(uit.recepten_verborgen).toEqual(['abc123', 42, '0012'])
+    expect(uit.recepten_gearchiveerde_tags).toEqual(['IPA', 'Stout'])
+    expect(uit.recepten_tag_volgorde).toEqual(['Hazy IPA', 'Blond'])
+    expect(uit.recepten_gesloten_groepen).toEqual([])
+  })
+
+  it('herstelt losse waarden uit een oudere, kapotte backup (één kolom per teken)', () => {
+    const wb = bouwBackupWerkboek({})
+    wb.Sheets.ReceptenTags = XLSX.utils.json_to_sheet([
+      {0: 'I', 1: 'P', 2: 'A'},
+      {0: 'a', 1: 'b', 2: 'c', 3: '1', 4: '2', 5: '3'},
+    ])
+    const uit = parseBackupWerkboek(XLSX.read(XLSX.write(wb, {bookType: 'xlsx', type: 'array'}), {type: 'array'}))
+    expect(uit.recepten_gearchiveerde_tags).toEqual(['IPA', 'abc123'])
+    expect(herstelPrimitieveLijst([{0: 'O', 1: 'k'}, {naam: 'x'}, null, '', 7])).toEqual(['Ok', 7])
+  })
+
+  it('bewaart null-velden, en voegt ze niet toe waar ze niet waren', () => {
+    const sluit = {id: 3, sessie_id: 1, visueel_ok: true, omkeerproef_ok: null, flesmond_ok: null, opmerking: ''}
+    const uit = roundTrip({
+      bestellingen: [{id: 5, klant_id: null}, {id: 6, status: 'nieuw'}],
+      haccp_sluitcontroles: [sluit],
+    })
+    expect(uit.bestellingen[0].klant_id).toBeNull()
+    expect('klant_id' in uit.bestellingen[1]).toBe(false)
+    // JSON-identiek: de append-only-vergelijking van de server accepteert hem
+    expect(JSON.stringify(uit.haccp_sluitcontroles[0])).toBe(JSON.stringify(sluit))
+  })
+
   it('zet tank_statussen object ↔ vlakke sheet correct om', () => {
     const uit = roundTrip({tank_statussen: {T1: {status: 'Ontsmet', datum: '2026-07-01'}}})
     expect(uit.tank_statussen).toEqual({T1: {status: 'Ontsmet', datum: '2026-07-01'}})
@@ -132,5 +223,32 @@ describe('Excel backup round-trip (ERP 0.8 / 3.1)', () => {
     const uit = parseBackupWerkboek(leeg)
     expect(uit.app_logo).toBeUndefined()
     expect(uit.factuur_logo).toBeUndefined()
+  })
+})
+
+describe('append-only keys terugzetten (voegToeOpId)', () => {
+  it('laat bestaande regels ongemoeid en voegt alleen ontbrekende id\'s toe', () => {
+    // De sluitcontrole uit de backup mist `omkeerproef_ok: null` (de
+    // Excel-round-trip laat lege velden weg). Vervangen zou de server met een
+    // 422 weigeren; de bestaande regel blijft dus precies zoals hij was.
+    const huidig = [{id: 1, visueel_ok: true, omkeerproef_ok: null}]
+    const backup = [{id: 1, visueel_ok: true}, {id: 2, visueel_ok: false}]
+    expect(voegToeOpId(huidig, backup)).toEqual([
+      {id: 1, visueel_ok: true, omkeerproef_ok: null},
+      {id: 2, visueel_ok: false},
+    ])
+  })
+
+  it('vergelijkt id\'s als tekst en neemt elk id één keer', () => {
+    expect(voegToeOpId([{id: 7}], [{id: '7'}, {id: 8, a: 1}, {id: 8, a: 2}, null])).toEqual([{id: 7}, {id: 8, a: 1}])
+  })
+
+  it('werkt ook zonder huidige stand (verse installatie)', () => {
+    expect(voegToeOpId(undefined, [{id: 1}])).toEqual([{id: 1}])
+  })
+
+  it('kent de append-only keys van de server', () => {
+    expect(APPEND_ONLY_KEYS).toContain('journaal')
+    expect(APPEND_ONLY_KEYS).toContain('haccp_sluitcontroles')
   })
 })

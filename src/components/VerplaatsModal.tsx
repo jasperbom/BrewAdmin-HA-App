@@ -1,21 +1,13 @@
 import React, { useState } from 'react'
 import { t } from '../i18n'
-import { fmt, tod } from '../utils/format'
+import { fmt, fmtD, tod } from '../utils/format'
 import Btn from './ui/Btn'
 import Modal from './ui/Modal'
 import Inp from './ui/Inp'
-import { valideerVerplaatsing, uitslagAccijns, inhoudPerEenheid } from '../utils/agp'
-import type { VerplaatsInvoer, VerplaatsContext, VerplaatsFout } from '../utils/agp'
+import { valideerVerplaatsing, uitslagAccijns, inhoudPerEenheid, VERPLAATS_FOUT_KEYS } from '../utils/agp'
+import type { VerplaatsInvoer, VerplaatsContext } from '../utils/agp'
 import { voorraadPerLocatie } from '../utils/calculations'
 import type { Afvulling, Batch, Locatie } from '../types'
-
-const FOUT_KEYS: Record<VerplaatsFout, string> = {
-  aantal: 'agp_err_aantal_verplicht',
-  locatie: 'agp_err_locatie_verplicht',
-  zelfde_locatie: 'agp_err_zelfde_locatie',
-  retour_agp: 'agp_err_geen_retour_naar_agp',
-  te_weinig: 'agp_err_te_weinig_voorraad',
-}
 
 interface VerplaatsModalProps {
   afv: Afvulling
@@ -45,14 +37,19 @@ const VerplaatsModal: React.FC<VerplaatsModalProps> = ({ afv, batch, naam, vanLo
 
   const volleCtx: VerplaatsContext = { ...ctx, afv, batch }
   const voorraad = voorraadPerLocatie(afv, ctx.locaties, ctx.uit || [], ctx.verplaatsingen || [], ctx.afboekingen || [])
-  const beschikbaar = Number(voorraad[form.van_locatie_id] || 0)
+  // Het maximum komt uit dezelfde toets als de blokkade: uit de AGP gaat wat
+  // al voor een open bestelling gepickt is eraf. De keuzelijst hieronder toont
+  // de fysieke voorraad per locatie.
+  const beschikbaar = valideerVerplaatsing(form, volleCtx).beschikbaar
   const van = (ctx.locaties || []).find((l: Locatie) => l.id === form.van_locatie_id)
   const naar = form.naar_locatie_id ? (ctx.locaties || []).find((l: Locatie) => l.id === form.naar_locatie_id) : null
 
   const opslaan = () => {
     const oordeel = valideerVerplaatsing(form, volleCtx)
     if (!oordeel.ok) {
-      setFout(t(FOUT_KEYS[oordeel.fout]).replace('{n}', String(oordeel.beschikbaar)))
+      setFout(t(VERPLAATS_FOUT_KEYS[oordeel.fout])
+        .replace('{n}', String(oordeel.beschikbaar))
+        .replace('{datum}', fmtD(afv.datum)))
       return
     }
     onOpslaan(form)
@@ -93,8 +90,10 @@ const VerplaatsModal: React.FC<VerplaatsModalProps> = ({ afv, batch, naam, vanLo
         <div className="grid grid-cols-2 gap-3">
           <Inp label={`${t('agp_aantal')} (${t('agp_max')} ${beschikbaar})`} type="number" value={form.aantal}
             onChange={(v: string) => { setFout(''); setForm(f => ({...f, aantal: v})) }} />
-          <Inp label={t('lbl_datum')} type="date" value={form.datum}
-            onChange={(v: string) => setForm(f => ({...f, datum: v}))} />
+          {/* Geen datum in de toekomst: een verkoop van vandaag zou anders vóór
+              deze verplaatsing verwerkt en stil op nul gezet worden. */}
+          <Inp label={t('lbl_datum')} type="date" value={form.datum} max={tod()} min={afv.datum || undefined}
+            onChange={(v: string) => { setFout(''); setForm(f => ({...f, datum: v})) }} />
         </div>
         <Inp label={t('lbl_opmerking')} value={form.opmerking || ''} onChange={(v: string) => setForm(f => ({...f, opmerking: v}))} />
         {bedrag > 0 && (

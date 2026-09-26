@@ -9,7 +9,7 @@ import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
 import { totaliseerRegels } from '../utils/centen'
-import { getPeriodes } from '../utils/btw'
+import { sndPerPeriode as sndPerPeriodeUtil } from '../utils/sndAfdracht'
 
 interface Props {
   verpakkingen: any[]
@@ -68,30 +68,11 @@ const StatiegeldPage: React.FC<Props> = ({
     return out
   }, [verkoopFacturen])
 
-  // Set van SNd-perioden die al afgedragen zijn (gekoppeld aan banktransactie)
-  const sndAfgedragen = useMemo(() => {
-    const s = new Set<string>()
-    Object.values(bankKoppelingen as any).forEach((k: any) => {
-      if (k?.soort === 'snd' && k.periodeKey) s.add(k.periodeKey)
-    })
-    return s
-  }, [bankKoppelingen])
-
-  // Te remitteren SNd per periode
-  const sndPerPeriode = useMemo(() => {
-    const periodes = getPeriodes(aangifteYear, aangiftePeriode)
-    return periodes.map(p => {
-      const regels = stRegels.filter(r => r.statiegeld_soort === 'snd' && r.datum && r.datum >= p.from && r.datum <= p.to)
-      const stuks = regels.reduce((s, r) => s + Number(r.hoeveelheid || 0), 0)
-      const bedrag = rnd2(regels.reduce((s, r) => s + Number(r.netto || 0), 0))
-      const today = tod()
-      let status: 'toekomstig' | 'lopend' | 'openstaand' | 'afgedragen' = 'openstaand'
-      if (p.from > today) status = 'toekomstig'
-      else if (p.from <= today && today <= p.to) status = 'lopend'
-      else if (sndAfgedragen.has(p.key)) status = 'afgedragen'
-      return { ...p, stuks, bedrag, status }
-    })
-  }, [stRegels, aangifteYear, aangiftePeriode, sndAfgedragen])
+  // Te remitteren SNd per periode, met de afdrachtstatus uit de bankkoppeling
+  // {soort:'snd', periodeKey} die de Boekhouding legt (utils/sndAfdracht.ts).
+  const sndPerPeriode = useMemo(
+    () => sndPerPeriodeUtil(verkoopFacturen, bankKoppelingen, aangifteYear, aangiftePeriode, tod()),
+    [verkoopFacturen, bankKoppelingen, aangifteYear, aangiftePeriode])
 
   // Fust-saldo per klant (alleen 'fust')
   const fustPerKlant = useMemo(() => {
@@ -320,7 +301,7 @@ const StatiegeldPage: React.FC<Props> = ({
                     const cls =
                       p.status === 'afgedragen' ? 'bg-green-100 text-green-700'
                       : p.status === 'lopend' ? 'bg-blue-100 text-blue-700'
-                      : p.status === 'toekomstig' ? 'bg-gray-100 text-gray-500'
+                      : p.status === 'toekomstig' || p.status === 'geen' ? 'bg-gray-100 text-gray-500'
                       : 'bg-orange-100 text-orange-700'
                     return (
                       <tr key={p.key} className="border-t">

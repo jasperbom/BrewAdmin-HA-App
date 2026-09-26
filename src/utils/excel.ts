@@ -7,15 +7,36 @@ import { t } from '../i18n'
 // (ERP-plan 0.8). Oude backups zonder chunks blijven gewoon leesbaar.
 const CELL_CHUNK = 30000
 
+// Knip een lange string in stukken van hooguit CELL_CHUNK tekens. Nooit midden
+// in een surrogaatpaar (emoji e.d.): een losse helft schrijft SheetJS weg als
+// vervangteken, en dan komt de tekst na het samenvoegen niet meer terug.
+const knipInStukken = (s: string): string[] => {
+  const stukken: string[] = []
+  let i = 0
+  while (i < s.length) {
+    let eind = Math.min(i + CELL_CHUNK, s.length)
+    const c = s.charCodeAt(eind - 1)
+    if (eind < s.length && c >= 0xD800 && c <= 0xDBFF) eind--
+    stukken.push(s.slice(i, eind))
+    i = eind
+  }
+  return stukken
+}
+
+// SheetJS slaat een lege cel (null) bij het schrijven over: zonder marker
+// ontbreekt zo'n veld na een restore (`klant_id: null` wordt "geen klant_id"),
+// en een append-only record dat daardoor anders lijkt weigert de server.
+// Alleen velden op het hoogste niveau; geneste nulls zitten al in de JSON.
+const NULL_CEL = '__null__'
+
 // Zet objectvelden om naar JSON strings zodat Excel ze kan opslaan
 const toRow = (o: any) => {
   const r: any = {}
   for (const [k, v] of Object.entries(o)) {
-    const s = (v !== null && typeof v === 'object') ? JSON.stringify(v) : v
+    if (v === null) { r[k] = NULL_CEL; continue }
+    const s = (typeof v === 'object') ? JSON.stringify(v) : v
     if (typeof s === 'string' && s.length > CELL_CHUNK) {
-      for (let i = 0, n = 0; i < s.length; i += CELL_CHUNK, n++) {
-        r[`${k}~${n}`] = s.slice(i, i + CELL_CHUNK)
-      }
+      knipInStukken(s).forEach((stuk, n) => { r[`${k}~${n}`] = stuk })
     } else {
       r[k] = s
     }
@@ -41,7 +62,9 @@ const fromRow = (o: any) => {
   }
   const r: any = {}
   for (const [k, v] of Object.entries(merged)) {
-    if (typeof v === 'string' && (v.startsWith('[') || v.startsWith('{'))) {
+    if (v === NULL_CEL) {
+      r[k] = null
+    } else if (typeof v === 'string' && (v.startsWith('[') || v.startsWith('{'))) {
       try { r[k] = JSON.parse(v) } catch { r[k] = v }
     } else { r[k] = v }
   }
@@ -49,6 +72,44 @@ const fromRow = (o: any) => {
 }
 
 const prep = (d: any[]) => (d?.length ? d.map(toRow) : [{}])
+
+// ── Lijsten van losse waarden (recept-id's, tagnamen) ────────────────────────
+// `prep` gaat uit van objecten. Een string werd daar per teken een kolom
+// ('IPA' → {0:'I',1:'P',2:'A'}) en een getal een lege rij, zodat verborgen
+// recepten, gearchiveerde tags, de tagvolgorde en ingeklapte groepen na een
+// restore weg waren. Deze lijsten gaan daarom als rijen `{waarde}` (zoals
+// BtwTarieven), en een rij uit zo'n oudere, kapotte backup wordt weer de
+// oorspronkelijke string. Alles wat geen losse waarde is valt weg.
+export const herstelPrimitieveLijst = (lijst: unknown): Array<string | number | boolean> => {
+  const uit: Array<string | number | boolean> = []
+  for (const v of Array.isArray(lijst) ? lijst : []) {
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      if (v !== '') uit.push(v)
+      continue
+    }
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const sleutels = Object.keys(v)
+      if (sleutels.length && sleutels.every(k => /^\d+$/.test(k))) {
+        uit.push(sleutels.sort((a, b) => Number(a) - Number(b)).map(k => String((v as any)[k] ?? '')).join(''))
+      }
+    }
+  }
+  return uit
+}
+const primitieveRijen = (lijst: unknown) => herstelPrimitieveLijst(lijst).map(waarde => ({waarde}))
+
+// Object-instellingen op het Instellingen-tabblad: elk als JSON in één cel.
+// Elke waarde boven de Excel-cellimiet (32.767 tekens — SheetJS weigert dan het
+// héle bestand) wordt opgeknipt in `key__0`, `key__1`, … — dezelfde regel als
+// voor de logo's. Denk aan een loginachtergrond (data-URL), een jaar aan
+// bankkoppelingen of een eigen factuurlayout.
+export const INST_JSON_KEYS = [
+  'accijns_instellingen', 'btw_instellingen', 'ing_type_btw', 'brewery_details',
+  'mail_templates', 'gebruikers_rollen', 'login_instellingen', 'factuur_counter',
+  'ha_instellingen', 'notificatie_instellingen', 'coldcrash_instellingen',
+  'planning_instellingen', 'website_telemetrie', 'brouwproces_instellingen',
+  'haccp_instellingen', 'bank_koppelingen', 'bank_saldi',
+] as const
 
 // Migratiehulp: oude backup-sheet 'Uitslagen' gebruikt de velden type_uitslag,
 // bron: 'uitslag'. Zet deze om naar type_uitlevering / bron: 'uitlevering'.
@@ -89,10 +150,10 @@ export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
     addSheet('VoorraadArchief',       data.voorraad_archief)
     addSheet('GeslotenBieren',        data.voorraad_gesloten_bieren)
     addSheet('Recepten',              data.recepten)
-    addSheet('ReceptenVerborgen',     data.recepten_verborgen)
-    addSheet('ReceptenTags',          data.recepten_gearchiveerde_tags)
-    addSheet('ReceptenTagVolgorde',   data.recepten_tag_volgorde)
-    addSheet('ReceptenGroepen',       data.recepten_gesloten_groepen)
+    addSheet('ReceptenVerborgen',     primitieveRijen(data.recepten_verborgen))
+    addSheet('ReceptenTags',          primitieveRijen(data.recepten_gearchiveerde_tags))
+    addSheet('ReceptenTagVolgorde',   primitieveRijen(data.recepten_tag_volgorde))
+    addSheet('ReceptenGroepen',       primitieveRijen(data.recepten_gesloten_groepen))
     addSheet('Tanks',                 data.tanks)
     // Tank-reinigingsstatus: object → vlakke array
     addSheet('TankStatussen',
@@ -162,46 +223,25 @@ export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
     addSheet('GnCodes', (data.gn_codes || []).map((v: any) => ({code: v.code, naam: v.naam})))
 
     // ── Instellingen-sheet (objects + losse waarden als key-value rijen) ───────
-    // Logo's worden als base64 in het Instellingen-sheet opgeslagen. Bij base64
-    // groter dan de Excel-cel-limiet (~32767 chars) wordt de string opgesplitst
-    // in chunks (`key__0`, `key__1`, …) die bij import weer worden samengevoegd.
+    // Elke waarde groter dan de Excel-cel-limiet (~32767 chars) — logo's
+    // (base64) én de JSON-instellingen (INST_JSON_KEYS) — wordt opgesplitst in
+    // chunks (`key__0`, `key__1`, …) die bij import weer worden samengevoegd.
     const inst: {sleutel: string, waarde: any}[] = [
       {sleutel: '_versie',              waarde: 4},
       {sleutel: '_datum',               waarde: new Date().toISOString()},
-      {sleutel: 'accijns_instellingen', waarde: JSON.stringify(data.accijns_instellingen ?? {})},
-      {sleutel: 'btw_instellingen',     waarde: JSON.stringify(data.btw_instellingen     ?? {})},
-      {sleutel: 'ing_type_btw',         waarde: JSON.stringify(data.ing_type_btw         ?? {})},
-      {sleutel: 'brewery_details',      waarde: JSON.stringify(data.brewery_details      ?? {})},
-      {sleutel: 'mail_templates',       waarde: JSON.stringify(data.mail_templates       ?? {})},
-      {sleutel: 'gebruikers_rollen',    waarde: JSON.stringify(data.gebruikers_rollen    ?? {})},
-      {sleutel: 'login_instellingen',   waarde: JSON.stringify(data.login_instellingen   ?? {})},
-      {sleutel: 'factuur_counter',      waarde: JSON.stringify(data.factuur_counter      ?? {})},
-      {sleutel: 'ha_instellingen',      waarde: JSON.stringify(data.ha_instellingen      ?? {})},
-      {sleutel: 'notificatie_instellingen', waarde: JSON.stringify(data.notificatie_instellingen ?? {})},
-      {sleutel: 'coldcrash_instellingen', waarde: JSON.stringify(data.coldcrash_instellingen ?? {})},
-      {sleutel: 'planning_instellingen',  waarde: JSON.stringify(data.planning_instellingen  ?? {})},
-      {sleutel: 'website_telemetrie',   waarde: JSON.stringify(data.website_telemetrie   ?? {})},
-      {sleutel: 'brouwproces_instellingen', waarde: JSON.stringify(data.brouwproces_instellingen ?? {})},
-      {sleutel: 'haccp_instellingen',   waarde: JSON.stringify(data.haccp_instellingen   ?? {})},
-      {sleutel: 'bank_koppelingen',     waarde: JSON.stringify(data.bank_koppelingen     ?? {})},
-      {sleutel: 'bank_saldi',           waarde: JSON.stringify(data.bank_saldi           ?? {})},
-      {sleutel: 'app_name',             waarde: data.app_name  ?? ''},
-      {sleutel: 'nav_theme',            waarde: data.nav_theme ?? 'amber'},
     ]
-
-    const LOGO_CHUNK = 30000
-    const pushLogo = (key: string, val: string | null | undefined) => {
-      const s = typeof val === 'string' ? val : ''
-      if (s.length <= LOGO_CHUNK) {
+    const pushInst = (key: string, s: string) => {
+      if (s.length <= CELL_CHUNK) {
         inst.push({sleutel: key, waarde: s})
       } else {
-        for (let i = 0, n = 0; i < s.length; i += LOGO_CHUNK, n++) {
-          inst.push({sleutel: `${key}__${n}`, waarde: s.slice(i, i + LOGO_CHUNK)})
-        }
+        knipInStukken(s).forEach((stuk, n) => inst.push({sleutel: `${key}__${n}`, waarde: stuk}))
       }
     }
-    pushLogo('app_logo',     data.app_logo)
-    pushLogo('factuur_logo', data.factuur_logo)
+    for (const k of INST_JSON_KEYS) pushInst(k, JSON.stringify(data[k] ?? {}))
+    inst.push({sleutel: 'app_name',  waarde: data.app_name  ?? ''})
+    inst.push({sleutel: 'nav_theme', waarde: data.nav_theme ?? 'amber'})
+    pushInst('app_logo',     typeof data.app_logo === 'string' ? data.app_logo : '')
+    pushInst('factuur_logo', typeof data.factuur_logo === 'string' ? data.factuur_logo : '')
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inst), 'Instellingen')
     return wb
 }
@@ -243,32 +283,41 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
       // locaties, merch …). `doImport` slaat een `undefined` over.
       const parse = (n: string): any[] | undefined =>
         wb.Sheets[n] ? gs(n).map(fromRow) : undefined
+      // Lijst van losse waarden (rijen `{waarde}`); een rij zonder `waarde`
+      // komt uit een oudere backup en wordt hersteld (herstelPrimitieveLijst).
+      const parsePrimitief = (n: string): any[] | undefined =>
+        wb.Sheets[n]
+          ? herstelPrimitieveLijst(gs(n).map((r: any) =>
+              Object.prototype.hasOwnProperty.call(r, 'waarde') ? r.waarde : r))
+          : undefined
 
       // Instellingen-sheet: bouw een sleutel→waarde map
       const instMap: Record<string, any> = {}
       gs('Instellingen').forEach((row: any) => {
         if (row.sleutel != null) instMap[String(row.sleutel)] = row.waarde
       })
-      // Logo's: eerst proberen als losse cel, anders chunks `key__0`, `key__1`, …
-      // samenvoegen. Als de sleutel helemaal niet in de backup staat geven we
-      // `undefined` terug zodat doImport het bestaande logo niet overschrijft.
-      const readLogo = (key: string): string | null | undefined => {
-        if (Object.prototype.hasOwnProperty.call(instMap, key)) {
-          const v = instMap[key]
-          return v === '' || v == null ? null : String(v)
-        }
+      // Ruwe waarde van een instelling: eerst als losse cel, anders de chunks
+      // `key__0`, `key__1`, … samengevoegd (oude backups hebben alleen losse
+      // cellen). Staat de sleutel helemaal niet in de backup, dan `undefined`,
+      // zodat doImport de bestaande waarde niet overschrijft.
+      const leesInstRuw = (key: string): any => {
+        if (Object.prototype.hasOwnProperty.call(instMap, key)) return instMap[key] ?? null
         const chunks: string[] = []
         for (let n = 0; Object.prototype.hasOwnProperty.call(instMap, `${key}__${n}`); n++) {
           const part = instMap[`${key}__${n}`]
           chunks.push(part == null ? '' : String(part))
         }
-        if (chunks.length === 0) return undefined
-        const joined = chunks.join('')
-        return joined === '' ? null : joined
+        return chunks.length ? chunks.join('') : undefined
+      }
+      // Logo's: leeg = bewust geen logo (null), ontbrekend = niets zeggen.
+      const readLogo = (key: string): string | null | undefined => {
+        const v = leesInstRuw(key)
+        if (v === undefined) return undefined
+        return v === '' || v == null ? null : String(v)
       }
 
       const parseInst = (key: string): any => {
-        const v = instMap[key]
+        const v = leesInstRuw(key)
         if (v == null || v === '') return undefined
         if (typeof v === 'string' && (v.startsWith('{') || v.startsWith('['))) {
           try { return JSON.parse(v) } catch { return v }
@@ -292,10 +341,10 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
         voorraad_archief:             parse('VoorraadArchief'),
         voorraad_gesloten_bieren:     parse('GeslotenBieren'),
         recepten:                     parse('Recepten'),
-        recepten_verborgen:           parse('ReceptenVerborgen'),
-        recepten_gearchiveerde_tags:  parse('ReceptenTags'),
-        recepten_tag_volgorde:        parse('ReceptenTagVolgorde'),
-        recepten_gesloten_groepen:    parse('ReceptenGroepen'),
+        recepten_verborgen:           parsePrimitief('ReceptenVerborgen'),
+        recepten_gearchiveerde_tags:  parsePrimitief('ReceptenTags'),
+        recepten_tag_volgorde:        parsePrimitief('ReceptenTagVolgorde'),
+        recepten_gesloten_groepen:    parsePrimitief('ReceptenGroepen'),
         tanks:                        parse('Tanks'),
         // Tank-reinigingsstatus: vlakke array → object terug
         tank_statussen: (() => {
@@ -413,4 +462,34 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: (msg?
   }
   r.onerror = () => { if (onError) onError(t('err_bestand_lezen')) }
   r.readAsArrayBuffer(file)
+}
+
+// ── Append-only keys terugzetten ─────────────────────────────────────────────
+// Deze keys houdt de server append-only (server.py `_APPEND_ONLY`, een pytest
+// bewaakt dat de lijsten gelijk blijven): een bestaande regel mag nooit
+// wijzigen of verdwijnen, anders weigert de server de hele key (422). Een
+// backup kan ze dus niet vervangen — en backups van vóór de NULL_CEL-marker
+// lieten bovendien lege velden (`null`) weg, zodat zelfs een ongewijzigde
+// regel "anders" lijkt.
+// Terugzetten voegt daarom alleen de regels toe die hier nog ontbreken.
+export const APPEND_ONLY_KEYS = [
+  'journaal',
+  'haccp_vrijgaven', 'haccp_sluitcontroles', 'haccp_etiketcontroles',
+  'haccp_afwijkingen', 'haccp_trace_oefeningen',
+] as const
+
+// Union op id: alle huidige regels ongewijzigd, plus de regels uit de backup
+// waarvan het id nog niet voorkomt (in de volgorde van de backup, elk id één
+// keer).
+export const voegToeOpId = (huidig: any[] | null | undefined, uitBackup: any[]): any[] => {
+  const basis = Array.isArray(huidig) ? huidig : []
+  const bestaand = new Set(basis.map((r: any) => String(r?.id)))
+  const erbij = uitBackup.filter((r: any) => {
+    if (!r || typeof r !== 'object') return false
+    const id = String(r.id)
+    if (bestaand.has(id)) return false
+    bestaand.add(id)
+    return true
+  })
+  return [...basis, ...erbij]
 }

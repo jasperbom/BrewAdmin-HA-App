@@ -3,6 +3,7 @@ import {
   batchIsAfgerond, bouwBatchRapport, rapportBestandsnaam,
   type BatchRapportInvoer,
 } from '../batchRapport'
+import { berekenBatchKostprijs } from '../calculations'
 
 // ── Vaste testbatch ─────────────────────────────────────────────────────────
 // Eén volledig doorlopen brouwsel: gebrouwen 1 juni, vergist, geconditioneerd,
@@ -296,6 +297,54 @@ describe('bouwBatchRapport — financieel', () => {
     })).financieel
     expect(f.accijns).toBeCloseTo(21.4, 5)
     expect(f.accijnsVoorcalc).toBe(false)
+  })
+
+  it('rekent de lotprijs om naar de eenheid van de regel (hop in g, lot in kg)', () => {
+    const basis = invoer()
+    const f = bouwBatchRapport(invoer({
+      batchIngredienten: (basis.batchIngredienten || []).map(r =>
+        r.id === 2 ? {...r, hoeveelheid: 400, eenheid: 'g'} : r) as any,
+    })).financieel
+    // 400 g × € 25/kg = € 10, niet € 10.000.
+    expect(f.ingredienten).toBeCloseTo(52 + 10, 5)
+  })
+
+  it('telt bij een gedeeltelijke uitslag de voorcalculatie van de rest mee', () => {
+    // 40 van de 400 flesjes uitgeslagen (13,2 L, € 1,30 geboekt): de overige
+    // 90 % van de flessen draagt nog zijn deel van de voorcalculatie.
+    const f = bouwBatchRapport(invoer({
+      accijns: [{id: 1, batch_id: 7, verpakking_type: 'Fles 33cl', liter: 13.2, accijns: 1.3}] as any,
+    })).financieel
+    expect(f.accijns).toBeCloseTo(1.3 + 12.5 * 0.9 + 4, 5)
+    expect(f.accijnsVoorcalc).toBe(true)
+  })
+
+  it('flessen volledig uitgeslagen, fusten nog in de AGP: allebei in de accijns', () => {
+    const deels = bouwBatchRapport(invoer({
+      accijns: [{id: 1, batch_id: 7, verpakking_type: 'Fles 33cl', liter: 132, accijns: 13}] as any,
+    })).financieel
+    expect(deels.accijns).toBeCloseTo(13 + 4, 5)
+    expect(deels.accijnsVoorcalc).toBe(true)
+
+    const alles = bouwBatchRapport(invoer({
+      accijns: [
+        {id: 1, batch_id: 7, verpakking_type: 'Fles 33cl', liter: 132, accijns: 13},
+        {id: 2, batch_id: 7, verpakking_type: 'Fust 20L', liter: 40, accijns: 4.2},
+      ] as any,
+    })).financieel
+    expect(alles.accijns).toBeCloseTo(17.2, 5)
+    expect(alles.accijnsVoorcalc).toBe(false)
+  })
+
+  it('noemt dezelfde kostprijs als de productpagina en de COGS', () => {
+    const inv = invoer({
+      accijns: [{id: 1, batch_id: 7, verpakking_type: 'Fles 33cl', liter: 13.2, accijns: 1.3}] as any,
+    })
+    const f = bouwBatchRapport(inv).financieel
+    const k = berekenBatchKostprijs(batch, inv.batchIngredienten || [], inv.lots || [],
+      inv.afvullingen || [], inv.verpakkingen || [], inv.onderdelen || [], inv.accijns || [])
+    expect(f.totaal).toBeCloseTo(k.totaal_kosten, 9)
+    expect(f.accijns).toBeCloseTo(k.accijns || 0, 9)
   })
 
   it('telt de afvullingen zonder verkoopprijs apart — anders lijkt de marge te mooi', () => {

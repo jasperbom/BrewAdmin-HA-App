@@ -22,6 +22,7 @@ import type {
   AfvulSessie, SluitControle, ControleResultaat, CorrigierendeActie,
 } from '../types'
 import { DEFAULT_HACCP_INST } from './constants'
+import { ingredientVoorBatchRegel } from './batchIngredienten'
 
 // ── Blokkades ───────────────────────────────────────────────────────────────
 // Een blokkade is machineleesbaar (`code`, vastgelegd in de afwijking) én
@@ -65,15 +66,16 @@ export const maakParaaf = (
 // ── Risicoclassificatie (stuurt CCP 1 en de THT) ────────────────────────────
 
 /** Markering van één batch-ingrediëntregel. Het ingrediënt zelf wint van de
- *  default die per ingrediënttype is ingesteld. */
+ *  default die per ingrediënttype is ingesteld. Het ingrediënt wordt gezocht
+ *  zoals de batchpagina het doet (id, anders naam): een regel die alleen op
+ *  naam gekoppeld is wordt daar gewoon afgeboekt en hoort dus ook hier mee te
+ *  tellen. */
 export const toevoegingVoorRegel = (
-  regel: Pick<BatchIngredient, 'ingredient_id' | 'ingredient_type'>,
+  regel: Pick<BatchIngredient, 'ingredient_id' | 'ingredient_type'> & {ingredient_naam?: string | null},
   ingredienten: Ingredient[],
   inst: HaccpInst
 ): ToevoegingSoort | null => {
-  const ing = regel.ingredient_id != null
-    ? (ingredienten || []).find(i => i.id === regel.ingredient_id)
-    : undefined
+  const ing = ingredientVoorBatchRegel(regel, ingredienten)
   if (ing?.haccp_toevoeging) return ing.haccp_toevoeging
   const perType = inst.toevoeging_per_ing_type || {}
   const type = regel.ingredient_type || ing?.type || ''
@@ -437,13 +439,78 @@ export const afvullingenSindsLaatsteGoedkeuring = (
     .map(a => a.id)
 }
 
+/** Een afgekeurde sluitcontrole zet `geblokkeerd` op de verdachte
+ *  verpakkingen: mogelijk lek, dus niet verkoopbaar tot de afwijking is
+ *  afgehandeld. Het bier blijft wel fysiek aanwezig (en telt mee in de
+ *  accijnsvoorraad), maar mag niet verkocht, gepickt of uitgeslagen worden.
+ *
+ *  Eén regel voor elke plek die verkoopbare voorraad kiest — kassa,
+ *  bestellingen, verzamelpicklijst, webshopvoorraad en uitslag. Die filterden
+ *  eerst elk zelf, en de kassa en de uitslag vergaten het: daar kon FEFO juist
+ *  de geblokkeerde blikken kiezen. */
+export const afvullingVerkoopbaar = (a: {geblokkeerd?: boolean} | null | undefined): boolean =>
+  !!a && !a.geblokkeerd
+
+export const verkoopbareAfvullingen = <T extends {geblokkeerd?: boolean}>(
+  afvullingen: T[] | null | undefined
+): T[] => (afvullingen || []).filter(afvullingVerkoopbaar)
+
+/** Minimale vorm van een etiketcontrole (CCP 3) voor de blokkades hieronder. */
+export interface EtiketDekking {
+  sessie_id: number
+  resultaat: ControleResultaat
+  product_id?: number | string | null
+  afwijking_id?: number | null
+}
+
+/** Dekt een etiketcontrole dit product in deze sessie? Alleen een controle
+ *  voor hétzelfde product telt, en alleen als hij is goedgekeurd of — na een
+ *  allergenenverschil — met een vastgelegde afwijking doorging. Een
+ *  goedgekeurd etiket van 'Milkshake IPA' zegt niets over de flessen die als
+ *  'IPA' (zonder melk op het etiket) de deur uitgaan. */
+export const etiketDektProduct = (
+  etiketcontroles: EtiketDekking[] | null | undefined,
+  sessieId: number,
+  productId: number | string | null | undefined,
+): boolean => {
+  if (productId == null || productId === '' || !Number(productId)) return false
+  return (etiketcontroles || []).some(e => !!e && e.sessie_id === sessieId
+    && Number(e.product_id) === Number(productId)
+    && (e.resultaat === 'goedgekeurd' || e.afwijking_id != null))
+}
+
+/** De producten die in een sessie zijn afgevuld zonder passende
+ *  etiketcontrole. Het product telt zoals het is afgevuld: na een rebrand is
+ *  dat het oorspronkelijke product (`rebrand_van_product_id`). */
+export const ongecontroleerdeProducten = (
+  sessieId: number,
+  afvullingen: Array<{sessie_id?: number | null; product_id?: number | string | null;
+    rebrand_van_product_id?: number | null}> | null | undefined,
+  etiketcontroles: EtiketDekking[] | null | undefined,
+): number[] => {
+  const ids: number[] = []
+  for (const a of afvullingen || []) {
+    if (!a || a.sessie_id !== sessieId) continue
+    const pid = Number(a.rebrand_van_product_id ?? a.product_id)
+    if (!pid || ids.includes(pid)) continue
+    if (!etiketDektProduct(etiketcontroles, sessieId, pid)) ids.push(pid)
+  }
+  return ids
+}
+
 /** Een sessie kan niet afgesloten worden zonder controle bij start én einde,
- *  en niet zolang een afkeuring nog niet is afgehandeld. */
+ *  en niet zolang een afkeuring nog niet is afgehandeld. Met `afvullingen`
+ *  erbij moet élk afgevuld product van de sessie een eigen etiketcontrole
+ *  hebben — ook afvullingen die al geregistreerd waren voordat die eis
+ *  gold. `producten` levert alleen de namen voor de melding. */
 export const magSessieAfsluiten = (
   sessie: AfvulSessie,
   controles: SluitControle[],
-  etiketcontroles: Array<{sessie_id: number; resultaat: ControleResultaat}>,
-  capa: CorrigierendeActie[]
+  etiketcontroles: EtiketDekking[],
+  capa: CorrigierendeActie[],
+  afvullingen?: Array<{sessie_id?: number | null; product_id?: number | string | null;
+    rebrand_van_product_id?: number | null}> | null,
+  producten?: Array<{id: number; naam?: string}> | null,
 ): BlokkadeResultaat => {
   const eigen = (controles || []).filter(c => c.sessie_id === sessie.id)
   const redenen: BlokkadeReden[] = []
@@ -466,6 +533,17 @@ export const magSessieAfsluiten = (
   }
   if (!(etiketcontroles || []).some(e => e.sessie_id === sessie.id)) {
     redenen.push({code: 'geen_etiketcontrole', i18nKey: 'haccp_blok_geen_etiketcontrole'})
+  } else if (afvullingen) {
+    const missend = ongecontroleerdeProducten(sessie.id, afvullingen, etiketcontroles)
+    if (missend.length) {
+      const naam = (id: number): string =>
+        (producten || []).find(x => Number(x?.id) === id)?.naam || `#${id}`
+      redenen.push({
+        code: 'etiket_product_ontbreekt',
+        i18nKey: 'haccp_blok_etiket_product_ontbreekt',
+        params: {producten: missend.map(naam).join(', ')},
+      })
+    }
   }
   return blokkade(redenen)
 }
@@ -499,7 +577,8 @@ const sorteerAllergenen = (xs: Allergeen[]): Allergeen[] =>
   Array.from(new Set(xs || [])).sort()
 
 /** De allergenen die uit de receptuur van een batch volgen: de vereniging van
- *  de allergenen van alle gebruikte ingrediënten. */
+ *  de allergenen van alle gebruikte ingrediënten — ook van regels die alleen
+ *  op naam aan een ingrediënt hangen (zie `ingredientVoorBatchRegel`). */
 export const allergenenUitBatch = (
   batchId: number,
   batchIngredienten: BatchIngredient[],
@@ -508,7 +587,7 @@ export const allergenenUitBatch = (
   const gevonden: Allergeen[] = []
   for (const regel of (batchIngredienten || [])) {
     if (regel.batch_id !== batchId) continue
-    const ing = (ingredienten || []).find(i => i.id === regel.ingredient_id)
+    const ing = ingredientVoorBatchRegel(regel, ingredienten)
     for (const a of (ing?.allergenen || [])) gevonden.push(a)
   }
   return sorteerAllergenen(gevonden)

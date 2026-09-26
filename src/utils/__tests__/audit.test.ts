@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { AUDIT_SOORTEN, logAudit, logAuditVeld, VELD_WACHT_MS } from '../audit'
+import { AUDIT_SOORTEN, logAudit, logAuditVeld, VELD_WACHT_MS, auditGebruiker } from '../audit'
 
 const bestanden = (map: string): string[] =>
   readdirSync(map).flatMap(naam => {
@@ -101,5 +101,20 @@ describe('logAuditVeld — velden die tijdens het typen opslaan', () => {
     const tekst = regels.map(r => r.omschrijving).sort()
     expect(tekst[0]).toBe('tank: — → Tank 2')
     expect(tekst[1]).toBe('vergistingsprofiel: 0 regels → 2 regels')
+  })
+})
+
+describe('auditGebruiker', () => {
+  // De naam in het logboek komt van de server (whoami), niet uit een
+  // instellingsveld als "verantwoordelijke accijnszaken".
+  it('neemt de ingelogde gebruiker, getrimd', () => {
+    expect(auditGebruiker({gebruiker: ' jan '})).toBe('jan')
+  })
+
+  it('geeft geen naam buiten HA of zonder antwoord', () => {
+    expect(auditGebruiker({gebruiker: ''})).toBeUndefined()
+    expect(auditGebruiker({gebruiker: '   '})).toBeUndefined()
+    expect(auditGebruiker(null)).toBeUndefined()
+    expect(auditGebruiker(undefined)).toBeUndefined()
   })
 })

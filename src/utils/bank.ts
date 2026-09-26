@@ -22,8 +22,23 @@ const norm = (s: any): string => String(s || '').toLowerCase().replace(/\s+/g, '
 // Verhuisd uit BoekhoudingPage (fase 3.1/3.5): puur, dus hier testbaar.
 // Ondersteunt SEPA-gestructureerde :86:-velden (/KEY/-paren) en de ABN-AMRO
 // plain-text-stijl (NAAM:/OMSCHRIJVING:/KENMERK:).
+
+/**
+ * Richting van een :61:-regel op het afschrift. Een terugboeking keert de
+ * richting om: 'RC' (storno van een bijschrijving) haalt geld van de rekening
+ * af en is dus een debetboeking, 'RD' (storno van een afschrijving) zet het
+ * terug en is een creditboeking. Zo blijven `saldoControle` en `txKey` met een
+ * positief bedrag plus richting werken.
+ */
+export const mt940Richting = (code: string): 'C' | 'D' => {
+  const c = String(code || '').toUpperCase()
+  if (c === 'RC') return 'D'
+  if (c === 'RD') return 'C'
+  return c.startsWith('C') ? 'C' : 'D'
+}
+
 export const parseMT940 = (text: string): any => {
-  const result: any = { iban:'', referentie:'', afschriftNr:'', beginsaldo:0, eindsaldo:0, transacties:[] }
+  const result: any = { iban:'', referentie:'', afschriftNr:'', beginsaldo:0, eindsaldo:0, transacties:[], overgeslagen:0 }
   const parseAmt = (s: string) => parseFloat(s.replace(',','.'))
   const parseDate6 = (s: string) => {
     const yy=s.slice(0,2),mm=s.slice(2,4),dd=s.slice(4,6)
@@ -72,11 +87,23 @@ export const parseMT940 = (text: string): any => {
       const m = v.match(/^([CD])(\d{6})[A-Z]{3}(\d+,\d*)/)
       if (m) result.eindsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3])
     } else if (field==='61') {
-      const m = v.match(/^(\d{6})(\d{4})?([CD]R?)([A-Z]?)(\d+,\d{2})/)
+      // Debet/credit-markering: C, D of een terugboeking RC/RD. De 'R' ná C/D
+      // (bijv. 'DR') is geen markering maar de derde letter van de valutacode
+      // en valt in de fondscodegroep. SWIFT staat een bedrag met minder dan
+      // twee decimalen toe ('100,' of '12,5') — die vielen eerder stil weg.
+      const m = v.match(/^(\d{6})(\d{4})?(R?[CD])([A-Z]?)(\d+,\d{0,2})/)
       if (m) {
         if (pendingTx) result.transacties.push(pendingTx)
         const refM = v.match(/\/\/(.+)/)
-        pendingTx = { datum:parseDate6(m[1]), type:m[3].startsWith('C')?'C':'D', bedrag:parseAmt(m[5]), referentie:refM?refM[1].split('\n')[0].trim():'', tegenpartij:'', omschrijving:'', gekoppeldFactuurId:null, gekoppeldInkoopId:null, autoGematcht:false }
+        const storno = m[3].startsWith('R')
+        pendingTx = { datum:parseDate6(m[1]), type:mt940Richting(m[3]), bedrag:parseAmt(m[5]), referentie:refM?refM[1].split('\n')[0].trim():'', tegenpartij:'', omschrijving:'', gekoppeldFactuurId:null, gekoppeldInkoopId:null, autoGematcht:false, ...(storno ? {storno: true} : {}) }
+      } else {
+        // Onleesbare transactieregel: niet stil laten verdwijnen, de pagina
+        // meldt hoeveel regels er zijn overgeslagen. Een eventuele vorige
+        // transactie zonder :86: gaat wel mee; het :86:-veld dat hierna komt
+        // hoort bij de overgeslagen regel en mag daar niet aan blijven hangen.
+        if (pendingTx) { result.transacties.push(pendingTx); pendingTx = null }
+        result.overgeslagen++
       }
     } else if (field==='86') {
       if (pendingTx) {
@@ -301,14 +328,21 @@ export const scoreMatch = (tx: MatchTransactie, k: MatchKandidaat): number => {
 // Beste kandidaat voor een transactie. `ambigu` is true wanneer meerdere
 // kandidaten dezelfde (hoogste) score hebben — dan geen automatische
 // koppeling, de gebruiker kiest handmatig.
+//
+// `uitsluiten`: factuur-ids die al aan een andere banktransactie hangen. Die
+// doen niet mee — ook niet voor "ambigu" — anders hangt een tweede betaling
+// van hetzelfde bedrag (voorschot, abonnement) stil aan een factuur die al
+// betaald en gekoppeld is.
 export const besteMatch = <T extends MatchKandidaat>(
   tx: MatchTransactie,
   kandidaten: T[],
+  uitsluiten?: Set<number>,
 ): { kandidaat: T | null; ambigu: boolean } => {
   let beste: T | null = null
   let besteScore = -1
   let gelijk = false
   for (const k of kandidaten || []) {
+    if (uitsluiten && uitsluiten.has(k.id)) continue
     const s = scoreMatch(tx, k)
     if (s < 0) continue
     if (s > besteScore) { beste = k; besteScore = s; gelijk = false }
@@ -317,6 +351,32 @@ export const besteMatch = <T extends MatchKandidaat>(
   if (!beste) return { kandidaat: null, ambigu: false }
   if (gelijk) return { kandidaat: null, ambigu: true }
   return { kandidaat: beste, ambigu: false }
+}
+
+/**
+ * Factuur-ids die al aan een banktransactie gekoppeld zijn (`bank_koppelingen`).
+ * Verkoop: losse koppelingen plus alle facturen in een PSP-bundel. Inkoop: losse
+ * koppelingen (ook een creditnota die als bijschrijving binnenkwam) plus de
+ * automatisch geboekte PSP-kostenfactuur. `uitsluitKey` laat de koppeling van
+ * de transactie zelf buiten beschouwing (herkoppelen van dezelfde transactie).
+ */
+export const gekoppeldeFactuurIds = (
+  bankKoppelingen: Record<string, any> | null | undefined,
+  soort: 'verkoop' | 'inkoop',
+  uitsluitKey?: string,
+): Set<number> => {
+  const ids = new Set<number>()
+  for (const [key, waarde] of Object.entries(bankKoppelingen || {})) {
+    if (uitsluitKey && key === uitsluitKey) continue
+    const k: any = waarde
+    if (!k || typeof k !== 'object') continue
+    if (k.soort === soort && k.factuurId != null) ids.add(Number(k.factuurId))
+    if (k.soort === 'psp') {
+      if (soort === 'verkoop') for (const id of (k.factuurIds || [])) ids.add(Number(id))
+      if (soort === 'inkoop' && k.kostenFactuurId != null) ids.add(Number(k.kostenFactuurId))
+    }
+  }
+  return ids
 }
 
 // ── Saldo-aansluitcontrole (per import) ─────────────────────────────────────
@@ -337,7 +397,7 @@ export interface SaldoControle {
 
 const isGekoppeld = (tx: any): boolean => !!(
   tx?.gekoppeldFactuurId || tx?.gekoppeldInkoopId || tx?.gekoppeldKapitaalId
-  || tx?.gekoppeldBtwPeriode || tx?.gekoppeldAccijnsMaand
+  || tx?.gekoppeldBtwPeriode || tx?.gekoppeldAccijnsMaand || tx?.gekoppeldSndPeriode
   || tx?.gekoppeldAflossingAltId || tx?.gekoppeldPspFactuurIds
 )
 
@@ -371,5 +431,80 @@ export const saldoControle = (
     ongekoppeldBedrag: centNaarEuro(som - gekoppeld),
     aantalGekoppeld,
     aantalTransacties: (transacties || []).length,
+  }
+}
+
+// ── Ontvangst zonder factuur → verkoopfactuur ───────────────────────────────
+// "+ Nieuwe boeking" op een bijschrijving opende vroeger het inkoopformulier:
+// ontvangen geld werd zo als kosten (en voorbelasting) geboekt. Een
+// bijschrijving waar nog geen factuur voor bestaat is omzet: deze bouwer maakt
+// er een betaalde, definitieve verkoopfactuur van. Het bankbedrag is het
+// bruto (incl. BTW) en blijft dat tot op de cent; de BTW wordt eruit
+// gerekend (bruto × tarief / (100 + tarief)) en het netto is de rest.
+// Geld terug van een leverancier hoort hier níét: dat is een creditnota op
+// de inkoop (negatieve inkoopfactuur koppelen).
+export interface BrutoSplitsing {
+  netto: number
+  btw: number
+  bruto: number
+  netto_cent: number
+  btw_cent: number
+  bruto_cent: number
+}
+
+export const splitsBrutoInclBtw = (bruto: any, btwPct: any): BrutoSplitsing => {
+  const bruto_cent = Math.abs(toCent(bruto))
+  const pct = Math.max(0, Number(btwPct) || 0)
+  const btw_cent = pct > 0 ? Math.round(bruto_cent * pct / (100 + pct)) : 0
+  const netto_cent = bruto_cent - btw_cent
+  return {
+    netto: centNaarEuro(netto_cent), btw: centNaarEuro(btw_cent), bruto: centNaarEuro(bruto_cent),
+    netto_cent, btw_cent, bruto_cent,
+  }
+}
+
+export interface OntvangstBoekingInvoer {
+  id: number
+  klant_naam: string
+  omschrijving: string
+  btw_pct: number
+  // Rollover (BoekhoudingPage.getRolloverInfo): gezet wanneer de datum van de
+  // bijschrijving in een al ingediende of betaalde BTW-periode valt.
+  btw_periode?: string | null
+}
+
+export const bouwOntvangstVerkoopFactuur = (
+  tx: { datum?: string; bedrag?: any },
+  invoer: OntvangstBoekingInvoer,
+) => {
+  const pct = Math.max(0, Number(invoer.btw_pct) || 0)
+  const s = splitsBrutoInclBtw(tx?.bedrag, pct)
+  const datum = String(tx?.datum || '')
+  return {
+    id: invoer.id,
+    datum,
+    factuurnummer: '',
+    klant_id: null,
+    klant_naam: String(invoer.klant_naam || '').trim(),
+    status: 'betaald' as const,
+    betaald_datum: datum,
+    definitief: true,
+    regels: [{
+      omschrijving: String(invoer.omschrijving || '').trim(),
+      hoeveelheid: 1,
+      prijs_per_stuk: s.netto,
+      btw_pct: pct,
+      netto: s.netto,
+      btw_bedrag: s.btw,
+      bruto: s.bruto,
+    }],
+    btw_overzicht: [{ tarief: pct, netto: s.netto, btw: s.btw }],
+    netto: s.netto,
+    btw: s.btw,
+    bruto: s.bruto,
+    netto_cent: s.netto_cent,
+    btw_cent: s.btw_cent,
+    bruto_cent: s.bruto_cent,
+    ...(invoer.btw_periode ? { btw_periode: invoer.btw_periode } : {}),
   }
 }

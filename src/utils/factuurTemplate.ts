@@ -16,6 +16,7 @@
 
 import { t } from '../i18n'
 import { fmtQty, fmtEuroDoc, fmtDatumDoc } from './format'
+import { betalingstermijnVoor, vervaldatumVerkoopFactuur, isoDag } from './facturen'
 import type { TemplateContext } from './template'
 
 /** Standaard-CSS van het factuurdocument. */
@@ -200,8 +201,10 @@ export interface FactuurTemplateBronnen {
   payInfo?: {url: string, qrDataUrl?: string} | null
 }
 
-/** Vult het BTW-overzicht aan uit de regels als het niet is opgeslagen. */
-const btwOverzichtVan = (factuur: any): any[] => {
+/** Vult het BTW-overzicht aan uit de regels als het niet is opgeslagen.
+ * Gedeeld met de betalingsherinnering (`factuurRegelsHtml` in PakbonExport.tsx),
+ * zodat factuur en herinnering hetzelfde overzicht tonen. */
+export const btwOverzichtVan = (factuur: any): any[] => {
   const opgeslagen = factuur?.btw_overzicht
   if (Array.isArray(opgeslagen) && opgeslagen.length > 0) return opgeslagen
   const map: Record<number, {tarief: number, netto: number, btw: number}> = {}
@@ -230,8 +233,10 @@ const brouwerijRegels = (brewery: any): string[] => {
   ].filter(Boolean)
 }
 
-/** Adresregels van de afnemer; de eerste regel is de kop van het adresblok. */
-const klantRegels = (order: any): {titel: string, rest: string[]} => {
+/** Adresregels van de afnemer; de eerste regel is de kop van het adresblok.
+ * Eén definitie voor factuur, pakbon en herinnering (`klantBlock` in
+ * PakbonExport.tsx), zodat geen document bedrijf of huisnummer vergeet. */
+export const klantRegels = (order: any): {titel: string, rest: string[]} => {
   const straat = order?.klant_straat && order?.klant_huisnummer
     ? `${order.klant_straat} ${order.klant_huisnummer}`
     : (order?.klant_straat || '')
@@ -257,16 +262,14 @@ export const bouwFactuurContext = (bronnen: FactuurTemplateBronnen): TemplateCon
   const fv = brewery?.factuur_velden || {}
   const isCredit = factuur?.status === 'credit'
   const factuurnummer = factuur?.factuurnummer || `${isCredit ? 'CN' : 'F'}-${factuur?.id}`
-  const betalingstermijn = brewery?.betalingstermijn ?? 14
-  const vervaldatum = (() => {
-    try {
-      const d = new Date(factuur?.datum || order?.datum || new Date().toISOString())
-      d.setDate(d.getDate() + Number(betalingstermijn))
-      return fmtDatumDoc(d.toISOString())
-    } catch {
-      return '—'
-    }
-  })()
+  // De aanroeper geeft de termijn van déze factuur mee (`breweryMetTermijn`:
+  // klantkaart → brouwerij). Een lege of 0-termijn is geen "vandaag betalen"
+  // maar ontbrekend: dan geldt de standaard, net als voor de te-laat-badge.
+  const betalingstermijn = betalingstermijnVoor(null, [], brewery)
+  // Dagrekening in UTC, zoals `vervaldatumVerkoopFactuur` — een zomertijd-
+  // wissel binnen de termijn verschuift de datum dan niet.
+  const vervaldatum = fmtDatumDoc(vervaldatumVerkoopFactuur(
+    {datum: factuur?.datum || order?.datum || isoDag(new Date())}, [], {betalingstermijn}))
   const leveringsdatum = (order?.verzend_datum || order?.datum)
     ? fmtDatumDoc(order.verzend_datum || order.datum)
     : ''

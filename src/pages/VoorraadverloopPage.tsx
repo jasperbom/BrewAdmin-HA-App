@@ -1,7 +1,9 @@
 import React from 'react'
 import { t, getLang } from '../i18n'
 import { tod } from '../utils/format'
+import { csvTekst } from '../utils/csv'
 import { getNegatieveVoorraadPosities, getAgpLocatie, berekenVoorcalcVoorAfvulling } from '../utils/calculations'
+import { berekenGereedProductVerloop } from '../utils/voorraadverloop'
 import SectionHeader from '../components/ui/SectionHeader'
 import * as XLSX from 'xlsx'
 
@@ -90,11 +92,8 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
       p.locatie_naam,
       String(p.voorraad),
     ])
-    const esc = (v: string) => {
-      const s = String(v ?? '')
-      return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
-    }
-    const csv = [headers, ...rows].map(r => r.map(esc).join(';')).join('\n')
+    // Formule-veilig en met verdubbelde aanhalingstekens (utils/csv.ts).
+    const csv = csvTekst([headers, ...rows], ';')
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -222,29 +221,9 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
   // zijn de twee uitstroomvormen die accijns triggeren.
   const agpId = useMemo(() => getAgpLocatie(locaties).id, [locaties])
 
+  // De berekening zelf staat in utils/voorraadverloop.ts (met test): export én
+  // intra-EU onder schorsing, afboekingen op hun eigen locatie.
   const gereedRows = useMemo(() => {
-    // Collect unique batch+verpakking combos from afvullingen
-    const combos = new Map<string, any>()
-
-    av.forEach((a: any) => {
-      const batch = batchMap[a.batch_id]
-      if (!batch) return
-      const product = batch.product_id ? producten.find((p: any) => p.id === batch.product_id) : null
-      const bierNaam = product?.naam || batch.biernaam || batch.naam
-      const key = `${bierNaam}|||${a.verpakking_naam}`
-      if (!combos.has(key)) {
-        combos.set(key, {
-          batch_naam: bierNaam,
-          verpakking_naam: a.verpakking_naam,
-          gn_code: a.gn_code || batch.gn_code || '',
-          batch_ids: new Set<string>(),
-          afvulling_ids: new Set<string>(),
-        })
-      }
-      combos.get(key)!.batch_ids.add(a.batch_id)
-      combos.get(key)!.afvulling_ids.add(a.id)
-    })
-
     // Voorcalc per afvulling-id (snapshot uit afvulling, met live-fallback)
     const voorcalcVoorAfvulling = (a: any): number => {
       const stored = Number(a.voorcalc_accijns_per_eenheid || 0)
@@ -257,137 +236,11 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
       ).perEenheid
     }
 
-    // Snelle index van afvulling.id → afvulling (voor verplaatsingen)
-    const avById: Record<number, any> = {}
-    av.forEach((a: any) => { avById[a.id] = a })
-
-    // Bron van een uitlevering: bron_locatie_id of (default) AGP
-    const uitBron = (u: any) => (u.bron_locatie_id ?? agpId)
-
-    const rows: any[] = []
-    combos.forEach((combo, key) => {
-      const { batch_naam, verpakking_naam, gn_code, batch_ids, afvulling_ids } = combo
-
-      const matchesCombo = (afvId: any, batchId: any, verp: any) => {
-        if (afvId != null && afvulling_ids.has(afvId)) return true
-        return batch_ids.has(batchId) && verp === verpakking_naam
-      }
-
-      // ── Totaalvoorraad (locatie-onafhankelijk) ──
-      const prodBefore = av.filter((a: any) =>
-        batch_ids.has(a.batch_id) && a.verpakking_naam === verpakking_naam && beforeDate(a.datum, van)
-      ).reduce((s: number, a: any) => s + Number(a.hoeveelheid || 0), 0)
-
-      const uitBefore = uit.filter((u: any) =>
-        matchesCombo(u.afvulling_id, u.batch_id, u.verpakking_naam) && beforeDate(u.datum, van)
-      ).reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
-
-      const afbBefore = afboekingen.filter((a: any) =>
-        afvulling_ids.has(a.afvulling_id) && beforeDate(a.datum, van)
-      ).reduce((s: number, a: any) => s + Number(a.aantal || 0), 0)
-
-      const beginvoorraad = prodBefore - uitBefore - afbBefore
-
-      const productie = av.filter((a: any) =>
-        batch_ids.has(a.batch_id) && a.verpakking_naam === verpakking_naam && inRange(a.datum, van, tot)
-      ).reduce((s: number, a: any) => s + Number(a.hoeveelheid || 0), 0)
-
-      const uitleveringenInPeriod = uit.filter((u: any) =>
-        matchesCombo(u.afvulling_id, u.batch_id, u.verpakking_naam) && inRange(u.datum, van, tot)
-      )
-      const binnenland = uitleveringenInPeriod
-        .filter((u: any) => !u.type_uitlevering || u.type_uitlevering === 'binnenland' || u.type_uitlevering === 'intern')
-        .reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
-      const exportUit = uitleveringenInPeriod
-        .filter((u: any) => u.type_uitlevering === 'export')
-        .reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
-
-      const bijzMutaties = afboekingen.filter((a: any) =>
-        afvulling_ids.has(a.afvulling_id) && inRange(a.datum, van, tot)
-      ).reduce((s: number, a: any) => s + Number(a.aantal || 0), 0)
-
-      const totaalUit = binnenland + exportUit
-      const eindvoorraad = beginvoorraad + productie - totaalUit - bijzMutaties
-
-      // ── AGP-perspectief (geschorste accijns) ──
-      // Bier komt op AGP via afvullen (productie). Eenmaal uitgeslagen verlaat
-      // het de schorsingsregeling — terugplaatsing is een teruggaaf-procedure
-      // en geen reguliere voorraadbeweging, dus wordt hier niet als instroom
-      // op AGP geteld. Uitstroomvormen: verplaatsing AGP→niet-AGP en
-      // uitlevering vanaf AGP.
-      const relevanteVerpl = (verplaatsingen||[]).filter((v: any) => {
-        const a = avById[v.afvulling_id]
-        if (!a) return false
-        return matchesCombo(v.afvulling_id, a.batch_id, a.verpakking_naam)
-      })
-
-      const verplOutBefore = relevanteVerpl.filter((v: any) =>
-        v.van_locatie_id === agpId && v.naar_locatie_id !== agpId && beforeDate(v.datum, van)
-      ).reduce((s: number, v: any) => s + Number(v.aantal || 0), 0)
-      const uitFromAgpBefore = uit.filter((u: any) =>
-        matchesCombo(u.afvulling_id, u.batch_id, u.verpakking_naam) &&
-        uitBron(u) === agpId &&
-        beforeDate(u.datum, van)
-      ).reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
-
-      const agpBegin = prodBefore - verplOutBefore - uitFromAgpBefore - afbBefore
-
-      const verplOutInPeriod = relevanteVerpl.filter((v: any) =>
-        v.van_locatie_id === agpId && v.naar_locatie_id !== agpId && inRange(v.datum, van, tot)
-      )
-      const uitFromAgpInPeriod = uitleveringenInPeriod.filter((u: any) => uitBron(u) === agpId)
-
-      const verplOutAantal = verplOutInPeriod.reduce((s: number, v: any) => s + Number(v.aantal || 0), 0)
-      const uitAgpAantal = uitFromAgpInPeriod.reduce((s: number, u: any) => s + Number(u.aantal || 0), 0)
-
-      const agpUitgeslagen = verplOutAantal + uitAgpAantal
-      const agpEind = agpBegin + productie - agpUitgeslagen - bijzMutaties
-
-      // ── Accijns te betalen in periode ──
-      // Belastbaar feit: AGP-uitstroom waar geen vrijstelling op zit.
-      // Export is geen belastbaar feit (verlaat de EU). Binnenland en intern
-      // gebruik triggeren accijns. Verplaatsing AGP → niet-AGP triggert accijns
-      // (uitslag tot verbruik).
-      let accijnsTeBetalen = 0
-      for (const u of uitFromAgpInPeriod) {
-        if (u.type_uitlevering === 'export') continue
-        const afv = u.afvulling_id ? avById[u.afvulling_id] : null
-        const perEenheid = afv ? voorcalcVoorAfvulling(afv) : 0
-        accijnsTeBetalen += perEenheid * Number(u.aantal || 0)
-      }
-      for (const v of verplOutInPeriod) {
-        const afv = avById[v.afvulling_id]
-        if (!afv) continue
-        const perEenheid = voorcalcVoorAfvulling(afv)
-        accijnsTeBetalen += perEenheid * Number(v.aantal || 0)
-      }
-
-      // ── Latente accijnsschuld op AGP-eindvoorraad ──
-      // Snapshot uit voorcalc per afvulling, gewogen gemiddelde over alle
-      // bijbehorende afvullingen. Bevroren tarief op moment van afvullen.
-      const relAv = av.filter((a: any) => batch_ids.has(a.batch_id) && a.verpakking_naam === verpakking_naam)
-      let totaalEenheden = 0
-      let totaalVc = 0
-      for (const a of relAv) {
-        const aantal = Number(a.hoeveelheid || 0)
-        const perEenheid = voorcalcVoorAfvulling(a)
-        totaalEenheden += aantal
-        totaalVc += perEenheid * aantal
-      }
-      const voorcalcPerEenheid = totaalEenheden > 0 ? totaalVc / totaalEenheden : 0
-      const accijnsLatentEind = voorcalcPerEenheid * Math.max(0, agpEind)
-
-      rows.push({
-        key, batch_naam, verpakking_naam, gn_code,
-        beginvoorraad, productie, binnenland, export: exportUit,
-        bijzMutaties, eindvoorraad,
-        agpBegin, agpUitgeslagen, agpEind,
-        voorcalcPerEenheid, accijnsTeBetalen, accijnsLatentEind,
-      })
+    return berekenGereedProductVerloop({
+      afvullingen: av, uitleveringen: uit, afboekingen, verplaatsingen,
+      batches: bat, producten, agpId, van, tot, voorcalcVoorAfvulling,
     })
-
-    return rows.sort((a, b) => a.batch_naam.localeCompare(b.batch_naam) || a.verpakking_naam.localeCompare(b.verpakking_naam))
-  }, [av, uit, afboekingen, verplaatsingen, batchMap, van, tot, producten, accijnsInst, agpId])
+  }, [av, uit, afboekingen, verplaatsingen, bat, batchMap, van, tot, producten, accijnsInst, agpId])
 
   const gereedTotals = useMemo(() => ({
     beginvoorraad: gereedRows.reduce((s: number, r: any) => s + r.beginvoorraad, 0),
@@ -607,7 +460,7 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
               <thead className="text-xs text-gray-500 bg-gray-50">
                 <tr>
                   <th className="px-3 py-2 text-left">{t('vv_ingredient')}</th>
-                  <th className="px-3 py-2 text-left">Eenheid</th>
+                  <th className="px-3 py-2 text-left">{t('lbl_unit')}</th>
                   <th className="px-3 py-2 text-right">{t('gpa_beginvoorraad')}</th>
                   <th className="px-3 py-2 text-right">{t('gpa_inslagen')}</th>
                   <th className="px-3 py-2 text-right">{t('vv_verbruik_productie')}</th>
@@ -654,8 +507,8 @@ function VoorraadverloopPage({ lots = [], bat = [], bi = [], av = [], uit = [], 
             <table className="w-full text-sm">
               <thead className="text-xs text-gray-500 bg-gray-50">
                 <tr>
-                  <th className="px-3 py-2 text-left" rowSpan={2}>Bier</th>
-                  <th className="px-3 py-2 text-left" rowSpan={2}>Verpakking</th>
+                  <th className="px-3 py-2 text-left" rowSpan={2}>{t('lbl_pakbon_bier')}</th>
+                  <th className="px-3 py-2 text-left" rowSpan={2}>{t('lbl_pakbon_verpakking')}</th>
                   <th className="px-3 py-2 text-left" rowSpan={2}>{t('lbl_gn_code')}</th>
                   <th className="px-2 py-1 text-center border-l border-gray-200" colSpan={6}>{t('gpa_groep_voorraad_totaal')}</th>
                   <th className="px-2 py-1 text-center border-l border-gray-200" colSpan={3} title={t('gpa_groep_agp_tip')}>{t('gpa_groep_agp')}</th>

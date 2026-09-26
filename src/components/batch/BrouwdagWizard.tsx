@@ -1159,7 +1159,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
               </div>
               {maxExtract === 0 && (fermentables.length > 0) && (
                 <div className="mt-3 text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded px-3 py-2">
-                  ⚠ {t('calc_geen_data')}: extract% (yield) ontbreekt op mout. Voeg toe via Brewfather-sync of handmatig in batch-ingrediënten.
+                  ⚠ {t('calc_geen_data')}: {t('calc_extract_ontbreekt_mout')}
                 </div>
               )}
             </div>

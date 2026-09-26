@@ -14,8 +14,8 @@
 //
 // Uitgangspunt bij de cijfers: geen enkel getal hier is nieuw. Elk cijfer komt
 // uit dezelfde afleiding als het scherm dat het al toont (de tijdlijn uit
-// `vergisting.ts`, de verpakkingskosten uit `verpakkingKosten.ts`, de lotcode
-// via `trace.ts`). Een dossier dat andere getallen noemt dan het scherm is
+// `vergisting.ts`, de kostprijs uit `berekenBatchKostprijs`, de lotcode via
+// `trace.ts`). Een dossier dat andere getallen noemt dan het scherm is
 // erger dan geen dossier.
 
 import type {
@@ -26,7 +26,7 @@ import type {
 import { BUILTIN_ING_TYPES, FASE_LABEL_KEYS } from './constants'
 import { bouwBatchTijdlijn, type BatchTijdlijn, type StatusLogRegel } from './vergisting'
 import { lotLabel } from './trace'
-import { verpakkingKostenPerStuk } from './verpakkingKosten'
+import { berekenBatchKostprijs } from './calculations'
 import { metingWaarde } from './metingen'
 
 // ── Wanneer is een batch "afgerond"? ────────────────────────────────────────
@@ -196,7 +196,8 @@ export interface RapportFinancieel {
   brouwkosten: number
   verpakking: number
   accijns: number
-  /** De accijns komt uit de voorcalculatie omdat er nog niets is uitgeslagen. */
+  /** De accijns komt (deels) uit de voorcalculatie: er ligt nog bier in de AGP
+   *  waarvoor geen accijns is geboekt. */
   accijnsVoorcalc: boolean
   totaal: number
   perLiter: number | null
@@ -407,8 +408,10 @@ const afwijkingRegels = (afwijkingen: HaccpAfwijking[]): RapportAfwijking[] =>
     paraaf: paraafVan(a.paraaf),
   }))
 
-// Financieel resultaat — exact dezelfde opbouw als het blok "Financieel
-// resultaat" op de batchpagina, zodat het dossier geen tweede waarheid wordt.
+// Financieel resultaat — de kosten komen uit `berekenBatchKostprijs`, dezelfde
+// afleiding als het blok "Financieel resultaat" op de batchpagina, de
+// productmarges en de COGS, zodat het dossier geen tweede waarheid wordt.
+// Alleen de opbrengst en de marge rekent het dossier zelf.
 const financieel = (
   batch: Batch,
   regels: BatchIngredient[],
@@ -416,34 +419,17 @@ const financieel = (
   inv: BatchRapportInvoer,
   kern: RapportKerncijfers
 ): RapportFinancieel => {
-  const lots = inv.lots || []
-  const verpakkingen = inv.verpakkingen || []
   const productArtikelen = inv.productArtikelen || []
   const artikelen = inv.artikelen || []
 
-  const ingredienten = regels.reduce((s, r) => {
-    if (r.kosten != null && r.kosten !== '') return s + getal(r.kosten)
-    const lot = lots.find(l => zelfdeId(l.id, r.lot_id))
-    return s + (lot?.prijs_per_eenheid ? getal(lot.prijs_per_eenheid) * getal(r.hoeveelheid) : 0)
-  }, 0)
-
-  const overhead = getal(batch.electra_kosten) + getal(batch.water_kosten)
-    + getal(batch.schoonmaak_kosten) + getal(batch.overige_kosten)
-
-  const verpakking = afvullingen.reduce((s, a) => {
-    const vp = verpakkingen.find(v => zelfdeId(v.id, a.verpakking_id))
-      || verpakkingen.find(v => tekst(v.naam) !== '' && tekst(v.naam) === tekst(a.verpakking_type))
-    if (!vp) return s
-    return s + verpakkingKostenPerStuk(vp, inv.onderdelen) * aantalVan(a)
-  }, 0)
-
-  // Geboekte accijns (uitslagen) gaat vóór de voorcalculatie: zodra het bier
-  // de AGP verlaten heeft is de schuld een feit en geen schatting meer.
-  const geboekt = (inv.accijns || [])
-    .filter(a => zelfdeId(a.batch_id, batch.id))
-    .reduce((s, a) => s + getal(a.accijns ?? a.totaal_accijns), 0)
-  const voorcalc = afvullingen.reduce((s, a) => s + getal(a.voorcalc_accijns_totaal), 0)
-  const accijns = geboekt > 0 ? geboekt : voorcalc
+  const k = berekenBatchKostprijs(batch, regels, inv.lots || [], afvullingen,
+    inv.verpakkingen || [], inv.onderdelen || [], inv.accijns || [])
+  const ingredienten = k.ingredienten_kosten ?? 0
+  const overhead = k.overhead_kosten ?? 0
+  const verpakking = k.verpakking_kosten ?? 0
+  // Geboekte accijns voor wat is uitgeslagen, de voorcalculatie voor wat nog
+  // in de AGP ligt (`accijnsVoorKostprijs`).
+  const accijns = k.accijns ?? 0
 
   let opbrengst = 0
   let zonderPrijs = 0
@@ -458,14 +444,14 @@ const financieel = (
   }
 
   const brouwkosten = ingredienten + overhead
-  const totaal = brouwkosten + verpakking + accijns
+  const totaal = k.totaal_kosten
   return {
     ingredienten,
     overhead,
     brouwkosten,
     verpakking,
     accijns,
-    accijnsVoorcalc: geboekt === 0 && voorcalc > 0,
+    accijnsVoorcalc: k.accijns_bron === 'voorcalc',
     totaal,
     perLiter: kern.literAfgevuld > 0 ? totaal / kern.literAfgevuld : null,
     perStuk: kern.stuks > 0 ? totaal / kern.stuks : null,

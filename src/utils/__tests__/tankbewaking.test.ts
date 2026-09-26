@@ -379,6 +379,19 @@ describe('tempReeks / metingTs', () => {
     expect(metingTs({})).toBeNull()
   })
 
+  it('geeft het absolute tijdstip `ts` voorrang boven datum + tijd', () => {
+    // Wintertijdwissel: 02:30 lokaal komt twee keer voor. `ts` zegt welke.
+    const ts = '2026-10-25T01:30:00+00:00'
+    expect(metingTs({datum: '2026-10-25', tijd: '02:30', ts})).toBe(Date.UTC(2026, 9, 25, 1, 30))
+    // Onbruikbare `ts` → terug op datum + tijd, zoals een rij zonder `ts`.
+    expect(metingTs({datum: '2026-03-10', tijd: '08:30', ts: 'kapot'}))
+      .toBe(new Date('2026-03-10T08:30').getTime())
+    expect(metingTs({datum: '2026-03-10', tijd: '08:30', ts: null}))
+      .toBe(new Date('2026-03-10T08:30').getTime())
+    // Alleen `ts` is ook genoeg.
+    expect(metingTs({ts})).toBe(Date.UTC(2026, 9, 25, 1, 30))
+  })
+
   it('filtert op batch, op bruikbare temperatuur en op het venster', () => {
     const rijen = [
       {batch_id: 1, datum: '2026-03-10', tijd: '10:00', temp: 18},

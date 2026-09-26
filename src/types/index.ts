@@ -523,6 +523,10 @@ export interface FactuurRegel {
   kostensoort?: string
   /** Vrije regel die merch-voorraad aanvult: welk artikel en hoeveel stuks. */
   merch_id?: number | null
+  /** Correctieregel: het verschil tussen de handmatig overgenomen
+   *  factuurtotalen en de som van de regels (zie `inkoopRegelsMetCorrectie`
+   *  in utils/centen.ts). Het btw_bedrag is hier leidend, niet netto × tarief. */
+  correctie?: boolean
 }
 
 export interface Bijlage {
@@ -971,6 +975,9 @@ export interface Jaarafsluiting {
     liquide: number
     crediteuren: number
     accijns_schuld: number
+    // Nog af te dragen BTW (negatief = te vorderen), zie utils/balans.ts.
+    // Ontbreekt op afsluitingen van vóór deze post.
+    btw_schuld?: number
     schuld_alt_rekeningen: number
     gestort_kapitaal: number
   }
@@ -1028,10 +1035,26 @@ export interface VerkoopFactuur {
   // Het brutobedrag telt als aflossing van die schuld.
   verrekend_alt_id?: number | null
   betaald_datum?: string
+  // Zelfde rollover als bij inkoop (InkoopFactuur.btw_periode): alleen gezet
+  // wanneer de factuurdatum in een al ingediende of betaalde BTW-periode valt.
+  // De omzet-BTW telt dan mee in de lopende aangifte, niet in de ingediende.
+  btw_periode?: string
   // Overgenomen van de WooCommerce-order: wanneer en waarmee de klant betaald
   // heeft. Stuurt de betaalde-factuurmail en het "voldaan"-blok op de PDF.
   wc_betaald_datum?: string
   wc_betaal_methode?: string
+  // De Mollie-betaallink die met deze factuur is meegestuurd. Zo'n link
+  // verloopt niet; een herinnering hergebruikt hem, zodat er per factuur
+  // niet meerdere betaalbare links rondgaan (utils/mollieLink.ts).
+  mollie_link?: MollieBetaallink
+}
+
+/** Een aangemaakte Mollie-betaallink (Payment Links API). */
+export interface MollieBetaallink {
+  id: string
+  url: string
+  amount_cent: number
+  aangemaakt: string
 }
 
 export interface BreweryDetails {
@@ -1170,8 +1193,15 @@ export interface Bestelling {
   afhaal_gemist_datum?: string | null
   // Wat er naar WooCommerce is teruggeschreven (utils/wcTerugschrijven.ts):
   // de status (`completed`/`cancelled`, of null als er alleen een notitie
-  // is geplaatst), wanneer, en de fout als het mislukte.
-  wc_sync?: {status: 'completed' | 'cancelled' | null, datum: string, fout?: string | null, note?: boolean}
+  // is geplaatst), wanneer, en de fout als het mislukte. `onbetaald`: wíj
+  // zetten `completed` op een order die toen nog niet betaald was — de import
+  // leest dat niet terug als betaling (utils/wcImport → betaalVeldenNaEigenSync).
+  wc_sync?: {status: 'completed' | 'cancelled' | null, datum: string, fout?: string | null, note?: boolean, onbetaald?: boolean}
+  // De WooCommerce-status, alleen bewaard zodra de order in de winkel
+  // geannuleerd, mislukt of terugbetaald is (en daarna bij elke import
+  // ververst). Zo'n order die hier nog openstaat vraagt om aandacht; zonder
+  // picks annuleert de import hem zelf (utils/wcOrderImport → wcOrderUpdate).
+  wc_status?: string
 }
 
 export interface GistMeting {
@@ -1184,6 +1214,10 @@ export interface GistMeting {
   temp?: number
   opmerking?: string
   auto?: boolean
+  // Absoluut tijdstip (ISO met offset) van een automatische meting; gaat in
+  // de bewaking vóór datum/tijd (lokale kloktijd, dubbelzinnig bij de
+  // wintertijdwissel) — zie metingTs in utils/tankbewaking.ts.
+  ts?: string
   // 'fg' = afgeleid van het FG-veld in de vergistingsfase (zie
   // utils/metingen.ts → metingenMetFg); blijft synchroon met dat veld.
   bron?: 'fg'

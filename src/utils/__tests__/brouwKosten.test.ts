@@ -90,6 +90,36 @@ describe('brouwKosten — uit de boekhouding', () => {
     expect(post(k, 'elektra').perBrouw).toBe(45)
   })
 
+  it('telt een geplande brouw niet mee, ook niet met de receptliters al ingevuld', () => {
+    // Zo maakt de app een geplande batch aan: liter_vergist komt vooraf uit
+    // het recept (maakNieuweBatch, bfMapBatch), met een brouwdag in de toekomst.
+    const k = brouwKosten({
+      batches: [
+        {id: 1, datum: '2026-01-15', liter_vergist: 400, status: 'Afgevuld'},
+        {id: 2, datum: '2026-03-15', liter_vergist: 400, status: 'Vergisten'},
+        {id: 3, datum: '2026-10-15', liter_vergist: 400, status: 'Gepland'},
+        {id: 4, datum: '2026-11-15', liter_vergist: 400, status: 'Gepland'},
+      ],
+      inkoopFacturen: [{id: 1, datum: '2026-02-01', regels: [{kostensoort: 'Energie', netto: 800}]}],
+    })
+    expect(k.batches).toBe(2)
+    expect(k.tot).toBe('2026-03-15')
+    expect(post(k, 'elektra')).toMatchObject({perBrouw: 400, perLiter: 1, bron: 'boekhouding'})
+    expect(kostenVoorBrouw(k, 400).totaal).toBe(400)
+  })
+
+  it('geplande brouwen verdringen de gemeten waarde van een echt brouwsel niet', () => {
+    const gepland = Array.from({length: 10}, (_, i) => ({
+      id: 10 + i, datum: `2027-0${(i % 9) + 1}-01`, liter_vergist: 400, status: 'Gepland',
+    }))
+    const k = brouwKosten({batches: [
+      {id: 1, datum: '2026-01-15', liter_vergist: 400, electra_kosten: 50, status: 'Gesloten'},
+      ...gepland,
+    ]})
+    expect(post(k, 'elektra')).toMatchObject({perBrouw: 50, bron: 'gemeten', batches: 1})
+    expect(k.batches).toBe(1)
+  })
+
   it('kijkt minstens een jaar terug, zodat één brouwsel geen leeg venster is', () => {
     const k = brouwKosten({
       batches: [{id: 1, datum: '2026-05-10', liter_vergist: 400}],

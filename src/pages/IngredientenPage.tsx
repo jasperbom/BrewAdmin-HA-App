@@ -2,11 +2,12 @@ import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { newId, bfGetIngredients, bfPushInventory, extractBfProps } from '../utils/api'
 import { bfFermType } from '../utils/ingTypes'
-import { fmt, fmtD, tod, fmtQty, r2, r3 } from '../utils/format'
+import { fmt, fmtD, tod, fmtQty, r3 } from '../utils/format'
 import { thtAlertLots } from '../utils/calculations'
 import type { AttentieDoel } from '../utils/attentie'
 import { verpakkingKostenPerStuk } from '../utils/verpakkingKosten'
-import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, VERPAKKING_DEFAULTS, LOT_BREW_FIELDS_PER_TYPE, BREW_PROP_UNITS } from '../utils/constants'
+import { verpakkingVoorraad } from '../utils/verpakkingVoorraad'
+import { convertEenheid, compatibeleEenheden, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, onderdeelTypeLabel, VERPAKKING_DEFAULTS, LOT_BREW_FIELDS_PER_TYPE, BREW_PROP_UNITS } from '../utils/constants'
 import { getEffectiveBrewProps, getEffectiveBrewProp, stripEmptyBrewProps, formatBrewValue } from '../utils/brewProps'
 import Modal from '../components/ui/Modal'
 import Btn from '../components/ui/Btn'
@@ -19,7 +20,9 @@ import { useStore } from '../utils/api'
 import { logAudit } from '../utils/audit'
 import { bepaalRollover } from '../utils/btw'
 import { inkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
-import { totaliseerInkoop } from '../utils/centen'
+import { inkoopRegelsMetCorrectie } from '../utils/centen'
+import { bouwInkoopRegels } from '../utils/inkoopOntvangst'
+import { lotVoorraadTotaal, bfVoorraadHoeveelheid } from '../utils/ingredientVoorraad'
 
 interface Props {
   ing: any[]
@@ -113,10 +116,7 @@ const IngredientenPage: React.FC<Props> = ({
   const [showO, setShowO] = useState(false)
   const [ontvangstInitTab, setOntvangstInitTab] = useState('ingredienten')
   const [ontvangstInitIngId, setOntvangstInitIngId] = useState('')
-  const [showA, setShowA] = useState<any>(null)
   const knownLeveranciers = React.useMemo(() => [...new Set(lots.map((l: any) => l.leverancier).filter(Boolean))].sort(), [lots])
-  const [afQty, setAfQty] = useState('')
-  const [afEenheid, setAfEenheid] = useState('')
   const [showLot, setShowLot] = useState<any>(null)
   const [archiefOpen, setArchiefOpen] = useStore('ing_archief_open', {})
   const [bfPanelOpen, setBfPanelOpen] = useStore('ing_bf_panel_open', false)
@@ -134,8 +134,6 @@ const IngredientenPage: React.FC<Props> = ({
   const [showVOntv, setShowVOntv] = useState(false)
   const emptyVO = { od_id: '', verpakking_id: '', naam: '', inhoud_liter: '', type: '', lotnr: '', aantal: '', preset: '', kosten_verpakking: '', kosten_afsluiting: '', kosten_label: '', leverancier: '', factuurnummer: '', prijs_per_stuk: '', totaalprijs: '', btw_tarief: '21' }
   const [vOntvForm, setVOntvForm] = useState(emptyVO)
-  const [showVAfboek, setShowVAfboek] = useState<any>(null)
-  const [vAfQty, setVAfQty] = useState('')
   const [showVEdit, setShowVEdit] = useState<any>(null)
   const emptyVE = { naam: '', inhoud_liter: '', type: '', kosten_verpakking: '', kosten_afsluiting: '', kosten_label: '', leverancier: '', factuurnummer: '' }
   const [vEditForm, setVEditForm] = useState(emptyVE)
@@ -160,7 +158,10 @@ const IngredientenPage: React.FC<Props> = ({
 
   const activeLots = (iid: number) => lots.filter((l: any) => l.ingredient_id === iid && l.beschikbaar && Number(l.hoeveelheid || 0) > 0)
   const archiefLots = (iid: number) => lots.filter((l: any) => l.ingredient_id === iid && (!l.beschikbaar || Number(l.hoeveelheid || 0) === 0))
-  const totalQty = (iid: number) => activeLots(iid).reduce((s: number, l: any) => s + Number(l.hoeveelheid || 0), 0)
+  // Lots van één ingrediënt kunnen in verschillende eenheden staan (kg naast
+  // g): eerst omrekenen, nooit rauw optellen (utils/ingredientVoorraad.ts).
+  const voorraadTotaal = (iid: number) => lotVoorraadTotaal(activeLots(iid))
+  const totalQty = (iid: number) => voorraadTotaal(iid).totaal
 
   // Op een breed scherm meteen het eerste ingrediënt openen, zodat de rechter
   // helft van de pagina niet leeg staat — hetzelfde gedrag als de
@@ -221,9 +222,13 @@ const IngredientenPage: React.FC<Props> = ({
 
   const pushBfStock = async (ingredient: any) => {
     if (!ingredient.brewfather_id || !ingredient.brewfather_cat) return
+    // In de eenheid die Brewfather verwacht (hop in g, mout in kg); lots die
+    // niet om te rekenen zijn → niet pushen, anders staat de voorraad daar
+    // stil een factor 1000 mis.
+    const amount = bfVoorraadHoeveelheid(ingredient.brewfather_cat, activeLots(ingredient.id), ingredient.bf_props?.unit)
+    if (amount === null) { setBfMsg(t('msg_bf_push_eenheid')); return }
     setBfPushing(true); setBfMsg('')
     try {
-      const amount = totalQty(ingredient.id)
       const ok = await bfPushInventory(ingredient.brewfather_cat, ingredient.brewfather_id, amount)
       setBfMsg(ok ? t('msg_bf_push_success') : t('msg_bf_push_failed').replace('{msg}', 'HTTP error'))
     } catch (e: any) { setBfMsg(t('msg_bf_push_failed').replace('{msg}', e.message || String(e))) }
@@ -323,27 +328,8 @@ const IngredientenPage: React.FC<Props> = ({
     setLotEdit((prev: any) => ({ ...prev, hoeveelheid: String(nieuweQty) }))
   }
 
-  const doAfboeken = (lot: any) => {
-    const q = Number(afQty)
-    if (!q || q <= 0) { alert(t('err_valid_qty')); return }
-    const van = afEenheid || lot.eenheid
-    const qInLot = convertEenheid(q, van, lot.eenheid)
-    if (qInLot === null) { alert(t('err_convert_units').replace('{from}', van).replace('{to}', lot.eenheid)); return }
-    if (qInLot > Number(lot.hoeveelheid)) { alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${fmtQty(lot.hoeveelheid)} ${lot.eenheid}`)); return }
-    setLots((prev: any[]) => prev.map((l: any) => l.id !== lot.id ? l : { ...l, hoeveelheid: r3(Number(l.hoeveelheid) - qInLot), beschikbaar: r3(Number(l.hoeveelheid) - qInLot) > 0 }))
-    logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: lot.id, actie: 'gewijzigd', omschrijving: `Afgeboekt ${q} ${van}` })
-    addLog({ ingredient_id: lot.ingredient_id, ingredient_naam: ing.find((i: any) => i.id === lot.ingredient_id)?.naam || '', lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'afboeking', hoeveelheid: q, eenheid: van, referentie: 'Handmatig afgeboekt' })
-    setShowA(null); setAfQty(''); setAfEenheid('')
-  }
-
-  const vpVoorraad = (vp: any) => {
-    if (!Array.isArray(vp.onderdelen) || !vp.onderdelen.length) return Number(vp.voorraad || 0)
-    const stocks = vp.onderdelen.map((o: any) => {
-      const od = onderdelen.find((d: any) => d.id === o.onderdeel_id)
-      return Math.floor(Number(od?.voorraad || 0) / Number(o.aantal || 1))
-    })
-    return stocks.length ? Math.min(...stocks) : 0
-  }
+  // Zelfde telling als het afvulformulier (utils/verpakkingVoorraad.ts).
+  const vpVoorraad = (vp: any) => verpakkingVoorraad(vp, onderdelen)
   const vpKosten = (vp: any) => verpakkingKostenPerStuk(vp, onderdelen)
 
   const onPreset = (preset: string) => {
@@ -379,14 +365,6 @@ const IngredientenPage: React.FC<Props> = ({
     setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === showVEdit.id ? { ...v, naam: vEditForm.naam.trim(), inhoud_liter: Number(vEditForm.inhoud_liter || 0), type: vEditForm.type || v.type || '', kosten_verpakking: Number(vEditForm.kosten_verpakking || 0), kosten_afsluiting: Number(vEditForm.kosten_afsluiting || 0), kosten_label: Number(vEditForm.kosten_label || 0), leverancier: vEditForm.leverancier || '', factuurnummer: vEditForm.factuurnummer || '' } : v))
     logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: showVEdit.id, actie: 'gewijzigd', omschrijving: vEditForm.naam.trim() })
     setShowVEdit(null)
-  }
-
-  const doVAfboeken = () => {
-    const q = Number(vAfQty)
-    if (!q || q <= 0) { alert(t('err_valid_count')); return }
-    setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === showVAfboek.id ? { ...v, voorraad: Math.max(0, Number(v.voorraad || 0) - q) } : v))
-    logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: showVAfboek.id, actie: 'gewijzigd', omschrijving: `Afgeboekt ${q} ${showVAfboek.naam}` })
-    setShowVAfboek(null); setVAfQty('')
   }
 
   const saveODEdit = () => {
@@ -498,37 +476,27 @@ const IngredientenPage: React.FC<Props> = ({
         })
       }
     })
-    const btwSoort = factuurForm.btw_soort || 'binnenlands'
-    const verlegd = btwSoort !== 'binnenlands'
-    const factuurRegels: any[] = []
-    productLijst.forEach((p: any) => {
-      const pn = p.prijs ? Number(p.prijs) : 0
-      const netto = r2(pn * Number(p.qty || 0))
-      const tarief = Number(p.btw_tarief) || 0
-      const naam = p.ing_id ? (ing.find((i: any) => i.id === Number(p.ing_id))?.naam || p.nieuw.trim()) : p.nieuw.trim()
-      factuurRegels.push({ type: 'ingredient', naam, aantal_stuks: p.aantal_stuks ? Number(p.aantal_stuks) : null, inhoud_per_stuk: p.inhoud_per_stuk ? Number(p.inhoud_per_stuk) : null, hoeveelheid: r3(Number(p.qty)), eenheid: p.eenh, prijs_per_eenheid: pn || null, netto, btw_tarief: tarief, btw_bedrag: verlegd ? 0 : r2(netto * tarief / 100), btw_soort: btwSoort })
-    })
-    verpakkingLijst.forEach((v: any) => {
-      const ps = v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0
-      const netto = r2(ps * Number(v.aantal || 0))
-      const tarief = Number(v.btw_tarief) || 0
-      factuurRegels.push({ type: 'verpakking', naam: v._naam || v.naam.trim(), aantal: Number(v.aantal), prijs_per_stuk: ps || null, netto, btw_tarief: tarief, btw_bedrag: verlegd ? 0 : r2(netto * tarief / 100), btw_soort: btwSoort })
-    })
-    vrijeRegels.forEach((r: any) => {
-      const netto = r2(parseFloat(r.netto) || 0)
-      const tarief = Number(r.btw_tarief) || 0
-      factuurRegels.push({ type: 'overig', naam: r.naam.trim(), netto, btw_tarief: tarief, btw_bedrag: verlegd ? 0 : r2(netto * tarief / 100), btw_soort: btwSoort })
-    })
+    const verlegd = (factuurForm.btw_soort || 'binnenlands') !== 'binnenlands'
+    // Factuurregels via dezelfde bouwer als de boekhoudpagina
+    // (utils/inkoopOntvangst.ts): het regelbedrag is de ingevoerde totaalprijs
+    // (de stuksprijs in het formulier is afgerond op 4 decimalen) en een vrije
+    // regel houdt zijn kostensoort — anders boeken journaal en W&V hem onder
+    // 'Overig' en vinden de afgeleide brouwkosten een energierekening niet.
+    // Merch is hier niet te koppelen (geen merchArtikelen aan de modal), dus
+    // er ontstaan geen merch-inkopen.
+    const { regels: factuurRegels } = bouwInkoopRegels({ productLijst, verpakkingLijst, vrijeRegels }, factuurForm, ing, { datum: tod() })
     // Sla alleen een inkoopfactuur op als er factuurgegevens zijn ingevuld.
     // Zonder leverancier én factuurnummer wordt de ontvangst beschouwd als
     // voorraadcorrectie (lots + voorraad_log blijven staan, geen boekhouding).
     const heeftFactuurData = !!(factuurForm.leverancier?.trim() || factuurForm.factuur?.trim())
     if (factuurRegels.length > 0 && heeftFactuurData) {
       // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
-      const totalen = totaliseerInkoop(factuurRegels, totaalManual)
+      // Handmatige factuurtotalen worden een correctieregel, zodat journaal,
+      // W&V en BTW-aangifte dezelfde cijfers tellen als de factuur.
+      const { regels: regelsMetCorrectie, totalen } = inkoopRegelsMetCorrectie(factuurRegels, totaalManual, { naam: t('lbl_correctie_factuurtotaal'), verlegd })
       const factuurDatum = factuurForm.datum || tod()
       const rollover = getRolloverInfo(factuurDatum)
-      const nieuweFactuur = { id: newId(inkoopFacturen || []), datum: factuurDatum, factuurnummer: factuurForm.factuur || '', leverancier: factuurForm.leverancier || '', regels: factuurRegels, totaal_netto: totalen.netto, totaal_btw: totalen.btw, totaal_bruto: totalen.bruto, totaal_netto_cent: totalen.netto_cent, totaal_btw_cent: totalen.btw_cent, totaal_bruto_cent: totalen.bruto_cent, bijlage, ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}) }
+      const nieuweFactuur = { id: newId(inkoopFacturen || []), datum: factuurDatum, factuurnummer: factuurForm.factuur || '', leverancier: factuurForm.leverancier || '', regels: regelsMetCorrectie, totaal_netto: totalen.netto, totaal_btw: totalen.btw, totaal_bruto: totalen.bruto, totaal_netto_cent: totalen.netto_cent, totaal_btw_cent: totalen.btw_cent, totaal_bruto_cent: totalen.bruto_cent, bijlage, ...(rollover ? {btw_periode: rollover.rolloverNaar} : {}) }
       setInkoopFacturen((prev: any[]) => [...prev, nieuweFactuur])
       // Journaal (ERP-plan 2.1): inkoopfactuur uit ontvangst boeken.
       setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(nieuweFactuur, btwPeriodeType)))
@@ -678,8 +646,7 @@ const IngredientenPage: React.FC<Props> = ({
                             </td>
                           </tr>
                           {!dicht && groep.map((i: any) => {
-                            const tot = totalQty(i.id)
-                            const eenh = activeLots(i.id)[0]?.eenheid || ''
+                            const { totaal: tot, eenheid: eenh, mismatch } = voorraadTotaal(i.id)
                             return <tr key={i.id} onClick={() => setSel(sel === i.id ? null : i.id)} className={`cursor-pointer t-hover transition-colors ${sel === i.id ? 't-sel' : ''}`}>
                               <td className="px-3 py-2 align-top">
                                 <div className="font-medium leading-snug">{i.naam}</div>
@@ -688,6 +655,7 @@ const IngredientenPage: React.FC<Props> = ({
                               <td className={`px-3 py-2 text-right align-top whitespace-nowrap ${tot === 0 ? 'text-red-400' : ''}`}>
                                 <span className="font-mono tabular-nums">{fmtQty(tot)}</span>
                                 {eenh && <span className="text-xs text-gray-400 ml-1">{eenh}</span>}
+                                {mismatch && <span className="text-xs text-orange-600 ml-1" title={t('ing_voorraad_eenheden_gemengd')}>⚠</span>}
                               </td>
                             </tr>
                           })}
@@ -893,7 +861,7 @@ const IngredientenPage: React.FC<Props> = ({
                         {od.naam}
                         {(od.leverancier || od.factuurnummer) && <div className="text-xs text-gray-400 font-normal mt-0.5">{od.leverancier}{od.leverancier && od.factuurnummer && ' · '}{od.factuurnummer && `F: ${od.factuurnummer}`}</div>}
                       </td>
-                      <td className="px-3 py-2.5 text-gray-500 text-xs capitalize">{od.type || '—'}</td>
+                      <td className="px-3 py-2.5 text-gray-500 text-xs capitalize">{od.type ? (onderdeelTypeLabel(od.type) ? t(onderdeelTypeLabel(od.type) as string) : od.type) : '—'}</td>
                       <td className="px-3 py-2.5 text-right">
                         <span className={`font-mono font-semibold ${Number(od.voorraad || 0) === 0 ? 'text-red-600' : 'text-gray-800'}`}>{Number(od.voorraad || 0)}</span>
                         {Number(od.voorraad || 0) === 0 && <span className="ml-1 text-xs text-red-400">{t('packaging_empty')}</span>}
@@ -986,7 +954,7 @@ const IngredientenPage: React.FC<Props> = ({
         const previewLot = { ...l, bf_props: lotEdit.bf_props || {} }
         const effective = getEffectiveBrewProps(previewLot, lotIng)
         return (
-          <Modal title={`Lot — ${ingNaam}`} onClose={() => setShowLot(null)}>
+          <Modal title={t('ing_lot_titel').replace('{naam}', ingNaam)} onClose={() => setShowLot(null)}>
             <div className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-3">
                 <Inp label={t('ing_lot_number')} value={le('lotnummer')} onChange={(v: string) => setLe('lotnummer', v)} placeholder="—" />
@@ -1143,45 +1111,13 @@ const IngredientenPage: React.FC<Props> = ({
         </Modal>
       )}
 
-      {showA && (
-        <Modal title={`Afboeken: ${ing.find((i: any) => i.id === showA.ingredient_id)?.naam || ''}`} onClose={() => setShowA(null)}>
-          <div className="space-y-3">
-            <p className="text-sm text-gray-600">{t('lbl_available')}: <strong>{showA.hoeveelheid} {showA.eenheid}</strong> (Lot: {showA.lotnummer || '—'})</p>
-            <div className="flex gap-2 items-end">
-              <div className="flex-1"><Inp label={t('packaging_deduct_qty')} type="number" value={afQty} onChange={setAfQty} placeholder="0" /></div>
-              <div className="w-24"><Sel label={t('lbl_unit')} value={afEenheid} onChange={setAfEenheid} opts={compatibeleEenheden(showA.eenheid)} /></div>
-            </div>
-            {afEenheid && afEenheid !== showA.eenheid && afQty && convertEenheid(Number(afQty), afEenheid, showA.eenheid) !== null && (
-              <p className="text-xs text-blue-600">= {fmtQty(convertEenheid(Number(afQty), afEenheid, showA.eenheid) as number, 4)} {showA.eenheid}</p>
-            )}
-            <div className="flex justify-end gap-2">
-              <Btn v="secondary" onClick={() => setShowA(null)}>{t('btn_cancel')}</Btn>
-              <Btn v="danger" onClick={() => doAfboeken(showA)}>{t('packaging_deduct_confirm_btn')}</Btn>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {showVAfboek && (
-        <Modal title={`Afboeken: ${showVAfboek.naam}`} onClose={() => setShowVAfboek(null)}>
-          <div className="space-y-3">
-            <p className="text-sm text-gray-600">{t('lbl_available')}: <strong>{showVAfboek.voorraad || 0} {t('unit_stuks')}</strong></p>
-            <Inp label={t('packaging_deduct_units')} type="number" value={vAfQty} onChange={setVAfQty} placeholder="0" />
-            <div className="flex justify-end gap-2">
-              <Btn v="secondary" onClick={() => setShowVAfboek(null)}>{t('btn_cancel')}</Btn>
-              <Btn v="danger" onClick={doVAfboeken}>{t('packaging_deduct_confirm_btn')}</Btn>
-            </div>
-          </div>
-        </Modal>
-      )}
-
       {showIngEdit && selIng && (
-        <Modal title={`Ingrediënt bewerken: ${selIng.naam}`} onClose={() => setShowIngEdit(false)} wide>
+        <Modal title={t('ing_edit_titel').replace('{naam}', selIng.naam || '')} onClose={() => setShowIngEdit(false)} wide>
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Inp label={t('lbl_name') + ' *'} value={ingEditForm.naam} onChange={(v: string) => setIngEditForm(f => ({ ...f, naam: v }))} />
               <Sel label={t('lbl_type')} value={ingEditForm.type} onChange={(v: string) => setIngEditForm(f => ({ ...f, type: v }))} opts={ingTypes.map((tp: string) => ({ v: tp, l: BUILTIN_ING_TYPES.includes(tp) ? t('ing_type_' + tp.toLowerCase()) : tp }))} ph={t('packaging_choose_type')} />
-              <Inp label="Fabrikant" value={ingEditForm.fabrikant} onChange={(v: string) => setIngEditForm(f => ({ ...f, fabrikant: v }))} placeholder="bijv. Weyermann" />
+              <Inp label={t('ing_manufacturer')} value={ingEditForm.fabrikant} onChange={(v: string) => setIngEditForm(f => ({ ...f, fabrikant: v }))} placeholder={t('ph_manufacturer')} />
             </div>
             <div className="flex justify-end gap-2">
               <Btn v="secondary" onClick={() => setShowIngEdit(false)}>{t('btn_cancel')}</Btn>
@@ -1192,7 +1128,7 @@ const IngredientenPage: React.FC<Props> = ({
       )}
 
       {showODEdit && (
-        <Modal title={`Onderdeel: ${showODEdit.naam}`} onClose={() => setShowODEdit(null)} wide>
+        <Modal title={t('onderdeel_edit_titel').replace('{naam}', showODEdit.naam || '')} onClose={() => setShowODEdit(null)} wide>
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <Inp label={t('lbl_name') + ' *'} value={odEditForm.naam} onChange={(v: string) => setOdEditForm(f => ({ ...f, naam: v }))} />
@@ -1232,7 +1168,7 @@ const IngredientenPage: React.FC<Props> = ({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Inp label={t('lbl_qty_received') + ' *'} type="number" value={odQty} onChange={(v: string) => { if (odPrijs && v) { setOdQty(v); setOdTotaalprijs(String((Number(odPrijs) * Number(v)).toFixed(2))) } else if (!odPrijs && odTotaalprijs && v) { setOdQty(v); setOdPrijs(String((Number(odTotaalprijs) / Number(v)).toFixed(4))) } else { setOdQty(v) } }} placeholder="24" />
               <Inp label={t('modal_price_per_unit')} type="number" value={odPrijs} onChange={(v: string) => { setOdPrijs(v); if (v && odQty) setOdTotaalprijs(String((Number(v) * Number(odQty)).toFixed(2))) }} placeholder="0.00" />
-              <Inp label="Totaalprijs ex BTW (€)" type="number" value={odTotaalprijs} onChange={(v: string) => { setOdTotaalprijs(v); if (v && odQty) setOdPrijs(String((Number(v) / Number(odQty)).toFixed(4))) }} placeholder="0.00" />
+              <Inp label={t('lbl_totaalprijs_ex_btw')} type="number" value={odTotaalprijs} onChange={(v: string) => { setOdTotaalprijs(v); if (v && odQty) setOdPrijs(String((Number(v) / Number(odQty)).toFixed(4))) }} placeholder="0.00" />
             </div>
             <div className="flex justify-end gap-2">
               <Btn v="secondary" onClick={() => setShowODAdd(false)}>{t('btn_cancel')}</Btn>

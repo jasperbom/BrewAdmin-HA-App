@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   bouwWcPayload, leesWcProduct, wcVerschillen, wcPrijsString, wcPrijsNaarExcl,
-  wcRegulierePrijsExcl, ordenCategorieen, WcVelden,
+  wcRegulierePrijsExcl, ordenCategorieen, WcVelden, wcPrijsBehouden,
+  veiligeAfbeeldingUrl,
 } from '../wcProduct'
 
 describe('wcPrijsString / wcPrijsNaarExcl', () => {
@@ -150,6 +151,32 @@ describe('leesWcProduct', () => {
     const payload = bouwWcPayload({velden: v, sku: 'TRP033', prijsExcl: 3.31, btwPct: 21, prijzenInclBtw: true})
     expect(wcVerschillen(payload, wc)).toEqual([])
   })
+
+  // Bevinding #49: een winkelprijs die niet uit een excl.-prijs op hele
+  // centen te maken is, mag bij ophalen + "Push alles" niet verschuiven.
+  it('ophalen en weer pushen verschuift de winkelprijs geen cent', () => {
+    const blond = {regular_price: '2.00', sale_price: '2.00'}
+    const excl = wcRegulierePrijsExcl(blond, 9, true)!
+    expect(excl).toBe(1.83)
+    // Zonder winkelprijs erbij (het oude gedrag): 1,99.
+    expect(bouwWcPayload({prijsExcl: excl, btwPct: 9, prijzenInclBtw: true}).regular_price).toBe('1.99')
+    const v = leesWcProduct(blond, {btwPct: 9, prijzenInclBtw: true})
+    const p = bouwWcPayload({velden: v, prijsExcl: excl.toFixed(2), btwPct: 9, prijzenInclBtw: true, winkel: blond})
+    expect(p.regular_price).toBe('2.00')
+    expect(p.sale_price).toBe('2.00')
+    expect(wcVerschillen(p, blond)).toEqual([])
+    // 4,00 bij 21% (werd 4,01).
+    const tripel = {regular_price: '4.00'}
+    expect(bouwWcPayload({prijsExcl: wcRegulierePrijsExcl(tripel, 21, true), btwPct: 21, prijzenInclBtw: true, winkel: tripel}).regular_price).toBe('4.00')
+  })
+
+  it('een echte lokale prijswijziging gaat wél door', () => {
+    expect(wcPrijsBehouden(1.9, 9, true, '2.00')).toBe('2.07')
+    expect(wcPrijsBehouden(1.83, 9, true, '2.00')).toBe('2.00')
+    expect(wcPrijsBehouden(1.83, 9, true, '')).toBe('1.99')
+    expect(wcPrijsBehouden('', 9, true, '2.00')).toBe('')
+    expect(wcPrijsBehouden(5, 21, false, '5.00')).toBe('5.00')
+  })
 })
 
 describe('wcVerschillen', () => {
@@ -208,5 +235,22 @@ describe('ordenCategorieen', () => {
   it('loopt niet vast op een kringetje in de boom', () => {
     const r = ordenCategorieen([{id: 1, naam: 'A', parent: 2}, {id: 2, naam: 'B', parent: 1}])
     expect(r.length).toBe(2)
+  })
+})
+
+describe('veiligeAfbeeldingUrl', () => {
+  it('laat een http(s)-adres door', () => {
+    expect(veiligeAfbeeldingUrl('https://winkel.nl/wp-content/uploads/blond.jpg'))
+      .toBe('https://winkel.nl/wp-content/uploads/blond.jpg')
+    expect(veiligeAfbeeldingUrl(' http://winkel.nl/a.png ')).toBe('http://winkel.nl/a.png')
+  })
+
+  it('weigert scripts, data-URI\'s en rommel', () => {
+    expect(veiligeAfbeeldingUrl('javascript:alert(1)')).toBeNull()
+    expect(veiligeAfbeeldingUrl('JavaScript:alert(1)')).toBeNull()
+    expect(veiligeAfbeeldingUrl('data:image/png;base64,AAAA')).toBeNull()
+    expect(veiligeAfbeeldingUrl('foto.jpg')).toBeNull()
+    expect(veiligeAfbeeldingUrl('')).toBeNull()
+    expect(veiligeAfbeeldingUrl(undefined)).toBeNull()
   })
 })

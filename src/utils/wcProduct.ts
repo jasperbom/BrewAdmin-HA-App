@@ -37,6 +37,23 @@ export interface WcAfbeelding {
   naam?: string
 }
 
+/**
+ * Adres van een productfoto dat als link geopend mag worden: alleen een
+ * geldige http(s)-URL. De `src` komt uit de winkel of wordt door de gebruiker
+ * ingetypt; een `javascript:`- of `data:`-adres als href zou in de app-origin
+ * uitgevoerd worden. De foto zelf toont de app niet inline: de CSP van
+ * server.py staat bewust geen externe afbeeldingen toe (`img-src`).
+ */
+export const veiligeAfbeeldingUrl = (src: unknown): string | null => {
+  if (typeof src !== 'string' || !src.trim()) return null
+  try {
+    const u = new URL(src.trim())
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null
+  } catch {
+    return null
+  }
+}
+
 export interface WcCategorie { id: number; naam: string; parent?: number }
 
 /** Alle WooCommerce-velden die de app beheert, opgeslagen per artikel. */
@@ -103,6 +120,12 @@ export interface WcPayloadInput {
   omschrijvingFallback?: string
   /** Alleen bij aanmaken: WooCommerce vereist een producttype. */
   nieuw?: boolean
+  /**
+   * Het product zoals het nu in de winkel staat (indien bekend). Een prijs die
+   * lokaal niet echt gewijzigd is, gaat dan ongewijzigd terug — zie
+   * `wcPrijsBehouden`.
+   */
+  winkel?: {regular_price?: any, sale_price?: any} | null
 }
 
 const _leeg = (v: any) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '')
@@ -144,6 +167,31 @@ export const wcPrijsNaarExcl = (
   return Math.round(excl * 100) / 100
 }
 
+/**
+ * De prijs die naar de winkel gaat, zonder dat een heen-en-terugweg hem een
+ * cent verschuift. Lokaal staat de prijs exclusief BTW op hele centen; een
+ * winkelprijs van €2,00 incl. 9% wordt bij het ophalen 1,83 en gaat terug als
+ * 1,99. Rekent de huidige winkelprijs terug naar precies dezelfde lokale
+ * prijs, dan is er lokaal niets gewijzigd en blijft de winkelprijs staan.
+ * Zonder winkelprijs (of bij een echte wijziging) de gewone omrekening.
+ */
+export const wcPrijsBehouden = (
+  bedragExcl: number | string | null | undefined,
+  btwPct: number | string | null | undefined,
+  inclBtw: boolean,
+  winkelPrijs: number | string | null | undefined,
+): string => {
+  const nieuw = wcPrijsString(bedragExcl, btwPct, inclBtw)
+  if (!nieuw) return ''
+  const huidig = _num(winkelPrijs)
+  const excl = _num(bedragExcl)
+  if (huidig !== null && huidig >= 0 && excl !== null
+    && wcPrijsNaarExcl(huidig, btwPct, inclBtw) === Math.round(excl * 100) / 100) {
+    return huidig.toFixed(2)
+  }
+  return nieuw
+}
+
 const _dim = (v: any): string => {
   const n = _num(v)
   return n === null ? '' : String(n)
@@ -174,9 +222,9 @@ export function bouwWcPayload(input: WcPayloadInput): Record<string, any> {
   if (!_leeg(omschrijving)) out.description = omschrijving
   if (!_leeg(v.korte_omschrijving)) out.short_description = String(v.korte_omschrijving)
 
-  const prijs = wcPrijsString(input.prijsExcl, input.btwPct, inclBtw)
+  const prijs = wcPrijsBehouden(input.prijsExcl, input.btwPct, inclBtw, input.winkel?.regular_price)
   if (prijs) out.regular_price = prijs
-  const actie = wcPrijsString(v.actieprijs, input.btwPct, inclBtw)
+  const actie = wcPrijsBehouden(v.actieprijs, input.btwPct, inclBtw, input.winkel?.sale_price)
   if (actie) {
     out.sale_price = actie
     // Alleen een ingevulde periode meesturen: lege datums zouden een lopende

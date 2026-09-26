@@ -15,6 +15,15 @@ describe('linkify', () => {
   it('doet niets zonder link', () => {
     expect(linkify('gewone tekst')).toBe('gewone tekst')
   })
+  it('laat een geëscapet aanhalingsteken achter de link buiten het adres', () => {
+    // textToHtml escapet eerst (" → &quot;, ' → &#39;) en linkt daarna.
+    const dubbel = textToHtml('Zie "https://a.nl/x".')
+    expect(dubbel).toContain('href="https://a.nl/x"')
+    expect(dubbel).toContain('</a>&quot;.')
+    const enkel = textToHtml("Zie 'https://a.nl/x'")
+    expect(enkel).toContain('href="https://a.nl/x"')
+    expect(enkel).toContain('</a>&#39;')
+  })
 })
 
 describe('textToHtml', () => {
