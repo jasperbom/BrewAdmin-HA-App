@@ -129,6 +129,11 @@ of every change. Under Settings → App you can make a backup on the spot, downl
 one, and restore a single data set from a backup without touching the rest of the
 administration. A full export and import as Excel is available in the same place.
 
+Passwords and API keys are stored encrypted in those backups, including the copy
+in the Home Assistant backup folder. By default the key only exists inside this
+installation; set a **backup password** in the addon options if you also want to
+recover them from a backup after losing the addon data.
+
 ## Roles
 
 Users of your Home Assistant can be given a role: admin, accounting, production or

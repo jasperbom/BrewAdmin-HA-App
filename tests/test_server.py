@@ -893,7 +893,11 @@ class TestSqliteOpslag:
                 assert mollie == {'apiKey': srv._SECRET_SENTINEL, 'enabled': True}
                 assert all(b'live_SUPERGEHEIM' not in zf.read(n) for n in namen)
             dest = srv.BACKUP_DIR / datum
-            assert json.loads((dest / 'mollie_creds.json').read_text())['apiKey'] == 'live_SUPERGEHEIM'
+            # Op schijf versleuteld (ERP 5.8), maar wel volledig herstelbaar.
+            envelop = json.loads((dest / 'mollie_creds.json').read_text())
+            assert srv._is_versleuteld(envelop)
+            assert b'live_SUPERGEHEIM' not in (dest / 'mollie_creds.json').read_bytes()
+            assert srv._ontsleutel_waarde(envelop)['apiKey'] == 'live_SUPERGEHEIM'
             assert (dest / srv.DB_NAAM).exists()
             assert (dest / 'mollie_creds.json').stat().st_mode & 0o777 == 0o600
             assert dest.stat().st_mode & 0o777 == 0o700
@@ -4103,3 +4107,206 @@ class TestWebsiteTelemetrie:
     def test_bron_uit_config_yaml(self):
         versie = re.search(r'^version:\s*"([^"]+)"', (Path(srv.__file__).parent / 'config.yaml').read_text(), re.M)
         assert srv._app_versie() == versie.group(1)
+
+
+# ── Versleutelde credentials in de serverbackup (ERP-plan 5.8) ───────────────
+
+class TestBackupVersleuteling:
+    """Wachtwoorden en API-sleutels staan in de serverbackup alleen als
+    versleutelde envelop: in de dagmap, in de db-kopie en in de offsite-ZIP.
+    De backup blijft volledig herstelbaar met het sleutelbestand of het
+    backup-wachtwoord uit de addon-opties."""
+
+    GEHEIM = 'cs_ZEERGEHEIM_4711'
+
+    @pytest.fixture()
+    def offsite(self, tmp_path, monkeypatch):
+        doel = tmp_path / 'backup' / 'brewadmin'
+        doel.mkdir(parents=True)
+        monkeypatch.setattr(srv, 'OFFSITE_BACKUP_DIR', doel)
+        return doel
+
+    @pytest.fixture()
+    def creds(self, app):
+        body = {'storeUrl': 'https://shop.example', 'consumerKey': 'ck_1', 'consumerSecret': self.GEHEIM}
+        assert req(app, 'POST', '/api/data/woocommerce_creds', body=body)[0] == 200
+        yield body
+        with srv._data_lock:
+            conn = srv._db()
+            with conn:
+                srv._schrijf_key(conn, 'woocommerce_creds', {})
+
+    @pytest.fixture()
+    def opties(self):
+        pad = srv.DATA_DIR / 'options.json'
+        yield pad
+        pad.unlink(missing_ok=True)
+        srv._wachtwoord_sleutel_cache.clear()
+
+    def _bevat_geheim(self, data: bytes) -> bool:
+        return self.GEHEIM.encode() in data
+
+    def test_envelop_roundtrip_en_manipulatie(self, app):
+        bs = srv._backup_sleutel_voor_versleutelen()
+        env = srv._versleutel_waarde({'apiKey': 'geheim', 'n': 1}, bs)
+        assert srv._is_versleuteld(env) and 'geheim' not in json.dumps(env)
+        assert srv._ontsleutel_waarde(env) == {'apiKey': 'geheim', 'n': 1}
+        # Verse nonce per envelop: dezelfde tekst geeft een andere envelop.
+        env2 = srv._versleutel_waarde({'apiKey': 'geheim', 'n': 1}, bs)
+        assert env2['nonce'] != env['nonce'] and env2['data'] != env['data']
+        # Eén bit omgedraaid in de versleutelde tekst → geweigerd.
+        data = bytearray(base64.b64decode(env['data']))
+        data[0] ^= 1
+        with pytest.raises(srv.BackupOntsleutelFout) as fout:
+            srv._ontsleutel_waarde({**env, 'data': base64.b64encode(bytes(data)).decode()})
+        assert fout.value.reden == 'beschadigd'
+        # De kop is ook geauthenticeerd.
+        with pytest.raises(srv.BackupOntsleutelFout) as fout:
+            srv._ontsleutel_waarde({**env, 'extra': 'x'})
+        assert fout.value.reden == 'beschadigd'
+        with pytest.raises(srv.BackupOntsleutelFout) as fout:
+            srv._ontsleutel_waarde({**env, 'sleutel_id': '0' * 16})
+        assert fout.value.reden == 'andere_sleutel'
+
+    def test_dagmap_dbkopie_en_offsite_zonder_leesbaar_geheim(self, app, offsite, creds):
+        import sqlite3
+        import zipfile
+        datum = srv._run_backup()
+        dest = srv.BACKUP_DIR / datum
+        assert not self._bevat_geheim((dest / 'woocommerce_creds.json').read_bytes())
+        # Ook niet in vrije pagina's van de db-kopie (VACUUM) en zonder sidecars.
+        assert not self._bevat_geheim((dest / srv.DB_NAAM).read_bytes())
+        assert not any((dest / (srv.DB_NAAM + s)).exists() for s in ('-wal', '-shm', '-journal'))
+        conn = sqlite3.connect(str(dest / srv.DB_NAAM))
+        try:
+            rij = conn.execute("SELECT data FROM kv WHERE key='woocommerce_creds'").fetchone()
+        finally:
+            conn.close()
+        assert srv._ontsleutel_waarde(json.loads(rij[0])) == creds
+        with zipfile.ZipFile(offsite / f'brewadmin_backup_{datum}.zip') as zf:
+            assert zf.comment == srv._OFFSITE_ZIP_COMMENTAAR
+            assert not any(self._bevat_geheim(zf.read(n)) for n in zf.namelist())
+        # Het sleutelbestand: 0600 en nooit zelf in de backup.
+        sleutel = srv._backup_sleutel_bestand()
+        assert sleutel.stat().st_mode & 0o777 == 0o600
+        assert not any(p.name == sleutel.name for p in dest.rglob('*'))
+        status, body, _ = req(app, 'GET', '/api/health')
+        assert body['backup_versleuteling'] == {'methode': 'sleutelbestand', 'sleutel_aanwezig': True}
+
+    def test_oude_backups_worden_eenmalig_omgezet(self, app, offsite):
+        import sqlite3
+        import zipfile
+        oud = srv.BACKUP_DIR / '2026-01-01'
+        oud.mkdir(parents=True, exist_ok=True)
+        (oud / 'woocommerce_creds.json').write_text(json.dumps({'storeUrl': 'x', 'consumerSecret': self.GEHEIM}))
+        (oud / 'gn_codes.json').write_text('[{"id": 1}]')
+        conn = sqlite3.connect(str(oud / srv.DB_NAAM))
+        srv._maak_schema(conn)
+        with conn:
+            srv._schrijf_key(conn, 'woocommerce_creds', {'consumerSecret': self.GEHEIM})
+            srv._schrijf_key(conn, 'gn_codes', [{'id': 1}])
+        conn.close()
+        zip_pad = offsite / 'brewadmin_backup_2026-01-01.zip'
+        with zipfile.ZipFile(zip_pad, 'w') as zf:
+            for f in sorted(oud.iterdir()):
+                zf.write(f, f.name)
+            zf.writestr('inkoop_facturen/factuur.pdf', b'%PDF-1.4 bijlage')
+        assert srv._versleutel_bestaande_backups() >= 2
+        assert not self._bevat_geheim((oud / 'woocommerce_creds.json').read_bytes())
+        assert not self._bevat_geheim((oud / srv.DB_NAAM).read_bytes())
+        assert json.loads((oud / 'gn_codes.json').read_text()) == [{'id': 1}]
+        with zipfile.ZipFile(zip_pad) as zf:
+            assert zf.comment == srv._OFFSITE_ZIP_COMMENTAAR
+            assert zf.read('inkoop_facturen/factuur.pdf') == b'%PDF-1.4 bijlage'
+            assert not any(self._bevat_geheim(zf.read(n)) for n in zf.namelist())
+            envelop = json.loads(zf.read('woocommerce_creds.json'))
+        assert srv._ontsleutel_waarde(envelop)['consumerSecret'] == self.GEHEIM
+        assert zip_pad.stat().st_mode & 0o777 == 0o600
+        # Idempotent, en geen uitgepakte db-kopie achtergebleven in /data.
+        assert srv._versleutel_bestaande_backups() == 0
+        assert not list(srv.DATA_DIR.glob('.backup_db_*'))
+
+    def test_backup_wachtwoord(self, app, offsite, creds, opties):
+        opties.write_text(json.dumps({'backup_password': 'correct paard batterij niet'}))
+        status, body, _ = req(app, 'GET', '/api/health')
+        assert body['backup_versleuteling'] == {'methode': 'wachtwoord'}
+        datum = srv._run_backup()
+        env = json.loads((srv.BACKUP_DIR / datum / 'woocommerce_creds.json').read_text())
+        assert env['methode'] == 'wachtwoord'
+        assert env['kdf']['naam'] in ('scrypt', 'pbkdf2_sha256') and env['kdf']['salt']
+        assert srv._ontsleutel_waarde(env) == creds
+        # Ook zonder sleutelbestand (ander volume verloren) te openen.
+        sleutel = srv._backup_sleutel_bestand()
+        bewaard = sleutel.read_bytes()
+        sleutel.unlink()
+        try:
+            srv._wachtwoord_sleutel_cache.clear()
+            assert srv._ontsleutel_waarde(env) == creds
+        finally:
+            sleutel.write_bytes(bewaard)
+            os.chmod(sleutel, 0o600)
+        opties.write_text(json.dumps({'backup_password': 'fout'}))
+        with pytest.raises(srv.BackupOntsleutelFout) as fout:
+            srv._ontsleutel_waarde(env)
+        assert fout.value.reden == 'andere_sleutel'
+        opties.write_text('{}')
+        with pytest.raises(srv.BackupOntsleutelFout) as fout:
+            srv._ontsleutel_waarde(env)
+        assert fout.value.reden == 'geen_wachtwoord'
+
+    def test_teruggezette_db_wordt_bij_de_start_ontsleuteld(self, app, creds):
+        bs = srv._backup_sleutel_voor_versleutelen()
+        with srv._data_lock:
+            conn = srv._db()
+            with conn:
+                srv._schrijf_key(conn, 'woocommerce_creds', srv._versleutel_waarde(creds, bs))
+        # Vóór het herstel: lege credentials in de app, geen ciphertext.
+        assert req(app, 'GET', '/api/data/woocommerce_creds')[1] == {}
+        srv._herstel_versleutelde_geheimen()
+        assert srv._read_json('woocommerce_creds') == creds
+        body = req(app, 'GET', '/api/data/woocommerce_creds')[1]
+        assert body['consumerSecret'] == srv._SECRET_SENTINEL and body['storeUrl'] == creds['storeUrl']
+
+    def test_niet_te_openen_envelop_blijft_staan(self, app, opties):
+        opties.write_text(json.dumps({'backup_password': 'eerder'}))
+        bs = srv._backup_sleutel_voor_versleutelen()
+        env = srv._versleutel_waarde({'apiKey': 'sk_x'}, bs)
+        opties.write_text('{}')
+        with srv._data_lock:
+            conn = srv._db()
+            with conn:
+                srv._schrijf_key(conn, 'claude_creds', env)
+        try:
+            srv._herstel_versleutelde_geheimen()
+            assert srv._read_json('claude_creds') == env  # een later ingesteld wachtwoord opent hem alsnog
+            assert req(app, 'GET', '/api/data/claude_creds')[1] == {}
+            opties.write_text(json.dumps({'backup_password': 'eerder'}))
+            srv._herstel_versleutelde_geheimen()
+            assert srv._read_json('claude_creds') == {'apiKey': 'sk_x'}
+        finally:
+            with srv._data_lock:
+                conn = srv._db()
+                with conn:
+                    srv._schrijf_key(conn, 'claude_creds', {})
+
+    def test_onleesbaar_sleutelbestand_faalt_dicht(self, app, offsite, creds):
+        import sqlite3
+        sleutel = srv._backup_sleutel_voor_versleutelen() and srv._backup_sleutel_bestand()
+        bewaard = sleutel.read_bytes()
+        sleutel.write_text('kapot')
+        try:
+            datum = srv._run_backup()
+            dest = srv.BACKUP_DIR / datum
+            # Liever geen credentials in de backup dan leesbare.
+            assert not (dest / 'woocommerce_creds.json').exists()
+            assert not self._bevat_geheim((dest / srv.DB_NAAM).read_bytes())
+            conn = sqlite3.connect(str(dest / srv.DB_NAAM))
+            try:
+                assert conn.execute("SELECT 1 FROM kv WHERE key='woocommerce_creds'").fetchone() is None
+            finally:
+                conn.close()
+            # En het kapotte bestand wordt nooit stil vervangen.
+            assert sleutel.read_text() == 'kapot'
+        finally:
+            sleutel.write_bytes(bewaard)
+            os.chmod(sleutel, 0o600)

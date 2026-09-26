@@ -1,6 +1,6 @@
 name: "BrewAdmin"
 description: "Brewery administration — batches, ingredients, excise duty, stock and accounting"
-version: "1.12.82"
+version: "1.12.83"
 slug: "brouwerij_admin"
 init: false
 
@@ -44,6 +44,11 @@ panel_title: "BrewAdmin"
 # (bv. van de Let's Encrypt-addon voor je eigen domein). Bij een
 # onbruikbaar certificaat start de directe poort niet (fail-closed).
 # Certificaten worden dagelijks herladen (verlenging zonder herstart).
+#
+# backup_password (optioneel): de wachtwoorden en API-sleutels gaan
+# versleuteld de serverbackup in. Zonder deze optie met een sleutel die
+# alleen in /data staat; met deze optie met dit wachtwoord, zodat ze ook na
+# verlies van het data-volume uit de offsite-backup terug te halen zijn.
 options:
   ssl: false
   certfile: fullchain.pem
@@ -52,3 +57,4 @@ schema:
   ssl: bool
   certfile: str
   keyfile: str
+  backup_password: password?

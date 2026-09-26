@@ -15,6 +15,7 @@ import email.message
 import email.utils
 import gzip
 import hashlib
+import hmac
 import http.cookies
 import http.server
 import io
@@ -31,6 +32,7 @@ import smtplib
 import socket
 import sqlite3
 import ssl
+import tempfile
 import threading
 import time
 import urllib.error
@@ -870,21 +872,33 @@ def _bf_request(uid: str, api_key: str, url: str, method: str = 'GET', data: byt
 OFFSITE_BACKUP_DIR = Path('/backup/brewadmin')
 
 
+_backup_run_lock = threading.Lock()
+
+
 def _run_backup() -> str:
     """Exporteer alle data-keys als JSON-bestanden (zelfde vorm als vóór de
     SQLite-migratie — leesbaar en restore-baar zonder tooling) plus een
     consistente kopie van de database zelf naar /data/backups/YYYY-MM-DD/,
     samen met de upload-map met factuurbijlagen, en schrijf dezelfde snapshot
-    als ZIP naar de off-volume /backup-map. Returns the backup date string."""
+    als ZIP naar de off-volume /backup-map. Returns the backup date string.
+    Eén ronde tegelijk: de handmatige knop en de dagelijkse ronde schrijven
+    anders in dezelfde dagmap en db-kopie."""
+    with _backup_run_lock:
+        return _run_backup_ronde()
+
+
+def _run_backup_ronde() -> str:
     today = datetime.date.today().isoformat()
     dest = BACKUP_DIR / today
     dest.mkdir(parents=True, exist_ok=True)
-    # De snapshot bevat de credentials onversleuteld (restore-baar), dus
-    # alleen voor de addon-gebruiker leesbaar: 0700 op de map, 0600 op de JSON.
+    # Alleen voor de addon-gebruiker leesbaar: 0700 op de map, 0600 op de
+    # bestanden. De credentials gaan er versleuteld in (zie hierboven).
     try:
         os.chmod(dest, 0o700)
     except OSError:
         pass
+    # Vóór de lock: de scrypt-afleiding van een backup-wachtwoord kost even.
+    bs = _backup_sleutel_voor_versleutelen()
     conn = _db()
     # Onder _data_lock: geen schrijver halverwege de export, zodat de
     # JSON-bestanden en de db-kopie hetzelfde consistente moment vastleggen.
@@ -892,22 +906,33 @@ def _run_backup() -> str:
         keys = [r[0] for r in conn.execute('SELECT key FROM versies ORDER BY key')]
         for key in keys:
             gelezen = _lees_key_bytes(key)
-            if gelezen is not None:
-                _atomic_write_bytes(dest / f'{key}.json', gelezen[0])
-                try:
-                    os.chmod(dest / f'{key}.json', 0o600)
-                except OSError:
-                    pass
+            if gelezen is None:
+                continue
+            inhoud = gelezen[0]
+            if key in _SECURE_FIELDS:
+                inhoud = _backup_geheim_bytes(key, inhoud, bs)
+                if inhoud is None:
+                    # Geen sleutel: liever zonder credentials dan leesbaar.
+                    (dest / f'{key}.json').unlink(missing_ok=True)
+                    continue
+            _atomic_write_bytes(dest / f'{key}.json', inhoud)
+            try:
+                os.chmod(dest / f'{key}.json', 0o600)
+            except OSError:
+                pass
         # sqlite-backup-API: consistente kopie, ook met een open WAL.
         kopie = sqlite3.connect(str(dest / DB_NAAM))
         try:
             conn.backup(kopie)
         finally:
             kopie.close()
-    try:
-        os.chmod(dest / DB_NAAM, 0o600)
-    except OSError:
-        pass
+    # Buiten de lock: de kopie is van ons alleen. Altijd VACUUM: de backup-API
+    # kopieert ook de vrije pagina's van de live db, en daar kan een eerder
+    # overschreven wachtwoord nog in staan.
+    _versleutel_db_kopie(dest / DB_NAAM, bs, vacuum=True)
+    if bs is None and any(k in keys for k in _SECURE_FIELDS):
+        _log('backup', 'geen bruikbare backup-sleutel: credentials niet in de backup',
+             level=logging.ERROR)
     # Upload-bijlagen (factuur-PDF's/afbeeldingen) horen bij de administratie
     # en vallen onder dezelfde bewaarplicht — meenemen in de backup.
     if UPLOAD_DIR.is_dir():
@@ -932,7 +957,10 @@ def _offsite_backup(dest: Path, today: str) -> None:
             for f in sorted(dest.rglob('*')):
                 if f.is_file():
                     zf.write(f, str(f.relative_to(dest)))
-        # Volledige snapshot incl. credentials — alleen de addon-gebruiker.
+            # De credentials in de dagmap zijn al versleuteld; het commentaar
+            # zegt dat tegen _versleutel_bestaande_backups.
+            zf.comment = _OFFSITE_ZIP_COMMENTAAR
+        # Volledige snapshot — alleen de addon-gebruiker.
         os.chmod(tmp, 0o600)
         os.replace(tmp, OFFSITE_BACKUP_DIR / f'brewadmin_backup_{today}.zip')
     except OSError as exc:
@@ -960,6 +988,458 @@ def _cleanup_offsite_backups() -> None:
                 f.unlink()
             except OSError:
                 pass
+
+
+# ── Versleutelde credentials in de serverbackup (ERP-plan 5.8) ─────────────
+# De snapshot moet volledig herstelbaar blijven, maar de wachtwoorden en
+# API-sleutels (_SECURE_FIELDS) horen er niet leesbaar in — zeker niet in de
+# offsite-ZIP op /backup, die andere addons (Samba e.d.) kunnen lezen. Elke
+# creds-waarde gaat daarom als versleutelde envelop de backup in: als
+# `<key>.json` én in de kv-tabel van de db-kopie (daarna VACUUM, zodat er
+# geen oude leesbare pagina achterblijft).
+#
+# Sleutel: met de addon-optie `backup_password` een scrypt-afleiding van dat
+# wachtwoord (de salt staat in de envelop) — dan zijn de credentials ook na
+# verlies van het data-volume terug te halen. Zonder die optie een
+# willekeurige sleutel in /data/brewadmin_backup.sleutel (0600), die zelf
+# nooit in een backup komt: gaat /data verloren, dan vul je de credentials
+# na het terugzetten opnieuw in; de rest van de administratie is gewoon
+# herstelbaar.
+#
+# Alleen de standaardbibliotheek (geen AES): HMAC-SHA256 als PRF in
+# tellermodus voor de sleutelstroom, encrypt-then-MAC met HMAC-SHA256 over
+# kop + nonce + versleutelde tekst. Aparte deelsleutels voor versleutelen
+# en authenticeren, afgeleid met HMAC.
+
+BACKUP_SLEUTEL_NAAM = 'brewadmin_backup.sleutel'
+_ENVELOP_MARKER = '__brewadmin_versleuteld__'
+_ENVELOP_VERSIE = 1
+_SCRYPT_PARAMS = {'n': 2 ** 15, 'r': 8, 'p': 1}
+_PBKDF2_ITERATIES = 600_000
+# ZIP-commentaar op een offsite-ZIP waarvan de credentials versleuteld zijn:
+# de eenmalige omzetting van oude ZIP's hoeft daarna alleen dit te lezen.
+_OFFSITE_ZIP_COMMENTAAR = b'brewadmin-backup; credentials versleuteld v1'
+_backup_sleutel_lock = threading.Lock()
+_wachtwoord_sleutel_cache: dict[tuple[str, str], bytes] = {}
+
+
+class BackupOntsleutelFout(ValueError):
+    """Een envelop is niet te ontsleutelen. `reden`: geen_wachtwoord,
+    geen_sleutel, andere_sleutel, beschadigd."""
+
+    def __init__(self, reden: str):
+        super().__init__(reden)
+        self.reden = reden
+
+
+def _backup_sleutel_bestand() -> Path:
+    return DATA_DIR / BACKUP_SLEUTEL_NAAM
+
+
+def _backup_wachtwoord() -> str:
+    """Het backup-wachtwoord uit de addon-opties (leeg = sleutelbestand)."""
+    return str(_addon_opties().get('backup_password') or '')
+
+
+def _sleutelbestand_sleutel(maak: bool) -> bytes | None:
+    """De sleutel uit /data/brewadmin_backup.sleutel. Ontbreekt het bestand
+    en is `maak` True, dan wordt er één gemaakt (0600, atomair). Een bestaand
+    maar onleesbaar bestand wordt NOOIT overschreven: dan zouden alle eerdere
+    backups onontsleutelbaar worden — None, de aanroeper faalt dicht."""
+    pad = _backup_sleutel_bestand()
+    with _backup_sleutel_lock:
+        if pad.exists():
+            try:
+                sleutel = bytes.fromhex(pad.read_text(encoding='ascii').strip())
+            except (OSError, ValueError):
+                sleutel = b''
+            if len(sleutel) == 32:
+                return sleutel
+            _log('backup', f'{BACKUP_SLEUTEL_NAAM} is onleesbaar — niet overschreven; '
+                           f'credentials blijven buiten de backup', level=logging.ERROR)
+            return None
+        if not maak:
+            return None
+        sleutel = secrets.token_bytes(32)
+        tmp = pad.with_name(pad.name + '.tmp')
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, sleutel.hex().encode('ascii'))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, pad)
+        try:
+            os.chmod(pad, 0o600)
+        except OSError:
+            pass
+        _log('backup', f'nieuwe backup-sleutel aangemaakt ({BACKUP_SLEUTEL_NAAM})')
+        return sleutel
+
+
+def _kdf_nieuw() -> dict:
+    """KDF-parameters met een verse salt voor het backup-wachtwoord."""
+    salt = base64.b64encode(secrets.token_bytes(16)).decode('ascii')
+    if hasattr(hashlib, 'scrypt'):
+        return {'naam': 'scrypt', **_SCRYPT_PARAMS, 'salt': salt}
+    return {'naam': 'pbkdf2_sha256', 'iteraties': _PBKDF2_ITERATIES, 'salt': salt}
+
+
+def _wachtwoord_sleutel(wachtwoord: str, kdf: dict) -> bytes:
+    """32-byte sleutel uit het backup-wachtwoord. Parameters uit een envelop
+    worden begrensd: een gemanipuleerde envelop mag de server niet laten
+    vastlopen op een absurde kostenfactor."""
+    if not isinstance(kdf, dict):
+        raise BackupOntsleutelFout('beschadigd')
+    salt_b64 = str(kdf.get('salt') or '')
+    cache_key = (wachtwoord, json.dumps(kdf, sort_keys=True))
+    if cache_key in _wachtwoord_sleutel_cache:
+        return _wachtwoord_sleutel_cache[cache_key]
+    try:
+        salt = base64.b64decode(salt_b64, validate=True)
+        if kdf.get('naam') == 'scrypt':
+            n, r, p = int(kdf['n']), int(kdf['r']), int(kdf['p'])
+            if not (2 ** 10 <= n <= 2 ** 20 and 1 <= r <= 16 and 1 <= p <= 4) or n & (n - 1):
+                raise ValueError('scrypt-parameters buiten bereik')
+            sleutel = hashlib.scrypt(wachtwoord.encode('utf-8'), salt=salt, n=n, r=r, p=p,
+                                     maxmem=256 * 1024 * 1024, dklen=32)
+        elif kdf.get('naam') == 'pbkdf2_sha256':
+            iteraties = int(kdf['iteraties'])
+            if not 100_000 <= iteraties <= 5_000_000:
+                raise ValueError('pbkdf2-iteraties buiten bereik')
+            sleutel = hashlib.pbkdf2_hmac('sha256', wachtwoord.encode('utf-8'), salt, iteraties, 32)
+        else:
+            raise ValueError('onbekende kdf')
+    except (KeyError, TypeError, ValueError) as exc:
+        raise BackupOntsleutelFout('beschadigd') from exc
+    if len(_wachtwoord_sleutel_cache) > 64:
+        _wachtwoord_sleutel_cache.clear()
+    _wachtwoord_sleutel_cache[cache_key] = sleutel
+    return sleutel
+
+
+def _sleutel_id(sleutel: bytes) -> str:
+    """Herkenning van de sleutel in een envelop (geen geheim: een PRF-uitvoer)."""
+    return hmac.new(sleutel, b'brewadmin-backup-sleutel-id', hashlib.sha256).hexdigest()[:16]
+
+
+def _deelsleutels(sleutel: bytes) -> tuple[bytes, bytes]:
+    return (hmac.new(sleutel, b'brewadmin-backup-versleutelen', hashlib.sha256).digest(),
+            hmac.new(sleutel, b'brewadmin-backup-authenticeren', hashlib.sha256).digest())
+
+
+def _sleutelstroom(sleutel_enc: bytes, nonce: bytes, lengte: int) -> bytes:
+    """HMAC-SHA256(sleutel, nonce ‖ teller) achter elkaar: een PRF in
+    tellermodus. Met een verse nonce per envelop nooit hergebruikt."""
+    blokken = []
+    for teller in range((lengte + 31) // 32):
+        blokken.append(hmac.new(sleutel_enc, nonce + teller.to_bytes(8, 'big'),
+                                hashlib.sha256).digest())
+    return b''.join(blokken)[:lengte]
+
+
+def _envelop_kop_bytes(envelop: dict) -> bytes:
+    """De geauthenticeerde kop: alles behalve nonce/data/mac, canoniek."""
+    kop = {k: v for k, v in envelop.items() if k not in ('nonce', 'data', 'mac')}
+    return json.dumps(kop, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('ascii')
+
+
+class _BackupSleutel:
+    """De sleutel waarmee een backupronde versleutelt (één afleiding per ronde)."""
+
+    def __init__(self, methode: str, sleutel: bytes, kdf: dict | None):
+        self.methode = methode
+        self.sleutel = sleutel
+        self.kdf = kdf
+        self.sleutel_id = _sleutel_id(sleutel)
+
+
+def _backup_sleutel_voor_versleutelen() -> '_BackupSleutel | None':
+    """Backup-wachtwoord uit de addon-opties, anders het sleutelbestand.
+    None = geen bruikbare sleutel: dan blijven de credentials buiten de
+    backup (dicht falen — nooit leesbaar wegschrijven)."""
+    wachtwoord = _backup_wachtwoord()
+    if wachtwoord:
+        kdf = _kdf_nieuw()
+        try:
+            return _BackupSleutel('wachtwoord', _wachtwoord_sleutel(wachtwoord, kdf), kdf)
+        except BackupOntsleutelFout:
+            _log('backup', 'backup-wachtwoord: sleutelafleiding mislukt', level=logging.ERROR)
+            return None
+    sleutel = _sleutelbestand_sleutel(maak=True)
+    return _BackupSleutel('sleutelbestand', sleutel, None) if sleutel else None
+
+
+def _is_versleuteld(waarde) -> bool:
+    return isinstance(waarde, dict) and waarde.get(_ENVELOP_MARKER) == _ENVELOP_VERSIE
+
+
+def _versleutel_waarde(waarde, bs: '_BackupSleutel') -> dict:
+    """Versleutel een (creds-)waarde tot een envelop."""
+    klaar = _json_compact(waarde).encode('utf-8')
+    nonce = secrets.token_bytes(16)
+    enc, mac = _deelsleutels(bs.sleutel)
+    geheim = bytes(a ^ b for a, b in zip(klaar, _sleutelstroom(enc, nonce, len(klaar))))
+    envelop = {_ENVELOP_MARKER: _ENVELOP_VERSIE, 'methode': bs.methode, 'sleutel_id': bs.sleutel_id}
+    if bs.kdf is not None:
+        envelop['kdf'] = bs.kdf
+    tag = hmac.new(mac, _envelop_kop_bytes(envelop) + nonce + geheim, hashlib.sha256).digest()
+    envelop.update({
+        'nonce': base64.b64encode(nonce).decode('ascii'),
+        'data': base64.b64encode(geheim).decode('ascii'),
+        'mac': base64.b64encode(tag).decode('ascii'),
+    })
+    return envelop
+
+
+def _ontsleutel_waarde(envelop: dict):
+    """Ontsleutel een envelop met het huidige backup-wachtwoord of
+    sleutelbestand (wat de envelop aangeeft). Raises BackupOntsleutelFout."""
+    if not _is_versleuteld(envelop):
+        raise BackupOntsleutelFout('beschadigd')
+    methode = envelop.get('methode')
+    if methode == 'wachtwoord':
+        wachtwoord = _backup_wachtwoord()
+        if not wachtwoord:
+            raise BackupOntsleutelFout('geen_wachtwoord')
+        sleutel = _wachtwoord_sleutel(wachtwoord, envelop.get('kdf'))
+    elif methode == 'sleutelbestand':
+        sleutel = _sleutelbestand_sleutel(maak=False)
+        if sleutel is None:
+            raise BackupOntsleutelFout('geen_sleutel')
+    else:
+        raise BackupOntsleutelFout('beschadigd')
+    if not hmac.compare_digest(_sleutel_id(sleutel), str(envelop.get('sleutel_id') or '')):
+        raise BackupOntsleutelFout('andere_sleutel')
+    try:
+        nonce = base64.b64decode(str(envelop['nonce']), validate=True)
+        geheim = base64.b64decode(str(envelop['data']), validate=True)
+        tag = base64.b64decode(str(envelop['mac']), validate=True)
+    except (KeyError, ValueError) as exc:
+        raise BackupOntsleutelFout('beschadigd') from exc
+    enc, mac = _deelsleutels(sleutel)
+    verwacht = hmac.new(mac, _envelop_kop_bytes(envelop) + nonce + geheim, hashlib.sha256).digest()
+    if len(nonce) != 16 or not hmac.compare_digest(verwacht, tag):
+        raise BackupOntsleutelFout('beschadigd')
+    klaar = bytes(a ^ b for a, b in zip(geheim, _sleutelstroom(enc, nonce, len(geheim))))
+    try:
+        return json.loads(klaar.decode('utf-8'))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BackupOntsleutelFout('beschadigd') from exc
+
+
+def _backup_geheim_bytes(key: str, ruw: bytes, bs: '_BackupSleutel | None') -> bytes | None:
+    """Wat er van een creds-key in de backup komt: de versleutelde envelop,
+    of None (overslaan) als er geen sleutel is. Een waarde die al een envelop
+    is (een teruggezette db die nog niet te ontsleutelen was) gaat ongewijzigd
+    mee."""
+    try:
+        waarde = json.loads(ruw)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if _is_versleuteld(waarde):
+        return ruw
+    if bs is None:
+        return None
+    return _json_compact(_versleutel_waarde(waarde, bs)).encode('utf-8')
+
+
+def _versleutel_db_kopie(pad: Path, bs: '_BackupSleutel | None', vacuum: bool = False) -> bool:
+    """Vervang in een db-kopie elke leesbare creds-waarde door een envelop
+    (zonder sleutel: haal hem eruit) en herschrijf het bestand met VACUUM,
+    zodat vrije pagina's met de oude tekst verdwijnen. True = gewijzigd.
+    `vacuum` forceert de herschrijving ook zonder wijziging."""
+    keys = sorted(_SECURE_FIELDS)
+    conn = sqlite3.connect(str(pad), timeout=30)
+    try:
+        # Een op zichzelf staand bestand: geen WAL-sidecars naast de kopie.
+        conn.execute('PRAGMA journal_mode=DELETE')
+        conn.execute('PRAGMA secure_delete=ON')
+        rijen = conn.execute(
+            f'SELECT key, data FROM kv WHERE key IN ({",".join("?" * len(keys))})', keys).fetchall()
+        gewijzigd = False
+        with conn:
+            for key, data in rijen:
+                nieuw = _backup_geheim_bytes(key, data.encode('utf-8'), bs)
+                if nieuw is not None and nieuw.decode('utf-8') == data:
+                    continue
+                if nieuw is None:
+                    conn.execute('DELETE FROM kv WHERE key=?', (key,))
+                    conn.execute('DELETE FROM versies WHERE key=?', (key,))
+                else:
+                    conn.execute('UPDATE kv SET data=? WHERE key=?', (nieuw.decode('utf-8'), key))
+                gewijzigd = True
+        if gewijzigd or vacuum:
+            conn.execute('VACUUM')
+        return gewijzigd
+    finally:
+        conn.close()
+        try:
+            os.chmod(pad, 0o600)
+        except OSError:
+            pass
+
+
+def _map_heeft_leesbare_geheimen(map_: Path) -> bool:
+    """Staat er in deze dagmap nog een creds-JSON zonder envelop? (De db-kopie
+    wordt vóór de JSON's omgezet, dus een omgezette JSON betekent: klaar.)"""
+    for key in _SECURE_FIELDS:
+        f = map_ / f'{key}.json'
+        if not f.is_file():
+            continue
+        try:
+            if not _is_versleuteld(json.loads(f.read_bytes())):
+                return True
+        except (OSError, ValueError):
+            return True
+    return False
+
+
+def _versleutel_dagmap(map_: Path, bs: '_BackupSleutel') -> bool:
+    """Zet een bestaande dagmap om: eerst de db-kopie, dan de JSON's."""
+    if (map_ / DB_NAAM).is_file():
+        _versleutel_db_kopie(map_ / DB_NAAM, bs)
+    for key in _SECURE_FIELDS:
+        f = map_ / f'{key}.json'
+        if not f.is_file():
+            continue
+        nieuw = _backup_geheim_bytes(key, f.read_bytes(), bs)
+        if nieuw is None:
+            f.unlink()
+        else:
+            _atomic_write_bytes(f, nieuw)
+            try:
+                os.chmod(f, 0o600)
+            except OSError:
+                pass
+    return True
+
+
+def _versleutel_offsite_zip(zip_pad: Path, bs: '_BackupSleutel') -> None:
+    """Herschrijf een oude offsite-ZIP met versleutelde credentials (ook in
+    de db-kopie erin) en zet het ZIP-commentaar. Atomair via tmp+rename; de
+    db-kopie wordt tijdelijk in /data uitgepakt, nooit op /backup."""
+    geheime_namen = {f'{k}.json': k for k in _SECURE_FIELDS}
+    tmp = zip_pad.with_name('.' + zip_pad.name + '.tmp')
+    tmp_db = None
+    try:
+        with zipfile.ZipFile(zip_pad) as zin, zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zout:
+            for info in zin.infolist():
+                if info.is_dir():
+                    continue
+                if info.filename in geheime_namen:
+                    nieuw = _backup_geheim_bytes(geheime_namen[info.filename], zin.read(info), bs)
+                    if nieuw is not None:
+                        zout.writestr(zipfile.ZipInfo(info.filename, info.date_time), nieuw,
+                                      compress_type=zipfile.ZIP_DEFLATED)
+                    continue
+                if info.filename == DB_NAAM:
+                    fd, naam = tempfile.mkstemp(prefix='.backup_db_', dir=str(DATA_DIR))
+                    tmp_db = Path(naam)
+                    with os.fdopen(fd, 'wb') as fo, zin.open(info) as fi:
+                        shutil.copyfileobj(fi, fo)
+                    _versleutel_db_kopie(tmp_db, bs)
+                    zout.write(tmp_db, DB_NAAM)
+                    continue
+                doel = zipfile.ZipInfo(info.filename, info.date_time)
+                doel.compress_type = zipfile.ZIP_DEFLATED
+                with zin.open(info) as fi, zout.open(doel, 'w') as fo:
+                    shutil.copyfileobj(fi, fo, 1024 * 1024)
+            zout.comment = _OFFSITE_ZIP_COMMENTAAR
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, zip_pad)
+    finally:
+        for pad in (tmp, tmp_db):
+            if pad is not None and pad.exists():
+                try:
+                    pad.unlink()
+                except OSError:
+                    pass
+        if tmp_db is not None:
+            for sidecar in ('-journal', '-wal', '-shm'):
+                p = tmp_db.with_name(tmp_db.name + sidecar)
+                if p.exists():
+                    try:
+                        p.unlink()
+                    except OSError:
+                        pass
+
+
+def _versleutel_bestaande_backups() -> int:
+    """Eenmalige omzetting (idempotent, draait elke backupronde mee): oude
+    dagmappen en offsite-ZIP's met leesbare credentials krijgen alsnog
+    enveloppen. Geeft het aantal omgezette mappen + ZIP's terug."""
+    with _backup_run_lock:
+        return _versleutel_bestaande_backups_ronde()
+
+
+def _versleutel_bestaande_backups_ronde() -> int:
+    bs = None
+    omgezet = 0
+    if BACKUP_DIR.is_dir():
+        for map_ in sorted(BACKUP_DIR.iterdir()):
+            if not map_.is_dir() or not _map_heeft_leesbare_geheimen(map_):
+                continue
+            bs = bs or _backup_sleutel_voor_versleutelen()
+            if bs is None:
+                return omgezet
+            try:
+                _versleutel_dagmap(map_, bs)
+                omgezet += 1
+            except (OSError, sqlite3.Error) as exc:
+                _log('backup', f'versleutelen {map_.name} mislukt: {exc}', level=logging.ERROR)
+    if OFFSITE_BACKUP_DIR.is_dir():
+        for zip_pad in sorted(OFFSITE_BACKUP_DIR.glob('brewadmin_backup_*.zip')):
+            try:
+                with zipfile.ZipFile(zip_pad) as zf:
+                    if zf.comment == _OFFSITE_ZIP_COMMENTAAR:
+                        continue
+            except (OSError, zipfile.BadZipFile):
+                continue
+            bs = bs or _backup_sleutel_voor_versleutelen()
+            if bs is None:
+                return omgezet
+            try:
+                _versleutel_offsite_zip(zip_pad, bs)
+                omgezet += 1
+            except (OSError, sqlite3.Error, zipfile.BadZipFile) as exc:
+                _log('backup', f'versleutelen {zip_pad.name} mislukt: {exc}', level=logging.ERROR)
+    if omgezet:
+        _log('backup', f'credentials versleuteld in {omgezet} bestaande backup(s)')
+    return omgezet
+
+
+def _herstel_versleutelde_geheimen() -> None:
+    """Bij de start: staat er een envelop in de live opslag (een teruggezette
+    db-kopie of backup-JSON), ontsleutel hem dan met het backup-wachtwoord of
+    sleutelbestand. Lukt dat niet, dan blijft hij staan (een later ingesteld
+    wachtwoord kan hem alsnog openen) en toont de app lege credentials."""
+    for key in sorted(_SECURE_FIELDS):
+        waarde = _read_json(key)
+        if not _is_versleuteld(waarde):
+            continue
+        try:
+            klaar = _ontsleutel_waarde(waarde)
+        except BackupOntsleutelFout as exc:
+            _log('backup', f'{key}: versleutelde credentials niet te openen ({exc.reden}) — '
+                           f'opnieuw invullen of het juiste backup_password instellen',
+                 level=logging.WARNING)
+            continue
+        with _data_lock:
+            conn = _db()
+            with conn:
+                _schrijf_key(conn, key, klaar)
+        _audit_write('geheimen_hersteld', key, gebruiker='server')
+        _log('backup', f'{key}: credentials uit de backup ontsleuteld en hersteld')
+
+
+def _backup_versleuteling_status() -> dict:
+    """Voor /api/health en de backupkaart: hoe de credentials in de backup
+    versleuteld worden."""
+    if _backup_wachtwoord():
+        return {'methode': 'wachtwoord'}
+    return {'methode': 'sleutelbestand',
+            'sleutel_aanwezig': _backup_sleutel_bestand().exists()}
 
 
 def _should_keep_backup(backup_date: datetime.date, today: datetime.date) -> bool:
@@ -1021,6 +1501,7 @@ def _backup_loop(interval: float = 86400.0) -> None:
             _run_backup()
             _cleanup_backups()
             _cleanup_offsite_backups()
+            _versleutel_bestaande_backups()
             _cleanup_audit()
         except Exception as exc:
             _log('backup', f'error: {exc}', level=logging.ERROR)
@@ -1613,6 +2094,10 @@ def _mask_secrets(key: str, data):
     velden = _SECURE_FIELDS.get(key)
     if not velden or not isinstance(data, dict):
         return data
+    if _is_versleuteld(data):
+        # Een teruggezette backup-envelop die (nog) niet te openen was: de
+        # app ziet lege credentials en vult ze opnieuw in.
+        return {}
     masked = dict(data)
     for veld in velden:
         if masked.get(veld):
@@ -1695,6 +2180,12 @@ def _harden_secure_files() -> None:
                 os.chmod(f, 0o600)
             except OSError:
                 pass
+    # De sleutel van de backupversleuteling — zelfde 0600-behandeling.
+    if _backup_sleutel_bestand().exists():
+        try:
+            os.chmod(_backup_sleutel_bestand(), 0o600)
+        except OSError:
+            pass
     # Persistente sessies (bevatten sessietokens) — zelfde 0600-behandeling.
     if _sessie_bestand().exists():
         try:
@@ -4688,7 +5179,12 @@ def _backup_to_zip(date_str: str) -> bytes | None:
             key = f.name[:-len('.json')] if f.name.endswith('.json') else ''
             if f.parent == backup_path and key in _SECURE_FIELDS:
                 try:
-                    gemaskeerd = _mask_secrets(key, json.loads(f.read_bytes()))
+                    waarde = json.loads(f.read_bytes())
+                    if _is_versleuteld(waarde):
+                        # Ontsleutelen om de niet-geheime velden (adres,
+                        # gebruiker …) te houden; de geheimen gaan gemaskeerd.
+                        waarde = _ontsleutel_waarde(waarde)
+                    gemaskeerd = _mask_secrets(key, waarde)
                 except (OSError, ValueError):
                     continue  # onleesbaar: liever weglaten dan ongemaskeerd
                 zf.writestr(naam, json.dumps(gemaskeerd, ensure_ascii=False))
@@ -5967,6 +6463,8 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             'uptime_s': int(time.monotonic() - _start_tijd),
             # Servercontrole op nieuwe webshoporders (_wc_orders_tick).
             'wc_orders': {'laatste_check': wc_check, 'laatste_fout': _wc_orders_laatste_fout},
+            # Hoe de credentials in de serverbackup versleuteld worden.
+            'backup_versleuteling': _backup_versleuteling_status(),
         })
 
     def _upload_rol_ok(self, filename: str) -> bool:
@@ -6727,6 +7225,10 @@ if __name__ == '__main__':
     _log('server', f'SQLite-opslag gereed ({DB_NAAM}, WAL)')
 
     _harden_secure_files()
+
+    # Teruggezette db-kopie of backup-JSON met versleutelde credentials:
+    # ontsleutelen met het backup-wachtwoord of het sleutelbestand.
+    _herstel_versleutelde_geheimen()
 
     # Herstel opgeslagen sessies (directe-toegangspoort) zodat een addon-herstart
     # niet uitlogt; verlopen sessies vallen bij het laden meteen af.

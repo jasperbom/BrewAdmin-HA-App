@@ -44,11 +44,13 @@
       proxies. pytest
 - [ ] **5.7 HA-service-payload** — uitgaande payload uit allow-list per service,
       nooit de hele body doorsturen. pytest
-- [ ] **5.8 Backup-permissies** — 0600 op elke geëxporteerde JSON en de
+- [x] **5.8 Backup-permissies** — 0600 op elke geëxporteerde JSON en de
       offsite-ZIP, 0700 op de dagmap; secure keys niet in de JSON-export. pytest
-      *(deels: rechten gezet; de download-ZIP maskeert de secure keys en laat
-      de db-kopie weg. Op schijf blijven ze ongemaskeerd staan zodat de
-      serverbackup volledig herstelbaar is — open punt: versleutelen)*
+      *(rechten gezet; de download-ZIP maskeert de secure keys en laat de
+      db-kopie weg. Op schijf en offsite staan ze alleen versleuteld —
+      sleutelbestand of addon-optie `backup_password`, db-kopie met VACUUM,
+      oude backups omgezet — zodat de serverbackup volledig herstelbaar blijft;
+      pytest `TestBackupVersleuteling`)*
 - [ ] **5.9 app_icoon** — `svg+xml` uit `_DATA_IMG_RE`, vaste Content-Type uit
       allow-list, CSP `default-src 'none'; sandbox` op die route. pytest
 - [ ] **5.10 Sessie-/transporthygiëne** — absolute maximale sessieleeftijd, HSTS

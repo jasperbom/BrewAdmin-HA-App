@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.83] — 2026-09-26
+
+### Wachtwoorden en API-sleutels versleuteld in de serverbackup
+
+De dagelijkse serverbackup (in de addon én de kopie in de Home Assistant-
+backupmap) bevatte je wachtwoorden en API-sleutels leesbaar: Brewfather,
+WooCommerce, Claude, SMTP en Mollie. Die map is ook voor andere addons
+bereikbaar, bijvoorbeeld via Samba. Dat is nu dicht.
+
+- **Versleuteld in elke backup.** De credentials staan in de backup alleen nog
+  versleuteld: in de losse bestanden, in de databasekopie (die daarna volledig
+  wordt herschreven, zodat er ook geen oude leesbare resten in achterblijven)
+  en dus ook in de ZIP in de backupmap. De rest van de administratie is
+  ongewijzigd en gewoon leesbaar en herstelbaar.
+- **Oude backups worden omgezet.** Bestaande backups met leesbare
+  credentials worden bij de eerstvolgende backupronde eenmalig versleuteld.
+- **Standaard: sleutel in de installatie.** Zonder verdere instelling
+  gebruikt de addon een sleutel die alleen in deze installatie staat (en zelf
+  nooit in een backup komt). Gaat de addon-data verloren, dan zet je de
+  administratie gewoon terug en vul je de credentials opnieuw in.
+- **Optioneel: backup-wachtwoord.** Stel bij de addon-opties een
+  *Backup-wachtwoord* in als je de credentials ook na verlies van de
+  addon-data uit de backup wilt kunnen terughalen. Bewaar het goed: zonder dat
+  wachtwoord zijn ze uit de backup niet te openen.
+- **Terugzetten.** Zet je een databasekopie uit een backup terug, dan
+  ontsleutelt de addon de credentials bij het opstarten. Lukt dat niet (ander
+  wachtwoord, sleutel kwijt), dan zie je lege velden en vul je ze opnieuw in.
+- Instellingen → App → Back-ups zegt hoe je credentials versleuteld zijn. De
+  addon-opties hebben nu een uitleg in vijf talen.
+
+---
+
 ## [1.12.82] — 2026-09-26
 
 ### Controle, tweede ronde: wat de eerste ronde zelf veroorzaakte

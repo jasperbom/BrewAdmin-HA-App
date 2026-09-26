@@ -421,6 +421,16 @@ const BackupCard = () => {
 
   React.useEffect(() => { fetchBackups(); }, []);
 
+  // Hoe de credentials in de serverbackup versleuteld zijn (server.py
+  // _backup_versleuteling_status): backup-wachtwoord of sleutelbestand.
+  const [versleuteling, setVersleuteling] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    fetch(ADDON_BASE + 'api/health')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setVersleuteling(d?.backup_versleuteling?.methode || null))
+      .catch(() => setVersleuteling(null));
+  }, []);
+
   const triggerBackup = async () => {
     setTriggering(true); setMsg('');
     try {
@@ -499,6 +509,12 @@ const BackupCard = () => {
         {msg && <span className="text-sm text-gray-600">{msg}</span>}
       </div>
 
+      {versleuteling && (
+        <p className="text-sm text-gray-600 mb-4">
+          {t(versleuteling === 'wachtwoord' ? 'settings_backup_versleuteld_wachtwoord' : 'settings_backup_versleuteld_sleutel')}
+        </p>
+      )}
+
       <div className="text-xs font-semibold text-gray-500 mb-2">{t('settings_backup_geschiedenis')}</div>
 
       {loading ? (
@@ -511,7 +527,7 @@ const BackupCard = () => {
             <div key={b.date} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
               <div>
                 <span className="text-sm font-medium text-gray-700">{b.date}</span>
-                <span className="text-xs text-gray-400 ml-2">{b.file_count} {b.file_count === 1 ? 'file' : 'files'}</span>
+                <span className="text-xs text-gray-400 ml-2">{b.file_count === 1 ? t('settings_backup_bestand') : t('settings_backup_bestanden').replace('{n}', String(b.file_count))}</span>
               </div>
               <button onClick={() => downloadBackup(b.date)}
                 className="text-xs font-medium px-2.5 py-1 rounded transition-colors"

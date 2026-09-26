@@ -853,7 +853,7 @@ Backup en restore gaan via Excel (`.xlsx`) — **niet** via JSON. De functies `e
 - **UI:** Instellingen → App → Data import & export (`accept=".xlsx"`)
 - **Bestandsstructuur:** 31 array-sheets (één per datasleutel) + één `Instellingen`-sheet voor objects, primitieven en logo's
 - **Geneste objecten** binnen array-items worden als JSON-string opgeslagen en bij import teruggeparsed
-- **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`) zitten **nooit** in de Excel-backup en alleen gemaskeerd in de download-ZIP van een serverbackup (zonder db-kopie, `_backup_to_zip`); de serverbackup op schijf en offsite bevat ze wél (0600/0700), zodat die volledig herstelbaar blijft
+- **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`) zitten **nooit** in de Excel-backup en alleen gemaskeerd in de download-ZIP van een serverbackup (zonder db-kopie, `_backup_to_zip`); de serverbackup op schijf en offsite bevat ze **alleen versleuteld** (ERP 5.8, zie "Security constraints"), zodat die volledig herstelbaar blijft zonder leesbare geheimen
 - **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`, `website_telemetrie_status`) staat bewust niet in de backup — die regenereert vanzelf
 
 Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `excelExport` (nieuw sheet of rij in Instellingen) én aan de import-callback in `doImport`.
@@ -922,7 +922,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 |--------|------|-------------|
 | GET | `/api/data/<key>` | Load data key (JSON, uit SQLite) |
 | POST | `/api/data/<key>` | Save data key (JSON, naar SQLite) |
-| GET | `/api/health` | Health-check (ERP 3.6): status achtergrondthreads, laatste-backupdatum, data-dir, uptime — dashboard toont dit |
+| GET | `/api/health` | Health-check (ERP 3.6): status achtergrondthreads, laatste-backupdatum, data-dir, uptime, `backup_versleuteling` (`{methode: 'wachtwoord'\|'sleutelbestand'}`) — dashboard en de backupkaart tonen dit |
 | GET | `/api/whoami` | Gebruiker + rol: `{gebruiker, rol, sessie}` (`sessie: true` = ingelogd via de directe poort) |
 | GET | `/api/ha_gebruikers` | HA-gebruikerslijst voor het rollenbeheer (beheer-only; via core-websocket `config/auth/list` met een stdlib-RFC6455-client) |
 | POST | `/api/login` | Alleen directe poort (8098): HA-login via Supervisor-auth → sessiecookie |
@@ -951,6 +951,20 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 
 ### Security constraints (do not remove)
 
+- Credentials in de serverbackup zijn versleuteld (ERP 5.8): elke
+  `_SECURE_FIELDS`-waarde gaat als envelop (`__brewadmin_versleuteld__`) in
+  `<key>.json` én in de kv-tabel van de db-kopie (daarna `VACUUM`, geen oude
+  pagina's), dus ook in de offsite-ZIP. Sleutel: addon-optie
+  `backup_password` (scrypt, salt in de envelop) of anders
+  `/data/brewadmin_backup.sleutel` (32 willekeurige bytes, 0600, nooit in een
+  backup, nooit overschreven als hij onleesbaar is). Stdlib-only: HMAC-SHA256
+  in tellermodus + encrypt-then-MAC. Geen bruikbare sleutel = de credentials
+  blijven buiten de backup (dicht falen), nooit leesbaar wegschrijven. Oude
+  dagmappen/ZIP's zet `_versleutel_bestaande_backups` elke ronde om (idempotent,
+  ZIP-commentaar als merkteken). Bij de start ontsleutelt
+  `_herstel_versleutelde_geheimen` een teruggezette envelop; lukt dat niet, dan
+  blijft hij staan en toont GET lege credentials. Nooit een tweede, leesbare
+  kopie van de credentials in `/data/backups` of `/backup` zetten
 - Backup-retentie heeft een ondergrens: `_MIN_BACKUPS_BEWAREN` /
   `_MIN_AUDIT_BEWAREN` houden de nieuwste backups en auditmaanden altijd
   overeind. Het beleid zelf hangt aan `date.today()`, dus een klok die
