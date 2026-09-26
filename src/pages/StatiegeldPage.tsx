@@ -19,6 +19,8 @@ interface Props {
   factuurCounter?: any
   setFactuurCounter?: any
   bankKoppelingen?: any
+  /** Voor de SND-stuks van webshopfacturen (utils/sndAfdracht.ts). */
+  bestellingen?: any[]
   auditLog?: any[]
   setAuditLog?: any
   setJournaal?: any
@@ -37,7 +39,7 @@ const klantLabel = (f: any) => f?.klant_naam || t('lbl_onbekend')
 
 const StatiegeldPage: React.FC<Props> = ({
   verpakkingen, setVerpakkingen, verkoopFacturen, setVerkoopFacturen,
-  factuurCounter, setFactuurCounter = () => {}, bankKoppelingen = {},
+  factuurCounter, setFactuurCounter = () => {}, bankKoppelingen = {}, bestellingen = [],
   auditLog = [], setAuditLog = (() => {}), setJournaal = () => {}
 }) => {
   const [tab, setTab] = useState<Tab>('config')
@@ -71,8 +73,8 @@ const StatiegeldPage: React.FC<Props> = ({
   // Te remitteren SNd per periode, met de afdrachtstatus uit de bankkoppeling
   // {soort:'snd', periodeKey} die de Boekhouding legt (utils/sndAfdracht.ts).
   const sndPerPeriode = useMemo(
-    () => sndPerPeriodeUtil(verkoopFacturen, bankKoppelingen, aangifteYear, aangiftePeriode, tod()),
-    [verkoopFacturen, bankKoppelingen, aangifteYear, aangiftePeriode])
+    () => sndPerPeriodeUtil(verkoopFacturen, bankKoppelingen, aangifteYear, aangiftePeriode, tod(), {bestellingen, verpakkingen}),
+    [verkoopFacturen, bankKoppelingen, aangifteYear, aangiftePeriode, bestellingen, verpakkingen])
 
   // Fust-saldo per klant (alleen 'fust')
   const fustPerKlant = useMemo(() => {

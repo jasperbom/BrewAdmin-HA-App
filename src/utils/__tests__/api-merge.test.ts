@@ -177,3 +177,41 @@ describe('doortypen tijdens het samenvoegen', () => {
     expect(meldingen).toEqual([])
   })
 })
+
+describe('netwerkfout tijdens het samenvoegen', () => {
+  // Mislukte de her-POST na een samenvoeging, dan stonden ijkpunt en versie
+  // al op de verse serverstand, terwijl de herkansing (en elke volgende save)
+  // de lokale stand zónder de serverwijzigingen droeg. Die ging dan als delta
+  // met een geldige versie de deur uit en wiste stil wat een ander net had
+  // toegevoegd.
+  it('wist het record van een ander apparaat niet bij de volgende save', async () => {
+    const server = new NepServer()
+    vi.stubGlobal('fetch', server.fetch)
+    vi.stubGlobal('localStorage', geheugenOpslag())
+    vi.stubGlobal('alert', () => {})
+
+    const key = 'mergefout'
+    const basis = [rec(1, 'a'), rec(2, 'b'), rec(3, 'c')]
+    server.zet(key, basis)
+    _updateVersion(key, new Response(null, {headers: {'X-Data-Version': server.versie(key)}}))
+    _rememberSynced(key, basis)
+    const [, save] = useStore(key, basis)
+
+    // Een ander apparaat voegt record 4 toe.
+    server.zet(key, [...basis, rec(4, 'ANDER')])
+
+    // De eerste POST botst (409); de her-POST na het samenvoegen valt weg.
+    let schrijf = 0
+    server.netwerkFout = v => v.methode === 'POST' && v.pad.endsWith(`/${key}`) && ++schrijf === 2
+    save((p: any[]) => [...p, rec(5, 'L1')])
+    for (let i = 0; i < 4; i++) await _wachtOpVerzending()
+    expect(server.lees(key)).toEqual([...basis, rec(4, 'ANDER')])
+
+    // De gebruiker werkt gewoon verder op zijn (oude) stand.
+    server.netwerkFout = null
+    save((p: any[]) => p.map(r => (r.id === 5 ? {...r, n: 'L2'} : r)))
+    for (let i = 0; i < 4; i++) await _wachtOpVerzending()
+
+    expect(server.lees(key)).toEqual([...basis, rec(4, 'ANDER'), rec(5, 'L2')])
+  })
+})

@@ -108,3 +108,60 @@ describe('sndKoppelKandidaten', () => {
     expect(sndKoppelKandidaten([{datum: '2026-01-01', regels: [{netto: 5}]}], {}, {datum: '2026-05-01', bedrag: 5}, today)).toEqual([])
   })
 })
+
+describe('sndRegels — webshopfacturen', () => {
+  const verpakkingen = [
+    {id: 1, naam: 'Blik 33cl', type: 'blik', statiegeld_bedrag: 0.15, statiegeld_soort: 'snd'},
+    {id: 2, naam: 'Fust 20L', type: 'fust', statiegeld_bedrag: 30, statiegeld_soort: 'fust'},
+    {id: 3, naam: 'Fles 33cl', type: 'fles', statiegeld_bedrag: 0, statiegeld_soort: null},
+  ]
+  const bestellingen = [
+    {id: 10, wc_order_id: 555, regels: [
+      {type: 'bier', verpakking_type: 'Blik 33cl', aantal: 24},
+      {type: 'bier', verpakking_type: 'Fust 20L', aantal: 1},
+      {type: 'bier', verpakking_type: 'Fles 33cl', aantal: 12},
+    ]},
+    {id: 11, regels: [{type: 'bier', verpakking_type: 'Blik 33cl', aantal: 6}]},   // handmatig
+  ]
+  const webshopFactuur = {id: 20, datum: '2026-03-10', bestelling_id: 10, regels: [{netto: 50, bruto: 60.5}]}
+  const bron = {bestellingen, verpakkingen}
+
+  it('telt de SND-verpakkingen van een webshopfactuur zonder eigen statiegeldregel', () => {
+    const regels = sndRegels([webshopFactuur], bron)
+    expect(regels).toEqual([{datum: '2026-03-10', stuks: 24, bedrag: 3.6}])
+  })
+
+  it('zonder bron verandert er niets (oude aanroepers)', () => {
+    expect(sndRegels([webshopFactuur])).toEqual([])
+  })
+
+  it('telt nooit dubbel: een webshopfactuur met eigen SNd-regels telt alleen die', () => {
+    const f = {...webshopFactuur, regels: [{netto: 50, bruto: 60.5}, snd(24)]}
+    expect(sndTotaal(sndRegels([f], bron), '2026-01-01', '2026-12-31')).toEqual({stuks: 24, bedrag: 3.6})
+  })
+
+  it('een handmatige order telt alleen via de regels op zijn factuur', () => {
+    const f = {id: 21, datum: '2026-03-11', bestelling_id: 11, regels: [{netto: 10, bruto: 12.1}]}
+    expect(sndRegels([f], bron)).toEqual([])
+  })
+
+  it('een volledige creditnota draait de SND-stuks terug op zijn eigen datum', () => {
+    const credit = {id: 22, datum: '2026-04-02', status: 'credit', credit_van_factuur_id: 20, bestelling_id: 10, regels: [{netto: -50, bruto: -60.5}]}
+    const regels = sndRegels([webshopFactuur, credit], bron)
+    expect(sndTotaal(regels, '2026-01-01', '2026-03-31')).toEqual({stuks: 24, bedrag: 3.6})
+    expect(sndTotaal(regels, '2026-04-01', '2026-06-30')).toEqual({stuks: -24, bedrag: -3.6})
+  })
+
+  it('een gedeeltelijke creditnota verandert niets aan de SND-stuks', () => {
+    const credit = {id: 23, datum: '2026-04-02', status: 'credit', credit_van_factuur_id: 20, regels: [{netto: -10, bruto: -12.1}]}
+    expect(sndTotaal(sndRegels([webshopFactuur, credit], bron), '2026-01-01', '2026-12-31')).toEqual({stuks: 24, bedrag: 3.6})
+  })
+
+  it('werkt door in de periodes en de koppelkandidaten', () => {
+    const p = sndPerPeriode([webshopFactuur], {}, 2026, 'kwartaal', today, bron)
+    expect(p.find(x => x.key === '2026-Q1')).toMatchObject({stuks: 24, bedrag: 3.6, status: 'openstaand'})
+    const k = sndKoppelKandidaten([webshopFactuur], {}, {datum: '2026-04-15', bedrag: -3.6}, today, bron)
+    expect(k.map(x => x.key).sort()).toEqual(['2026-M03', '2026-Q1'])
+    expect(k.every(x => x.bedrag === 3.6)).toBe(true)
+  })
+})

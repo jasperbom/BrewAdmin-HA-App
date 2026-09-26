@@ -270,6 +270,23 @@ describe('bekende orders in elke status verversen', () => {
     expect(wcOrderAfgebroken(na[0])).toBe(true)
   })
 
+  it('intussen gepickt (tijdens het ophalen): de annulering vervalt, het signaal blijft', async () => {
+    // De import zag de order nog zonder picks; vóór het toepassen pickte de
+    // gebruiker hem volledig (uitleveringen gemaakt, status gepickt).
+    const b = alsBestelling(pendingOrder, 21)
+    const get = fakeGet({[pad1]: [], [includePad([7])]: [{...pendingOrder, status: 'cancelled'}], 'settings/advanced': []})
+    const r = await importeerWcOrders({wcGet: get, refs, bestellingen: [b], klanten: [], wcCreds: null, t, bestellingPicks: []})
+    expect(r.updates[21]).toMatchObject({status: 'geannuleerd'})
+    const gepickt = pasImportToe([{...b, status: 'gepickt'}], r)
+    expect(gepickt[0].status).toBe('gepickt')
+    expect(gepickt[0].wc_status).toBe('cancelled')
+    expect(telWebshopAfgebroken(gepickt)).toBe(1)
+    // Intussen gefactureerd: ook dan niet.
+    expect(pasImportToe([{...b, factuur_id: 5}], r)[0].status).toBe('nieuw')
+    // Nog steeds onaangeroerd: wel annuleren.
+    expect(pasImportToe([b], r)[0].status).toBe('geannuleerd')
+  })
+
   it('zonder picklijst weet de import niet of er gepickt is: niet zelf annuleren', async () => {
     const b = alsBestelling(pendingOrder, 21)
     const get = fakeGet({[pad1]: [], [includePad([7])]: [{...pendingOrder, status: 'cancelled'}], 'settings/advanced': []})

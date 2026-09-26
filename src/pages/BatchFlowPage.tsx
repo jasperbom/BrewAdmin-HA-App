@@ -1317,7 +1317,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       alert(t('err_batch_verwijder_gekoppeld').replace('{redenen}', verwijderRedenTekst(redenen)))
       return
     }
-    boekVerpakkingTerug(eigenAv)
+    // Wacht een verwijderde afvulling van deze batch nog op haar terugweg
+    // (UndoBar), voer die dan nu uit: zij boekt haar eigen verpakking terug.
+    // Anders kwam dezelfde verpakking twee keer terug — hier én vijf seconden
+    // later als haar geplande actie alsnog liep.
+    const wachtend = eigenAv.find((a: any) => undo.actie?.id === afvullingUndoId(a.id))
+    if (wachtend) undo.flush()
+    boekVerpakkingTerug(eigenAv.filter((a: any) => a !== wachtend))
     const batch = bat.find((b: any) => b.id === id)
     const naam = batch?.naam || ''
     logAudit(auditLog, setAuditLog, { entiteit: 'Batch', entiteit_id: id, actie: 'verwijderd', omschrijving: naam })

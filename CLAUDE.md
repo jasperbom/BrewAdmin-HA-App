@@ -193,7 +193,10 @@ BrewAdmin-HA-App/
 │   │   │                   # kassa) — nooit een eigen `?? 14`, anders noemt het document een
 │   │   │                   # andere vervaldatum dan de badge
 │   │   ├── sndAfdracht.ts  # SNd-statiegeld per periode + afdrachtstatus uit de bankkoppeling
-│   │   │                   # `{soort:'snd', periodeKey}` (Statiegeld-pagina, banktabel Boekhouding)
+│   │   │                   # `{soort:'snd', periodeKey}` (Statiegeld-pagina, banktabel Boekhouding).
+│   │   │                   # Een webshopfactuur draagt geen statiegeldregel; geef `{bestellingen,
+│   │   │                   # verpakkingen}` mee, dan tellen de SND-stuks uit de orderregels
+│   │   │                   # (`statiegeldVanOrder`) — anders valt de afdracht te laag uit
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
 │   │   ├── template.ts     # Mustache-subset renderer ({{waarde}}, {{{ruw}}}, {{#sectie}}, {{^omgekeerd}}) — documentlayouts als data
 │   │   ├── factuurTemplate.ts # Standaard factuurlayout + contextbouwer; eigen layout via brewery_details.factuur_template, bij een fout stille terugval

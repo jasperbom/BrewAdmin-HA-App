@@ -137,3 +137,60 @@ describe('één handeling blijft één geheel', () => {
     expect(meldingen).toEqual([])
   })
 })
+
+describe('herkansing na een netwerkfout', () => {
+  // Kwam de commit niet aan (wifi weg in de brouwerij), dan probeerde de
+  // herkansing elke key los opnieuw: de verplaatsing en de logregel landden,
+  // het accijnsrecord kreeg 403 — alsnog een uitslag zonder accijns.
+  // Alleen setInterval is nep: de herkansing loopt op een interval van 15 s.
+  beforeEach(() => { vi.useFakeTimers({toFake: ['setInterval', 'clearInterval']}) })
+  const uitslag = (voorvoegsel: string) => {
+    const verplaatsingen = gesynchroniseerd(`${voorvoegsel}_verplaatsingen`, [])
+    const accijns = gesynchroniseerd(`${voorvoegsel}_accijns`, [])
+    const log = gesynchroniseerd(`${voorvoegsel}_log`, [])
+    verplaatsingen.save((p: any[]) => [...p, {id: 1, aantal: 48}])
+    accijns.save((p: any[]) => [...p, {id: 2, bron: 'uitslag'}])
+    log.save((p: any[]) => [...p, {id: 3, soort: 'uitslaan'}])
+    return {verplaatsingen, accijns, log}
+  }
+  afterEach(() => {
+    // Lege wachtrij: de volgende ronde ruimt het (nep)interval zelf op.
+    vi.advanceTimersByTime(15_000)
+    vi.useRealTimers()
+  })
+
+  it('403 bij de herkansing: ook dan landt er niets van de handeling', async () => {
+    server.netwerkFout = v => v.pad.endsWith('api/commit')
+    server.verboden.add('u4_accijns')
+    const h = uitslag('u4')
+    await rustig()
+    expect(server.lees('u4_verplaatsingen')).toEqual([])
+
+    server.netwerkFout = null
+    vi.advanceTimersByTime(15_000)
+    await rustig()
+
+    expect(server.losseSchrijf()).toEqual([])
+    expect(server.lees('u4_verplaatsingen')).toEqual([])
+    expect(server.lees('u4_log')).toEqual([])
+    expect(h.verplaatsingen.lees()).toEqual([])
+    expect(meldingen).toEqual([t('err_geen_rechten')])
+  })
+
+  it('zonder weigering landt de herkansing als één commit', async () => {
+    server.netwerkFout = v => v.pad.endsWith('api/commit')
+    uitslag('u5')
+    await rustig()
+
+    server.netwerkFout = null
+    vi.advanceTimersByTime(15_000)
+    await rustig()
+
+    expect(server.commits().length).toBe(2)
+    expect(server.losseSchrijf()).toEqual([])
+    expect(server.lees('u5_verplaatsingen')).toEqual([{id: 1, aantal: 48}])
+    expect(server.lees('u5_accijns')).toEqual([{id: 2, bron: 'uitslag'}])
+    expect(server.lees('u5_log')).toEqual([{id: 3, soort: 'uitslaan'}])
+    expect(meldingen).toEqual([])
+  })
+})

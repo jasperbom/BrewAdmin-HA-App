@@ -137,6 +137,24 @@ describe('bierIngredienten', () => {
       hop: [{naam: 'Saaz'}], gist: [{naam: 'US-05'}],
     }])).toBe('water, boekweit, rijst, suiker, hop, gist')
   })
+  it('Duitse boekweit (Buchweizen) is ook geen tarwe, echte Weizen wel', () => {
+    expect(bierIngredienten([{mout: [{naam: 'Buchweizenmalz'}], hop: [{naam: 'Saaz'}]}]))
+      .toBe('water, boekweit, hop')
+    expect(bierIngredienten([{mout: [{naam: 'Weizenmalz hell'}, {naam: 'Buck Wheat'}], hop: [{naam: 'Saaz'}]}]))
+      .toBe('water, tarwemout, boekweit, hop')
+  })
+  it('de app-code gebruikt geen regex-lookbehind (Safari/iOS < 16.4 laadt de bundel dan niet)', async () => {
+    const {readFileSync, readdirSync, statSync} = await import('node:fs')
+    const {join} = await import('node:path')
+    const bestanden = (map: string): string[] =>
+      readdirSync(map).flatMap(naam => {
+        const pad = join(map, naam)
+        if (statSync(pad).isDirectory()) return naam === '__tests__' ? [] : bestanden(pad)
+        return /\.tsx?$/.test(naam) ? [pad] : []
+      })
+    const metLookbehind = bestanden('src').filter(pad => /\(\?<[!=]/.test(readFileSync(pad, 'utf8')))
+    expect(metLookbehind).toEqual([])
+  })
   it('een toevoeging zonder naam-herkenning komt erbij via de allergenen van het gekoppelde ingrediënt', () => {
     const ingredienten = [{id: 7, naam: 'Hazelnoot', allergenen: ['noten']}, {id: 8, naam: 'Koriander', allergenen: []}]
     expect(bierIngredienten([{

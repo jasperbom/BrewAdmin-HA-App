@@ -159,9 +159,14 @@ export const bierInhoud = (liter: any): string => {
 }
 
 // Graansoorten die niet "gewoon gerst" zijn: ze horen apart op het etiket.
-// `buckwheat` (boekweit) is geen tarwe — vandaar de lookbehind.
+// Boekweit is geen tarwe, maar heet in het Engels en Duits wel zo
+// ("buckwheat", "Buchweizen"): die namen worden vóór de toets naar 'boekweit'
+// gezet (`zonderBoekweit`). Bewust geen lookbehind in de regex: Safari/iOS
+// vóór 16.4 kan die niet parsen, en dan laadt de hele app niet.
+const BOEKWEIT_NAMEN = /buck\s*wheat|buch\s*weizen/gi
+const zonderBoekweit = (naam: string): string => naam.replace(BOEKWEIT_NAMEN, 'boekweit')
 const GRAAN_SOORTEN: {toets: RegExp, label: string}[] = [
-  {toets: /tarwe|(?<!buck)wheat|weizen|froment/i, label: 'tarwemout'},
+  {toets: /tarwe|wheat|weizen|froment/i,          label: 'tarwemout'},
   {toets: /rogge|\brye\b|roggen/i,                label: 'roggemout'},
   {toets: /haver|\boat/i,                         label: 'havermout'},
   {toets: /spelt|dinkel/i,                        label: 'speltmout'},
@@ -247,7 +252,8 @@ export function bierIngredienten(
       if (!naam || HULPSTOF.test(naam)) continue
       const type = String(m?.ingredient_type || '').trim().toLowerCase()
       if (zoetstof(naam, type === 'suiker')) continue
-      const graan = GRAAN_SOORTEN.find(g => g.toets.test(naam)) || GLUTENVRIJE_GRANEN.find(g => g.toets.test(naam))
+      const graanNaam = zonderBoekweit(naam)
+      const graan = GRAAN_SOORTEN.find(g => g.toets.test(graanNaam)) || GLUTENVRIJE_GRANEN.find(g => g.toets.test(graanNaam))
       if (graan) { voegToe(granen, graan.label); continue }
       // Een mout zonder andere graansoort in de naam is in de praktijk gerst;
       // bij een toevoeging van een ander type (Overig) alleen als de naam

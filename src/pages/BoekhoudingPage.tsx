@@ -1554,7 +1554,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   // Keuzelijst op een afschrijving: alleen als er een openstaande SNd-periode
   // is — wie geen SNd-verpakkingen verkoopt, ziet niets.
   const sndKoppelControl = (tx: any, i: number) => {
-    const kandidaten = sndKoppelKandidaten(verkoopFacturen, bankKoppelingen, tx, tod())
+    const kandidaten = sndKoppelKandidaten(verkoopFacturen, bankKoppelingen, tx, tod(), {bestellingen, verpakkingen})
     if (!kandidaten.length) return null
     return (
       <select defaultValue="" title={t('tip_snd_koppel_transactie')}
@@ -3963,7 +3963,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                     return (
                       <div className="text-xs border-t border-gray-100 pt-2 flex items-center justify-between">
                         <span className="text-gray-500">{t('statiegeld_snd_in_periode')}</span>
-                        <span className="font-semibold" style={{color:'var(--t-accent)'}}>€ {fmt(Math.round(sndBedrag*100)/100)}</span>
+                        <span className="font-semibold" style={{color:'var(--t-accent)'}}>{fmt(Math.round(sndBedrag*100)/100)}</span>
                       </div>
                     );
                   })()}
@@ -4013,7 +4013,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
                       <div className="border-t t-border pt-2 space-y-1" onClick={(e: any)=>e.stopPropagation()}>
                         <div className="flex items-center justify-between">
                           <span className="text-xs t-accent-text font-medium">
-                            {t('lbl_aangifte_ingediend_op').replace('{datum}', aangifte.ingediend_datum || '')} · {isTeruggave ? `${t('lbl_terug')} ` : ''}€ {fmt(aangifteBedrag)}
+                            {t('lbl_aangifte_ingediend_op').replace('{datum}', aangifte.ingediend_datum || '')} · {isTeruggave ? `${t('lbl_terug')} ` : ''}{fmt(aangifteBedrag)}
                           </span>
                           <button onClick={()=>ontkoppelAangifteIngediend(p.key)}
                             className="text-xs text-gray-400 hover:text-red-500 transition-colors">

@@ -56,7 +56,27 @@ export function statiegeldFactuurRegels<V extends StatiegeldVerpakking>(
   verpakkingen: V[] | null | undefined,
   omschrijving: (soort: StatiegeldSoort, vp: V) => string,
 ): StatiegeldFactuurRegel[] {
-  if (!order || (order.wc_order_id != null && order.wc_order_id !== '')) return []
+  if (!order || isWebshopOrder(order)) return []
+  return statiegeldVanOrder(order, verpakkingen, omschrijving)
+}
+
+/** Komt deze bestelling uit de webshop? */
+export const isWebshopOrder = (order: any): boolean =>
+  !!order && order.wc_order_id != null && order.wc_order_id !== ''
+
+/**
+ * Het statiegeld dat de bierregels van een bestelling dragen, ongeacht waar de
+ * order vandaan komt. De factuur van een webshoporder krijgt deze regels niet
+ * (zie hierboven), maar de SNd-afdracht telt ze wél: statiegeld op een blik of
+ * petfles is verschuldigd per verkochte verpakking, via welk kanaal ook
+ * (utils/sndAfdracht.ts).
+ */
+export function statiegeldVanOrder<V extends StatiegeldVerpakking>(
+  order: any,
+  verpakkingen: V[] | null | undefined,
+  omschrijving: (soort: StatiegeldSoort, vp: V) => string = () => '',
+): StatiegeldFactuurRegel[] {
+  if (!order) return []
   const regels: StatiegeldFactuurRegel[] = []
   for (const r of order.regels || []) {
     if (r?.type && r.type !== 'bier') continue

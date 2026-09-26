@@ -67,6 +67,18 @@ describe('inkoopRegelsMetCorrectie', () => {
     expect(r.regels.length).toBe(1)
     expect(r.totalen).toMatchObject({ netto_cent: 10000, btw_cent: 2100, bruto_cent: 12101 })
   })
+  it('bewerken: alleen de BTW bijstellen laat een eerdere netto-correctie staan', () => {
+    // Factuur 100 met eerder een korting van 10 als correctieregel; het
+    // formulier toont netto 90. Alleen het BTW-veld wordt aangepast → netto
+    // blijft 90, niet stil terug naar 100.
+    const oud = { type: 'overig', naam: NAAM, correctie: true, netto: -10, btw_tarief: 21, btw_bedrag: -2.1 }
+    const r = inkoopRegelsMetCorrectie([mout, oud], { netto: null, btw: 18.5, bruto: null }, { naam: NAAM })
+    expect(r.regels.filter((x: any) => x.correctie).length).toBe(1)
+    expect(r.totalen).toMatchObject({ netto_cent: 9000, btw_cent: 1850, bruto_cent: 10850 })
+    // En omgekeerd: alleen het netto bijstellen houdt de BTW-correctie.
+    const r2 = inkoopRegelsMetCorrectie([mout, oud], { netto: 85, btw: null, bruto: null }, { naam: NAAM })
+    expect(r2.totalen).toMatchObject({ netto_cent: 8500, btw_cent: 1890 })
+  })
   it('corrigeert alleen de BTW bij een afrondingsverschil van een cent', () => {
     const r = inkoopRegelsMetCorrectie([mout], { netto: null, btw: 20.99, bruto: null }, { naam: NAAM })
     expect(r.regels[1]).toMatchObject({ netto: 0, btw_bedrag: -0.01 })

@@ -1201,13 +1201,19 @@ function App() {
     try { vlagGezet = localStorage.getItem('brewadmin_migrated_uitlevering_v1') === '1'; } catch (_) {}
     const heeftIntern = ['uitleveringen', 'accijns', 'afboekingen'].every(k => rolMagKey(whoami?.rol, k))
       && (afboekingen || []).some((a: any) => a?.reden === 'intern_gebruik');
+    // Stap 1-2 schrijven uitleveringen én accijns in één handeling. Een rol die
+    // accijns niet mag schrijven krijgt die hele handeling geweigerd (403,
+    // utils/commit.ts) — terwijl de oude `uitslagen`-sleutel hieronder wél
+    // geleegd zou worden. Dan slaan we ze over (zonder vlag: een apparaat met
+    // een rol die het wel mag, doet ze alsnog).
+    const stap12 = !vlagGezet && ['uitleveringen', 'accijns'].every(k => rolMagKey(whoami?.rol, k));
     uitleveringMigrated.current = true;
-    if (vlagGezet && !heeftIntern) return;
+    if (!stap12 && !heeftIntern) return;
     (async () => {
       try {
         // 1) Oude uitslagen-sleutel ophalen en migreren naar uitleveringen
         let oudeUitslagen: any[] = [];
-        if (!vlagGezet) {
+        if (stap12) {
           try {
             const res = await fetch(API_BASE + 'uitslagen');
             if (res.ok) oudeUitslagen = await res.json();
@@ -1229,7 +1235,7 @@ function App() {
         }
 
         // 2) Accijns veldrenames: uitslag_id → uitlevering_id, bron 'uitslag' → 'uitlevering'
-        const accHernoemd = !vlagGezet && (acc||[]).some((a: any) => a.uitslag_id !== undefined || a.bron === 'uitslag');
+        const accHernoemd = stap12 && (acc||[]).some((a: any) => a.uitslag_id !== undefined || a.bron === 'uitslag');
         let nieuweAcc = !accHernoemd ? [...(acc||[])] : (acc||[]).map((a: any) => {
           const out: any = {...a};
           if (out.uitslag_id !== undefined && out.uitlevering_id === undefined) {
@@ -1271,7 +1277,7 @@ function App() {
           } catch (_) {}
         }
 
-        try { localStorage.setItem('brewadmin_migrated_uitlevering_v1', '1'); } catch (_) {}
+        if (stap12) { try { localStorage.setItem('brewadmin_migrated_uitlevering_v1', '1'); } catch (_) {} }
       } catch (err) {
         console.error('Uitlevering-migratie fout:', err);
       }
@@ -1444,7 +1450,11 @@ function App() {
   // schreef) vangt `verwijderDubbeleWcOrders` daarna op.
   // Nooit in `woocommerce_creds` schrijven: die key is beheer-only.
   const wcImportInterval = Math.max(0, Number(wcCreds?.importInterval ?? 15) || 0)
-  const wcAutoImportAan = !!(wcCreds?.enabled && wcCreds?.storeUrl && wcImportInterval > 0 && whoami?.rol !== 'alleen_lezen')
+  // Pas als de rol bekend is (`whoamiKlaar`), net als de andere automatische
+  // schrijfacties: anders kan een gemelde webshoporder de import al starten
+  // vóór whoami binnen is, en krijgt alleen_lezen een 403-melding.
+  const wcAutoImportAan = !!(wcCreds?.enabled && wcCreds?.storeUrl && wcImportInterval > 0
+    && whoamiKlaar && whoami?.rol !== 'alleen_lezen')
   // Zelfde regel voor de productenpagina: na een voorraadpush zet die
   // `lastSync` in de credentials. Voor een rol die de key niet mag schrijven
   // krijgt hij een no-op, anders volgt na elke geslaagde push een
@@ -2302,7 +2312,7 @@ function App() {
         {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} openOrderId={openOrderId} setOpenOrderId={setOpenOrderId} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} accijnsAangiftes={accijnsAangiftes} afboekingen={afboekingen} smtpCreds={smtpCreds} mollieCreds={mollieCreds} mailTemplates={mailTemplates} btwTarieven={btwTarieven} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} setJournaal={setJournaal} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} navDoel={doelVoor('bestellingen')} onNavDoelConsumed={wisNavDoel} />}
         {page==='kassa' && <KassaPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} producten={producten} productArtikelen={productArtikelen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} factuurLogo={factuurLogo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} klanten={klanten} setKlanten={setKlanten} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsAangiftes={accijnsAangiftes} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} />}
         {page==='klanten' && <KlantenPage klanten={klanten} setKlanten={setKlanten} bestellingen={bestellingen} setBestellingen={setBestellingen} verkoopFacturen={verkoopFacturen} breweryDetails={breweryDetails} smtpCreds={smtpCreds} factuurLogo={factuurLogo} logo={logo} appName={appName} setPage={setPage} setOpenOrderId={setOpenOrderId} auditLog={auditLog} setAuditLog={setAuditLog} />}
-        {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} />}
+        {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} bestellingen={bestellingen} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} />}
         {page==='inventarisatie' && <InventarisatiePage lots={lots} ing={ing} av={av} bat={bat} uit={uit} afboekingen={afboekingen} setAfboekingen={setAfboekingen} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingPicks={bestellingPicks} bestellingen={bestellingen} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} setLots={setLots} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} accijnsInst={accijnsInst} />}
         {page==='voorraadverloop' && <VoorraadverloopPage lots={lots} bat={bat} bi={bi} av={av} uit={uit} afboekingen={afboekingen} log={log} ing={ing} accijnsInst={accijnsInst} producten={producten} locaties={locaties} verplaatsingen={verplaatsingen} />}
         {page==='rapporten' && <RapportenPage gaNaarDoel={gaNaarDoel} />}

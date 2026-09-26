@@ -15,6 +15,7 @@
  * Puur en zonder React — direct unit-testbaar.
  */
 import { getPeriodes, type BtwPeriodeType } from './btw'
+import { isWebshopOrder, statiegeldVanOrder, type StatiegeldVerpakking } from './statiegeld'
 
 /** `geen` = verstreken, maar er was niets af te dragen (geen SNd-regels). */
 export type SndStatus = 'toekomstig' | 'lopend' | 'afgedragen' | 'geen' | 'openstaand'
@@ -49,15 +50,64 @@ export function sndAfgedragenPerioden(bankKoppelingen: Record<string, any> | nul
   return s
 }
 
-/** De SNd-statiegeldregels van alle verkoopfacturen, met de factuurdatum. */
-export function sndRegels(verkoopFacturen: any[] | null | undefined): SndRegel[] {
+/**
+ * Waar de SNd-verpakkingen van een webshopfactuur vandaan komen. Zo'n factuur
+ * draagt zelf geen statiegeldregel (de WooCommerce-bedragen zijn leidend,
+ * utils/statiegeld.ts), dus de stuks komen uit de orderregels van de
+ * bijbehorende bestelling en de verpakking van elke regel.
+ */
+export interface SndWebshopBron {
+  bestellingen?: any[] | null
+  verpakkingen?: StatiegeldVerpakking[] | null
+}
+
+const factuurBruto = (f: any): number =>
+  (f?.regels || []).reduce((s: number, r: any) => s + Number(r?.bruto || 0), 0)
+
+/**
+ * De SNd-statiegeldregels van alle verkoopfacturen, met de factuurdatum.
+ *
+ * Met `webshop` tellen ook de webshopfacturen mee: een factuur van een
+ * webshopbestelling zonder eigen SNd-regel krijgt de SND-stuks van die
+ * bestelling. Een creditnota die zo'n factuur volledig tenietdoet, draait ze
+ * op zijn eigen datum terug; een gedeeltelijke creditnota zegt niet welke
+ * verpakkingen terugkwamen en verandert daarom niets.
+ */
+export function sndRegels(verkoopFacturen: any[] | null | undefined, webshop?: SndWebshopBron): SndRegel[] {
+  const facturen = verkoopFacturen || []
   const uit: SndRegel[] = []
-  for (const f of verkoopFacturen || []) {
+  const bestellingPerId = new Map<string, any>()
+  for (const b of webshop?.bestellingen || []) if (b?.id != null) bestellingPerId.set(String(b.id), b)
+  const factuurPerId = new Map<string, any>()
+  for (const f of facturen) if (f?.id != null) factuurPerId.set(String(f.id), f)
+
+  // SND-stuks van een webshopfactuur (leeg als het geen webshopfactuur is of
+  // als hij zelf al SNd-regels draagt — dan tellen die, nooit allebei).
+  const webshopSnd = (f: any): SndRegel[] => {
+    if (!webshop || !f || f.status === 'credit' || f.bestelling_id == null) return []
+    if ((f.regels || []).some((r: any) => r?.statiegeld_soort === 'snd')) return []
+    const order = bestellingPerId.get(String(f.bestelling_id))
+    if (!isWebshopOrder(order)) return []
+    return statiegeldVanOrder(order, webshop.verpakkingen || [])
+      .filter(r => r.statiegeld_soort === 'snd')
+      .map(r => ({datum: '', stuks: r.hoeveelheid, bedrag: r.netto}))
+  }
+
+  for (const f of facturen) {
     if (!f?.datum) continue
     const datum = String(f.datum).slice(0, 10)
     for (const r of f.regels || []) {
       if (r?.statiegeld_soort !== 'snd') continue
       uit.push({datum, stuks: Number(r.hoeveelheid || 0), bedrag: Number(r.netto || 0)})
+    }
+    for (const r of webshopSnd(f)) uit.push({...r, datum})
+    // Volledige creditnota op een webshopfactuur: de SND-stuks gaan terug.
+    if (f.status === 'credit' && f.credit_van_factuur_id != null) {
+      const orig = factuurPerId.get(String(f.credit_van_factuur_id))
+      const origBruto = factuurBruto(orig)
+      if (orig && origBruto !== 0 && Math.abs(factuurBruto(f) + origBruto) < 0.01) {
+        for (const r of webshopSnd(orig)) uit.push({datum, stuks: -r.stuks, bedrag: -r.bedrag})
+      }
     }
   }
   return uit
@@ -132,8 +182,9 @@ export function sndPerPeriode(
   jaar: number,
   periodeType: BtwPeriodeType,
   today: string,
+  webshop?: SndWebshopBron,
 ): SndPeriode[] {
-  return perPeriode(sndRegels(verkoopFacturen), sndAfgedragenPerioden(bankKoppelingen), jaar, periodeType, today)
+  return perPeriode(sndRegels(verkoopFacturen, webshop), sndAfgedragenPerioden(bankKoppelingen), jaar, periodeType, today)
 }
 
 const perPeriode = (
@@ -162,8 +213,9 @@ export function sndKoppelKandidaten(
   bankKoppelingen: Record<string, any> | null | undefined,
   tx: {datum?: string, bedrag?: number | string} | null | undefined,
   today: string,
+  webshop?: SndWebshopBron,
 ): SndPeriode[] {
-  const regels = sndRegels(verkoopFacturen)
+  const regels = sndRegels(verkoopFacturen, webshop)
   if (!regels.length) return []
   const afgedragen = sndAfgedragenPerioden(bankKoppelingen)
   const txDatum = /^\d{4}-\d{2}-\d{2}/.test(String(tx?.datum || '')) ? String(tx?.datum).slice(0, 10) : ''

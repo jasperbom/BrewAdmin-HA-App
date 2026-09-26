@@ -173,13 +173,16 @@ describe('orderProductId', () => {
 })
 
 describe('telOpenstaandeBestellingen', () => {
-  it('telt alleen bestellingen met een bierregel die nog niet volledig gepickt is', () => {
+  it('telt elke nieuwe/bevestigde bestelling met een bierregel, ook met concept-picks die alles dekken', () => {
+    // Volledig picken zet een order meteen op 'gepickt'; 'nieuw' met volledige
+    // (concept-)picks ontstaat alleen na "Picks terugdraaien" — die moet
+    // opnieuw bevestigd worden en telt dus mee.
     const bestellingen = [
       { id: 1, status: 'nieuw', regels: [{ id: 10, aantal: 24, type: 'bier' }] },
       { id: 2, status: 'bevestigd', regels: [{ id: 20, aantal: 12, type: 'bier' }] },
     ]
-    const picks = [{ bestelling_id: 1, regel_id: 10, aantal: 24 }] // #1 al volledig gepickt
-    expect(telOpenstaandeBestellingen(bestellingen, picks)).toBe(1)
+    const picks = [{ bestelling_id: 1, regel_id: 10, aantal: 24 }]
+    expect(telOpenstaandeBestellingen(bestellingen, picks)).toBe(2)
   })
 
   it('telt bestellingen met status gepickt/verzonden niet mee, ook al is er geen pick geregistreerd', () => {
@@ -223,6 +226,18 @@ describe('bestellingenOmTePicken', () => {
     const lijst = bestellingenOmTePicken(bestellingen, [])
     expect(telOpenstaandeBestellingen(bestellingen, [])).toBe(lijst.length)
     expect(lijst.map((b: any) => b.id)).toEqual([1])
+  })
+
+  it('na "Picks terugdraaien" (nieuw, concept-picks dekken alles) blijft de order in beeld, maar niet op de verzamelpicklijst', () => {
+    const bestellingen = [{ id: 1, status: 'nieuw', datum: '2026-07-10', regels: [{ id: 10, aantal: 24, type: 'bier', bier_naam: 'Blond', verpakking_type: 'fles' }] }]
+    const picks = [{ id: 100, bestelling_id: 1, regel_id: 10, aantal: 24, uitlevering_id: null, uitlevering_ids: [] }]
+    expect(bestellingenOmTePicken(bestellingen, picks).map((b: any) => b.id)).toEqual([1])
+    expect(verzamelPicklijst(bestellingen, picks, { afvullingen: [], beschikbaar: () => 0, data }).orders).toEqual([])
+  })
+
+  it('een order met alleen merch of vrije regels hoort er niet bij', () => {
+    const bestellingen = [{ id: 1, status: 'nieuw', regels: [{ id: 10, aantal: 1, type: 'vrij', merch: true }] }]
+    expect(bestellingenOmTePicken(bestellingen, [])).toEqual([])
   })
 })
 

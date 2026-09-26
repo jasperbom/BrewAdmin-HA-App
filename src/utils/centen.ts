@@ -77,7 +77,8 @@ export const totaliseerInkoop = (
 //   BTW blijft 0; alleen het netto wordt gecorrigeerd.
 // - Het bruto volgt het papier (dat mag afwijken van netto + BTW); ontbreekt
 //   het, dan netto + BTW. Een leeg of onleesbaar veld telt als "niet
-//   handmatig" en valt terug op de som van de regels.
+//   handmatig" en valt terug op de som van de regels (incl. een bestaande
+//   correctieregel: dat is het totaal dat het formulier toonde).
 export interface InkoopCorrectieOpties {
   naam: string
   verlegd?: boolean
@@ -103,8 +104,13 @@ export const inkoopRegelsMetCorrectie = (
   if (!totaalManual) return { regels: lijst, totalen: totaliseerRegels(lijst) }
   const basis = lijst.filter((r: any) => !r?.correctie)
   const som = totaliseerRegels(basis)
-  const doelNetto = handmatigCent(totaalManual.netto, som.netto_cent)
-  const doelBtw = opties.verlegd ? som.btw_cent : handmatigCent(totaalManual.btw, som.btw_cent)
+  // Terugval voor een niet-aangepast veld: wat het formulier toonde, dus de
+  // som van álle regels incl. een bestaande correctieregel. Anders wist het
+  // bijstellen van alleen de BTW stil een eerdere netto-correctie (en
+  // omgekeerd) bij het bewerken van een factuur.
+  const huidig = totaliseerRegels(lijst)
+  const doelNetto = handmatigCent(totaalManual.netto, huidig.netto_cent)
+  const doelBtw = opties.verlegd ? som.btw_cent : handmatigCent(totaalManual.btw, huidig.btw_cent)
   const dNetto = doelNetto - som.netto_cent
   const dBtw = doelBtw - som.btw_cent
   let uit = basis

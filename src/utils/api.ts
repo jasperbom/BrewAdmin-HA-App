@@ -377,12 +377,31 @@ const _flushPendingSaves = () => {
     if (_retryTimer) { clearInterval(_retryTimer); _retryTimer = null }
     return
   }
-  for (const [key, entry] of [..._pendingSaves.entries()]) {
+  // Wat samen in één mislukte commit zat (`groep`), gaat ook samen opnieuw.
+  // Key voor key nasturen brak een handeling alsnog in stukken: na een
+  // netwerkfout landde de verplaatsing, terwijl het accijnsrecord 403 kreeg.
+  const groepen = new Map<unknown, Array<[string, _BufEntry]>>()
+  for (const [key, entry] of _pendingSaves) {
+    const g: unknown = entry.groep ?? key
+    const leden = groepen.get(g)
+    if (leden) leden.push([key, entry])
+    else groepen.set(g, [[key, entry]])
+  }
+  for (const leden of groepen.values()) {
     _opChain(async () => {
-      if (_saveSeq.get(key) !== entry.seq) return // nieuwere save gedaan
-      const res = await _doPost(key, entry.data)
-      if (res !== 'fail') _pendingSaves.delete(key)
-      await _handleSaveResult(key, entry, res)
+      // Alleen wat nog de nieuwste save van zijn key is.
+      const actueel = leden.filter(([k, e]) => _saveSeq.get(k) === e.seq && _pendingSaves.get(k) === e)
+      if (!actueel.length) return
+      if (actueel.length === 1) {
+        const [key, entry] = actueel[0]
+        const res = await _doPost(key, entry.data)
+        if (res !== 'fail') _pendingSaves.delete(key)
+        await _handleSaveResult(key, entry, res)
+        return
+      }
+      // Mislukt het opnieuw, dan zet _handleSaveResult ze weer klaar.
+      for (const [k] of actueel) _pendingSaves.delete(k)
+      await _verwerkGroep(actueel, actueel[0][1].groep?.bulk ?? false, new Set())
     })
   }
 }
@@ -411,6 +430,9 @@ type _BufEntry = {
   // andere key van dezelfde handeling al getoond.
   onReject: (stil?: boolean) => void
   onForbidden: (stil?: boolean) => void
+  // Gezet wanneer de commit waar deze save in zat niet aankwam (netwerk):
+  // alle saves met hetzelfde object gaan bij de herkansing weer samen.
+  groep?: {bulk: boolean}
 }
 const _commitBuffer = new Map<string, _BufEntry>()
 let _flushScheduled = false
@@ -464,9 +486,25 @@ export const _losConflictOp = async (key: string, e: _BufEntry): Promise<void> =
   const samen = basis ? voegSamen(basis, e.data, stand.data) : null
   if (!samen && !scalair) { e.onConflict(); return }
 
+  // Stand van vóór het samenvoegen: de lokale wijziging (`e.data`) is daarop
+  // gebouwd. Mislukt de her-POST hieronder (netwerk), dan gaat alles terug
+  // naar dit ijkpunt — zie onder.
+  const vorigeVersie = _versions.get(key)
+  const vorigSnapshot = _lastSynced.get(key)
   if (typeof stand.versie === 'string') _setVersion(key, stand.versie)
   _rememberSynced(key, stand.data)
   const res = await _doPost(key, samen ? samen.data : e.data)
+  if (res === 'fail' && samen) {
+    // De herkansing (of een nieuwere save) draagt de lokale stand zónder de
+    // serverwijzigingen. Met het verse ijkpunt en de verse versie zou die als
+    // delta alles wissen wat een ander intussen toevoegde — en de server zou
+    // hem zonder conflict aannemen. Terug naar het oude ijkpunt en de oude
+    // (verouderde) versie: dan volgt een 409 en een nieuwe samenvoeging.
+    _setVersion(key, vorigeVersie ?? VERSIE_ONBEKEND)
+    if (vorigSnapshot === undefined) _lastSynced.delete(key)
+    else _lastSynced.set(key, vorigSnapshot)
+    if (basis) _mergeBasis.set(key, basis)
+  }
   if (res === 'ok') {
     // Is er tíjdens deze her-POST alweer opgeslagen (een toetsaanslag), dan
     // is die nieuwere save gebouwd op onze stand van vóór het samenvoegen:
@@ -549,6 +587,11 @@ const _verwerkGroep = async (groep: Array<[string, _BufEntry]>, bulk: boolean, g
     return
   }
   const res = await _doCommit(groep)
+  if (res.status === 'fail') {
+    // Niet aangekomen: de herkansing (_flushPendingSaves) houdt ze bij elkaar.
+    const samen = {bulk}
+    for (const [, e] of groep) e.groep = samen
+  }
   const vervolg = commitVervolg(res, groep.map(([k]) => k), bulk)
   const opnieuw: Array<[string, _BufEntry]> = []
   for (const [k, e] of groep) {

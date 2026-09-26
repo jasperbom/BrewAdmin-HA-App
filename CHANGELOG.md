@@ -4,6 +4,41 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.82] — 2026-09-26
+
+### Controle, tweede ronde: wat de eerste ronde zelf veroorzaakte
+
+Een review van de herstelronde van 1.12.81 vond een paar fouten die ontstonden
+waar twee herstellingen elkaar raakten. Die zijn hier opgelost; alle pagina's
+zijn daarna in de browser nagelopen (bureau en telefoon) zonder fouten.
+
+- **Oudere iPhones en iPads** (iOS/Safari vóór 16.4) konden de app niet meer
+  laden door één zoekpatroon in de etiketingrediënten. Dat patroon is
+  vervangen; een test weert zulke patronen voortaan. "Buchweizen" telt nu als
+  boekweit in plaats van tarwemout.
+- **SNd-afdracht** telde de SND-blikken en -flessen uit de webshop niet meer
+  mee, omdat een webshopfactuur geen statiegeldregel krijgt. De afdracht
+  haalt de stuks nu uit de orderregels van de webshopbestelling; een volledige
+  creditnota draait ze terug.
+- **Inkoopfactuur bewerken** verloor een eerdere correctie op het factuurtotaal
+  (bijv. korting) wanneer je maar één totaalveld aanpaste.
+- **Webshopimport** annuleert een order niet meer als die tijdens het ophalen
+  al gepickt of gefactureerd is.
+- **Na "Picks terugdraaien"** blijft de order in *om te picken* staan tot hij
+  opnieuw is bevestigd.
+- **Batch verwijderen** vlak na het verwijderen van een afvulling boekt de
+  verpakkingsvoorraad niet meer twee keer terug.
+- **Synchronisatie:** na een netwerkfout gaat een handeling bij de herkansing
+  weer als één geheel naar de server (nooit key voor key), en een netwerkfout
+  tijdens het samenvoegen van een conflict wist niet meer stil wat een ander
+  apparaat net had toegevoegd.
+- De automatische WooCommerce-import wacht op de rol (geen valse *geen
+  rechten*-melding bij het openen); de oude uitslagen-migratie leegt niets
+  meer voor een rol die de accijnsregels niet mag schrijven; BTW-tab zonder
+  dubbel euroteken.
+
+---
+
 ## [1.12.81] — 2026-09-26
 
 ### Controle van de hele app: fouten, dubbele dingen, veiligheid en logica

@@ -336,16 +336,35 @@ export async function importeerWcOrders(invoer: WcImportInvoer): Promise<WcImpor
   return {nieuw, updates, onbekendeRegels}
 }
 
+/** Statussen waarin de import een order zelf mag annuleren (zie `wcOrderUpdate`). */
+const IMPORT_MAG_ANNULEREN = new Set(['nieuw', 'bevestigd'])
+
 /**
  * Het resultaat in de bestellingenlijst verwerken. Een nieuwe order waarvan
  * de `wc_order_id` intussen al in de lijst zit (een ander tabblad was eerder)
  * gaat niet nog een keer mee.
+ *
+ * Een statuswissel (de import annuleert een in de winkel geannuleerde order)
+ * is beslist op de stand van vóór het ophalen. Is de order intussen gepickt
+ * (uitleveringen gemaakt), verzonden of gefactureerd, dan vervalt alleen die
+ * wissel: anders stond een gepickte order op 'geannuleerd' terwijl zijn
+ * uitleveringen bleven staan — voorraad weg, en niet meer terug te draaien.
+ * De webshopstatus komt wel mee, zodat de order als afgebroken opvalt.
  */
 export function pasImportToe(prev: any[], r: WcImportResultaat): any[] {
   const lijst = prev || []
   const bekend = new Set(lijst.map((b: any) => b?.wc_order_id).filter((id: any) => id != null))
+  const pasToe = (b: any): any => {
+    const upd = r.updates[b?.id]
+    if (!upd) return b
+    if ('status' in upd && (!IMPORT_MAG_ANNULEREN.has(String(b?.status ?? '')) || b?.factuur_id != null)) {
+      const {status: _vervallen, ...rest} = upd
+      return {...b, ...rest}
+    }
+    return {...b, ...upd}
+  }
   return [
-    ...lijst.map((b: any) => r.updates[b.id] ? {...b, ...r.updates[b.id]} : b),
+    ...lijst.map(pasToe),
     ...r.nieuw.filter(n => !bekend.has(n.wc_order_id)),
   ]
 }
