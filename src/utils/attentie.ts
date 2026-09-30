@@ -13,6 +13,7 @@ import { telOpenstaandeBtwPerioden, BtwPeriodeType } from './btw'
 import { telOpenstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './taken'
 import { telOpenstaandeBestellingen } from './picking'
 import { vervallenVerkoopFacturen, achterstalligeInkoopFacturen } from './facturen'
+import { telInboxOpen } from './inkoopInbox'
 
 export type WerkruimteId = 'productie' | 'verkoop' | 'administratie'
 
@@ -58,6 +59,8 @@ export interface AttentieBron {
       de datum telt), de vervallen-/achterstallig-tellingen elk hun eigen lijst. */
   verkoopFacturen: any[]
   inkoopFacturen: any[]
+  /** `inkoop_inbox` — PDF-facturen die per e-mail binnenkwamen en nog niet verwerkt zijn. */
+  inkoopInbox?: any[]
   /** Accijnsaangiftes per maand + de accijnsrecords (uitslagen) — samen bepalen
       ze welke afgelopen maanden nog aangegeven moeten worden. */
   accijnsAangiftes?: any[]
@@ -151,6 +154,12 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
         // (INKOOP_ACHTERSTALLIG_DAGEN in utils/facturen.ts).
         id: 'inkoop_achterstallig', sleutel: 'attentie_inkoop_achterstallig', pagina: 'boekhouding', tab: 'inkoop',
         aantal: achterstalligeInkoopFacturen(bron.inkoopFacturen, bron.vandaagIso).length,
+      },
+      {
+        // Boekhouding → Inkoop: facturen die per e-mail zijn binnengekomen en op
+        // scannen en boeken wachten (utils/inkoopInbox → telInboxOpen).
+        id: 'inkoop_inbox', sleutel: 'attentie_inkoop_inbox', pagina: 'boekhouding', tab: 'inkoop',
+        aantal: telInboxOpen(bron.inkoopInbox),
       },
     ]),
   }

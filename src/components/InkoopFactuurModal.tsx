@@ -9,6 +9,7 @@ import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, L
 import { getEffectiveBrewProp, formatBrewValue } from '../utils/brewProps'
 import { ADDON_BASE, callClaudeProxy } from '../utils/api'
 import { tod } from '../utils/format'
+import { InkoopInboxItem, inboxAfzender } from '../utils/inkoopInbox'
 
 // PDF-tekstextractie is gedeeld met het waterprofiel-gereedschap.
 import { extractPdfText } from '../utils/pdfText'
@@ -264,6 +265,11 @@ interface InkoopFactuurModalProps {
   // Merch-artikelen met eigen voorraad: een vrije regel kan eraan gekoppeld
   // worden zodat de inkoop meteen de merch-voorraad aanvult.
   merchArtikelen?: MerchArtikel[]
+  // Een factuur die per e-mail binnenkwam (tab Inkoop → Ontvangen per e-mail).
+  // De PDF staat al op de server: hij wordt geladen, in beeld gezet en
+  // gescand, en bij het opslaan hangt de factuur aan hetzelfde bestand — er
+  // wordt niets opnieuw geüpload.
+  inboxItem?: InkoopInboxItem | null
 }
 
 function InkoopFactuurModal({
@@ -271,7 +277,7 @@ function InkoopFactuurModal({
   initialTab='ingredienten', initialIngId='', claudeCreds=null, breweryNaam='',
   ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, initialData=null,
   kostenSoorten=BUILTIN_KOSTEN_SOORTEN, getRolloverInfo,
-  scanCorrecties=[], onScanCorrectie, merchArtikelen=[]
+  scanCorrecties=[], onScanCorrectie, merchArtikelen=[], inboxItem=null
 }: InkoopFactuurModalProps) {
   // Alleen merch met eigen voorraad is aan een inkoopregel te koppelen.
   const merchMetVoorraad = (merchArtikelen || []).filter(volgtVoorraad)
@@ -318,14 +324,23 @@ function InkoopFactuurModal({
     const eersteRegel = initialData?.regels?.find((r: any) => r.btw_soort && r.btw_soort !== 'binnenlands')
     return (eersteRegel?.btw_soort as any) || 'binnenlands'
   })
-  const [existingBijlage, setExistingBijlage] = useState(initialData?.bijlage || null)
+  const [existingBijlage, setExistingBijlage] = useState(initialData?.bijlage || inboxItem?.bijlage || null)
   const [bijlageFile, setBijlageFile] = useState<File|null>(null)
+  // De PDF uit het postvak, geladen om te scannen en te bekijken (zie inboxItem).
+  const [serverFile, setServerFile] = useState<File|null>(null)
+  const [serverFileStatus, setServerFileStatus] = useState<'laden'|'klaar'|'fout'|null>(inboxItem ? 'laden' : null)
+  // Het bestand dat gescand en getoond wordt: een zelf gekozen bestand gaat voor.
+  const scanFile = bijlageFile || serverFile
   const [uploading, setUploading] = useState(false)
   const [tab, setTab] = useState(initialTab)
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string|null>(null)
   const [showPdfViewer, setShowPdfViewer] = useState(false)
 
-  React.useEffect(() => () => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl) }, [])
+  // De weergave-URL volgt het bestand dat gescand wordt. Hij wordt tijdens het renderen
+  // gemaakt (niet in een effect): zo is er nooit een render die de al vrijgegeven URL van het
+  // vorige bestand nog toont. Bij een wissel of het sluiten van de modal geeft het effect hem vrij.
+  const pdfBlobUrl = React.useMemo<string|null>(() => scanFile ? URL.createObjectURL(scanFile) : null, [scanFile])
+  React.useEffect(() => () => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl) }, [pdfBlobUrl])
+  const toonViewer = showPdfViewer && !!scanFile && !!pdfBlobUrl
 
   const [productForm, setProductForm] = useState(emptyProduct)
   const [brewPropsOpen, setBrewPropsOpen] = useState(false)
@@ -528,23 +543,32 @@ function InkoopFactuurModal({
     }
   }
 
+  // Een scan duurt een paar seconden en leest zijn gegevens pas als hij klaar is: wat de
+  // gebruiker ondertussen zelf invulde mag hij nooit overschrijven. Sinds een factuur uit
+  // het postvak meteen bij het openen wordt gescand is dat geen uitzondering meer, dus
+  // leest `verwerkScanData` de stand via deze ref (de laatste render) en niet via de
+  // closure van het moment waarop de scan begon.
+  const scanStand = React.useRef({leverancierSel, leverancierNieuw, factuurNr, datum, btwSoort, productLijst, verpakkingLijst, vrijeList})
+  scanStand.current = {leverancierSel, leverancierNieuw, factuurNr, datum, btwSoort, productLijst, verpakkingLijst, vrijeList}
+
   const verwerkScanData = (data: any): {nIng: number, nVerpak: number, nVrij: number} => {
-    if (data.leverancier && !leverancierNieuw && leverancierSel === (knownLeveranciers.length ? '' : '__nieuw__')) {
+    const st = scanStand.current
+    if (data.leverancier && !st.leverancierNieuw && st.leverancierSel === (knownLeveranciers.length ? '' : '__nieuw__')) {
       const known = knownLeveranciers.find((l: string) => l.toLowerCase() === data.leverancier.toLowerCase())
       if (known) setLeverancierSel(known)
       else { setLeverancierSel('__nieuw__'); setLeverancierNieuw(data.leverancier) }
     }
-    if (data.factuurnummer && !factuurNr) setFactuurNr(data.factuurnummer)
-    if (data.datum && datum === tod()) setDatum(data.datum)
+    if (data.factuurnummer && !st.factuurNr) setFactuurNr(data.factuurnummer)
+    if (data.datum && st.datum === tod()) setDatum(data.datum)
     // Herkende verlegde BTW (intracom-EU / import-niet-EU) overnemen; een
     // handmatige keuze van de gebruiker wordt nooit teruggezet.
     const scanSoort = ['intracom_eu', 'import_niet_eu'].includes(data.btw_soort) ? data.btw_soort : null
-    if (scanSoort && btwSoort === 'binnenlands') setBtwSoort(scanSoort)
+    if (scanSoort && st.btwSoort === 'binnenlands') setBtwSoort(scanSoort)
     // Bij verlegde BTW staat 0% op de factuur, maar voor de aangifte
     // (rubriek 4a/4b) geldt het Nederlandse tarief dat op de goederen van
     // toepassing is: per ingrediënttype uit ingTypeBtw (anders 9%), 21% voor
     // onderdelen en overige regels.
-    const verlegd = !!scanSoort || btwSoort !== 'binnenlands'
+    const verlegd = !!scanSoort || st.btwSoort !== 'binnenlands'
     const nlTarief = (rijSoort: string, ingType?: string) =>
       rijSoort === 'ingredient' ? Number(ingTypeBtw[ingType || ''] ?? 9) : 21
     // Herkende factuurregels overnemen, maar alleen wanneer er nog niets is
@@ -552,7 +576,7 @@ function InkoopFactuurModal({
     // per soort verdeeld: ingrediënten gekoppeld aan bestaande ingrediënten,
     // verpakkingen/onderdelen aan bestaande onderdelen, de rest vrije regels.
     if (Array.isArray(data.regels) && data.regels.length
-        && productLijst.length === 0 && verpakkingLijst.length === 0 && vrijeList.length === 0) {
+        && st.productLijst.length === 0 && st.verpakkingLijst.length === 0 && st.vrijeList.length === 0) {
       const prod: any[] = [], verpak: any[] = [], vrij: any[] = []
       data.regels.forEach((r: any, i: number) => {
         const id = Date.now() + i
@@ -611,11 +635,11 @@ function InkoopFactuurModal({
     return {nIng: 0, nVerpak: 0, nVrij: 0}
   }
 
-  const doScanFactuur = async () => {
-    if (!bijlageFile) return
+  const doScanFactuur = async (bron: File | null = scanFile) => {
+    if (!bron) return
     setIsScanning(true); setScanFout(null); setScanInfo(null)
     try {
-      const data = await scanFactuurBestand(bijlageFile, claudeCreds?.apiKey, {
+      const data = await scanFactuurBestand(bron, claudeCreds?.apiKey, {
         leveranciers: knownLeveranciers, breweryNaam,
         ingNamen: ing.map((i: any) => i.naam).filter(Boolean),
         onderdeelNamen: onderdelen.map((o: any) => o.naam).filter(Boolean),
@@ -638,9 +662,40 @@ function InkoopFactuurModal({
     }
   }
 
+  // Factuur uit het postvak: PDF ophalen, naast het formulier zetten en meteen
+  // scannen — dat is wat de gebruiker met "Verwerk" vroeg. Slaat het laden
+  // mis, dan blijft de link naar het bestand staan en kan alles met de hand.
+  React.useEffect(() => {
+    if (!inboxItem) return
+    let actueel = true
+    ;(async () => {
+      try {
+        const r = await fetch(`${ADDON_BASE}api/file/${inboxItem.bijlage.bestand}`)
+        if (!r.ok) throw new Error(String(r.status))
+        const blob = await r.blob()
+        if (!actueel) return
+        const file = new File([blob], inboxItem.bijlage.naam || 'factuur.pdf', {type: 'application/pdf'})
+        setServerFile(file)
+        setServerFileStatus('klaar')
+        setShowPdfViewer(true)
+        void doScanFactuur(file)
+      } catch {
+        if (actueel) setServerFileStatus('fout')
+      }
+    })()
+    return () => { actueel = false }
+    // Eenmalig bij het openen; het item verandert niet zolang de modal openstaat.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const handleSave = async () => {
     if (productLijst.length===0 && verpakkingLijst.length===0 && vrijeList.length===0) {
       alert(t('err_min_one_product')); return
+    }
+    // Een factuur uit het postvak moet een inkoopfactuur worden; zonder leverancier én
+    // factuurnummer maakt de pagina er geen en zou alleen de voorraad geboekt worden.
+    if (inboxItem && !factuurForm.leverancier?.trim() && !factuurForm.factuur?.trim()) {
+      alert(t('inbox_vul_factuurgegevens')); return
     }
     let bijlage = existingBijlage
     if (bijlageFile) {
@@ -741,17 +796,29 @@ function InkoopFactuurModal({
   }
 
   return (
-    <Modal title={initialData ? t('modal_title_edit_invoice') : t('modal_title_receipt')} onClose={onClose} wide={!showPdfViewer} ultrawide={showPdfViewer}>
-      <div className={showPdfViewer ? 'grid grid-cols-2 gap-4' : ''}>
-      {showPdfViewer && (
+    <Modal title={initialData ? t('modal_title_edit_invoice') : t('modal_title_receipt')} onClose={onClose} wide={!toonViewer} ultrawide={toonViewer}>
+      <div className={toonViewer ? 'grid grid-cols-2 gap-4' : ''}>
+      {toonViewer && scanFile && (
         <div className="order-2">
-          {bijlageFile && (bijlageFile.type === 'application/pdf' || bijlageFile.name.toLowerCase().endsWith('.pdf'))
+          {(scanFile.type === 'application/pdf' || scanFile.name.toLowerCase().endsWith('.pdf'))
             ? <iframe src={pdfBlobUrl!} className="w-full rounded-lg border border-gray-200" style={{height:'80vh'}} title="Factuur" />
             : <img src={pdfBlobUrl!} alt="Factuur" className="w-full rounded-lg border border-gray-200 object-contain" style={{maxHeight:'80vh'}} />
           }
         </div>
       )}
-      <div className={`space-y-4 ${showPdfViewer ? 'order-1 overflow-y-auto' : ''}`} style={showPdfViewer ? {maxHeight:'85vh'} : {}}>
+      <div className={`space-y-4 ${toonViewer ? 'order-1 overflow-y-auto' : ''}`} style={toonViewer ? {maxHeight:'85vh'} : {}}>
+        {inboxItem && (
+          <div className="flex items-start gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+            <span className="mt-0.5 flex-shrink-0"><Icon n="info" /></span>
+            <span className="min-w-0">
+              {t('inbox_modal_bron')
+                .replace('{afzender}', inboxAfzender(inboxItem) || t('lbl_onbekend'))
+                .replace('{onderwerp}', inboxItem.onderwerp || inboxItem.bijlage.naam)}
+              {serverFileStatus === 'laden' && <span className="block t-accent-text">{t('inbox_laden')}</span>}
+              {serverFileStatus === 'fout' && <span className="block text-red-600">⚠ {t('inbox_pdf_laden_fout')}</span>}
+            </span>
+          </div>
+        )}
         {initialData && (
           <div className="flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-800">
             <span className="mt-0.5 flex-shrink-0">⚠</span>
@@ -847,27 +914,21 @@ function InkoopFactuurModal({
                 <span><Icon n="paperclip" /></span>
                 <span>{bijlageFile ? bijlageFile.name : existingBijlage ? t('lbl_replace_file') : t('lbl_choose_file')}</span>
                 <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
-                  className="hidden" onChange={e => {
-                    const f = e.target.files?.[0] || null
-                    if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl)
-                    setBijlageFile(f)
-                    if (f) { const url = URL.createObjectURL(f); setPdfBlobUrl(url) }
-                    else { setPdfBlobUrl(null); setShowPdfViewer(false) }
-                  }} />
+                  className="hidden" onChange={e => setBijlageFile(e.target.files?.[0] || null)} />
               </label>
               {!bijlageFile && existingBijlage?.bestand && (
                 <a href={`${ADDON_BASE}api/file/${existingBijlage.bestand}`} target="_blank" rel="noopener noreferrer"
                   className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Icon n="paperclip" /> {existingBijlage.naam}</a>
               )}
               {!bijlageFile && existingBijlage && (
-                <button onClick={() => setExistingBijlage(null)} className="text-gray-400 hover:text-red-500 text-xs" title={t('btn_remove_bijlage')}>✕</button>
+                <button onClick={() => { setExistingBijlage(null); setServerFile(null) }} className="text-gray-400 hover:text-red-500 text-xs" title={t('btn_remove_bijlage')}>✕</button>
               )}
-              {bijlageFile && <button onClick={() => {setBijlageFile(null);if(pdfBlobUrl){URL.revokeObjectURL(pdfBlobUrl);setPdfBlobUrl(null);}setShowPdfViewer(false);}} className="text-gray-400 hover:text-red-500 text-xs">✕</button>}
-              {bijlageFile && !isScanning && (() => {
-                const isPdf = bijlageFile.type === 'application/pdf' || bijlageFile.name.toLowerCase().endsWith('.pdf')
+              {bijlageFile && <button onClick={() => { setBijlageFile(null); setShowPdfViewer(false) }} className="text-gray-400 hover:text-red-500 text-xs">✕</button>}
+              {scanFile && !isScanning && (() => {
+                const isPdf = scanFile.type === 'application/pdf' || scanFile.name.toLowerCase().endsWith('.pdf')
                 const hasClaude = claudeCreds?.enabled && claudeCreds?.apiKey
                 if (isPdf || hasClaude) return (
-                  <button onClick={doScanFactuur}
+                  <button onClick={() => doScanFactuur()}
                     className="flex items-center gap-1.5 px-3 py-1.5 tbtn rounded-lg text-xs font-medium"
                     title={t('title_scan_factuur')}>
                     <Icon n={isPdf ? 'file' : 'scan'} /> {t('btn_scan_factuur')}
@@ -875,10 +936,10 @@ function InkoopFactuurModal({
                 )
                 return null
               })()}
-              {bijlageFile && pdfBlobUrl && (
+              {scanFile && pdfBlobUrl && (
                 <button onClick={() => setShowPdfViewer(v => !v)}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-xs font-medium text-gray-700">
-                  {showPdfViewer ? t('btn_close_viewer') : t('btn_view_file')}
+                  {toonViewer ? t('btn_close_viewer') : t('btn_view_file')}
                 </button>
               )}
             </div>

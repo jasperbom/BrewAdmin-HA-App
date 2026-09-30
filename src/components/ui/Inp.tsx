@@ -14,9 +14,11 @@ interface InpProps {
   step?: string | number
   id?: string
   ariaLabel?: string
+  /** Bijvoorbeeld `off` of `new-password`: een wachtwoordbeheerder mag hier het HA-account niet invullen. */
+  autoComplete?: string
 }
 
-const Inp: React.FC<InpProps> = ({label, value, onChange, type='text', placeholder='', req=false, cls='', list='', min, max, step, id, ariaLabel}) => {
+const Inp: React.FC<InpProps> = ({label, value, onChange, type='text', placeholder='', req=false, cls='', list='', min, max, step, id, ariaLabel, autoComplete}) => {
   const generatedId = React.useId()
   const inputId = id || generatedId
   return (
@@ -36,6 +38,7 @@ const Inp: React.FC<InpProps> = ({label, value, onChange, type='text', placehold
         min={min}
         max={max}
         step={step}
+        autoComplete={autoComplete}
         aria-label={!label ? ariaLabel : undefined}
         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-tap sm:min-h-0 bg-white t-input outline-none transition-all duration-150 shadow-sm placeholder-gray-500"
       />

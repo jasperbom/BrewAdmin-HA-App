@@ -1,7 +1,7 @@
 // Afgeschermde credentials (ERP-plan 0.6 / 5.1). De server stuurt geheime
 // velden als sentinel naar de browser en vult die bij het opslaan of testen
 // weer in met de opgeslagen waarde — maar níét wanneer het adres waar het
-// geheim naartoe gaat is gewijzigd (storeUrl; SMTP-host/-poort/-gebruiker/
+// geheim naartoe gaat is gewijzigd (storeUrl; SMTP- en IMAP-host/-poort/-gebruiker/
 // -beveiliging). Dan antwoordt hij 400 `secret_opnieuw_invoeren`: anders ging
 // het opgeslagen geheim mee naar een nieuw, misschien verkeerd getypt adres.
 //
@@ -10,16 +10,18 @@
 
 export const GEHEIM_SENTINEL = '__SECRET__'
 
-export type GeheimSoort = 'woocommerce_creds' | 'smtp_creds'
+export type GeheimSoort = 'woocommerce_creds' | 'smtp_creds' | 'imap_creds'
 
 const GEHEIME_VELDEN: Record<GeheimSoort, string[]> = {
   woocommerce_creds: ['consumerKey', 'consumerSecret'],
   smtp_creds: ['password'],
+  imap_creds: ['password'],
 }
 
 const BESTEMMING: Record<GeheimSoort, string[]> = {
   woocommerce_creds: ['storeUrl'],
   smtp_creds: ['host', 'port', 'username', 'security'],
+  imap_creds: ['host', 'port', 'username', 'security'],
 }
 
 const BEVEILIGING = ['none', 'starttls', 'ssl']

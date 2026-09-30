@@ -35,4 +35,15 @@ describe('geheimOpnieuwNodig', () => {
     expect(geheimOpnieuwNodig('smtp_creds', smtp, { ...smtp, username: 'ander' })).toBe(true)
     expect(geheimOpnieuwNodig('smtp_creds', smtp, { ...smtp, security: 'none' })).toBe(true)
   })
+
+  it('IMAP (facturen per e-mail): dezelfde regels als SMTP', () => {
+    const imap = { host: 'imap.x', port: 993, username: 'u', password: GEHEIM_SENTINEL, security: 'ssl' }
+    expect(geheimOpnieuwNodig('imap_creds', imap, { ...imap, host: 'IMAP.X ', port: '993' })).toBe(false)
+    expect(geheimOpnieuwNodig('imap_creds', imap, { ...imap, host: 'evil.x' })).toBe(true)
+    expect(geheimOpnieuwNodig('imap_creds', imap, { ...imap, port: 143 })).toBe(true)
+    expect(geheimOpnieuwNodig('imap_creds', imap, { ...imap, username: 'ander' })).toBe(true)
+    expect(geheimOpnieuwNodig('imap_creds', imap, { ...imap, security: 'none' })).toBe(true)
+    // Een nieuw ingevuld wachtwoord bij een ander adres is in orde.
+    expect(geheimOpnieuwNodig('imap_creds', imap, { ...imap, host: 'nieuw.x', password: 'echt' })).toBe(false)
+  })
 })

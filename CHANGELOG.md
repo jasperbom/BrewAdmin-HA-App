@@ -4,6 +4,59 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.85] — 2026-09-30
+
+### Facturen per e-mail: doorsturen en later verwerken
+
+Een inkoopfactuur die per mail binnenkomt, moest je zelf downloaden en in het
+inkoopformulier uploaden. Nu stuur je die mail door naar een eigen postvak;
+BrewAdmin haalt de PDF er zelf uit en zet hem klaar op de tab Inkoop, om later
+te scannen en te boeken.
+
+- **Postvak koppelen.** Instellingen → Koppelingen → *Facturen per e-mail*:
+  IMAP-server, poort, beveiliging, gebruikersnaam, wachtwoord en map (standaard
+  INBOX). Optioneel een afzenderfilter en het interval (standaard 15 minuten).
+  *Test verbinding* probeert de inlog en de map zonder iets op te slaan.
+  Werkt met Gmail (app-wachtwoord) en postvakken bij je eigen domein of
+  hosting; postvakken die alleen met OAuth werken (Microsoft 365, Outlook.com)
+  kunnen niet.
+- **Alleen lezen.** De server opent het postvak alleen om te lezen: berichten
+  worden niet als gelezen gemarkeerd, verplaatst of verwijderd. Wat al bekeken is
+  onthoudt hij per map, en een PDF die er al eens in kwam komt er nooit nog eens
+  bij. De eerste keer kijkt hij naar de nieuwste 50 berichten in de map.
+- **De wachtrij op de tab Inkoop.** Onder *Ontvangen per e-mail* staan de PDF's
+  met afzender, onderwerp en datum. *Verwerk* opent het gewone inkoopformulier
+  met de PDF ernaast, meteen gescand; bij opslaan hangt de factuur aan hetzelfde
+  bestand (niets wordt opnieuw geüpload). *Negeer* heeft vijf seconden terugweg;
+  genegeerde items kun je terugzetten of definitief verwijderen. Verwijder je
+  later de inkoopfactuur, dan staat de PDF weer in het postvak.
+- **Er wordt niets automatisch geboekt.** Ook een goede scan wacht op jouw
+  controle en jouw opslaan.
+- **Zichtbaar.** Badge op het tabblad Inkoop en op Admin, een rij onder
+  Beslissingen op het Administratie-dashboard en één Home Assistant-melding per
+  ophaalronde. *Nu ophalen* haalt meteen op; een fout (inloggen, poort, map,
+  certificaat) staat op de kaart met een link naar de instellingen.
+- **Waarom een mail niet verschijnt is altijd te zien.** Overgeslagen berichten
+  (geen PDF-bijlage, afzender niet toegestaan, al eerder ontvangen, te groot)
+  staan met hun reden onder *Overgeslagen berichten*. Een factuur die alleen in
+  de mailtekst staat of als link komt, kan niet worden opgehaald. Een mail die
+  je als bijlage doorstuurt wordt wel doorzocht.
+- **Opnieuw doorlopen.** Achter de onthouden plek komt een bericht nooit terug,
+  ook niet nadat je het afzenderfilter hebt verruimd of een backup hebt
+  teruggezet. *Opnieuw doorlopen* (Instellingen, naast *Nu ophalen*) bekijkt de
+  nieuwste 50 berichten weer; wat al in de lijst staat komt er niet dubbel bij.
+  Een lijst die uit een serverbackup wordt teruggezet laat die plek zelf los.
+  Mapnamen met haken of accenten (`[Gmail]/Alle berichten`) en gebruikersnamen
+  als `DOMEIN\jan` werken.
+- **Veilig.** Alles uit het postvak is onbetrouwbare invoer: alleen bijlagen die
+  echt een PDF zijn, begrensd in grootte en aantal, de bestandsnaam uit de mail
+  bepaalt nooit een pad, en er komen hooguit 200 onverwerkte facturen in de
+  wachtrij (de rest blijft in het postvak wachten). Het wachtwoord staat
+  afgeschermd, gaat niet mee naar een gewijzigd adres en zit alleen versleuteld
+  in de serverbackup. De instellingen zijn alleen voor beheer.
+
+---
+
 ## [1.12.84] — 2026-09-26
 
 ### Data-gezondheid: kapotte verwijzingen zelf herstellen

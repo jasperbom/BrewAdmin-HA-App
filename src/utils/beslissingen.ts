@@ -21,6 +21,7 @@ import { laatsteOpenstaandeBtwPeriode, telOpenstaandeBtwPerioden, periodeKeyLabe
 import type { BtwPeriodeType } from './btw'
 import { openAccijnsMaanden } from './calculations'
 import { findLiveKlant } from './klant'
+import { inboxAfzender, inboxOpen } from './inkoopInbox'
 
 /**
  * Waarom deze rij om een besluit vraagt. De volgorde is bewust de volgorde
@@ -70,6 +71,8 @@ export interface BeslissingenBron {
   /** De accijnsrecords (uitslagen) — samen met de aangiftes bepalen ze
       welke afgelopen maanden nog aangegeven moeten worden. */
   accijns?: any[]
+  /** `inkoop_inbox` — facturen die per e-mail binnenkwamen (zie utils/inkoopInbox.ts). */
+  inkoopInbox?: any[]
   /**
    * Verschil tussen het eigen vermogen als sluitpost en het EV dat uit de
    * beginbalans + het resultaat van het boekjaar volgt (de aansluitcontrole
@@ -226,6 +229,28 @@ export function beslissingen(bron: BeslissingenBron): Beslissing[] {
       bedragCent: Math.round(verschil),
       actieSleutel: 'besl_actie_afschrift',
       doel: { pagina: 'boekhouding', tab: 'bank' },
+    })
+  }
+
+  // (f) Facturen die per e-mail binnenkwamen en op verwerking wachten: één rij met
+  //     het aantal — het postvak is een wachtrij, geen stapel losse besluiten, en
+  //     dezelfde selectie als de badge (telInboxOpen) en de tab Inkoop.
+  const inbox = inboxOpen(bron.inkoopInbox)
+  if (inbox.length) {
+    const oudste = inbox[inbox.length - 1]
+    uit.push({
+      id: 'inbox',
+      urgentie: 'wacht_op_jou',
+      sleutel: 'besl_inbox',
+      vars: {
+        n: String(inbox.length),
+        afzender: inboxAfzender(oudste),
+        onderwerp: tekst(oudste.onderwerp || oudste.bijlage.naam),
+      },
+      contextSleutel: 'besl_inbox_ctx',
+      datum: tekst(oudste.mail_datum || oudste.ontvangen).slice(0, 10) || undefined,
+      actieSleutel: 'besl_actie_verwerken',
+      doel: { pagina: 'boekhouding', tab: 'inkoop' },
     })
   }
 

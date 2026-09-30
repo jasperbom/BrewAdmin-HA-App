@@ -20,6 +20,8 @@ import { landOpties, normaliseerLand } from '../utils/btwCategorie'
 import { bouwUbl, controleerUbl } from '../utils/ubl'
 import { besteMatch, saldoControle, parseMT940, isPspTransactie, zoekPspCombinatie, pspKandidaten, pspFactuurDatum, isBelastingdienstTransactie, bouwOntvangstVerkoopFactuur, gekoppeldeFactuurIds } from '../utils/bank'
 import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
+import InkoopInbox from '../components/InkoopInbox'
+import { InkoopInboxItem, imapActief, inboxFactuurVerwijderd, inboxVerwerkt, telInboxOpen } from '../utils/inkoopInbox'
 import OntvangstBoekingModal from '../components/OntvangstBoekingModal'
 import { MerchArtikel, MerchMutatie, boekMerchMutaties } from '../utils/merch'
 import Modal from '../components/ui/Modal'
@@ -35,7 +37,7 @@ import { factuurMailBetaalVars } from '../utils/factuurMail'
 import Icon from '../components/ui/Icon'
 
 
-function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, mollieCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}, initialTab=null, initialRapportTab=null, onInitialTabConsumed=()=>{}, merchArtikelen=[], setMerchArtikelen=()=>{}, merchVoorraadLog=[], setMerchVoorraadLog=()=>{}}: any) {
+function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, mollieCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}, initialTab=null, initialRapportTab=null, onInitialTabConsumed=()=>{}, merchArtikelen=[], setMerchArtikelen=()=>{}, merchVoorraadLog=[], setMerchVoorraadLog=()=>{}, inkoopInbox=[], setInkoopInbox=()=>{}, refreshInkoopInbox=async()=>null, imapCreds=null, onNaarPostvakInstellingen=()=>{}}: any) {
   // Klantnaam voor weergave/export: live uit de klantkaart, met snapshot
   // als fallback. Zo volgt elke renderlocatie automatisch een hernoeming
   // op de klantenpagina, zonder dat we de factuur-records hoeven aan te
@@ -75,6 +77,8 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
   const [aangifteFetched, setAangifteFetched] = React.useState(false);
   const [selectedPeriode, setSelectedPeriode] = React.useState<{from:string,to:string,label:string,key:string}|null>(null);
   const [showVrijeFactuur, setShowVrijeFactuur] = React.useState(false);
+  // Factuur uit het postvak (facturen per e-mail) die in het inkoopformulier wordt verwerkt.
+  const [inboxVerwerk, setInboxVerwerk] = React.useState<InkoopInboxItem|null>(null);
   const [editingFactuur, setEditingFactuur] = React.useState(null);
   const [bijlageUploading, setBijlageUploading] = React.useState(null); // factuur id
   const [showLosseFactuur, setShowLosseFactuur] = React.useState(false);
@@ -582,6 +586,11 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       fetch(`${ADDON_BASE}api/delete_upload/${f.bijlage.bestand}`, {method:'POST', body:'{}'}).catch(()=>{});
     }
     setInkoopFacturen((prev: any) => prev.filter((f: any)=>f.id!==id));
+    // Kwam de factuur uit het postvak, dan wacht de PDF daar weer op verwerking:
+    // het bewijsstuk blijft dus nooit zonder factuur of postvakitem achter.
+    if ((inkoopInbox||[]).some((i: any) => i?.status === 'verwerkt' && i?.factuur_id === id)) {
+      setInkoopInbox((prev: any) => inboxFactuurVerwijderd(prev || [], id));
+    }
     // Journaal (ERP-plan 2.1): regels verdwijnen nooit — verwijderen van een
     // (nog muteerbare) factuur wordt een tegenboeking.
     setJournaal((prev: any[]) => voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'inkoop_factuur', id)));
@@ -657,9 +666,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     if ((verpakkingLijst||[]).length) setOnderdelen((prev: any)=>boekOnderdelenOntvangst(prev||[], verpakkingLijst, kop));
   };
 
-  const saveVrijeFactuur = ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual}: any) => {
-    // Voorraad: lots (zoals saveOntvangst in IngredientenPage) en onderdelen.
-    boekInkoopVoorraad(factuurForm, productLijst, verpakkingLijst);
+  const saveVrijeFactuur = ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual}: any, uitPostvak: InkoopInboxItem | null = null) => {
     // Factuurregels + merch-inkopen. Bij intracom-EU of import-niet-EU is de
     // BTW verlegd: leverancier factureert €0; de zelfberekende verschuldigde
     // BTW wordt in de aangifte (rubriek 4a/4b) verwerkt en gelijktijdig als
@@ -669,7 +676,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     // Geen inkoopfactuur opslaan als leverancier én factuurnummer beide leeg zijn:
     // dan geldt de ontvangst als voorraadcorrectie (lots blijven wel staan).
     const heeftFactuurData = !!(factuurForm.leverancier?.trim() || factuurForm.factuur?.trim())
-    if (!regels.length || !heeftFactuurData) { setShowVrijeFactuur(false); return; }
+    // Een factuur uit het postvak wordt óf een inkoopfactuur óf niet geboekt: anders staan de
+    // lots er al in terwijl het item op `nieuw` blijft, en boekt het volgende verwerken ze nog eens.
+    // Het formulier blijft open zodat de gegevens aangevuld kunnen worden.
+    if (uitPostvak && (!regels.length || !heeftFactuurData)) { alert(t('inbox_vul_factuurgegevens')); return; }
+    // Voorraad: lots (zoals saveOntvangst in IngredientenPage) en onderdelen.
+    boekInkoopVoorraad(factuurForm, productLijst, verpakkingLijst);
+    if (!regels.length || !heeftFactuurData) { setShowVrijeFactuur(false); setInboxVerwerk(null); return; }
     // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
     // Handmatige factuurtotalen worden een correctieregel (zie updateFactuur).
     const {regels: regelsMetCorrectie, totalen} = inkoopRegelsMetCorrectie(regels, totaalManual, {naam: t('lbl_correctie_factuurtotaal'), verlegd});
@@ -703,7 +716,13 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
     // Journaal (ERP-plan 2.1): inkoopfactuur boeken bij vastleggen.
     setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(nieuweFactuur, btwPeriodeType)));
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:nieuwFactuurId, actie:'aangemaakt', omschrijving:`${factuurForm.leverancier||''} — ${factuurForm.factuur||''}${rollover ? ` (BTW → ${rollover.rolloverNaar})` : ''}`});
+    // Uit het postvak: het item is nu een factuur en de PDF hangt eraan (zelfde bestand).
+    if (uitPostvak) {
+      setInkoopInbox((prev: any) => inboxVerwerkt(prev || [], uitPostvak.id, nieuwFactuurId, new Date().toISOString()));
+      logAudit(auditLog, setAuditLog, {entiteit:'Postvak', entiteit_id:uitPostvak.id, actie:'gewijzigd', omschrijving:`"${uitPostvak.bijlage.naam}" verwerkt tot inkoopfactuur ${factuurForm.factuur||nieuwFactuurId}`});
+    }
     setShowVrijeFactuur(false);
+    setInboxVerwerk(null);
   };
 
   const updateFactuur = ({factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual}: any) => {
@@ -1811,12 +1830,16 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
 
   // (no early return — Inkoop tab is always available)
 
-  const tabBtn = (tabId: string, label: string) => (
+  const tabBtn = (tabId: string, label: string, badge = 0, badgeTitel = '') => (
     <button onClick={() => setMainTab(tabId)}
       className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${mainTab === tabId ? 't-tab font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
       {label}
+      {badge > 0 && (
+        <span title={badgeTitel} className="ml-1.5 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-800 text-[11px] font-semibold align-middle">{badge}</span>
+      )}
     </button>
   )
+  const inboxOpenAantal = telInboxOpen(inkoopInbox)
 
   return (
     <div className="space-y-5">
@@ -1828,7 +1851,7 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             {t('nav_boekhouding')}
           </h2>
           {tabBtn('verkoop', t('tab_verkoop'))}
-          {tabBtn('inkoop', t('tab_inkoop'))}
+          {tabBtn('inkoop', t('tab_inkoop'), inboxOpenAantal, `${inboxOpenAantal}× ${t('attentie_inkoop_inbox')}`)}
           {tabBtn('klanten', t('tab_klanten'))}
           {tabBtn('bank', t('tab_bank'))}
           {tabBtn('rapporten', t('tab_rapporten'))}
@@ -2140,6 +2163,12 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
       {/* ══════════════════════ INKOOP ══════════════════════ */}
       {mainTab==='inkoop' && (<>
 
+        {/* Facturen die per e-mail binnenkwamen */}
+        <InkoopInbox items={inkoopInbox} setItems={setInkoopInbox} actief={imapActief(imapCreds)}
+          onVerwerk={setInboxVerwerk} vernieuw={refreshInkoopInbox} onNaarInstellingen={onNaarPostvakInstellingen}
+          onAudit={(omschrijving: string, id: number, actie: 'gewijzigd'|'verwijderd') =>
+            logAudit(auditLog, setAuditLog, {entiteit:'Postvak', entiteit_id:id, actie, omschrijving})} />
+
         {/* Filter */}
         <div className={card}>
           <div className="flex flex-wrap items-end gap-4">
@@ -2179,6 +2208,26 @@ function BoekhoudingPage({wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, 
             scanCorrecties={scanCorrecties}
             onScanCorrectie={(c: any) => setScanCorrecties((prev: any) => registreerScanCorrectie(prev || [], c))}
             onClose={()=>setShowVrijeFactuur(false)}
+            claudeCreds={claudeCreds}
+            breweryNaam={(breweryDetails as any)?.naam || ''}
+            ingTypes={ingTypes}
+            ingTypeBtw={ingTypeBtw}
+            kostenSoorten={kostenSoorten}
+            getRolloverInfo={getRolloverInfo}
+          />
+        )}
+        {/* Factuur uit het postvak verwerken: zelfde formulier, PDF al geladen */}
+        {inboxVerwerk && (
+          <InkoopFactuurModal merchArtikelen={merchArtikelen}
+            inboxItem={inboxVerwerk}
+            knownLeveranciers={knownLeveranciers}
+            ing={ing}
+            onderdelen={onderdelen}
+            initialTab="ingredienten"
+            onSave={(invoer: any) => saveVrijeFactuur(invoer, inboxVerwerk)}
+            scanCorrecties={scanCorrecties}
+            onScanCorrectie={(c: any) => setScanCorrecties((prev: any) => registreerScanCorrectie(prev || [], c))}
+            onClose={()=>setInboxVerwerk(null)}
             claudeCreds={claudeCreds}
             breweryNaam={(breweryDetails as any)?.naam || ''}
             ingTypes={ingTypes}

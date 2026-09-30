@@ -1101,6 +1101,47 @@ export const websiteStatus = async (): Promise<any> => {
   }
 }
 
+// ── Facturen per e-mail (postvak) ────────────────────────────────────────────
+// Antwoorden komen als {ok, fout?: {code, oorzaak?}} (server: `_inbox_*`), ook bij
+// een weigering of onbereikbare server, zodat de schermen één vorm lezen.
+const _inboxPost = async (pad: string, body: any): Promise<any> => {
+  try {
+    const r = await fetch(`${ADDON_BASE}api/inbox/${pad}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body ?? {}),
+    })
+    const d = await r.json().catch(() => ({}))
+    if (r.status === 403) return {ok: false, fout: {code: 'rol'}}
+    if (r.status === 400 && d?.error === 'secret_opnieuw_invoeren') return {ok: false, geheim: true}
+    if (!r.ok) return d && d.fout ? d : {ok: false, fout: {code: 'onbekend'}}
+    return d
+  } catch (e: any) {
+    return {ok: false, fout: {code: 'netwerk'}}
+  }
+}
+
+// `inkoop_inbox_status` schrijft alleen de server (en de rol beheer mag hem
+// niet eens wijzigen vanuit de app). Bewust een gewone GET, geen useStore: die
+// zou een ontbrekende key vanuit de app proberen aan te maken.
+export const inboxStatus = async (): Promise<any> => {
+  try {
+    const r = await fetch(API_BASE + 'inkoop_inbox_status', {headers: {'Cache-Control': 'no-cache'}})
+    if (!r.ok) return {}
+    const d = await r.json()
+    return d && typeof d === 'object' && !Array.isArray(d) ? d : {}
+  } catch (e) {
+    return {}
+  }
+}
+
+/** Verbinding, inlog en map proberen met de ingevulde instellingen (niets opslaan). */
+export const inboxTest = (instellingen: any) => _inboxPost('test', instellingen)
+/** Nu de nieuwe berichten ophalen, buiten het interval om. Met `opnieuw` laat de server zijn
+ *  waterlijn los en loopt hij de nieuwste berichten van de map weer door (wat al in de lijst
+ *  staat komt er niet dubbel bij). */
+export const inboxOphalen = (opnieuw = false) => _inboxPost('ophalen', opnieuw ? {opnieuw: true} : {})
+
 export const websiteVoorbeeld = (instellingen: any) => _websitePost('voorbeeld', {instellingen})
 export const websiteTest = () => _websitePost('test', {})
 export const websiteVerstuur = (instellingen: any) => _websitePost('verstuur', {instellingen})

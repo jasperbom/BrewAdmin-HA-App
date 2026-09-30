@@ -12,12 +12,14 @@ The server strips any prefix and looks for /api/data/<key> anywhere in the path.
 import base64
 import datetime
 import email.message
+import email.policy
 import email.utils
 import gzip
 import hashlib
 import hmac
 import http.cookies
 import http.server
+import imaplib
 import io
 import ipaddress
 import json
@@ -176,6 +178,9 @@ HA_SUPERVISOR_BASE       = 'http://supervisor/core/api'
 
 MAIL_SEND_PATH           = '/api/mail/send'
 MAIL_TEST_PATH           = '/api/mail/test'
+# Facturen per e-mail (IMAP): verbindingstest (beheer) en nu ophalen (beheer + boekhouding)
+INBOX_TEST_PATH          = '/api/inbox/test'
+INBOX_OPHALEN_PATH       = '/api/inbox/ophalen'
 NEXTNR_PATH              = '/api/nextnr'
 COMMIT_PATH              = '/api/commit'
 DELTA_PREFIX             = '/api/delta/'
@@ -1886,7 +1891,7 @@ _KEY_TYPES = {
         'hygiene_items', 'hygiene_groups',
         'brouwdag_checklist', 'botteldag_checklist', 'batch_taken_items',
         'batch_taken_groepen', 'inkoop_facturen', 'scan_correcties',
-        'verkoop_facturen', 'bestellingen', 'bestelling_picks', 'afboekingen',
+        'inkoop_inbox', 'verkoop_facturen', 'bestellingen', 'bestelling_picks', 'afboekingen',
         'klanten', 'gist_metingen', 'carbonatie_sessies', 'verlies_registraties',
         'brouwdag_stappen', 'water_addities', 'water_profielen',
         'water_doelprofielen', 'hop_addities', 'dry_hops', 'koel_logs',
@@ -1909,13 +1914,14 @@ _KEY_TYPES = {
         'brewery_details', 'mail_templates', 'factuur_counter',
         'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
         'wc_import_status', 'website_telemetrie', 'website_telemetrie_status',
+        'inkoop_inbox_status',
         'coldcrash_instellingen', 'planning_instellingen',
         'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
         'haccp_instellingen',
         'tank_statussen', 'gebruikers_rollen', 'login_instellingen',
         'app_logo_icoon',
         'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
-        'mollie_creds',
+        'imap_creds', 'mollie_creds',
     )},
     # scalars
     'app_name':     'string',
@@ -2085,6 +2091,7 @@ _SECURE_FIELDS = {
     'woocommerce_creds': ('consumerKey', 'consumerSecret'),
     'claude_creds':      ('apiKey',),
     'smtp_creds':        ('password',),
+    'imap_creds':        ('password',),
     'mollie_creds':      ('apiKey',),
 }
 
@@ -2113,6 +2120,7 @@ def _mask_secrets(key: str, data):
 _SECRET_BESTEMMING = {
     'woocommerce_creds': ('storeUrl',),
     'smtp_creds':        ('host', 'port', 'username', 'security'),
+    'imap_creds':        ('host', 'port', 'username', 'security'),
 }
 
 
@@ -2889,16 +2897,18 @@ _BEHEER_KEYS = frozenset((
     'app_logo', 'factuur_logo', 'app_name', 'nav_theme', 'login_instellingen',
     'app_logo_icoon',
     'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
-    'mollie_creds',
+    'imap_creds', 'mollie_creds',
     # Wat er publiek op de webshop komt: alleen beheer. De status schrijft
     # alleen de server; zo kan ook geen andere rol hem vervalsen.
     'website_telemetrie', 'website_telemetrie_status',
+    # Stand van het postvak met inkoopfacturen: alleen de server schrijft hem.
+    'inkoop_inbox_status',
 ))
 
 # Financiële vastlegging: alleen `boekhouding` (en `beheer`).
 _FINANCIELE_KEYS = frozenset((
     'inkoop_facturen', 'verkoop_facturen', 'scan_correcties', 'journaal',
-    'jaarafsluitingen', 'bank_saldi', 'bank_koppelingen',
+    'inkoop_inbox', 'jaarafsluitingen', 'bank_saldi', 'bank_koppelingen',
     'kapitaal_boekingen', 'accijns', 'accijns_aangiftes',
     'accijns_instellingen', 'btw_aangiftes', 'btw_instellingen',
     'btw_tarieven', 'ing_type_btw', 'alt_rekeningen', 'kosten_soorten',
@@ -4149,6 +4159,686 @@ def _website_loop(interval: float = 60.0) -> None:
         time.sleep(interval)
 
 
+# ── Facturen per e-mail (IMAP) ──────────────────────────────────────────────
+# De brouwer stuurt een inkoopfactuur door naar een eigen postvak. BrewAdmin is
+# niet publiek bereikbaar en kan dus geen mail *ontvangen*; de server haalt de
+# PDF-bijlagen daarom zelf uit dat postvak (IMAP) en zet ze als `nieuw` in
+# `inkoop_inbox`. Daar wachten ze op de tab Inkoop tot iemand ze verwerkt:
+# openen, scannen, boeken. Hier wordt niets geboekt.
+#
+# Alleen lezen. Het postvak gaat met EXAMINE (readonly) open: berichten worden
+# niet als gelezen gemarkeerd, verplaatst of verwijderd. Wat al opgehaald is
+# onthoudt de server per map als UID-waterlijn (`inkoop_inbox_status`), en een
+# PDF met dezelfde SHA-256 als een bestaand item komt er nooit nog eens bij —
+# ook niet als die waterlijn verloren gaat.
+#
+# Wat uit een postvak komt is onbetrouwbare invoer: alleen bijlagen die echt
+# met %PDF- beginnen, begrensd in grootte en aantal, en de bestandsnaam uit de
+# mail is alleen weergavetekst — op schijf heet het bestand naar zijn inhoud.
+
+INBOX_INTERVAL_DEFAULT_MIN = 15
+INBOX_INTERVAL_MIN         = 5
+INBOX_INTERVAL_MAX         = 1440
+# Per ronde en bij de allereerste ronde (dan: de nieuwste 50 van de map) — een
+# volle map die hier voor het eerst aan wordt gekoppeld haalt niet in één keer
+# duizenden berichten op.
+INBOX_MAX_BERICHTEN        = 50
+INBOX_MAX_MAIL_BYTES       = 25 * 1024 * 1024
+INBOX_MAX_PDF_BYTES        = 10 * 1024 * 1024
+INBOX_MAX_PDF_PER_MAIL     = 10
+INBOX_MAX_OVERGESLAGEN     = 20
+# Zoveel onverwerkte facturen (status `nieuw`) laat de ophaler oplopen. Daarboven
+# blijft de mail in het postvak wachten (fout `vol`) tot er iets verwerkt is:
+# één die het adres kent kan anders schijf en lijst blijven volgooien.
+INBOX_MAX_OPEN             = 200
+INBOX_MAX_AFZENDERS        = 50
+# Handmatig ophalen niet vaker dan dit (de knop kan dubbel geklikt worden).
+INBOX_MIN_TUSSENPOOS_S     = 10.0
+INBOX_TIMEOUT_S            = 20.0
+# Een ronde die te lang duurt stopt en gaat de volgende keer verder (de
+# waterlijn staat op het laatst verwerkte bericht).
+INBOX_BUDGET_ACHTERGROND_S = 240.0
+INBOX_BUDGET_HANDMATIG_S   = 45.0
+INBOX_SECURITY_DEFAULT     = 'ssl'
+# Een mapnaam: alles behalve stuurtekens, aanhalingsteken en backslash (`[Gmail]/Alle
+# berichten`, `Facturen ë`); niet-ASCII gaat als modified UTF-7 naar de server
+# (`_inbox_imap_utf7`). Spiegel: IMAP_MAP_RE in utils/inkoopInbox.ts.
+INBOX_MAP_RE      = re.compile(r'^[^\x00-\x1f\x7f-\x9f"\\]{1,100}$')
+INBOX_HOST_RE     = re.compile(r'^[A-Za-z0-9.\-:\[\]]{1,253}$')
+INBOX_AFZENDER_RE = re.compile(r'^[^@\s,;<>"]*@[^@\s,;<>"]+\.[^@\s,;<>"]+$')
+
+_inbox_lock = threading.Lock()
+_inbox_laatste_poging = 0.0
+_inbox_laatste_check = 0.0
+_inbox_laatste_fout: str | None = None
+
+
+def _inbox_afzenders(waarde) -> list[str]:
+    """Het afzenderfilter genormaliseerd: hoofdletterloos, ontdubbeld, onbruik-
+    bare regels weg. Een regel is een adres (`jan@brouwerij.nl`) of een domein
+    (`@brouwerij.nl`; zonder @ ervoor wordt hij er een). Een lege lijst laat
+    elke afzender toe. Spiegel: `parseAfzenders` in utils/inkoopInbox.ts."""
+    if isinstance(waarde, str):
+        waarde = re.split(r'[,;\s]+', waarde)
+    uit: list[str] = []
+    for x in (waarde if isinstance(waarde, list) else []):
+        s = str(x).strip().lower()
+        if not s:
+            continue
+        if '@' not in s:
+            s = '@' + s
+        if not INBOX_AFZENDER_RE.match(s) or s in uit:
+            continue
+        uit.append(s)
+    return uit[:INBOX_MAX_AFZENDERS]
+
+
+def _inbox_instellingen(c) -> dict | None:
+    """De gezuiverde instellingen uit `imap_creds`, of None wanneer server,
+    poort of gebruiker ontbreekt of onbruikbaar is. De mapnaam blijft zoals hij
+    is: is hij ongeldig, dan meldt `_inbox_ophalen` dat als fout `map` — nooit
+    stil een andere map lezen."""
+    if not isinstance(c, dict):
+        return None
+    host = str(c.get('host', '')).strip()
+    try:
+        port = int(c.get('port', 0))
+    except (TypeError, ValueError):
+        return None
+    username = str(c.get('username', '')).strip()
+    if not INBOX_HOST_RE.match(host) or not 1 <= port <= 65535 or not username:
+        return None
+    security = str(c.get('security', INBOX_SECURITY_DEFAULT)).strip().lower()
+    if security not in MAIL_SECURITY_VALUES:
+        security = INBOX_SECURITY_DEFAULT
+    try:
+        interval = int(c.get('interval', INBOX_INTERVAL_DEFAULT_MIN))
+    except (TypeError, ValueError):
+        interval = INBOX_INTERVAL_DEFAULT_MIN
+    return {
+        'host':         host,
+        'port':         port,
+        'security':     security,
+        'username':     username,
+        'password':     str(c.get('password', '')),
+        'mailbox':      str(c.get('mailbox') or 'INBOX').strip(),
+        'interval_min': max(INBOX_INTERVAL_MIN, min(INBOX_INTERVAL_MAX, interval)),
+        'afzenders':    _inbox_afzenders(c.get('afzenders')),
+        'enabled':      bool(c.get('enabled')),
+    }
+
+
+class InboxFout(Exception):
+    """Een fout bij het postvak, als korte code voor de app — nooit vrije tekst
+    of details van de server: verbinding, certificaat, tls, login, map, protocol,
+    opslag, vol, onbekend; voor het handmatig ophalen ook bezig, te_snel en uit."""
+
+    def __init__(self, code: str, oorzaak: str | None = None):
+        super().__init__(code)
+        self.code = code
+        self.oorzaak = oorzaak
+
+    def als_dict(self) -> dict:
+        return {'code': self.code, **({'oorzaak': self.oorzaak} if self.oorzaak else {})}
+
+
+def _inbox_uit_uitzondering(exc: BaseException, fase: str) -> InboxFout:
+    """Vertaal een uitzondering van socket/ssl/imaplib naar een InboxFout. De
+    fase bepaalt wat een IMAP-foutantwoord betekent: bij het inloggen is het
+    `login`, bij het openen van de map `map`, bij STARTTLS `tls`."""
+    if isinstance(exc, InboxFout):
+        return exc
+    if isinstance(exc, ssl.SSLCertVerificationError):
+        return InboxFout('certificaat')
+    if isinstance(exc, ssl.SSLError):
+        return InboxFout('tls')
+    if isinstance(exc, (socket.timeout, TimeoutError)):
+        return InboxFout('verbinding', 'timeout')
+    if isinstance(exc, socket.gaierror):
+        return InboxFout('verbinding', 'dns')
+    if isinstance(exc, ConnectionRefusedError):
+        return InboxFout('verbinding', 'geweigerd')
+    if isinstance(exc, (ConnectionError, OSError)):
+        return InboxFout('verbinding')
+    if isinstance(exc, imaplib.IMAP4.abort):
+        # Een verbinding die al liep en wegvalt is een verbindingsfout; een
+        # server die bij het aanknopen niet als IMAP antwoordt (SMTP-poort,
+        # HTTP, een TLS-poort zonder TLS) zit op de verkeerde poort.
+        return InboxFout('protocol' if fase == 'verbinden' else 'verbinding')
+    if isinstance(exc, imaplib.IMAP4.error):
+        return InboxFout({'login': 'login', 'map': 'map', 'tls': 'tls'}.get(fase, 'protocol'))
+    if isinstance(exc, UnicodeError):
+        return InboxFout('login')
+    return InboxFout('onbekend')
+
+
+def _inbox_sluit(client) -> None:
+    """Verbinding netjes sluiten; een al gebroken verbinding is geen fout."""
+    if client is None:
+        return
+    try:
+        client.logout()
+    except Exception:
+        try:
+            client.shutdown()
+        except Exception:
+            pass
+
+
+def _inbox_login(client, gebruiker: str, wachtwoord: str) -> None:
+    # imaplib quote het wachtwoord in het LOGIN-commando maar de gebruikersnaam niet: een
+    # spatie of aanhalingsteken erin (`DOMEIN\jan`, `jan "x"`) zou het commando verminken en
+    # een regeleinde of ander stuurteken zou er een tweede commando in de sessie zetten.
+    # Stuurtekens kunnen nergens in een IMAP-string, de rest quoten we zelf.
+    if any(ord(c) < 32 or ord(c) == 127 for c in gebruiker + wachtwoord):
+        raise imaplib.IMAP4.error('stuurteken in gebruikersnaam of wachtwoord')
+    try:
+        client.login(_inbox_quote(gebruiker), wachtwoord)
+    except UnicodeEncodeError:
+        # LOGIN kent alleen ASCII; AUTHENTICATE PLAIN (RFC 4616) gaat in UTF-8.
+        client.authenticate(
+            'PLAIN', lambda _antwoord: f'\0{gebruiker}\0{wachtwoord}'.encode('utf-8'))
+
+
+def _inbox_verbind(creds: dict, timeout: float = INBOX_TIMEOUT_S):
+    """Verbinden en inloggen; geeft de IMAP-client terug. Elke fout komt als
+    InboxFout naar buiten en laat geen open verbinding achter."""
+    ctx = ssl.create_default_context()
+    client = None
+    try:
+        if creds['security'] == 'ssl':
+            client = imaplib.IMAP4_SSL(creds['host'], creds['port'],
+                                       ssl_context=ctx, timeout=timeout)
+        else:
+            client = imaplib.IMAP4(creds['host'], creds['port'], timeout=timeout)
+    except Exception as e:
+        raise _inbox_uit_uitzondering(e, 'verbinden') from None
+    if creds['security'] == 'starttls':
+        try:
+            client.starttls(ssl_context=ctx)
+        except Exception as e:
+            _inbox_sluit(client)
+            raise _inbox_uit_uitzondering(e, 'tls') from None
+    try:
+        _inbox_login(client, creds['username'], creds['password'])
+    except Exception as e:
+        _inbox_sluit(client)
+        raise _inbox_uit_uitzondering(e, 'login') from None
+    return client
+
+
+def _inbox_quote(naam: str) -> str:
+    return '"' + naam.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+
+def _inbox_imap_utf7(naam: str) -> str:
+    """Mapnaam zoals IMAP hem verwacht (modified UTF-7, RFC 3501 §5.1.3): elk stuk
+    niet-ASCII wordt `&<base64 van UTF-16>-`, een `&` wordt `&-`. Een naam in gewoon
+    ASCII gaat ongewijzigd door — zo kan een al gecodeerde naam (`&AOs-`) ook getypt
+    worden. imaplib zelf stuurt alleen ASCII."""
+    if naam.isascii():
+        return naam
+    uit: list[str] = []
+    stuk: list[str] = []
+
+    def leeg() -> None:
+        if stuk:
+            b64 = base64.b64encode(''.join(stuk).encode('utf-16-be')).decode('ascii')
+            uit.append('&' + b64.rstrip('=').replace('/', ',') + '-')
+            stuk.clear()
+
+    for c in naam:
+        if 0x20 <= ord(c) <= 0x7e:
+            leeg()
+            uit.append('&-' if c == '&' else c)
+        else:
+            stuk.append(c)
+    leeg()
+    return ''.join(uit)
+
+
+def _inbox_open_map(client, mailbox: str) -> tuple[int, int | None]:
+    """Open de map alleen-lezen (EXAMINE). Geeft (aantal berichten,
+    UIDVALIDITY) terug; UIDVALIDITY is None als de server hem niet meldt."""
+    try:
+        typ, data = client.select(_inbox_quote(_inbox_imap_utf7(mailbox)), readonly=True)
+    except imaplib.IMAP4.abort as e:
+        raise _inbox_uit_uitzondering(e, 'map') from None
+    except imaplib.IMAP4.error:
+        raise InboxFout('map') from None
+    if typ != 'OK':
+        raise InboxFout('map')
+    try:
+        aantal = int(data[0])
+    except (TypeError, ValueError, IndexError):
+        aantal = 0
+    uidvalidity = None
+    try:
+        _code, uv = client.response('UIDVALIDITY')
+        if uv and uv[0]:
+            uidvalidity = int(uv[0])
+    except (TypeError, ValueError, IndexError, imaplib.IMAP4.error):
+        pass
+    return aantal, uidvalidity
+
+
+def _inbox_zoek_uids(client, waterlijn: int | None) -> list[int]:
+    """UID's om te bekijken, oudste eerst. Met een waterlijn alleen wat er
+    daarna bij kwam (hooguit INBOX_MAX_BERICHTEN; de rest volgt de volgende
+    ronde). Zonder waterlijn — de eerste ronde in deze map — de nieuwste
+    INBOX_MAX_BERICHTEN."""
+    if waterlijn is None:
+        typ, data = client.uid('SEARCH', 'ALL')
+    else:
+        # `n:*` geeft altijd minstens het laatste bericht, ook als dat ouder is
+        # dan n — vandaar het filter hieronder.
+        typ, data = client.uid('SEARCH', 'UID', f'{waterlijn + 1}:*')
+    if typ != 'OK' or not data or not data[0]:
+        return []
+    uids = sorted({int(x) for x in data[0].split() if x.isdigit()})
+    if waterlijn is None:
+        return uids[-INBOX_MAX_BERICHTEN:]
+    return [u for u in uids if u > waterlijn][:INBOX_MAX_BERICHTEN]
+
+
+def _inbox_fetch(client, uid: int, wat: str) -> bytes | None:
+    """Eén FETCH; de inhoud van de (eerste) literal, of anders de antwoordregel.
+    None als het bericht er niet (meer) is."""
+    typ, data = client.uid('FETCH', str(uid), wat)
+    if typ != 'OK' or not data:
+        return None
+    for deel in data:
+        if isinstance(deel, tuple) and len(deel) >= 2 and isinstance(deel[1], (bytes, bytearray)):
+            return bytes(deel[1])
+    for deel in data:
+        if isinstance(deel, (bytes, bytearray)):
+            return bytes(deel)
+    return None
+
+
+def _inbox_grootte(client, uid: int) -> int | None:
+    antwoord = _inbox_fetch(client, uid, '(RFC822.SIZE)')
+    m = re.search(rb'RFC822\.SIZE\s+(\d+)', antwoord or b'')
+    return int(m.group(1)) if m else None
+
+
+def _inbox_schoon(tekst, max_len: int) -> str:
+    """Weergavetekst uit een mailkop of bestandsnaam: geen stuurtekens,
+    witruimte samengevouwen, begrensd."""
+    s = ''.join(c if c.isprintable() else ' ' for c in str(tekst or ''))
+    return re.sub(r'\s+', ' ', s).strip()[:max_len]
+
+
+def _inbox_bestandsnaam(naam) -> str:
+    """Bestandsnaam uit een mailbijlage, alleen als weergavetekst: zonder pad
+    en stuurtekens, begrensd. Op schijf komt hij nooit voor."""
+    return _inbox_schoon(str(naam or '').replace('\\', '/').rsplit('/', 1)[-1], 120)
+
+
+def _inbox_kop(msg) -> dict:
+    """Wie, wat en wanneer uit de kop van een bericht — alleen weergavetekst."""
+    def veld(naam: str) -> str:
+        try:
+            return str(msg.get(naam, '') or '')
+        except Exception:
+            return ''
+    naam, adres = email.utils.parseaddr(veld('From'))
+    adres = adres.strip().lower()
+    if not MAIL_EMAIL_RE.match(adres):
+        adres = ''
+    datum = ''
+    try:
+        datum = email.utils.parsedate_to_datetime(veld('Date')).date().isoformat()
+    except (TypeError, ValueError, IndexError, OverflowError):
+        pass
+    return {
+        'van':        adres,
+        'van_naam':   _inbox_schoon(naam, 80),
+        'onderwerp':  _inbox_schoon(veld('Subject'), 200),
+        'mail_datum': datum,
+        'message_id': _inbox_schoon(veld('Message-ID'), 200),
+    }
+
+
+def _inbox_kop_ophalen(client, uid: int) -> dict:
+    """Alleen de kop van een bericht (voor een bericht dat te groot is om
+    binnen te halen)."""
+    ruw = _inbox_fetch(client, uid, '(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)])')
+    if not ruw:
+        return {}
+    try:
+        return _inbox_kop(email.message_from_bytes(ruw, policy=email.policy.default))
+    except Exception:
+        return {}
+
+
+def _inbox_afzender_ok(adres: str, afzenders: list) -> bool:
+    """Staat dit afzenderadres in het filter? Een leeg filter laat iedereen toe."""
+    if not afzenders:
+        return True
+    if not adres:
+        return False
+    adres = adres.lower()
+    domein = adres.rpartition('@')[2]
+    return any(a == adres or (a.startswith('@') and a[1:] == domein) for a in afzenders)
+
+
+def _inbox_is_pdf(data: bytes) -> bool:
+    """Een PDF begint met %PDF- (de specificatie staat wat rommel ervoor toe:
+    binnen de eerste 1024 bytes)."""
+    return data[:1024].find(b'%PDF-') != -1
+
+
+def _inbox_lees_bericht(raw: bytes, afzenders: list, bekend: set) -> dict:
+    """Zoek de PDF-bijlagen in een ruw RFC 822-bericht. Zuivere functie: geen
+    netwerk, geen schijf, geen database.
+
+    Geeft {kop, nieuw, overgeslagen}: `nieuw` = PDF's om te bewaren
+    ({naam, sha256, grootte, bytes}), `overgeslagen` = wat niet meeging, elk met
+    een reden (geen_pdf, afzender, te_groot, te_veel, onleesbaar, dubbel).
+    Een doorgestuurd bericht dat als bijlage (message/rfc822) meekwam wordt
+    mee doorzocht. Of iets een PDF is bepaalt de inhoud, niet het opgegeven
+    type of de bestandsnaam."""
+    res: dict = {'kop': {}, 'nieuw': [], 'overgeslagen': []}
+    try:
+        msg = email.message_from_bytes(raw, policy=email.policy.default)
+        res['kop'] = _inbox_kop(msg)
+    except Exception:
+        res['overgeslagen'].append({'reden': 'onleesbaar'})
+        return res
+    if not _inbox_afzender_ok(res['kop'].get('van', ''), afzenders):
+        res['overgeslagen'].append({'reden': 'afzender'})
+        return res
+    gezien = set(bekend)
+    kapot = False
+    try:
+        for deel in msg.walk():
+            try:
+                if deel.is_multipart():
+                    continue
+                naam = _inbox_bestandsnaam(deel.get_filename())
+                # Tekstdelen zijn de berichttekst, geen bijlage — behalve een
+                # deel dat zichzelf een .pdf noemt.
+                if deel.get_content_maintype() == 'text' and not naam.lower().endswith('.pdf'):
+                    continue
+                data = deel.get_payload(decode=True)
+                if not data or not _inbox_is_pdf(data):
+                    continue
+                naam = naam or 'factuur.pdf'
+                if len(data) > INBOX_MAX_PDF_BYTES:
+                    res['overgeslagen'].append({'reden': 'te_groot', 'naam': naam})
+                    continue
+                sha = hashlib.sha256(data).hexdigest()
+                if sha in gezien:
+                    res['overgeslagen'].append({'reden': 'dubbel', 'naam': naam})
+                    continue
+                if len(res['nieuw']) >= INBOX_MAX_PDF_PER_MAIL:
+                    res['overgeslagen'].append({'reden': 'te_veel', 'naam': naam})
+                    continue
+                gezien.add(sha)
+                res['nieuw'].append({'naam': naam, 'sha256': sha, 'grootte': len(data), 'bytes': data})
+            except Exception:
+                # Eén kapot deel houdt de rest van het bericht niet tegen.
+                kapot = True
+    except Exception:
+        # De boom zelf is onleesbaar (bv. absurd diep genest): wat er al uit
+        # is blijft, de rest melden we.
+        kapot = True
+    if kapot:
+        res['overgeslagen'].append({'reden': 'onleesbaar'})
+    if not res['nieuw'] and not res['overgeslagen']:
+        res['overgeslagen'].append({'reden': 'geen_pdf'})
+    return res
+
+
+def _inbox_bewaar_pdf(sha256: str, data: bytes) -> str:
+    """Schrijf de PDF naar de bijlagenmap onder een naam die uit zijn inhoud
+    volgt (nooit uit de mail) en geef die naam terug. Bestaat hij al met
+    dezelfde grootte — dus dezelfde inhoud — dan blijft hij staan."""
+    naam = f'inbox_{sha256[:20]}.pdf'
+    doel = UPLOAD_DIR / naam
+    try:
+        if doel.is_file() and doel.stat().st_size == len(data):
+            return naam
+        _atomic_write_bytes(doel, data)
+    except OSError:
+        raise InboxFout('opslag') from None
+    return naam
+
+
+def _inbox_melding(records: list) -> str:
+    n = len(records)
+    eerste = records[0]
+    onderwerp = eerste.get('onderwerp') or (eerste.get('bijlage') or {}).get('naam') or ''
+    van = eerste.get('van_naam') or eerste.get('van') or ''
+    tekst = f'{n} factuur ontvangen per e-mail' if n == 1 else f'{n} facturen ontvangen per e-mail'
+    delen = [x for x in (onderwerp, van) if x]
+    return f"{tekst}: {' — '.join(delen)}" if delen else tekst
+
+
+def _inbox_ophalen(creds: dict, handmatig: bool = False, opnieuw: bool = False) -> dict:
+    """Eén ophaalronde: verbinden, de berichten na de waterlijn bekijken, PDF's
+    bewaren en de uitkomst vastleggen in `inkoop_inbox` (alleen als er iets
+    nieuws is) en `inkoop_inbox_status`. `opnieuw` laat de waterlijn los en loopt
+    de nieuwste INBOX_MAX_BERICHTEN van de map weer door (wat al in de lijst staat
+    komt er niet dubbel bij: dat bepaalt de SHA-256). Aanroepen zonder _data_lock;
+    de aanroeper houdt `_inbox_lock` vast."""
+    nu = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+    deadline = time.monotonic() + (INBOX_BUDGET_HANDMATIG_S if handmatig
+                                   else INBOX_BUDGET_ACHTERGROND_S)
+    with _data_lock:
+        status = _read_json('inkoop_inbox_status', {})
+        bestaand = _read_json('inkoop_inbox', [])
+    if not isinstance(status, dict):
+        status = {}
+    if not isinstance(bestaand, list):
+        bestaand = []
+    bekend = {str(i['sha256']) for i in bestaand if isinstance(i, dict) and i.get('sha256')}
+    open_aantal = sum(1 for i in bestaand if isinstance(i, dict) and i.get('status') == 'nieuw')
+
+    # De waterlijn hoort bij één map én één UIDVALIDITY; wijkt een van beide af,
+    # dan zeggen de oude UID's niets meer.
+    uidvalidity, waterlijn = None, None
+    if status.get('mailbox') == creds['mailbox']:
+        uidvalidity = status.get('uidvalidity')
+        try:
+            waterlijn = int(status.get('laatste_uid'))
+        except (TypeError, ValueError):
+            waterlijn = None
+    if opnieuw:
+        waterlijn = None
+
+    nieuw: list = []
+    overgeslagen: list = []
+    berichten = 0
+    fout = None
+    client = None
+    try:
+        if not INBOX_MAP_RE.match(creds['mailbox']):
+            raise InboxFout('map')
+        client = _inbox_verbind(creds)
+        try:
+            _aantal, nu_uidvalidity = _inbox_open_map(client, creds['mailbox'])
+            # Een server die geen UIDVALIDITY meldt (beide None) houdt zijn waterlijn: de
+            # vergelijking is er alleen om een vernieuwde map te herkennen — anders haalde
+            # elke ronde de nieuwste 50 berichten opnieuw binnen.
+            if str(uidvalidity) != str(nu_uidvalidity):
+                waterlijn = None
+            uidvalidity = nu_uidvalidity
+            for uid in _inbox_zoek_uids(client, waterlijn):
+                if time.monotonic() > deadline:
+                    break
+                if open_aantal + len(nieuw) >= INBOX_MAX_OPEN:
+                    raise InboxFout('vol')  # de rest wacht in het postvak
+                berichten += 1
+                grootte = _inbox_grootte(client, uid)
+                raw = None
+                te_groot = grootte is not None and grootte > INBOX_MAX_MAIL_BYTES
+                if not te_groot:
+                    # Ook als de server geen (bruikbare) grootte meldt komt er nooit meer dan het
+                    # plafond in het geheugen: een gedeeltelijke FETCH kapt af, en één byte
+                    # boven het plafond betekent te groot.
+                    raw = _inbox_fetch(client, uid, f'(BODY.PEEK[]<0.{INBOX_MAX_MAIL_BYTES + 1}>)')
+                    te_groot = raw is not None and len(raw) > INBOX_MAX_MAIL_BYTES
+                if te_groot:
+                    raw = None
+                    kop = _inbox_kop_ophalen(client, uid)
+                    overgeslagen.append({'ts': nu, 'van': kop.get('van', ''),
+                                         'onderwerp': kop.get('onderwerp', ''), 'reden': 'te_groot'})
+                    waterlijn = uid
+                    continue
+                if raw is None:  # tussen zoeken en ophalen verwijderd
+                    waterlijn = uid
+                    continue
+                res = _inbox_lees_bericht(raw, creds['afzenders'], bekend)
+                kop = res['kop']
+                for pdf in res['nieuw']:
+                    bestand = _inbox_bewaar_pdf(pdf['sha256'], pdf['bytes'])
+                    bekend.add(pdf['sha256'])
+                    nieuw.append({'kop': kop, 'naam': pdf['naam'], 'bestand': bestand,
+                                  'sha256': pdf['sha256'], 'grootte': pdf['grootte']})
+                for o in res['overgeslagen']:
+                    overgeslagen.append({'ts': nu, 'van': kop.get('van', ''),
+                                         'onderwerp': kop.get('onderwerp', ''), 'reden': o['reden'],
+                                         **({'naam': o['naam']} if o.get('naam') else {})})
+                waterlijn = uid
+        except InboxFout:
+            raise
+        except Exception as e:
+            raise _inbox_uit_uitzondering(e, 'ophalen') from None
+    except InboxFout as e:
+        fout = e.als_dict()
+    finally:
+        _inbox_sluit(client)
+
+    records: list = []
+    with _data_lock:
+        huidig = _read_json('inkoop_inbox', [])
+        if not isinstance(huidig, list):
+            huidig = []
+        status = _read_json('inkoop_inbox_status', {})
+        if not isinstance(status, dict):
+            status = {}
+        ids = {str(i.get('id')) for i in huidig if isinstance(i, dict)}
+        gezien = {str(i['sha256']) for i in huidig if isinstance(i, dict) and i.get('sha256')}
+        # Zelfde soort id als newId() in de app: milliseconden × 1000.
+        volgend = int(time.time() * 1000) * 1000
+        for n in nieuw:
+            if n['sha256'] in gezien:
+                continue
+            while str(volgend) in ids:
+                volgend += 1
+            ids.add(str(volgend))
+            gezien.add(n['sha256'])
+            kop = n['kop']
+            records.append({
+                'id':         volgend,
+                'ontvangen':  nu,
+                'mail_datum': kop.get('mail_datum', ''),
+                'van':        kop.get('van', ''),
+                'van_naam':   kop.get('van_naam', ''),
+                'onderwerp':  kop.get('onderwerp', ''),
+                'message_id': kop.get('message_id', ''),
+                'bijlage':    {'naam': n['naam'], 'bestand': n['bestand']},
+                'grootte':    n['grootte'],
+                'sha256':     n['sha256'],
+                'status':     'nieuw',
+            })
+        oude = status.get('overgeslagen') if isinstance(status.get('overgeslagen'), list) else []
+        dubbel = sum(1 for o in overgeslagen if o.get('reden') == 'dubbel')
+        status.update({
+            'laatste_check': nu,
+            'handmatig':     handmatig,
+            'fout':          fout,
+            'mailbox':       creds['mailbox'],
+            'uidvalidity':   uidvalidity,
+            'laatste_uid':   waterlijn,
+            'laatste_ronde': {'berichten': berichten, 'nieuw': len(records),
+                              'dubbel': dubbel, 'overgeslagen': len(overgeslagen)},
+            # Nieuwste eerst, en begrensd: dit is een diagnose, geen archief.
+            'overgeslagen':  (overgeslagen[::-1] + oude)[:INBOX_MAX_OVERGESLAGEN],
+        })
+        if fout is None:
+            status['laatst_gelukt'] = nu
+        conn = _db()
+        with conn:
+            if records:
+                _schrijf_key(conn, 'inkoop_inbox', huidig + records)
+            _schrijf_key(conn, 'inkoop_inbox_status', status)
+        notif = _read_json('notificatie_instellingen', {}) or {}
+
+    for r in records:
+        _audit_write('inbox_import', 'inkoop_inbox', van=r['van'], onderwerp=r['onderwerp'],
+                     bestand=r['bijlage']['bestand'], sha256=r['sha256'], grootte=r['grootte'])
+    if fout:
+        _log('inbox', f"ophalen mislukt: {fout['code']}"
+             f"{' (' + fout['oorzaak'] + ')' if fout.get('oorzaak') else ''}", level=logging.WARNING)
+    elif records or overgeslagen:
+        _log('inbox', f'{berichten} bericht(en) bekeken: {len(records)} factuur/facturen opgehaald, '
+                      f'{len(overgeslagen)} overgeslagen')
+    if records and isinstance(notif, dict) and notif.get('enabled') and notif.get('notify_service'):
+        if not _ha_notify(notif['notify_service'], 'BrewAdmin — nieuwe inkoopfactuur',
+                          _inbox_melding(records)):
+            _log('inbox', f"notify {notif.get('notify_service')} mislukt", level=logging.ERROR)
+    return {'ok': fout is None, 'fout': fout, 'berichten': berichten, 'nieuw': len(records),
+            'dubbel': dubbel, 'overgeslagen': len(overgeslagen)}
+
+
+def _inbox_waterlijn_vrijgeven(conn) -> None:
+    """Laat de UID-waterlijn los: de eerstvolgende ronde loopt de nieuwste berichten
+    van de map weer door. Voor als `inkoop_inbox` door iets anders dan de ophaler is
+    teruggezet (een serverbackup): berichten achter de waterlijn kwamen anders nooit
+    meer binnen. Aanroepen onder _data_lock, in de transactie van de schrijver. Een
+    ronde die op dat moment loopt schrijft zijn eigen stand nog terug; dat is de
+    (zeldzame) reden dat "opnieuw doorlopen" in de app ook een knop heeft."""
+    status = _read_json('inkoop_inbox_status', {})
+    if not isinstance(status, dict) or status.get('laatste_uid') is None:
+        return
+    status['laatste_uid'] = None
+    _schrijf_key(conn, 'inkoop_inbox_status', status)
+
+
+def _inbox_tick(now: float | None = None, force: bool = False, handmatig: bool = False,
+                opnieuw: bool = False) -> dict | None:
+    """Eén controleronde. Doet niets (None) als de koppeling uit staat of nog
+    niet ingevuld is, of als het interval nog niet verstreken is (`force` slaat
+    die wachttijd over — handmatig ophalen en tests). Twee rondes tegelijk kan
+    niet: de tweede krijgt fout `bezig`. `opnieuw`: zie `_inbox_ophalen`."""
+    global _inbox_laatste_poging, _inbox_laatste_check, _inbox_laatste_fout
+    now = time.time() if now is None else now
+    with _data_lock:
+        creds = _inbox_instellingen(_read_json('imap_creds', {}))
+    if not creds or not creds['enabled']:
+        return None
+    if handmatig and now - _inbox_laatste_poging < INBOX_MIN_TUSSENPOOS_S:
+        return {'ok': False, 'fout': {'code': 'te_snel'}}
+    if not force and now - _inbox_laatste_poging < creds['interval_min'] * 60:
+        return None
+    if not _inbox_lock.acquire(blocking=False):
+        return {'ok': False, 'fout': {'code': 'bezig'}}
+    try:
+        _inbox_laatste_poging = now
+        uitkomst = _inbox_ophalen(creds, handmatig=handmatig, opnieuw=opnieuw)
+        _inbox_laatste_check = time.time()
+        _inbox_laatste_fout = (uitkomst.get('fout') or {}).get('code')
+    finally:
+        _inbox_lock.release()
+    return uitkomst
+
+
+def _inbox_loop(interval: float = 60.0) -> None:
+    """Achtergrondloop: elke minuut kijken of het postvak aan de beurt is; het
+    ingestelde interval (imap_creds.interval, standaard 15 min) zit in de tick
+    zelf, zodat een gewijzigde instelling zonder herstart meetelt."""
+    time.sleep(60)  # de server en zijn andere threads eerst laten opstarten
+    while True:
+        try:
+            _inbox_tick()
+        except Exception as exc:
+            _log('inbox', f'error: {exc}', level=logging.ERROR)
+        time.sleep(interval)
+
+
 def _vergisting_stap_loop(interval: float = 300.0) -> None:
     """Achtergrondloop: stuur een HA-melding zodra een vergistingsstap zijn
     geplande duur (in dagen) heeft bereikt, zodat de brouwer kan controleren en
@@ -5123,9 +5813,10 @@ def _cold_crash_tick() -> None:
 
 def _bijlage_in_gebruik(filename: str) -> str | None:
     """Naam van de data-key die nog naar deze bijlage verwijst, of None.
-    Kijkt naar `bijlage.bestand` (inkoopfactuur) en `bijlagen[].bestand`
-    (afboeking, verliesregistratie, vernietiging)."""
-    for key in ('inkoop_facturen', 'afboekingen', 'verlies_registraties'):
+    Kijkt naar `bijlage.bestand` (inkoopfactuur, item in het postvak met
+    facturen per e-mail) en `bijlagen[].bestand` (afboeking,
+    verliesregistratie, vernietiging)."""
+    for key in ('inkoop_facturen', 'inkoop_inbox', 'afboekingen', 'verlies_registraties'):
         rijen = _read_json(key, [])
         if not isinstance(rijen, list):
             continue
@@ -5199,7 +5890,7 @@ def _backup_to_zip(date_str: str) -> bytes | None:
 # lease, telemetriestand, app-icoon).
 _NIET_TERUGZETBAAR = frozenset((
     'nummer_reeksen', 'tank_setpoints', 'wc_import_status',
-    'website_telemetrie_status', 'app_logo_icoon',
+    'website_telemetrie_status', 'inkoop_inbox_status', 'app_logo_icoon',
 ))
 
 
@@ -5666,10 +6357,12 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         if rol != 'beheer' and any(p in path for p in (
                 MAIL_TEST_PATH, BF_TEST_PATH, WC_TEST_PATH, MOLLIE_TEST_PATH,
                 BACKUPS_TRIGGER_PATH, BACKUPS_RESTORE_PATH,
-                WEBSITE_VOORBEELD_PATH, WEBSITE_TEST_PATH, WEBSITE_VERSTUUR_PATH)):
+                WEBSITE_VOORBEELD_PATH, WEBSITE_TEST_PATH, WEBSITE_VERSTUUR_PATH,
+                INBOX_TEST_PATH)):
             self._rol_geweigerd(rol)
             return
-        if rol not in ('beheer', 'boekhouding') and MOLLIE_PAYMENT_PATH in path:
+        if rol not in ('beheer', 'boekhouding') and (
+                MOLLIE_PAYMENT_PATH in path or INBOX_OPHALEN_PATH in path):
             self._rol_geweigerd(rol)
             return
 
@@ -5728,6 +6421,15 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         if MAIL_SEND_PATH in path:
             self._mail_send()
+            return
+
+        # Facturen per e-mail: verbindingstest (beheer) + nu ophalen (boekhouding)
+        if INBOX_TEST_PATH in path:
+            self._inbox_test()
+            return
+
+        if INBOX_OPHALEN_PATH in path:
+            self._inbox_nu_ophalen()
             return
 
         if NEXTNR_PATH in path:
@@ -6455,6 +7157,8 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         ok = data_ok and (threads is None or all(threads.values()))
         wc_check = (datetime.datetime.fromtimestamp(_wc_orders_laatste_check, datetime.timezone.utc)
                     .isoformat(timespec='seconds') if _wc_orders_laatste_check else None)
+        inbox_check = (datetime.datetime.fromtimestamp(_inbox_laatste_check, datetime.timezone.utc)
+                       .isoformat(timespec='seconds') if _inbox_laatste_check else None)
         self._json(200, {
             'ok': ok,
             'threads': threads,
@@ -6463,6 +7167,8 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             'uptime_s': int(time.monotonic() - _start_tijd),
             # Servercontrole op nieuwe webshoporders (_wc_orders_tick).
             'wc_orders': {'laatste_check': wc_check, 'laatste_fout': _wc_orders_laatste_fout},
+            # Postvak met inkoopfacturen (_inbox_tick).
+            'inkoop_inbox': {'laatste_check': inbox_check, 'laatste_fout': _inbox_laatste_fout},
             # Hoe de credentials in de serverbackup versleuteld worden.
             'backup_versleuteling': _backup_versleuteling_status(),
         })
@@ -6786,6 +7492,70 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(400, {'ok': False, 'detail': 'recipients_refused'})
         except (smtplib.SMTPException, ssl.SSLError, socket.timeout, OSError) as e:
             self._json(502, {'ok': False, 'detail': type(e).__name__})
+
+    # ── Facturen per e-mail (IMAP) ─────────────────────────────────────
+
+    def _inbox_test(self):
+        """POST /api/inbox/test — met de ingevulde instellingen verbinden,
+        inloggen en de map openen (alleen lezen). Slaat niets op en haalt niets
+        op. Antwoord: {ok, berichten, mailbox} of {ok: false, fout: {code}}."""
+        raw = self._read_body(max_len=8 * 1024)
+        if raw is None:
+            return
+        try:
+            body = _unmask_secrets('imap_creds', json.loads(raw))
+        except SecretBestemmingGewijzigd:
+            # Het opgeslagen wachtwoord nooit naar een andere server/poort/
+            # gebruiker of onversleuteld sturen.
+            self._json(400, {'error': 'secret_opnieuw_invoeren', 'key': 'imap_creds'})
+            return
+        except Exception:
+            self._json(400, {'error': 'invalid json'})
+            return
+        creds = _inbox_instellingen(body)
+        if creds is None:
+            self._json(400, {'error': 'missing host, port or username'})
+            return
+        client = None
+        try:
+            if not INBOX_MAP_RE.match(creds['mailbox']):
+                raise InboxFout('map')
+            client = _inbox_verbind(creds, timeout=10.0)
+            aantal, _uidvalidity = _inbox_open_map(client, creds['mailbox'])
+            uitkomst = {'ok': True, 'berichten': aantal, 'mailbox': creds['mailbox']}
+        except InboxFout as e:
+            uitkomst = {'ok': False, 'fout': e.als_dict()}
+        except Exception as e:
+            uitkomst = {'ok': False, 'fout': _inbox_uit_uitzondering(e, 'ophalen').als_dict()}
+        finally:
+            _inbox_sluit(client)
+        self._json(200, uitkomst)
+
+    def _inbox_nu_ophalen(self):
+        """POST /api/inbox/ophalen — nu de nieuwe berichten ophalen, buiten het
+        interval om. Body `{"opnieuw": true}` laat de waterlijn los en loopt de
+        nieuwste berichten van de map weer door (na een teruggezette backup, een
+        aangepast afzenderfilter of een per ongeluk verwijderde factuur).
+        409 als de koppeling uit staat of nog niet ingevuld is; `te_snel`
+        (binnen 10 s na de vorige ronde) en `bezig` (er loopt al een ronde)
+        komen als fout in het antwoord."""
+        raw = self._read_body(max_len=1024)
+        if raw is None:
+            return
+        try:
+            verzoek = json.loads(raw) if raw.strip() else {}
+        except ValueError:
+            self._json(400, {'error': 'invalid json'})
+            return
+        opnieuw = isinstance(verzoek, dict) and verzoek.get('opnieuw') is True
+        uitkomst = _inbox_tick(force=True, handmatig=True, opnieuw=opnieuw)
+        if uitkomst is None:
+            self._json(409, {'ok': False, 'fout': {'code': 'uit'}})
+            return
+        _audit_write('inbox_ophalen', 'inkoop_inbox', ip=self.client_address[0],
+                     gebruiker=self._ingress_user(), ok=uitkomst.get('ok'),
+                     nieuw=uitkomst.get('nieuw'), opnieuw=opnieuw)
+        self._json(200, uitkomst)
 
     # ── Backup endpoints ────────────────────────────────────────────────
 
@@ -7144,6 +7914,10 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             try:
                 with conn:
                     nieuwe_versie, nbytes = _schrijf_key(conn, key, parsed)
+                    if key == 'inkoop_inbox':
+                        # De waterlijn hoort bij de lijst: berichten die na deze backup
+                        # binnenkwamen moeten er opnieuw in kunnen komen.
+                        _inbox_waterlijn_vrijgeven(conn)
             except sqlite3.Error:
                 self._json(500, {'error': 'write failed'})
                 return
@@ -7278,6 +8052,12 @@ if __name__ == '__main__':
     # Brouwerij op de webshop. Standaard uit; de tick doet dan niets.
     _threads['website'] = threading.Thread(target=_website_loop, daemon=True)
     _threads['website'].start()
+
+    # Facturen per e-mail: het postvak (IMAP) controleren op PDF-facturen die
+    # de brouwer heeft doorgestuurd. Standaard uit; de tick doet dan niets.
+    _threads['inbox'] = threading.Thread(target=_inbox_loop, daemon=True)
+    _threads['inbox'].start()
+    _log('server', 'Postvak-thread gestart (interval uit imap_creds.interval)')
 
     # Directe-toegangspoort met HA-login (sessiecookie). Alleen bereikbaar
     # van buitenaf wanneer de gebruiker de poort bewust publiceert in de

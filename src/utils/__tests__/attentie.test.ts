@@ -215,3 +215,26 @@ describe('attentiePosten', () => {
     expect(attentieVoorPagina(undefined as any, 'bestellingen')).toEqual([])
   })
 })
+
+describe('attentiePosten — facturen per e-mail', () => {
+  const inboxItem = (id: number, status: string) => ({ id, status, ontvangen: '2026-05-09T10:00:00+00:00', bijlage: { naam: `f${id}.pdf`, bestand: `inbox_${id}.pdf` } })
+
+  it('telt alleen wat nog op verwerking wacht, onder Administratie op het tabblad Inkoop', () => {
+    const bron = leegBron()
+    bron.inkoopInbox = [inboxItem(1, 'nieuw'), inboxItem(2, 'nieuw'), inboxItem(3, 'verwerkt'), inboxItem(4, 'genegeerd')]
+    const posten = attentiePosten(bron).administratie
+    expect(posten).toEqual([{
+      id: 'inkoop_inbox', sleutel: 'attentie_inkoop_inbox', pagina: 'boekhouding', tab: 'inkoop', aantal: 2,
+    }])
+    expect(attentieDoel(posten[0])).toEqual({ pagina: 'boekhouding', tab: 'inkoop' })
+    expect(attentieTotalen(attentiePosten(bron)).administratie).toBe(2)
+  })
+
+  it('valt weg zodra alles verwerkt of genegeerd is, of als er geen lijst is', () => {
+    const bron = leegBron()
+    bron.inkoopInbox = [inboxItem(1, 'verwerkt'), inboxItem(2, 'genegeerd')]
+    expect(attentiePosten(bron).administratie).toEqual([])
+    bron.inkoopInbox = undefined
+    expect(attentiePosten(bron).administratie).toEqual([])
+  })
+})

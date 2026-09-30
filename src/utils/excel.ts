@@ -172,6 +172,7 @@ export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
     addSheet('BatchTakenGroepen',     data.batch_taken_groepen)
     addSheet('InkoopFacturen',        data.inkoop_facturen)
     addSheet('ScanCorrecties',        data.scan_correcties)
+    addSheet('InkoopInbox',           data.inkoop_inbox)
     addSheet('VerkoopFacturen',       data.verkoop_facturen)
     addSheet('Bestellingen',          data.bestellingen)
     addSheet('BestellingPicks',       data.bestelling_picks)
@@ -370,6 +371,7 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
         batch_taken_groepen:          parse('BatchTakenGroepen'),
         inkoop_facturen:              parse('InkoopFacturen'),
         scan_correcties:              parse('ScanCorrecties'),
+        inkoop_inbox:                 parse('InkoopInbox'),
         verkoop_facturen:             parse('VerkoopFacturen'),
         bestellingen:                 parse('Bestellingen'),
         bestelling_picks:             parse('BestellingPicks'),
