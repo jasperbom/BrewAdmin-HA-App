@@ -179,6 +179,39 @@ describe('beslissingen', () => {
   })
 })
 
+describe('beslissingen — facturen per e-mail', () => {
+  const item = (id: number, extra: Record<string, unknown> = {}) => ({
+    id, ontvangen: `2026-05-0${id}T10:00:00+00:00`, status: 'nieuw', van: 'jan@brouwerij.nl', van_naam: 'Jan Jansen',
+    onderwerp: `Factuur ${id}`, bijlage: { naam: `f${id}.pdf`, bestand: `inbox_${id}.pdf` }, ...extra,
+  })
+
+  it('maakt van het hele postvak één wacht_op_jou-rij met het aantal en de oudste als context', () => {
+    const bron = leegBron()
+    bron.inkoopInbox = [item(3), item(1, { mail_datum: '2026-04-30' }), item(2, { status: 'verwerkt' }), item(4, { status: 'genegeerd' })]
+    const rijen = beslissingen(bron)
+    expect(rijen).toHaveLength(1)
+    expect(rijen[0]).toMatchObject({
+      id: 'inbox', urgentie: 'wacht_op_jou', sleutel: 'besl_inbox', contextSleutel: 'besl_inbox_ctx',
+      actieSleutel: 'besl_actie_verwerken', doel: { pagina: 'boekhouding', tab: 'inkoop' }, datum: '2026-04-30',
+      vars: { n: '2', afzender: 'Jan Jansen', onderwerp: 'Factuur 1' },
+    })
+  })
+
+  it('valt weg als alles verwerkt is of er geen postvak is', () => {
+    const bron = leegBron()
+    bron.inkoopInbox = [item(1, { status: 'verwerkt' })]
+    expect(beslissingen(bron)).toEqual([])
+    bron.inkoopInbox = undefined
+    expect(beslissingen(bron)).toEqual([])
+  })
+
+  it('valt terug op de bestandsnaam als de mail geen onderwerp had', () => {
+    const bron = leegBron()
+    bron.inkoopInbox = [item(1, { onderwerp: '' })]
+    expect(beslissingen(bron)[0].vars?.onderwerp).toBe('f1.pdf')
+  })
+})
+
 describe('btwUiterlijk', () => {
   it('geeft de laatste dag van de maand ná het tijdvak', () => {
     expect(btwUiterlijk('2026-06-30')).toBe('2026-07-31')

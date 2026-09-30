@@ -66,13 +66,14 @@ export const BEHEER_KEYS: readonly string[] = [
   'app_logo', 'factuur_logo', 'app_name', 'nav_theme', 'login_instellingen',
   'app_logo_icoon',
   'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
-  'mollie_creds',
+  'imap_creds', 'mollie_creds',
   'website_telemetrie', 'website_telemetrie_status',
+  'inkoop_inbox_status',
 ]
 
 export const FINANCIELE_KEYS: readonly string[] = [
   'inkoop_facturen', 'verkoop_facturen', 'scan_correcties', 'journaal',
-  'jaarafsluitingen', 'bank_saldi', 'bank_koppelingen',
+  'inkoop_inbox', 'jaarafsluitingen', 'bank_saldi', 'bank_koppelingen',
   'kapitaal_boekingen', 'accijns', 'accijns_aangiftes',
   'accijns_instellingen', 'btw_aangiftes', 'btw_instellingen',
   'btw_tarieven', 'ing_type_btw', 'alt_rekeningen', 'kosten_soorten',

@@ -27,7 +27,7 @@ export const AUDIT_SOORTEN = [
   'Ingrediënttype', 'Inkoopfactuur',
   'Instelling', 'Inventarisatie', 'Jaarafsluiting', 'Kapitaalboeking', 'Klant',
   'Koellog', 'Kostensoort', 'Locatie', 'Lot', 'Merch', 'Onderdeel', 'Ongedierte',
-  'Opleiding', 'Product', 'Recept', 'SchoonmaakLog', 'SchoonmaakTaak', 'Sessie',
+  'Opleiding', 'Postvak', 'Product', 'Recept', 'SchoonmaakLog', 'SchoonmaakTaak', 'Sessie',
   'SluitControle', 'Tank', 'TraceOefening', 'Verkoopfactuur', 'Verliesregistratie',
   'Verpakking', 'Verplaatsing', 'Waterbehandeling', 'Waterkwaliteit',
 ] as const

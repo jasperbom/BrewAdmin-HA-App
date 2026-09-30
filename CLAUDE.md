@@ -27,7 +27,10 @@ BrewAdmin-HA-App/
 ├── src/                    # React/TypeScript frontend
 │   ├── components/
 │   │   ├── ui/             # Reusable UI primitives
-│   │   ├── InkoopFactuurModal.tsx
+│   │   ├── InkoopFactuurModal.tsx  # Inkoopformulier; `inboxItem` laadt een PDF uit het postvak (scan + weergave,
+│   │   │                           # geen tweede upload: de factuur wijst naar hetzelfde bestand)
+│   │   ├── InkoopInbox.tsx         # Tab Inkoop → "Ontvangen per e-mail": de wachtrij met doorgestuurde PDF-facturen
+│   │   ├── InkoopMailInstellingen.tsx # Instellingen → Koppelingen → Facturen per e-mail (`imap_creds`, test, status)
 │   │   ├── BatchRapportExport.tsx  # Batchdossier → print-HTML / printvenster / PDF-download
 │   │   └── PakbonExport.tsx        # Pakbon, picklijst, factuur, herinnering. Deelt
 │   │                               # `DOC_CSS`/`esc`/`breweryBlock`/`openPrint` met het dossier
@@ -216,6 +219,11 @@ BrewAdmin-HA-App/
 │   │   │                   # `inkoopRegelExport` leest de kolommen van een inkoopregel (ook oude boekingen)
 │   │   ├── inkoopOntvangst.ts # Inkoopformulier → lots + ontvangst-log, onderdelenvoorraad, factuurregels en
 │   │   │                   # merch-inkopen; gedeeld door de gewone inkoopfactuur en de boeking vanuit de bank
+│   │   ├── inkoopInbox.ts  # Facturen per e-mail: opslagvorm van `inkoop_inbox`/`inkoop_inbox_status`/`imap_creds`,
+│   │   │                   # de pure handelingen op de wachtrij (verwerkt, genegeerd, terugzetten, factuur verwijderd,
+│   │   │                   # definitief verwijderen), foutcodes en redenen → i18n en het afzenderfilter (spiegel van
+│   │   │                   # `_inbox_afzenders`). De server haalt de PDF's op (`_inbox_tick`); er wordt nooit iets
+│   │   │                   # geboekt zonder dat iemand het item opent, de scan nakijkt en de factuur opslaat
 │   │   └── excel.ts        # Volledige backup export/import als Excel (.xlsx) via SheetJS
 │   ├── types/index.ts      # TypeScript interfaces
 │   ├── i18n/               # Translation JSON files (nl/en/de/fr/es)
@@ -380,6 +388,14 @@ WooCommerce ontbreekt, en ruimt de site op bij uitzetten) en de tanktemperatuurb
 zelf, het uitlezen van het werkelijke climate-setpoint én de
 alarmadministratie; tests bewaken dat de drempel-defaults en de
 setpoint-leeftijd in server.py en tankbewaking.ts gelijk blijven).
+De facturen per e-mail hebben een eigen blok: `_inbox_lees_bericht` (PDF's herkennen
+op inhoud i.p.v. type of naam, doorgestuurd als bijlage, afzenderfilter, dubbel, grenzen,
+kapotte invoer), de ophaalronde tegen een nepclient én tegen een echte mini-IMAP-server
+met de echte `imaplib` (waterlijn per map en UIDVALIDITY — ook een server die hem niet meldt —,
+alleen lezen, uitval halverwege, plafond op onverwerkte facturen en op de mailgrootte, gequote
+gebruikersnaam, mapnamen met haken/accenten als modified UTF-7, opnieuw doorlopen en het
+loslaten van de waterlijn bij een teruggezette lijst), verbindingsfouten → codes, de rollen,
+de secret-bestemming en de backup-versleuteling van `imap_creds`.
 De suite start de echte handler op een efemere poort met een tijdelijke
 DATA_DIR.
 
@@ -802,6 +818,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_instellingen` | object | Kritische grenzen uit het handboek: stabiliteitsdagen, forced-fermentation-marge, THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |
 | `inkoop_facturen` | array | Inkoopfacturen |
 | `scan_correcties` | array | Handmatige herclassificaties van factuurscan-regels ({tekst, soort}) — sturen volgende scans |
+| `inkoop_inbox` | array | Facturen per e-mail: de PDF-bijlagen die de server-tick `_inbox_tick` uit het postvak (IMAP) haalde, met `status` `nieuw`/`verwerkt`/`genegeerd`. Item: `{id, ontvangen, mail_datum, van, van_naam, onderwerp, message_id, bijlage: {naam, bestand}, grootte, sha256, status, factuur_id?, afgehandeld?}`. De server voegt alleen nieuwe items toe (bestand `inbox_<sha256[:20]>.pdf` in de bijlagenmap); verwerken, negeren, terugzetten en verwijderen doet de app. Een PDF met een `sha256` die er al in staat (ook genegeerd/verwerkt) komt er nooit nog eens bij. Financiële key: alleen `boekhouding`/`beheer` schrijven. Wel in de Excel-backup |
 | `verkoop_facturen` | array | Verkoopfacturen |
 | `bestellingen` | array | WooCommerce-bestellingen |
 | `bestelling_picks` | array | Pickregels per bestelling |
@@ -812,6 +829,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `wc_import_status` | object | Stand van de automatische WooCommerce-import. Server (`_wc_orders_tick`, interval = `woocommerce_creds.importInterval`): `nieuw` = webshoporders die nog niet als bestelling bestaan, `gemeld_ids` = waarvoor al een HA-melding ging, `laatste_check`/`laatste_fout`. Tabbladen: `bezig_tot`/`door` = import-lease, `laatste_import*`. Bewust **niet** beheer-only (elke schrijvende rol importeert) en niet in de backup (regenereert). De import zelf blijft in de app (`utils/wcOrderImport.ts`) |
 | `website_telemetrie` | object | Website-telemetrie naar de plugin Craftery Brouwerij: `{enabled, interval_min (15–240, default 60), onderdelen: {gisting, sensoren, hop_kg, mout_kg, liters_tank, liters_verpakt, batches_gebrouwen}}` — alles standaard uit, alleen een echte `true` telt. **Beheer-only**; wel in de Excel-backup |
 | `website_telemetrie_status` | object | Stand van de website-telemetrie, alleen door de server geschreven (`_website_verstuur`): `laatste_poging`, `laatst_gelukt`, `gelukt`, `fout` (`{code, http, oorzaak?}`), `antwoord` (begrensd plugin-antwoord: versie, ontvangen, vers, max_leeftijd, regels, plaatshouders), `op_site` (staan er cijfers op de site — stuurt het ene lege bericht bij uitzetten), `leeg`, `handmatig`. Beheer-only, de app leest hem met een gewone GET (geen useStore: die zou de key vanuit de client aanmaken). Niet in de backup (regenereert) |
+| `inkoop_inbox_status` | object | Stand van het postvak, alleen door de server geschreven (`_inbox_ophalen`): `laatste_check`, `laatst_gelukt`, `handmatig`, `fout` (`{code, oorzaak?}`), `mailbox`, `uidvalidity` + `laatste_uid` (de waterlijn: wat al bekeken is), `laatste_ronde` (`{berichten, nieuw, dubbel, overgeslagen}`), `overgeslagen` (nieuwste eerst, max 20: `{ts, van, onderwerp, reden, naam?}`). Beheer-only schrijven, iedereen leest hem met een gewone GET (geen useStore). Niet in de backup en niet terug te zetten (regenereert). De waterlijn hoort bij de lijst: `/api/backups/restore` van `inkoop_inbox` laat hem los (`_inbox_waterlijn_vrijgeven`) en *Opnieuw doorlopen* doet dat op verzoek |
 | `tank_alarmen` | array | Temperatuurstoringen per tank/batch, geopend en gesloten door de server-tick `_tank_bewaking_tick` (soort `waarschuwing`/`alarm`/`sensor_stil`, reden, piekafwijking, hersteltijdstip). De app leest ze voor de banner en zet `bevestigd` bij wegklikken — nooit zelf openen of sluiten |
 | `carbonatie_sessies` | array | Carbonisatie-sessies per batch (CO₂-stone of kopdruk) |
 | `verlies_registraties` | array | Verliesposten per batch (tankrest, leiding, schuim, monster, afgekeurd, overig) |
@@ -845,6 +863,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) `prijzenInclBtw` (voert de winkel prijzen incl. BTW in? default ja — bepaalt de omrekening bij een productpush) en `themaVelden` (Craftery-`_cf_`-velden beheren, default aan), `bestelUrl` (eigen sjabloon voor de bestelpagina van de klant met `{winkel}`/`{id}`/`{sleutel}`; leeg = de bij de import per order bepaalde `wc_bestel_url` — knop in de bestelbevestiging via `bestelLink` in `utils/levering.ts`) — nooit in backup |
 | `claude_creds` *(secure)* | object | Anthropic API-key (nooit in backup) |
 | `smtp_creds` *(secure)* | object | SMTP-server (host/port/user/pass/from/security/enabled) voor pakbon-, factuur- en bestelmail (nooit in backup) |
+| `imap_creds` *(secure)* | object | Postvak voor facturen per e-mail: `{enabled, host, port, security (ssl/starttls/none), username, password, mailbox (INBOX), interval (min, 5–1440, default 15), afzenders[]}` (nooit in backup; wachtwoord afgeschermd en bij een gewijzigde bestemming niet ingevuld, net als SMTP). Beheer-only |
 | `mollie_creds` *(secure)* | object | Mollie API-key + `enabled` + `redirectUrl` voor de online betaallink op verkoopfacturen (nooit in backup); server-side proxy voegt de key toe |
 
 ---
@@ -858,8 +877,8 @@ Backup en restore gaan via Excel (`.xlsx`) — **niet** via JSON. De functies `e
 - **UI:** Instellingen → App → Data import & export (`accept=".xlsx"`)
 - **Bestandsstructuur:** 31 array-sheets (één per datasleutel) + één `Instellingen`-sheet voor objects, primitieven en logo's
 - **Geneste objecten** binnen array-items worden als JSON-string opgeslagen en bij import teruggeparsed
-- **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`) zitten **nooit** in de Excel-backup en alleen gemaskeerd in de download-ZIP van een serverbackup (zonder db-kopie, `_backup_to_zip`); de serverbackup op schijf en offsite bevat ze **alleen versleuteld** (ERP 5.8, zie "Security constraints"), zodat die volledig herstelbaar blijft zonder leesbare geheimen
-- **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`, `website_telemetrie_status`) staat bewust niet in de backup — die regenereert vanzelf
+- **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`, `imap_creds`) zitten **nooit** in de Excel-backup en alleen gemaskeerd in de download-ZIP van een serverbackup (zonder db-kopie, `_backup_to_zip`); de serverbackup op schijf en offsite bevat ze **alleen versleuteld** (ERP 5.8, zie "Security constraints"), zodat die volledig herstelbaar blijft zonder leesbare geheimen
+- **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`, `website_telemetrie_status`, `inkoop_inbox_status`) staat bewust niet in de backup — die regenereert vanzelf
 
 Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `excelExport` (nieuw sheet of rij in Instellingen) én aan de import-callback in `doImport`.
 
@@ -944,6 +963,8 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/website/test` | GET op de plugin-route (`/wp-json/wc-craftery/v1/brouwerij`): versie, laatst ontvangen, vers — verandert niets; beheer-only |
 | POST | `/api/website/verstuur` | Telemetrie nu versturen, buiten het interval (`{instellingen?}`); 409 als de koppeling of alle onderdelen uit staan, `te_snel` binnen 10 s na het vorige bericht. Beheer-only, audit `website_verstuur` |
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
+| POST | `/api/inbox/test` | Facturen per e-mail: met de ingevulde instellingen verbinden, inloggen en de map openen (alleen lezen); `{ok, berichten, mailbox}` of `{ok: false, fout: {code, oorzaak?}}`. Slaat niets op en haalt niets op. Sentinel-wachtwoord + gewijzigd adres → 400 `secret_opnieuw_invoeren`. Beheer-only |
+| POST | `/api/inbox/ophalen` | Het postvak nu ophalen, buiten het interval om (max. 45 s per ronde; de rest volgt vanzelf); 409 `uit` als de koppeling uit staat of niet ingevuld is, fout `te_snel` binnen 10 s na de vorige ronde, `bezig` als er al een loopt. Body `{"opnieuw": true}` (alleen een echte `true`) laat de waterlijn los en loopt de nieuwste 50 berichten weer door — na een teruggezette lijst, een verruimd afzenderfilter of een per ongeluk verwijderde factuur; wat al in de lijst staat komt er niet dubbel bij. `boekhouding` + `beheer`, audit `inbox_ophalen` |
 | POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
 | POST | `/api/mollie/test` | Test een Mollie API-key (beheer-only, niets opslaan); key mag de sentinel zijn |
 | POST | `/api/mollie/payment` | Maak een Mollie **betaallink** (Payment Links API, `/v2/payment-links`) aan voor een factuur (boekhouding); `{amountCent, description, redirectUrl}` → `{checkoutUrl, id, expiresAt}`. Key wordt server-side toegevoegd. Bewust géén Payments API: die levert een kortlevende checkout die na verlopen naar de website doorstuurt |
@@ -988,7 +1009,8 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   directe-toegangspoort) staan in de uitzonderingslijst van
   `_migreer_json_bestanden` — een nieuw infrastructuurbestand in `/data/` hoort
   daar ook bij, anders verhuist het bij de eerstvolgende start
-- Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan. Wijkt de bestemming af (`_SECRET_BESTEMMING`: `storeUrl`; SMTP-host/-poort/-gebruiker/-beveiliging), dan vult hij níét in maar antwoordt 400 `secret_opnieuw_invoeren` (data-POST, commit, mail-/WC-test; UI-spiegel `utils/geheimen.ts`)
+- Secrets-maskering: GET op creds-keys vervangt gevoelige velden door `__SECRET__`; POST vult de sentinel server-side terug in (`_mask_secrets`/`_unmask_secrets`) — nooit omzeilen of de sentinel-waarde opslaan. Wijkt de bestemming af (`_SECRET_BESTEMMING`: `storeUrl`; SMTP- en IMAP-host/-poort/-gebruiker/-beveiliging), dan vult hij níét in maar antwoordt 400 `secret_opnieuw_invoeren` (data-POST, commit, mail-/WC-test; UI-spiegel `utils/geheimen.ts`)
+- Inkomende mail (`_inbox_*`) is onbetrouwbare invoer: het postvak gaat alleen-lezen open (EXAMINE + `BODY.PEEK`), bijlagen tellen alleen als ze echt met `%PDF-` beginnen (nooit op type of naam), begrensd in grootte (`INBOX_MAX_PDF_BYTES`/`INBOX_MAX_MAIL_BYTES`) en aantal, de bestandsnaam uit de mail is alleen weergavetekst (op schijf heet het bestand naar zijn SHA-256), mapnaam en inloggegevens mogen geen stuurtekens bevatten (geen tweede IMAP-commando in de sessie; imaplib quote alleen het wachtwoord, de gebruikersnaam quoten we zelf), een bericht komt nooit heel binnen zonder dat zijn grootte onder het plafond blijft (gedeeltelijke FETCH `BODY.PEEK[]<0.plafond+1>`, dus ook als de server geen grootte meldt), en `INBOX_MAX_OPEN` houdt de wachtrij begrensd. Nooit een bijlage of kop uit een mail als pad, HTML of commando gebruiken
 - Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
 - Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`
 - Geen NaN/Infinity in de opslag: de schrijfwegen lezen via `_json_laden_strikt` (400), HA-waarden gaan door `_eindig_of_none`, en `_json_compact` maakt van een toch binnengekomen niet-eindig getal `null` (Python schreef anders letterlijk `NaN`, wat de app niet kan parsen)
@@ -1170,6 +1192,17 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - API key stored in `instellingen` (`claudeKey`)
 - Server proxies the request, adding the API key server-side
 - Response expected as JSON: `{ supplier, date, invoice_number, lines: [{description, quantity, unit_price, vat_rate, total}] }`
+
+### Facturen per e-mail (postvak, IMAP)
+
+- **Waarom pollen:** de addon is doorgaans niet publiek bereikbaar en kan dus geen mail *ontvangen*. De brouwer stuurt een inkoopfactuur door naar een eigen postvak; de server-thread `inbox` (`_inbox_loop` → `_inbox_tick`, interval `imap_creds.interval`, standaard 15 min) haalt de PDF-bijlagen er zelf uit via `imaplib` (stdlib). Postvakken die alleen met OAuth werken (Microsoft 365, Outlook.com) kunnen niet; Gmail kan met een app-wachtwoord
+- **Alleen lezen, waterlijn per map:** de map gaat met EXAMINE open; niets wordt als gelezen gemarkeerd, verplaatst of verwijderd. Wat al bekeken is staat als UID-waterlijn (`uidvalidity` + `laatste_uid`, per `mailbox`) in `inkoop_inbox_status`; `UID n:*` geeft altijd minstens het laatste bericht, dus filter op `uid > waterlijn`. Wisselt de map of de UIDVALIDITY, dan begint hij opnieuw (een server die UIDVALIDITY niet meldt houdt zijn waterlijn: `None` == `None`). Een mapnaam mag alles zijn behalve stuurtekens, aanhalingsteken en backslash (`[Gmail]/Alle berichten`, `Facturen ë`); niet-ASCII gaat als modified UTF-7 (`_inbox_imap_utf7`), `IMAP_MAP_RE` in `utils/inkoopInbox.ts` spiegelt de regex. De allereerste ronde in een map kijkt naar de nieuwste 50 berichten (`INBOX_MAX_BERICHTEN`), latere rondes nemen hooguit 50 nieuwe tegelijk mee — de rest volgt de volgende ronde
+- **Nooit twee keer dezelfde PDF:** `sha256` van de bytes tegen alle items in `inkoop_inbox` (ook genegeerd of verwerkt). Definitief verwijderen van een genegeerd item (record + bestand) maakt hem weer importeerbaar — dat is bedoeld
+- **Wat er in komt:** `_inbox_lees_bericht` (zuivere functie) zoekt in het hele bericht, ook in een als bijlage doorgestuurd bericht (`message/rfc822`). Overgeslagen berichten krijgen een reden (`geen_pdf`, `afzender`, `te_groot`, `te_veel`, `onleesbaar`, `dubbel`) in `inkoop_inbox_status.overgeslagen` en dus zichtbaar op de tab Inkoop en in de instellingen — een doorgestuurde factuur die niet verschijnt moet altijd te verklaren zijn. Het afzenderfilter (`afzenders`: adressen of `@domein`; leeg = iedereen) kijkt naar de afzender van de doorstuurmail, niet naar die van de leverancier; het is geen echte beveiliging (een afzender is te vervalsen)
+- **Verwerken = het gewone inkoopformulier:** tab Inkoop → *Ontvangen per e-mail* → *Verwerk* opent `InkoopFactuurModal` met `inboxItem`: de PDF wordt geladen, naast het formulier gezet en meteen gescand. Bij opslaan wijst de factuur naar **hetzelfde bestand** (`bijlage` = `inboxItem.bijlage`, geen tweede upload) en wordt het item `verwerkt` met `factuur_id`. `_bijlage_in_gebruik` telt `inkoop_inbox` mee, dus zo'n bestand gaat nooit weg zolang het item of de factuur ernaar wijst. Wordt de factuur verwijderd, dan komt het item terug op de wachtlijst (`inboxFactuurVerwijderd`). Zonder leverancier én factuurnummer maakt de pagina geen factuur; voor een postvak-item boekt ze dan ook geen voorraad en blijft het formulier open (`inbox_vul_factuurgegevens`) — anders stonden de lots er al in terwijl het item op `nieuw` bleef en het volgende verwerken ze nog eens boekte
+- **Er wordt niets automatisch geboekt.** Ook niet als de scan alles goed heeft: het postvak is een wachtrij, de boeking blijft een handeling van een mens
+- **Zichtbaarheid:** badge op het tabblad Inkoop, attentiepost `inkoop_inbox` (werkruimte Administratie), een rij op het Administratie-dashboard (`beslissingen.ts`, `wacht_op_jou`) en één HA-melding per ophaalronde met nieuwe facturen (`notificatie_instellingen`). Een fout van de laatste ronde (`fout.code`: `verbinding`, `certificaat`, `tls`, `login`, `map`, `protocol`, `opslag`, `vol`) staat op de kaart met — bij een instellingsfout — een link die naar de kaart in Instellingen → Koppelingen scrolt
+- **Rollen:** `imap_creds` en `inkoop_inbox_status` alleen `beheer` (in `_BEHEER_KEYS`; `utils/rollen.ts` spiegelt), `inkoop_inbox` is financieel (`boekhouding` + `beheer`). *Test verbinding* is beheer-only, *Nu ophalen* ook voor `boekhouding`
 
 ### Mollie (betaallink op facturen)
 

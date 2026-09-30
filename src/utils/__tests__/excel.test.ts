@@ -226,6 +226,26 @@ describe('Excel backup round-trip (ERP 0.8 / 3.1)', () => {
   })
 })
 
+describe('postvak met inkoopfacturen (inkoop_inbox)', () => {
+  it('gaat mee in de backup, met de verwijzing naar de PDF en de koppeling aan de factuur', () => {
+    const inbox = [
+      { id: 1759240000123456, ontvangen: '2026-09-30T10:15:03+00:00', van: 'jan@brouwerij.nl', van_naam: 'Jan Jansen',
+        onderwerp: 'Fwd: Factuur 2026-0173', bijlage: { naam: 'factuur.pdf', bestand: 'inbox_0123456789abcdef0123.pdf' },
+        grootte: 84213, sha256: 'ab'.repeat(32), status: 'nieuw' },
+      { id: 1759240000123457, ontvangen: '2026-09-30T10:15:04+00:00', status: 'verwerkt', factuur_id: 42,
+        afgehandeld: '2026-09-30T11:00:00+00:00', bijlage: { naam: 'b.pdf', bestand: 'inbox_b.pdf' }, van: 'x@y.nl' },
+    ]
+    const uit = roundTrip({ inkoop_inbox: inbox })
+    expect(uit.inkoop_inbox).toEqual(inbox)
+    // een backup van vóór deze functie kent het tabblad niet: dan blijft de bestaande lijst staan
+    const wb = bouwBackupWerkboek({ klanten: [] })
+    delete wb.Sheets.InkoopInbox
+    wb.SheetNames = wb.SheetNames.filter(n => n !== 'InkoopInbox')
+    const oud = parseBackupWerkboek(XLSX.read(XLSX.write(wb, {bookType: 'xlsx', type: 'array'}), {type: 'array'}))
+    expect(oud.inkoop_inbox).toBeUndefined()
+  })
+})
+
 describe('append-only keys terugzetten (voegToeOpId)', () => {
   it('laat bestaande regels ongemoeid en voegt alleen ontbrekende id\'s toe', () => {
     // De sluitcontrole uit de backup mist `omkeerproef_ok: null` (de

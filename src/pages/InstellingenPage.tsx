@@ -28,6 +28,7 @@ import { rolVanGebruiker, metGebruiker, normaliseerGebruiker } from '../utils/ro
 import { geheimOpnieuwNodig } from '../utils/geheimen'
 import Icon from '../components/ui/Icon'
 import WebsiteTelemetrie from '../components/WebsiteTelemetrie'
+import InkoopMailInstellingen, { POSTVAK_KAART_ID } from '../components/InkoopMailInstellingen'
 
 // Instelbare drempels van de temperatuurbewaking. De volgorde is die van het
 // oordeel zelf: eerst wat "normaal" is, dan wanneer het meldenswaardig wordt,
@@ -466,10 +467,10 @@ const BackupCard = () => {
   const [herstelBezig, setHerstelBezig] = React.useState(false);
   const [herstelMsg, setHerstelMsg] = React.useState('');
   const herstelKeys = React.useMemo(() => {
-    const uit = new Set(['brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds', 'mollie_creds',
+    const uit = new Set(['brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds', 'imap_creds', 'mollie_creds',
       'journaal', 'haccp_vrijgaven', 'haccp_sluitcontroles', 'haccp_etiketcontroles', 'haccp_afwijkingen', 'haccp_trace_oefeningen',
       // Server-beheerd (nummerreeks, afgeleide serverdata) — de server weigert ze ook
-      'nummer_reeksen', 'tank_setpoints', 'wc_import_status', 'website_telemetrie_status', 'app_logo_icoon']);
+      'nummer_reeksen', 'tank_setpoints', 'wc_import_status', 'website_telemetrie_status', 'inkoop_inbox_status', 'app_logo_icoon']);
     return [..._allKeys].filter(k => !uit.has(k)).sort();
   }, []);
   const herstelSleutel = async () => {
@@ -564,7 +565,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, wcImportStatus={}, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, websiteTelemetrie={}, setWebsiteTelemetrie=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null, integriteitSetters={}}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, wcImportStatus={}, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, websiteTelemetrie={}, setWebsiteTelemetrie=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null, integriteitSetters={}, imapCreds=null, setImapCreds=()=>{}, navDoel=null, onNavDoelConsumed=()=>{}}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -817,7 +818,14 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   // kolom 1 half in kolom 2 doorlopen.
   const card = 'bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 break-inside-avoid';
 
-  const [activeSection, setActiveSection] = React.useState('brouwerij');
+  // navDoel.tab = de sectie waar een melding naartoe wijst (bijv. het postvak met facturen per e-mail).
+  const [activeSection, setActiveSection] = React.useState<string>(navDoel?.tab || 'brouwerij');
+  React.useEffect(() => {
+    if (!navDoel) return;
+    onNavDoelConsumed();
+    // Een filter wijst één kaart aan (bijv. het postvak): daar scrollen we naartoe.
+    if (navDoel.filter === 'postvak') setTimeout(() => document.getElementById(POSTVAK_KAART_ID)?.scrollIntoView({behavior: 'smooth', block: 'start'}), 300);
+  }, []);
   const [bijlagenJaar, setBijlagenJaar] = React.useState(new Date().getFullYear());
   const [bijlagenStatus, setBijlagenStatus] = React.useState('');
   const bijlagenPerJaar = React.useMemo(() => {
@@ -2464,6 +2472,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <p>{t('settings_smtp_hint_ports')}</p>
         </div>
       </div>
+
+      {/* FACTUREN PER E-MAIL — POSTVAK (IMAP) */}
+      <InkoopMailInstellingen creds={imapCreds} setCreds={setImapCreds} fmtTs={fmtTs}
+        onAudit={(omschrijving: string) => logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving})} />
 
       {/* MOLLIE — BETAALLINK OP FACTUREN */}
       <div className={card}>

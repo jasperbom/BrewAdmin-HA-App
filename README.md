@@ -61,6 +61,8 @@ what is packaged.
 
 - Excise calculated on release, per month declared and tracked to payment
 - Purchase invoices scanned by Claude AI: supplier, date, number and lines
+- Forward a purchase invoice to a mailbox of your own and the PDF waits on the
+  Purchases tab, ready to scan and book (read-only IMAP, nothing is booked by itself)
 - VAT return per quarter or month, with the journal behind it
 - Bank reconciliation from MT940, including payment service provider payouts
 - Sales invoices as PDF or as UBL/PEPPOL e-invoice, with an optional Mollie
@@ -104,7 +106,8 @@ The hygiene handbook is part of the app, not a separate binder.
 3. Start the addon and open the web interface from the sidebar.
 
 No configuration is required to get going. Brewfather, WooCommerce, Claude AI,
-Mollie and SMTP are all optional and configured under Settings → Integrations.
+Mollie, SMTP and a mailbox for forwarded invoices (IMAP) are all optional and
+configured under Settings → Integrations.
 
 ### Options
 

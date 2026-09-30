@@ -18,6 +18,8 @@ interface AdministratieDashboardProps {
   acc: any[]
   inkoopFacturen: any[]
   verkoopFacturen: any[]
+  /** `inkoop_inbox`: facturen die per e-mail binnenkwamen en op verwerking wachten. */
+  inkoopInbox?: any[]
   klanten?: any[]
   breweryDetails?: any
   /** Blijft in de interface zodat App.tsx ongewijzigd kan doorgeven, maar het
@@ -46,7 +48,7 @@ const URGENTIE_CHIP: Record<Urgentie, string> = {
 
 function AdministratieDashboard({
   btwInst = {}, btwAangiftes = [], bankKoppelingen = {}, accijnsAangiftes = [], acc = [],
-  inkoopFacturen = [], verkoopFacturen = [], klanten = [], breweryDetails = null,
+  inkoopFacturen = [], verkoopFacturen = [], inkoopInbox = [], klanten = [], breweryDetails = null,
   aansluitverschilCent, gaNaarDoel, setPage, setBoekhoudingTab,
 }: AdministratieDashboardProps) {
   const ga = (d: AttentieDoel) => {
@@ -67,9 +69,10 @@ function AdministratieDashboard({
     btwPeriode: btwInst?.periode === 'maand' ? 'maand' : 'kwartaal',
     btwAangiftes, bankKoppelingen,
     accijnsAangiftes, accijns: acc,
+    inkoopInbox,
     aansluitverschilCent,
     vandaagIso: vandaag, vandaag: vandaagDate,
-  }), [verkoopFacturen, inkoopFacturen, klanten, breweryDetails, btwInst, btwAangiftes,
+  }), [verkoopFacturen, inkoopFacturen, inkoopInbox, klanten, breweryDetails, btwInst, btwAangiftes,
        bankKoppelingen, accijnsAangiftes, acc, aansluitverschilCent, vandaag])
 
   // Placeholders invullen; een lege naam/nummer wordt nooit een gat in de zin.

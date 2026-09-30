@@ -12,15 +12,18 @@
 
 import base64
 import datetime
+import email.message
 import gzip
 import hashlib
 import http.client
 import http.server
+import imaplib
 import io
 import json
 import os
 import re
 import socket
+import socketserver
 import ssl
 import threading
 import time
@@ -4310,3 +4313,1188 @@ class TestBackupVersleuteling:
         finally:
             sleutel.write_bytes(bewaard)
             os.chmod(sleutel, 0o600)
+
+
+
+# ── Facturen per e-mail (IMAP) ───────────────────────────────────────────────
+
+def _pdf(inhoud: bytes = b'factuur') -> bytes:
+    return b'%PDF-1.4\n' + inhoud + b'\n%%EOF'
+
+
+def _mail(van='Jan Jansen <jan@brouwerij.nl>', onderwerp='Fwd: Factuur 2026-0173',
+          bijlagen=(), tekst='Zie bijlage'):
+    """Een RFC 822-bericht; `bijlagen` = (bestandsnaam, bytes[, mimetype])."""
+    m = email.message.EmailMessage()
+    m['From'] = van
+    m['To'] = 'facturen@brouwerij.nl'
+    m['Subject'] = onderwerp
+    m['Date'] = 'Tue, 29 Sep 2026 14:02:11 +0200'
+    m['Message-ID'] = '<abc123@mail.example>'
+    m.set_content(tekst)
+    for item in bijlagen:
+        maintype, subtype = (item[2] if len(item) > 2 else 'application/pdf').split('/')
+        m.add_attachment(item[1], maintype=maintype, subtype=subtype, filename=item[0])
+    return m
+
+
+def _raw(**kw) -> bytes:
+    return _mail(**kw).as_bytes()
+
+
+class _NepImap:
+    """IMAP4-vervanger met één map berichten {uid: ruwe bytes}. Doet wat een
+    echte server doet, inclusief dat `UID n:*` altijd het laatste bericht
+    teruggeeft, ook als dat ouder is dan n."""
+
+    def __init__(self, berichten, uidvalidity=1000, faal_bij_uid=None, zonder_grootte=False):
+        self.berichten = berichten
+        self.uidvalidity = uidvalidity      # None = de server meldt hem niet
+        self.faal_bij_uid = faal_bij_uid
+        self.zonder_grootte = zonder_grootte  # antwoordt op RFC822.SIZE zonder getal
+        self.aanroepen = []
+        self.uitgelogd = False
+
+    def select(self, mailbox, readonly=False):
+        self.aanroepen.append(('select', mailbox, readonly))
+        return 'OK', [str(len(self.berichten)).encode()]
+
+    def response(self, code):
+        # Zoals imaplib: (code, [None]) als de server het niet meldde.
+        return code, [None if self.uidvalidity is None else str(self.uidvalidity).encode()]
+
+    def uid(self, commando, *args):
+        self.aanroepen.append(('uid', commando) + args)
+        if commando == 'SEARCH':
+            alle = sorted(self.berichten)
+            if args == ('ALL',):
+                uids = alle
+            else:
+                laagste = int(args[1].split(':')[0])
+                uids = [u for u in alle if u >= laagste] or alle[-1:]
+            return 'OK', [b' '.join(str(u).encode() for u in uids) or None]
+        uid, wat = int(args[0]), args[1]
+        if uid not in self.berichten:
+            return 'OK', [None]
+        raw = self.berichten[uid]
+        if 'RFC822.SIZE' in wat:
+            if self.zonder_grootte:
+                return 'OK', [f'1 (UID {uid})'.encode()]
+            return 'OK', [f'1 (UID {uid} RFC822.SIZE {len(raw)})'.encode()]
+        if uid == self.faal_bij_uid:
+            raise imaplib.IMAP4.abort('socket error: EOF')
+        if 'HEADER.FIELDS' in wat:
+            kop = raw.split(b'\r\n\r\n', 1)[0] + b'\r\n\r\n'
+            return 'OK', [(b'1 (BODY[HEADER.FIELDS] {%d}' % len(kop), kop), b')']
+        # Gedeeltelijke FETCH (`BODY.PEEK[]<0.n>`): hooguit n bytes, zoals een echte server.
+        deel = re.search(r'<0\.(\d+)>', wat)
+        if deel:
+            raw = raw[:int(deel.group(1))]
+        return 'OK', [(b'1 (UID %d BODY[] {%d}' % (uid, len(raw)), raw), b')']
+
+    def logout(self):
+        self.uitgelogd = True
+        return 'BYE', []
+
+    def shutdown(self):
+        pass
+
+
+class _NepFabriek:
+    """Vervangt imaplib.IMAP4 / IMAP4_SSL in server.py. Draagt de foutklassen
+    van imaplib mee: server.py leest `imaplib.IMAP4.error` en `.abort`."""
+    error = imaplib.IMAP4.error
+    abort = imaplib.IMAP4.abort
+
+    def __init__(self, soort, log, verbind_fout=None, login_fout=None, starttls_fout=None):
+        self.soort = soort
+        self.log = log
+        self.verbind_fout = verbind_fout
+        self.login_fout = login_fout
+        self.starttls_fout = starttls_fout
+        self.clients = []
+
+    def __call__(self, host, port, **kw):
+        self.log.append((self.soort, host, port, kw))
+        if self.verbind_fout:
+            raise self.verbind_fout
+        fabriek = self
+
+        class Client(_NepImap):
+            def starttls(self, ssl_context=None):
+                self.aanroepen.append(('starttls',))
+                if fabriek.starttls_fout:
+                    raise fabriek.starttls_fout
+
+            def login(self, gebruiker, wachtwoord):
+                self.aanroepen.append(('login', gebruiker, wachtwoord))
+                if fabriek.login_fout:
+                    raise fabriek.login_fout
+                if not (gebruiker + wachtwoord).isascii():
+                    raise UnicodeEncodeError('ascii', wachtwoord, 0, 1, 'niet-ASCII')
+
+            def authenticate(self, mechanisme, authobject):
+                self.aanroepen.append(('authenticate', mechanisme, authobject(b'')))
+
+        client = Client({})
+        self.clients.append(client)
+        return client
+
+
+class _InboxBasis:
+    """Gedeelde hulpen voor de inbox-tests: instellingen zaaien, opruimen en
+    het postvak vervangen door een nepclient."""
+
+    CREDS = {'enabled': True, 'host': 'imap.example', 'port': 993, 'security': 'ssl',
+             'username': 'facturen@brouwerij.nl', 'password': 'geheim', 'mailbox': 'INBOX',
+             'interval': 15, 'afzenders': []}
+    SLEUTELS = ('imap_creds', 'inkoop_inbox_status', 'inkoop_inbox', 'notificatie_instellingen')
+
+    @classmethod
+    def _seed(cls, creds=None, notif=False):
+        srv._write_json('imap_creds', dict(cls.CREDS, **(creds or {})))
+        srv._write_json('notificatie_instellingen',
+                        {'enabled': notif, 'notify_service': 'mobile_app_test', 'on_screen': True})
+
+    @classmethod
+    def _clean(cls):
+        conn = srv._db()
+        with conn:
+            conn.execute("DELETE FROM records WHERE key='inkoop_inbox'")
+            for k in cls.SLEUTELS:
+                conn.execute("DELETE FROM kv WHERE key=?", (k,))
+                conn.execute("DELETE FROM versies WHERE key=?", (k,))
+        for f in srv.UPLOAD_DIR.glob('inbox_*'):
+            f.unlink()
+        srv._inbox_laatste_poging = 0.0
+        srv._inbox_laatste_check = 0.0
+        srv._inbox_laatste_fout = None
+
+    @staticmethod
+    def _postvak(monkeypatch, berichten, **kw):
+        client = _NepImap(berichten, **kw)
+        gevraagd = []
+
+        def verbind(creds, timeout=srv.INBOX_TIMEOUT_S):
+            gevraagd.append(creds)
+            return client
+        monkeypatch.setattr(srv, '_inbox_verbind', verbind)
+        client.verbindingen = gevraagd
+        return client
+
+
+class TestInkoopInbox(_InboxBasis):
+    """Facturen per e-mail: de server pollt een postvak (IMAP) en zet de
+    PDF-bijlagen als `nieuw` in `inkoop_inbox`. Alleen lezen, waterlijn per
+    map, nooit dezelfde PDF twee keer."""
+
+    # ── de parser (zuiver) ─────────────────────────────────────────────────
+    def test_afzenders_normalisatie(self):
+        assert srv._inbox_afzenders('Jan@X.nl, brouwerij.nl; @andere.nl kapot jan@x.nl') == \
+            ['jan@x.nl', '@brouwerij.nl', '@andere.nl']
+        assert srv._inbox_afzenders(['A@b.nl', 5, None, '', 'a@b.nl']) == ['a@b.nl']
+        assert srv._inbox_afzenders(None) == [] and srv._inbox_afzenders({'x': 1}) == []
+        assert len(srv._inbox_afzenders([f'a{i}@b.nl' for i in range(80)])) == srv.INBOX_MAX_AFZENDERS
+
+    def test_instellingen(self):
+        inst = srv._inbox_instellingen(dict(self.CREDS, host=' IMAP.example ', interval='2', afzenders='a@b.nl'))
+        assert inst['host'] == 'IMAP.example' and inst['interval_min'] == srv.INBOX_INTERVAL_MIN
+        assert inst['afzenders'] == ['a@b.nl'] and inst['enabled'] is True and inst['mailbox'] == 'INBOX'
+        assert srv._inbox_instellingen(dict(self.CREDS, interval=99999))['interval_min'] == srv.INBOX_INTERVAL_MAX
+        assert srv._inbox_instellingen(dict(self.CREDS, interval='x'))['interval_min'] == srv.INBOX_INTERVAL_DEFAULT_MIN
+        assert srv._inbox_instellingen(dict(self.CREDS, security='rot'))['security'] == 'ssl'
+        assert srv._inbox_instellingen(dict(self.CREDS, mailbox=''))['mailbox'] == 'INBOX'
+        # zonder server, poort of gebruiker valt er niets te controleren
+        for kapot in ({'host': ''}, {'host': 'a b'}, {'port': 0}, {'port': 70000}, {'port': 'x'}, {'username': ' '}):
+            assert srv._inbox_instellingen(dict(self.CREDS, **kapot)) is None
+        assert srv._inbox_instellingen(None) is None and srv._inbox_instellingen([]) is None
+        assert srv._inbox_instellingen({'enabled': True}) is None
+
+    def test_bericht_met_pdf(self):
+        pdf = _pdf(b'A')
+        res = srv._inbox_lees_bericht(_raw(bijlagen=[('../../x/Factuur 2026-0173.pdf', pdf)]), [], set())
+        assert res['kop'] == {'van': 'jan@brouwerij.nl', 'van_naam': 'Jan Jansen',
+                              'onderwerp': 'Fwd: Factuur 2026-0173', 'mail_datum': '2026-09-29',
+                              'message_id': '<abc123@mail.example>'}
+        assert [(p['naam'], p['grootte'], p['sha256'], p['bytes']) for p in res['nieuw']] == \
+            [('Factuur 2026-0173.pdf', len(pdf), hashlib.sha256(pdf).hexdigest(), pdf)]  # pad uit de naam
+        assert res['overgeslagen'] == []
+
+    def test_zonder_pdf_en_valse_pdf(self):
+        pdf = _pdf(b'B')
+        # alleen tekst → geen_pdf
+        assert srv._inbox_lees_bericht(_raw(), [], set())['overgeslagen'] == [{'reden': 'geen_pdf'}]
+        # een plaatje is geen factuur
+        res = srv._inbox_lees_bericht(_raw(bijlagen=[('logo.png', b'\x89PNG\r\n', 'image/png')]), [], set())
+        assert res['nieuw'] == [] and res['overgeslagen'] == [{'reden': 'geen_pdf'}]
+        # het type of de naam zegt niets: de inhoud bepaalt
+        res = srv._inbox_lees_bericht(_raw(bijlagen=[
+            ('a.pdf', pdf, 'application/octet-stream'),
+            ('b.pdf', b'ik ben geen pdf', 'application/pdf'),
+            ('zonder-extensie', _pdf(b'C'), 'application/octet-stream'),
+        ]), [], set())
+        assert [p['naam'] for p in res['nieuw']] == ['a.pdf', 'zonder-extensie']
+        assert res['overgeslagen'] == []
+
+    def test_doorgestuurd_als_bijlage(self):
+        # "Doorsturen als bijlage": het originele bericht komt als message/rfc822 mee.
+        inner = _mail(van='Leverancier <fact@mouterij.nl>', onderwerp='Factuur 77',
+                      bijlagen=[('f77.pdf', _pdf(b'77'))])
+        outer = _mail(onderwerp='Fwd: Factuur 77')
+        outer.add_attachment(inner)
+        res = srv._inbox_lees_bericht(outer.as_bytes(), [], set())
+        assert [p['naam'] for p in res['nieuw']] == ['f77.pdf']
+        # de afzender is de doorstuurder, niet de leverancier: díe staat in het filter
+        assert res['kop']['van'] == 'jan@brouwerij.nl'
+
+    def test_afzenderfilter(self):
+        raw = _raw(van='Jan <jan@brouwerij.nl>', bijlagen=[('a.pdf', _pdf(b'F'))])
+        for toegestaan in ([], ['jan@brouwerij.nl'], ['@brouwerij.nl'], ['@x.nl', 'jan@brouwerij.nl']):
+            assert len(srv._inbox_lees_bericht(raw, toegestaan, set())['nieuw']) == 1, toegestaan
+        for geweigerd in (['piet@brouwerij.nl'], ['@mail.brouwerij.nl'], ['@x.nl']):
+            res = srv._inbox_lees_bericht(raw, geweigerd, set())
+            assert res['nieuw'] == [] and res['overgeslagen'] == [{'reden': 'afzender'}], geweigerd
+        # hoofdletters in het adres van de mail tellen niet
+        hoofd = _raw(van='JAN@BROUWERIJ.NL', bijlagen=[('a.pdf', _pdf(b'F'))])
+        assert len(srv._inbox_lees_bericht(hoofd, ['jan@brouwerij.nl'], set())['nieuw']) == 1
+        # zonder leesbaar afzenderadres komt er met een filter niets door
+        zonder = b'From: onzin\r\nSubject: x\r\n\r\nhoi'
+        assert srv._inbox_lees_bericht(zonder, ['@x.nl'], set())['overgeslagen'] == [{'reden': 'afzender'}]
+
+    def test_dubbel_en_grenzen(self, monkeypatch):
+        pdf = _pdf(b'D')
+        sha = hashlib.sha256(pdf).hexdigest()
+        res = srv._inbox_lees_bericht(_raw(bijlagen=[('a.pdf', pdf)]), [], {sha})
+        assert res['nieuw'] == [] and res['overgeslagen'] == [{'reden': 'dubbel', 'naam': 'a.pdf'}]
+        # dezelfde PDF twee keer in één bericht: één nieuw, één dubbel
+        res = srv._inbox_lees_bericht(_raw(bijlagen=[('a.pdf', pdf), ('kopie.pdf', pdf)]), [], set())
+        assert [p['naam'] for p in res['nieuw']] == ['a.pdf']
+        assert res['overgeslagen'] == [{'reden': 'dubbel', 'naam': 'kopie.pdf'}]
+        # te groot
+        monkeypatch.setattr(srv, 'INBOX_MAX_PDF_BYTES', 50)
+        res = srv._inbox_lees_bericht(_raw(bijlagen=[('groot.pdf', _pdf(b'x' * 100))]), [], set())
+        assert res['nieuw'] == [] and res['overgeslagen'] == [{'reden': 'te_groot', 'naam': 'groot.pdf'}]
+        monkeypatch.setattr(srv, 'INBOX_MAX_PDF_BYTES', 10 * 1024 * 1024)
+        # te veel in één bericht
+        monkeypatch.setattr(srv, 'INBOX_MAX_PDF_PER_MAIL', 2)
+        res = srv._inbox_lees_bericht(_raw(bijlagen=[(f'{i}.pdf', _pdf(b'%d' % i)) for i in range(3)]), [], set())
+        assert len(res['nieuw']) == 2 and res['overgeslagen'] == [{'reden': 'te_veel', 'naam': '2.pdf'}]
+
+    def test_kapotte_invoer_geeft_geen_uitzondering(self):
+        diep = b''.join(b'Content-Type: multipart/mixed; boundary="b%d"\r\n\r\n--b%d\r\n' % (i, i)
+                        for i in range(2000))
+        for raw in (b'', b'\x00\xff\xfe rommel', b'Content-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\n', diep):
+            res = srv._inbox_lees_bericht(raw, [], set())
+            assert res['nieuw'] == []
+            assert res['overgeslagen'] and res['overgeslagen'][0]['reden'] in ('geen_pdf', 'onleesbaar')
+
+    def test_weergavetekst_wordt_gezuiverd(self):
+        raw = b'Subject: Fwd:\tFactuur  \x07bel ' + b'x' * 400 + b'\r\nFrom: "A\x01B" <a@b.nl>\r\n\r\nhoi'
+        kop = srv._inbox_lees_bericht(raw, [], set())['kop']
+        assert kop['onderwerp'].isprintable() and len(kop['onderwerp']) == 200
+        assert kop['onderwerp'].startswith('Fwd: Factuur bel xxx')
+        assert kop['van'] == 'a@b.nl' and kop['van_naam'].isprintable()
+        assert srv._inbox_bestandsnaam('C:\\map\\sub/factuur\n.pdf') == 'factuur .pdf'
+        assert srv._inbox_bestandsnaam(None) == ''
+
+    def test_bewaar_pdf_naam_volgt_uit_inhoud(self, app, monkeypatch):
+        pdf = _pdf(b'Z')
+        sha = hashlib.sha256(pdf).hexdigest()
+        try:
+            naam = srv._inbox_bewaar_pdf(sha, pdf)
+            assert naam == f'inbox_{sha[:20]}.pdf' and srv._valid_upload_filename(naam)
+            assert (srv.UPLOAD_DIR / naam).read_bytes() == pdf
+            # nog eens: dezelfde inhoud, dezelfde naam, niets herschreven
+            monkeypatch.setattr(srv, '_atomic_write_bytes', lambda *a: (_ for _ in ()).throw(AssertionError('herschreven')))
+            assert srv._inbox_bewaar_pdf(sha, pdf) == naam
+            monkeypatch.undo()
+            # een schijf die vol zit is een melding, geen crash
+            monkeypatch.setattr(srv, '_atomic_write_bytes', lambda *a: (_ for _ in ()).throw(OSError('vol')))
+            with pytest.raises(srv.InboxFout) as e:
+                srv._inbox_bewaar_pdf(hashlib.sha256(b'x').hexdigest(), b'%PDF-x')
+            assert e.value.code == 'opslag'
+        finally:
+            self._clean()
+
+    # ── verbinden ──────────────────────────────────────────────────────────
+    def _fabrieken(self, monkeypatch, **kw):
+        log = []
+        ssl_fab = _NepFabriek('ssl', log, **kw)
+        plain_fab = _NepFabriek('plain', log, **kw)
+        monkeypatch.setattr(srv.imaplib, 'IMAP4_SSL', ssl_fab)
+        monkeypatch.setattr(srv.imaplib, 'IMAP4', plain_fab)
+        return log, ssl_fab, plain_fab
+
+    def test_verbind_zet_de_juiste_verbinding_op(self, monkeypatch):
+        log, ssl_fab, plain_fab = self._fabrieken(monkeypatch)
+        inst = srv._inbox_instellingen(self.CREDS)
+        client = srv._inbox_verbind(inst, timeout=7.0)
+        soort, host, port, kw = log[0]
+        assert (soort, host, port, kw['timeout']) == ('ssl', 'imap.example', 993, 7.0)
+        assert isinstance(kw['ssl_context'], ssl.SSLContext)
+        # imaplib quote het wachtwoord zelf; de gebruikersnaam quoten we hier.
+        assert ('login', '"facturen@brouwerij.nl"', 'geheim') in client.aanroepen
+        # STARTTLS: gewone verbinding, dan upgraden, dan pas inloggen
+        client = srv._inbox_verbind(dict(inst, security='starttls', port=143))
+        assert log[1][0] == 'plain' and [a[0] for a in client.aanroepen] == ['starttls', 'login']
+        client = srv._inbox_verbind(dict(inst, security='none', port=143))
+        assert [a[0] for a in client.aanroepen] == ['login']
+
+    def test_verbind_vertaalt_fouten_naar_codes(self, monkeypatch):
+        inst = srv._inbox_instellingen(self.CREDS)
+        gevallen = [
+            (dict(verbind_fout=ssl.SSLCertVerificationError()), ('certificaat', None)),
+            (dict(verbind_fout=ssl.SSLError()), ('tls', None)),
+            (dict(verbind_fout=socket.gaierror()), ('verbinding', 'dns')),
+            (dict(verbind_fout=TimeoutError()), ('verbinding', 'timeout')),
+            (dict(verbind_fout=ConnectionRefusedError()), ('verbinding', 'geweigerd')),
+            (dict(verbind_fout=OSError('down')), ('verbinding', None)),
+            (dict(verbind_fout=imaplib.IMAP4.error('onverwacht antwoord')), ('protocol', None)),
+            (dict(verbind_fout=imaplib.IMAP4.abort('unexpected response: 220 smtp')), ('protocol', None)),
+            (dict(login_fout=imaplib.IMAP4.error('[AUTHENTICATIONFAILED] fout')), ('login', None)),
+        ]
+        for opties, (code, oorzaak) in gevallen:
+            self._fabrieken(monkeypatch, **opties)
+            with pytest.raises(srv.InboxFout) as e:
+                srv._inbox_verbind(inst)
+            assert (e.value.code, e.value.oorzaak) == (code, oorzaak), opties
+        # bij een mislukte login blijft er geen open verbinding achter
+        _, ssl_fab, _ = self._fabrieken(monkeypatch, login_fout=imaplib.IMAP4.error('nee'))
+        with pytest.raises(srv.InboxFout):
+            srv._inbox_verbind(inst)
+        assert ssl_fab.clients[0].uitgelogd
+        # STARTTLS die de server niet kent is een tls-fout, geen protocolfout
+        self._fabrieken(monkeypatch, starttls_fout=imaplib.IMAP4.error('STARTTLS extension not supported'))
+        with pytest.raises(srv.InboxFout) as e:
+            srv._inbox_verbind(dict(inst, security='starttls', port=143))
+        assert e.value.code == 'tls'
+
+    def test_verbind_weigert_stuurtekens_in_de_inloggegevens(self, monkeypatch):
+        # Geen tweede IMAP-commando in de sessie smokkelen via een regeleinde.
+        _, ssl_fab, _ = self._fabrieken(monkeypatch)
+        for kapot in ({'password': 'a\r\nA2 DELETE INBOX'}, {'username': 'jan\r\nA2 LOGOUT'}, {'password': 'a\x00b'}):
+            with pytest.raises(srv.InboxFout) as e:
+                srv._inbox_verbind(srv._inbox_instellingen(dict(self.CREDS, **kapot)))
+            assert e.value.code == 'login', kapot
+        assert all(not any(a[0] == 'login' for a in c.aanroepen) for c in ssl_fab.clients)
+        assert all(c.uitgelogd for c in ssl_fab.clients)
+
+    def test_verbind_quote_de_gebruikersnaam(self, monkeypatch):
+        # imaplib quote het wachtwoord maar de gebruikersnaam niet: `DOMEIN\\jan` of een naam met
+        # spatie of aanhalingsteken verminkte het LOGIN-commando (of schoof er een extra argument in).
+        self._fabrieken(monkeypatch)
+        for naam, verwacht in (('DOMEIN\\jan', '"DOMEIN\\\\jan"'),
+                               ('jan jansen', '"jan jansen"'),
+                               ('jan "x"', '"jan \\"x\\""'),
+                               ('jan@x.nl', '"jan@x.nl"')):
+            client = srv._inbox_verbind(srv._inbox_instellingen(dict(self.CREDS, username=naam)))
+            assert client.aanroepen[-1] == ('login', verwacht, 'geheim'), naam
+
+    def test_verbind_wachtwoord_met_niet_ascii_gaat_via_plain(self, monkeypatch):
+        self._fabrieken(monkeypatch)
+        client = srv._inbox_verbind(srv._inbox_instellingen(dict(self.CREDS, password='wächtwoord')))
+        # LOGIN kent alleen ASCII; AUTHENTICATE PLAIN (RFC 4616) gaat in UTF-8
+        assert client.aanroepen[-1][:2] == ('authenticate', 'PLAIN')
+        assert client.aanroepen[-1][2] == '\0facturen@brouwerij.nl\0wächtwoord'.encode('utf-8')
+
+    def test_map_openen(self):
+        class Client(_NepImap):
+            def __init__(self, antwoord=None, fout=None, **kw):
+                super().__init__({1: b'x'}, **kw)
+                self.antwoord, self.fout = antwoord, fout
+
+            def select(self, mailbox, readonly=False):
+                if self.fout:
+                    raise self.fout
+                return self.antwoord or super().select(mailbox, readonly)
+        assert srv._inbox_open_map(Client(), 'INBOX') == (1, 1000)
+        with pytest.raises(srv.InboxFout) as e:
+            srv._inbox_open_map(Client(antwoord=('NO', [b'bestaat niet'])), 'Weg')
+        assert e.value.code == 'map'
+        with pytest.raises(srv.InboxFout) as e:
+            srv._inbox_open_map(Client(fout=imaplib.IMAP4.error('BAD')), 'Weg')
+        assert e.value.code == 'map'
+        with pytest.raises(srv.InboxFout) as e:
+            srv._inbox_open_map(Client(fout=imaplib.IMAP4.abort('EOF')), 'INBOX')
+        assert e.value.code == 'verbinding'
+        assert srv._inbox_quote('Facturen "2026"') == '"Facturen \\"2026\\""'
+
+    def test_mapnamen_met_haken_en_niet_ascii(self):
+        # Gmail: `[Gmail]/Alle berichten`; en accenten gaan als modified UTF-7 (RFC 3501 §5.1.3).
+        for geldig in ('INBOX', '[Gmail]/Alle berichten', 'Facturen ë', 'Reçu/2026', 'R&D', '日本語', 'x' * 100):
+            assert srv.INBOX_MAP_RE.match(geldig), geldig
+        for ongeldig in ('', 'x' * 101, 'a"b', 'a\\b', 'a\nb', 'a\x00b', 'a\x85b'):
+            assert not srv.INBOX_MAP_RE.match(ongeldig), repr(ongeldig)
+        assert srv._inbox_imap_utf7('INBOX') == 'INBOX'
+        assert srv._inbox_imap_utf7('[Gmail]/Alle berichten') == '[Gmail]/Alle berichten'
+        assert srv._inbox_imap_utf7('&AOs-') == '&AOs-'                # al gecodeerd getypt: ongemoeid
+        assert srv._inbox_imap_utf7('Facturen ë') == 'Facturen &AOs-'
+        assert srv._inbox_imap_utf7('Facturen & ë') == 'Facturen &- &AOs-'
+        assert srv._inbox_imap_utf7('Reçu é/ü') == 'Re&AOc-u &AOk-/&APw-'
+        assert srv._inbox_imap_utf7('日本語') == '&ZeVnLIqe-'
+        assert srv._inbox_imap_utf7('x😀y') == 'x&2D3eAA-y'             # buiten het BMP: surrogaatpaar
+        client = _NepImap({1: b'x'})
+        srv._inbox_open_map(client, 'Facturen ë')
+        srv._inbox_open_map(client, '[Gmail]/Alle berichten')
+        assert [a[1] for a in client.aanroepen if a[0] == 'select'] == \
+            ['"Facturen &AOs-"', '"[Gmail]/Alle berichten"']
+
+    # ── de ronde ───────────────────────────────────────────────────────────
+    def test_eerste_ronde_haalt_op_en_onthoudt_waterlijn(self, app, monkeypatch):
+        meldingen = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (meldingen.append((s, t, m)) or True))
+        pdf_a, pdf_b = _pdf(b'A'), _pdf(b'B')
+        client = self._postvak(monkeypatch, {
+            1: _raw(onderwerp='Factuur A', bijlagen=[('a.pdf', pdf_a)]),
+            2: _raw(onderwerp='Zonder bijlage'),
+            3: _raw(onderwerp='Nog eens A', bijlagen=[('a-kopie.pdf', pdf_a)]),
+            4: _raw(onderwerp='Factuur B', van='Piet <piet@ander.nl>', bijlagen=[('b.pdf', pdf_b)]),
+        })
+        self._seed(notif=True)
+        try:
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst == {'ok': True, 'fout': None, 'berichten': 4, 'nieuw': 2, 'dubbel': 1,
+                                'overgeslagen': 2}
+            items = srv._read_json('inkoop_inbox')
+            assert [i['onderwerp'] for i in items] == ['Factuur A', 'Factuur B']
+            assert all(i['status'] == 'nieuw' and isinstance(i['id'], int) for i in items)
+            assert len({i['id'] for i in items}) == 2
+            a = items[0]
+            assert a['van'] == 'jan@brouwerij.nl' and a['van_naam'] == 'Jan Jansen'
+            assert a['mail_datum'] == '2026-09-29' and a['message_id'] == '<abc123@mail.example>'
+            assert a['sha256'] == hashlib.sha256(pdf_a).hexdigest() and a['grootte'] == len(pdf_a)
+            assert a['bijlage'] == {'naam': 'a.pdf', 'bestand': f"inbox_{a['sha256'][:20]}.pdf"}
+            assert (srv.UPLOAD_DIR / a['bijlage']['bestand']).read_bytes() == pdf_a
+            assert items[1]['van'] == 'piet@ander.nl'
+            st = srv._read_json('inkoop_inbox_status')
+            assert st['laatste_uid'] == 4 and st['uidvalidity'] == 1000 and st['mailbox'] == 'INBOX'
+            assert st['fout'] is None and st['laatst_gelukt'] == st['laatste_check'] and st['handmatig'] is False
+            assert st['laatste_ronde'] == {'berichten': 4, 'nieuw': 2, 'dubbel': 1, 'overgeslagen': 2}
+            # nieuwste eerst: eerst het duplicaat (bericht 3), dan bericht zonder bijlage
+            assert [(o['reden'], o['onderwerp']) for o in st['overgeslagen']] == \
+                [('dubbel', 'Nog eens A'), ('geen_pdf', 'Zonder bijlage')]
+            # één HA-melding voor de hele ronde
+            assert len(meldingen) == 1 and meldingen[0][0] == 'mobile_app_test'
+            assert '2 facturen' in meldingen[0][2] and 'Factuur A' in meldingen[0][2]
+            # alleen lezen: map met EXAMINE, berichten met PEEK, en netjes uitloggen
+            assert ('select', '"INBOX"', True) in client.aanroepen
+            assert all('PEEK' in a[3] or 'SIZE' in a[3] for a in client.aanroepen if a[:2] == ('uid', 'FETCH'))
+            assert not any(a[1] in ('STORE', 'COPY', 'EXPUNGE') for a in client.aanroepen if a[0] == 'uid')
+            # elk item staat in het serveraudit
+            audit = srv.AUDIT_DIR / f'audit_{datetime.date.today():%Y-%m}.jsonl'
+            regels = [json.loads(r) for r in audit.read_text().splitlines()]
+            assert {r['bestand'] for r in regels if r['actie'] == 'inbox_import'} >= \
+                {i['bijlage']['bestand'] for i in items}
+        finally:
+            self._clean()
+
+    def test_volgende_ronde_pakt_alleen_wat_er_bij_kwam(self, app, monkeypatch):
+        berichten = {1: _raw(onderwerp='Een', bijlagen=[('1.pdf', _pdf(b'1'))])}
+        client = self._postvak(monkeypatch, berichten)
+        self._seed()
+        try:
+            assert srv._inbox_tick(force=True)['nieuw'] == 1
+            versie = srv._data_version('inkoop_inbox')
+            # Niets nieuws: de server geeft dan toch het laatste bericht terug
+            # (`UID 2:*`); de waterlijn houdt het eruit en de lijst blijft ongemoeid.
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['berichten'] == 0 and uitkomst['nieuw'] == 0
+            assert srv._data_version('inkoop_inbox') == versie
+            berichten[5] = _raw(onderwerp='Vijf', bijlagen=[('5.pdf', _pdf(b'5'))])
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['berichten'] == 1 and uitkomst['nieuw'] == 1
+            assert [i['onderwerp'] for i in srv._read_json('inkoop_inbox')] == ['Een', 'Vijf']
+            assert srv._read_json('inkoop_inbox_status')['laatste_uid'] == 5
+            # de volgende ronde zoekt vanaf de waterlijn + 1
+            assert srv._inbox_tick(force=True)['berichten'] == 0
+            assert ('uid', 'SEARCH', 'UID', '6:*') in client.aanroepen
+        finally:
+            self._clean()
+
+    def test_bestaande_items_blijven_en_ids_botsen_niet(self, app, monkeypatch):
+        oud = {'id': 1, 'status': 'verwerkt', 'sha256': 'x', 'factuur_id': 7, 'onderwerp': 'oud'}
+        srv._write_json('inkoop_inbox', [oud])
+        self._postvak(monkeypatch, {1: _raw(bijlagen=[('a.pdf', _pdf(b'a')), ('b.pdf', _pdf(b'b'))])})
+        self._seed()
+        try:
+            srv._inbox_tick(force=True)
+            items = srv._read_json('inkoop_inbox')
+            assert items[0] == oud and len(items) == 3
+            assert len({i['id'] for i in items}) == 3
+        finally:
+            self._clean()
+
+    def test_zelfde_pdf_komt_er_nooit_nog_eens_bij(self, app, monkeypatch):
+        # Ook een genegeerd of al verwerkt item telt: anders komt de factuur
+        # die je net hebt weggeklikt bij de volgende doorstuur-mail terug.
+        pdf = _pdf(b'K')
+        sha = hashlib.sha256(pdf).hexdigest()
+        srv._write_json('inkoop_inbox', [{'id': 1, 'status': 'genegeerd', 'sha256': sha}])
+        self._postvak(monkeypatch, {1: _raw(bijlagen=[('k.pdf', pdf)])})
+        self._seed()
+        try:
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['nieuw'] == 0 and uitkomst['dubbel'] == 1
+            assert len(srv._read_json('inkoop_inbox')) == 1
+        finally:
+            self._clean()
+
+    def test_uidvalidity_of_map_wijzigt_begint_opnieuw(self, app, monkeypatch):
+        berichten = {i: _raw(onderwerp=f'm{i}', bijlagen=[(f'{i}.pdf', _pdf(b'%d' % i))]) for i in (1, 2, 3)}
+        client = self._postvak(monkeypatch, berichten)
+        self._seed()
+        try:
+            assert srv._inbox_tick(force=True)['nieuw'] == 3
+            # De server bouwt het postvak opnieuw op: alle UID's zeggen niets meer.
+            # De bekende PDF's komen er niet nog eens in — wel bekijkt hij ze opnieuw.
+            client.uidvalidity = 2000
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['berichten'] == 3 and uitkomst['nieuw'] == 0 and uitkomst['dubbel'] == 3
+            assert srv._read_json('inkoop_inbox_status')['uidvalidity'] == 2000
+            # Een andere map: eigen waterlijn, dus ook daar opnieuw beginnen.
+            self._seed(creds={'mailbox': 'Facturen 2026'})
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['berichten'] == 3
+            assert ('select', '"Facturen 2026"', True) in client.aanroepen
+            assert srv._read_json('inkoop_inbox_status')['mailbox'] == 'Facturen 2026'
+        finally:
+            self._clean()
+
+    def test_server_zonder_uidvalidity_houdt_zijn_waterlijn(self, app, monkeypatch):
+        # Meldt de server UIDVALIDITY niet, dan geldt de waterlijn gewoon: anders haalde elke
+        # ronde de nieuwste 50 berichten opnieuw binnen (en kwam een weggeklikte factuur terug).
+        berichten = {i: _raw(onderwerp=f'm{i}', bijlagen=[(f'{i}.pdf', _pdf(b'%d' % i))]) for i in (1, 2)}
+        client = self._postvak(monkeypatch, berichten, uidvalidity=None)
+        self._seed()
+        try:
+            assert srv._inbox_tick(force=True)['nieuw'] == 2
+            st = srv._read_json('inkoop_inbox_status')
+            assert st['uidvalidity'] is None and st['laatste_uid'] == 2
+            assert srv._inbox_tick(force=True)['berichten'] == 0
+            assert srv._inbox_tick(force=True)['berichten'] == 0
+            assert client.aanroepen.count(('uid', 'SEARCH', 'ALL')) == 1
+            assert ('uid', 'SEARCH', 'UID', '3:*') in client.aanroepen
+            # Gaat de server hem later wél melden, dan zegt de oude waterlijn niets meer.
+            client.uidvalidity = 77
+            assert srv._inbox_tick(force=True)['berichten'] == 2
+            assert client.aanroepen.count(('uid', 'SEARCH', 'ALL')) == 2
+        finally:
+            self._clean()
+
+    def test_eerste_ronde_kijkt_naar_de_nieuwste_vijftig_en_vervolgt_daarna(self, app, monkeypatch):
+        def bericht(i):
+            return _raw(onderwerp=f'm{i}', bijlagen=[(f'{i}.pdf', _pdf(b'%d' % i))])
+        berichten = {i: bericht(i) for i in range(1, 61)}
+        self._postvak(monkeypatch, berichten)
+        self._seed()
+        try:
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['berichten'] == 50 and uitkomst['nieuw'] == 50
+            assert srv._read_json('inkoop_inbox')[0]['onderwerp'] == 'm11'  # 1–10 blijven buiten beeld
+            assert srv._read_json('inkoop_inbox_status')['laatste_uid'] == 60
+            # Komt er meer bij dan in één ronde past, dan verdwijnt er niets: de rest volgt.
+            berichten.update({i: bericht(i) for i in range(61, 121)})
+            assert srv._inbox_tick(force=True)['berichten'] == 50
+            assert srv._read_json('inkoop_inbox_status')['laatste_uid'] == 110
+            assert srv._inbox_tick(force=True)['berichten'] == 10
+            assert len(srv._read_json('inkoop_inbox')) == 110
+        finally:
+            self._clean()
+
+    def test_volle_lijst_houdt_de_rest_in_het_postvak(self, app, monkeypatch):
+        # Wie het adres kent kan anders schijf en lijst blijven volgooien.
+        monkeypatch.setattr(srv, 'INBOX_MAX_OPEN', 3)
+        srv._write_json('inkoop_inbox', [{'id': i, 'status': 'nieuw', 'sha256': f'oud{i}'} for i in (1, 2)]
+                        + [{'id': 3, 'status': 'genegeerd', 'sha256': 'oud3'}])   # afgehandeld telt niet mee
+        berichten = {i: _raw(onderwerp=f'm{i}', bijlagen=[(f'{i}.pdf', _pdf(b'%d' % i))]) for i in (1, 2, 3)}
+        self._postvak(monkeypatch, berichten)
+        self._seed()
+        try:
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['ok'] is False and uitkomst['fout'] == {'code': 'vol'} and uitkomst['nieuw'] == 1
+            st = srv._read_json('inkoop_inbox_status')
+            assert st['laatste_uid'] == 1 and st['fout'] == {'code': 'vol'}
+            # Zodra er iets verwerkt is gaat het verder waar het bleef — niets gemist.
+            items = srv._read_json('inkoop_inbox')
+            srv._write_json('inkoop_inbox', [dict(i, status='verwerkt') for i in items])
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['ok'] is True and uitkomst['nieuw'] == 2
+            assert [i.get('onderwerp') for i in srv._read_json('inkoop_inbox')][-3:] == ['m1', 'm2', 'm3']
+        finally:
+            self._clean()
+
+    def test_te_groot_bericht_wordt_niet_binnengehaald(self, app, monkeypatch):
+        monkeypatch.setattr(srv, 'INBOX_MAX_MAIL_BYTES', 300)
+        client = self._postvak(monkeypatch, {1: _raw(onderwerp='Enorm', bijlagen=[('a.pdf', _pdf(b'x' * 2000))])})
+        self._seed()
+        try:
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['nieuw'] == 0 and uitkomst['overgeslagen'] == 1
+            o = srv._read_json('inkoop_inbox_status')['overgeslagen'][0]
+            assert (o['reden'], o['onderwerp'], o['van']) == ('te_groot', 'Enorm', 'jan@brouwerij.nl')
+            assert not any('BODY.PEEK[]' in str(a) for a in client.aanroepen)
+        finally:
+            self._clean()
+
+    def test_onbekende_grootte_haalt_nooit_meer_dan_het_plafond_binnen(self, app, monkeypatch):
+        # Meldt de server geen (bruikbare) RFC822.SIZE, dan mag het plafond niet vervallen: de
+        # FETCH is gedeeltelijk (`<0.plafond+1>`), dus een enorm bericht komt nooit heel in het geheugen.
+        monkeypatch.setattr(srv, 'INBOX_MAX_MAIL_BYTES', 1500)
+        klein = _raw(onderwerp='Klein', bijlagen=[('k.pdf', _pdf(b'klein'))])
+        assert len(klein) < 1500
+        client = self._postvak(monkeypatch, {
+            1: klein,
+            2: _raw(onderwerp='Enorm', bijlagen=[('e.pdf', _pdf(b'x' * 20000))]),
+        }, zonder_grootte=True)
+        self._seed()
+        try:
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['nieuw'] == 1 and uitkomst['overgeslagen'] == 1
+            assert [i['onderwerp'] for i in srv._read_json('inkoop_inbox')] == ['Klein']
+            o = srv._read_json('inkoop_inbox_status')['overgeslagen'][0]
+            assert (o['reden'], o['onderwerp']) == ('te_groot', 'Enorm')
+            haalt = [a[3] for a in client.aanroepen if a[:2] == ('uid', 'FETCH') and 'BODY.PEEK[]' in a[3]]
+            assert haalt == ['(BODY.PEEK[]<0.1501>)'] * 2       # nooit een onbegrensde FETCH
+            assert srv._read_json('inkoop_inbox_status')['laatste_uid'] == 2
+        finally:
+            self._clean()
+
+    def test_fout_bewaart_waterlijn_en_geeft_een_code(self, app, monkeypatch):
+        berichten = {1: _raw(onderwerp='Een', bijlagen=[('1.pdf', _pdf(b'1'))])}
+        self._postvak(monkeypatch, berichten)
+        self._seed()
+        try:
+            assert srv._inbox_tick(force=True)['ok'] is True
+            gelukt = srv._read_json('inkoop_inbox_status')['laatst_gelukt']
+
+            def stuk(creds, timeout=0):
+                raise srv.InboxFout('verbinding', 'dns')
+            monkeypatch.setattr(srv, '_inbox_verbind', stuk)
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['ok'] is False and uitkomst['fout'] == {'code': 'verbinding', 'oorzaak': 'dns'}
+            st = srv._read_json('inkoop_inbox_status')
+            assert st['fout'] == {'code': 'verbinding', 'oorzaak': 'dns'}
+            assert st['laatste_uid'] == 1 and st['laatst_gelukt'] == gelukt
+            assert srv._inbox_laatste_fout == 'verbinding'
+            assert len(srv._read_json('inkoop_inbox')) == 1
+            # herstelt de verbinding, dan is de fout weg
+            self._postvak(monkeypatch, berichten)
+            assert srv._inbox_tick(force=True)['ok'] is True
+            assert srv._read_json('inkoop_inbox_status')['fout'] is None and srv._inbox_laatste_fout is None
+        finally:
+            self._clean()
+
+    def test_uitval_halverwege_houdt_vast_wat_er_al_is(self, app, monkeypatch):
+        berichten = {i: _raw(onderwerp=f'm{i}', bijlagen=[(f'{i}.pdf', _pdf(b'%d' % i))]) for i in (1, 2, 3)}
+        client = self._postvak(monkeypatch, berichten, faal_bij_uid=3)
+        self._seed()
+        try:
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['ok'] is False and uitkomst['fout'] == {'code': 'verbinding'}
+            assert [i['onderwerp'] for i in srv._read_json('inkoop_inbox')] == ['m1', 'm2']
+            assert srv._read_json('inkoop_inbox_status')['laatste_uid'] == 2
+            # De volgende ronde gaat door bij bericht 3 — niets dubbel, niets gemist.
+            client.faal_bij_uid = None
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['ok'] is True and uitkomst['nieuw'] == 1
+            assert [i['onderwerp'] for i in srv._read_json('inkoop_inbox')] == ['m1', 'm2', 'm3']
+        finally:
+            self._clean()
+
+    def test_ongeldige_mapnaam_wordt_niet_stil_vervangen(self, app, monkeypatch):
+        client = self._postvak(monkeypatch, {1: _raw(bijlagen=[('a.pdf', _pdf(b'a'))])})
+        self._seed(creds={'mailbox': 'Inbox"\r\nA1 DELETE x'})
+        try:
+            uitkomst = srv._inbox_tick(force=True)
+            assert uitkomst['fout'] == {'code': 'map'} and client.aanroepen == []
+        finally:
+            self._clean()
+
+    def test_interval_en_handmatig(self, app, monkeypatch):
+        client = self._postvak(monkeypatch, {})
+        self._seed()
+        try:
+            assert srv._inbox_tick(now=1000.0)['ok'] is True
+            assert len(client.verbindingen) == 1
+            assert srv._inbox_tick(now=1060.0) is None                     # interval (15 min) nog niet om
+            assert srv._inbox_tick(now=1000.0 + 15 * 60 + 1) is not None   # nu wel
+            assert len(client.verbindingen) == 2
+            laatste = srv._inbox_laatste_poging
+            # "Nu ophalen": niet vaker dan eens per tien seconden
+            uitkomst = srv._inbox_tick(now=laatste + 3, force=True, handmatig=True)
+            assert uitkomst == {'ok': False, 'fout': {'code': 'te_snel'}}
+            assert len(client.verbindingen) == 2
+            uitkomst = srv._inbox_tick(now=laatste + 11, force=True, handmatig=True)
+            assert uitkomst['ok'] is True and len(client.verbindingen) == 3
+            assert srv._read_json('inkoop_inbox_status')['handmatig'] is True
+        finally:
+            self._clean()
+
+    def test_opnieuw_doorlopen_laat_de_waterlijn_los(self, app, monkeypatch):
+        # Achter de waterlijn komt een bericht nooit terug: ook niet nadat het afzenderfilter is
+        # verruimd. "Opnieuw doorlopen" bekijkt de nieuwste berichten weer; wat al in de lijst
+        # staat (op SHA-256) komt er niet dubbel bij.
+        berichten = {
+            1: _raw(onderwerp='Van Piet', van='Piet <piet@ander.nl>', bijlagen=[('p.pdf', _pdf(b'P'))]),
+            2: _raw(onderwerp='Van Jan', bijlagen=[('j.pdf', _pdf(b'J'))]),
+        }
+        client = self._postvak(monkeypatch, berichten)
+        self._seed(creds={'afzenders': ['@brouwerij.nl']})
+        try:
+            assert srv._inbox_tick(force=True)['nieuw'] == 1              # Piet valt buiten het filter
+            assert srv._read_json('inkoop_inbox_status')['laatste_uid'] == 2
+            self._seed(creds={'afzenders': []})
+            assert srv._inbox_tick(force=True)['berichten'] == 0          # de waterlijn houdt hem buiten beeld
+            uitkomst = srv._inbox_tick(force=True, opnieuw=True)
+            assert (uitkomst['berichten'], uitkomst['nieuw'], uitkomst['dubbel']) == (2, 1, 1)
+            assert sorted(i['onderwerp'] for i in srv._read_json('inkoop_inbox')) == ['Van Jan', 'Van Piet']
+            assert client.aanroepen.count(('uid', 'SEARCH', 'ALL')) == 2   # de eerste ronde en deze
+            # Daarna weer gewoon vanaf de waterlijn.
+            assert srv._read_json('inkoop_inbox_status')['laatste_uid'] == 2
+            assert srv._inbox_tick(force=True)['berichten'] == 0
+        finally:
+            self._clean()
+
+    def test_uit_of_onvolledig_doet_niets(self, app, monkeypatch):
+        client = self._postvak(monkeypatch, {1: _raw(bijlagen=[('a.pdf', _pdf(b'a'))])})
+        try:
+            assert srv._inbox_tick(force=True) is None                     # niets ingesteld
+            for creds in ({'enabled': False}, {'host': ''}, {'username': ''}, {'port': 0}):
+                self._seed(creds=creds)
+                assert srv._inbox_tick(force=True) is None, creds
+            assert client.verbindingen == [] and srv._read_json('inkoop_inbox') is None
+        finally:
+            self._clean()
+
+    def test_twee_rondes_tegelijk_kan_niet(self, app, monkeypatch):
+        client = self._postvak(monkeypatch, {})
+        self._seed()
+        srv._inbox_lock.acquire()
+        try:
+            assert srv._inbox_tick(force=True) == {'ok': False, 'fout': {'code': 'bezig'}}
+            assert client.verbindingen == []
+        finally:
+            srv._inbox_lock.release()
+            self._clean()
+
+    def test_zonder_notify_geen_melding_maar_wel_import(self, app, monkeypatch):
+        meldingen = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (meldingen.append(1) or True))
+        self._postvak(monkeypatch, {1: _raw(bijlagen=[('a.pdf', _pdf(b'a'))])})
+        self._seed(notif=False)
+        try:
+            assert srv._inbox_tick(force=True)['nieuw'] == 1 and meldingen == []
+        finally:
+            self._clean()
+
+    # ── endpoints ──────────────────────────────────────────────────────────
+    def test_endpoint_test_verbinding(self, app, monkeypatch):
+        gezien = []
+        client = _NepImap({1: b'x', 2: b'y', 3: b'z'})
+
+        def verbind(creds, timeout=0):
+            gezien.append(creds)
+            if creds['password'] == 'fout':
+                raise srv.InboxFout('login')
+            return client
+        monkeypatch.setattr(srv, '_inbox_verbind', verbind)
+        try:
+            status, body, _ = req(app, 'POST', '/api/inbox/test', body=self.CREDS)
+            assert status == 200 and body == {'ok': True, 'berichten': 3, 'mailbox': 'INBOX'}
+            assert client.uitgelogd and ('select', '"INBOX"', True) in client.aanroepen
+            status, body, _ = req(app, 'POST', '/api/inbox/test', body=dict(self.CREDS, password='fout'))
+            assert status == 200 and body == {'ok': False, 'fout': {'code': 'login'}}
+            status, body, _ = req(app, 'POST', '/api/inbox/test', body=dict(self.CREDS, mailbox='a"b'))
+            assert body == {'ok': False, 'fout': {'code': 'map'}}
+            assert req(app, 'POST', '/api/inbox/test', body=dict(self.CREDS, host=''))[0] == 400
+            assert req(app, 'POST', '/api/inbox/test', body=b'[1]')[0] == 400
+            assert req(app, 'POST', '/api/inbox/test', body=b'geen json')[0] == 400
+            # Niets opgeslagen en niets opgehaald.
+            assert srv._read_json('imap_creds') is None and srv._read_json('inkoop_inbox') is None
+        finally:
+            self._clean()
+
+    def test_endpoint_test_vult_geheim_niet_in_bij_ander_adres(self, app, monkeypatch):
+        gezien = []
+        monkeypatch.setattr(srv, '_inbox_verbind',
+                            lambda creds, timeout=0: (gezien.append(creds) or _NepImap({})))
+        try:
+            assert req(app, 'POST', '/api/data/imap_creds', body=self.CREDS)[0] == 200
+            sentinel = dict(self.CREDS, password='__SECRET__')
+            # Zelfde adres: het opgeslagen wachtwoord gaat mee, de browser kent het niet.
+            assert req(app, 'POST', '/api/inbox/test', body=sentinel)[1]['ok'] is True
+            assert gezien[-1]['password'] == 'geheim'
+            for wijziging in ({'host': 'evil.example'}, {'port': 143}, {'username': 'ander'},
+                              {'security': 'none'}):
+                status, body, _ = req(app, 'POST', '/api/inbox/test', body=dict(sentinel, **wijziging))
+                assert status == 400 and body['error'] == 'secret_opnieuw_invoeren', wijziging
+            assert len(gezien) == 1
+        finally:
+            self._clean()
+
+    def test_endpoint_nu_ophalen(self, app, monkeypatch):
+        self._postvak(monkeypatch, {1: _raw(bijlagen=[('a.pdf', _pdf(b'a'))])})
+        try:
+            status, body, _ = req(app, 'POST', '/api/inbox/ophalen', body={})
+            assert status == 409 and body == {'ok': False, 'fout': {'code': 'uit'}}
+            self._seed()
+            status, body, _ = req(app, 'POST', '/api/inbox/ophalen', body={})
+            assert status == 200 and body['ok'] is True and body['nieuw'] == 1
+            # meteen nog eens: de knop kan dubbel geklikt zijn
+            status, body, _ = req(app, 'POST', '/api/inbox/ophalen', body={})
+            assert status == 200 and body['fout'] == {'code': 'te_snel'}
+        finally:
+            self._clean()
+
+    def test_endpoint_opnieuw_doorlopen(self, app, monkeypatch):
+        client = self._postvak(monkeypatch, {1: _raw(bijlagen=[('a.pdf', _pdf(b'a'))])})
+        self._seed()
+        try:
+            assert req(app, 'POST', '/api/inbox/ophalen', body={})[1]['nieuw'] == 1
+            srv._inbox_laatste_poging = 0.0
+            assert client.aanroepen.count(('uid', 'SEARCH', 'ALL')) == 1
+            # Alleen een echte `true` laat de waterlijn los.
+            for niet in ({'opnieuw': 'ja'}, {'opnieuw': 1}, {'opnieuw': False}, []):
+                srv._inbox_laatste_poging = 0.0
+                assert req(app, 'POST', '/api/inbox/ophalen', body=niet)[0] == 200
+            assert client.aanroepen.count(('uid', 'SEARCH', 'ALL')) == 1
+            srv._inbox_laatste_poging = 0.0
+            status, body, _ = req(app, 'POST', '/api/inbox/ophalen', body={'opnieuw': True})
+            assert status == 200 and body['ok'] is True and body['berichten'] == 1 and body['dubbel'] == 1
+            assert client.aanroepen.count(('uid', 'SEARCH', 'ALL')) == 2
+            assert req(app, 'POST', '/api/inbox/ophalen', body=b'geen json')[0] == 400
+            regels = []
+            for f in sorted(srv.AUDIT_DIR.glob('audit_*.jsonl')):
+                regels += [json.loads(r) for r in f.read_text().splitlines() if r.strip()]
+            assert any(r.get('actie') == 'inbox_ophalen' and r.get('opnieuw') is True for r in regels)
+        finally:
+            self._clean()
+
+    def test_terugzetten_van_de_lijst_geeft_de_waterlijn_vrij(self, app, monkeypatch):
+        # De lijst gaat uit een backup terug naar een eerdere stand; berichten die er sindsdien
+        # in kwamen liggen achter de waterlijn en zouden nooit meer binnenkomen.
+        eerste = _raw(onderwerp='Eerste', bijlagen=[('1.pdf', _pdf(b'1'))])
+        tweede = _raw(onderwerp='Tweede', bijlagen=[('2.pdf', _pdf(b'2'))])
+        berichten = {1: eerste}
+        self._postvak(monkeypatch, berichten)
+        self._seed()
+        try:
+            assert srv._inbox_tick(force=True)['nieuw'] == 1
+            datum = req(app, 'POST', '/api/backups/trigger', body={})[1]['date']
+            berichten[2] = tweede
+            assert srv._inbox_tick(force=True)['nieuw'] == 1
+            assert srv._read_json('inkoop_inbox_status')['laatste_uid'] == 2
+            status, body, _ = req(app, 'POST', '/api/backups/restore', body={'date': datum, 'key': 'inkoop_inbox'})
+            assert status == 200 and body['count'] == 1
+            st = srv._read_json('inkoop_inbox_status')
+            assert st['laatste_uid'] is None and st['mailbox'] == 'INBOX' and st['uidvalidity'] == 1000
+            # De eerstvolgende ronde bekijkt de berichten opnieuw; wat er nog staat komt niet dubbel.
+            uitkomst = srv._inbox_tick(force=True)
+            assert (uitkomst['berichten'], uitkomst['nieuw'], uitkomst['dubbel']) == (2, 1, 1)
+            assert sorted(i['onderwerp'] for i in srv._read_json('inkoop_inbox')) == ['Eerste', 'Tweede']
+            # Een andere key terugzetten laat de waterlijn ongemoeid.
+            srv._inbox_laatste_poging = 0.0
+            waterlijn = srv._read_json('inkoop_inbox_status')['laatste_uid']
+            req(app, 'POST', '/api/data/water_addities', body=[{'id': 7}])
+            datum2 = req(app, 'POST', '/api/backups/trigger', body={})[1]['date']
+            assert req(app, 'POST', '/api/backups/restore', body={'date': datum2, 'key': 'water_addities'})[0] == 200
+            assert srv._read_json('inkoop_inbox_status')['laatste_uid'] == waterlijn == 2
+        finally:
+            self._clean()
+
+    def test_rollen(self, app, monkeypatch):
+        self._postvak(monkeypatch, {1: _raw(bijlagen=[('a.pdf', _pdf(b'a'))])})
+        admin = {'X-Remote-User-Name': 'admin'}
+        rollen = {'gebruikers': {'admin': 'beheer', 'kees': 'alleen_lezen', 'piet': 'productie',
+                                 'fien': 'boekhouding'}}
+        assert req(app, 'POST', '/api/data/gebruikers_rollen', body=rollen, headers=admin)[0] == 200
+        try:
+            self._seed()
+            kop = lambda naam: {'X-Remote-User-Name': naam}  # noqa: E731
+            # De verbindingstest en de instellingen zijn beheer-only.
+            for naam in ('kees', 'piet', 'fien'):
+                assert req(app, 'POST', '/api/inbox/test', body=self.CREDS, headers=kop(naam))[0] == 403, naam
+                assert req(app, 'POST', '/api/data/imap_creds', body={}, headers=kop(naam))[0] == 403, naam
+                assert req(app, 'POST', '/api/data/inkoop_inbox_status', body={}, headers=kop(naam))[0] == 403, naam
+            assert req(app, 'POST', '/api/inbox/test', body=self.CREDS, headers=admin)[0] == 200
+            # Nu ophalen en de lijst bijwerken hoort bij de boekhouding.
+            for naam in ('kees', 'piet'):
+                assert req(app, 'POST', '/api/inbox/ophalen', body={}, headers=kop(naam))[0] == 403, naam
+                assert req(app, 'POST', '/api/data/inkoop_inbox', body=[], headers=kop(naam))[0] == 403, naam
+            srv._inbox_laatste_poging = 0.0
+            status, body, _ = req(app, 'POST', '/api/inbox/ophalen', body={}, headers=kop('fien'))
+            assert status == 200 and body['nieuw'] == 1
+            assert req(app, 'POST', '/api/data/inkoop_inbox', body=srv._read_json('inkoop_inbox'),
+                       headers=kop('fien'))[0] == 200
+            # Iedereen mag de lijst en de stand lezen.
+            for naam in ('kees', 'piet', 'fien'):
+                assert req(app, 'GET', '/api/data/inkoop_inbox', headers=kop(naam))[0] == 200
+                assert req(app, 'GET', '/api/data/inkoop_inbox_status', headers=kop(naam))[0] == 200
+        finally:
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={}, headers=admin)[0] == 200
+            self._clean()
+
+    def test_sleutels_zijn_geregistreerd(self, app):
+        assert srv._KEY_TYPES['inkoop_inbox'] == 'array'
+        assert srv._KEY_TYPES['inkoop_inbox_status'] == 'object' and srv._KEY_TYPES['imap_creds'] == 'object'
+        assert srv._SECURE_FIELDS['imap_creds'] == ('password',)
+        assert 'imap_creds' in srv._SECRET_BESTEMMING and 'inkoop_inbox_status' in srv._NIET_TERUGZETBAAR
+        assert req(app, 'POST', '/api/data/inkoop_inbox', body={})[0] == 422
+        assert req(app, 'POST', '/api/data/imap_creds', body=[])[0] == 422
+        # het wachtwoord gaat nooit terug naar de browser
+        try:
+            assert req(app, 'POST', '/api/data/imap_creds', body=self.CREDS)[0] == 200
+            _, body, _ = req(app, 'GET', '/api/data/imap_creds')
+            assert body['password'] == '__SECRET__' and body['host'] == 'imap.example'
+            assert req(app, 'POST', '/api/data/imap_creds', body=body)[0] == 200
+            assert srv._read_json('imap_creds')['password'] == 'geheim'
+            assert req(app, 'POST', '/api/data/imap_creds', body=dict(body, host='evil.example'))[0] == 400
+            assert 'geheim' not in json.dumps(req(app, 'GET', '/api/bulk')[1])
+        finally:
+            self._clean()
+
+    def test_bijlage_van_een_inbox_item_gaat_niet_weg(self, app):
+        pdf = _pdf(b'W')
+        sha = hashlib.sha256(pdf).hexdigest()
+        try:
+            naam = srv._inbox_bewaar_pdf(sha, pdf)
+            srv._write_json('inkoop_inbox', [{'id': 1, 'status': 'nieuw', 'sha256': sha,
+                                              'bijlage': {'naam': 'w.pdf', 'bestand': naam}}])
+            status, body, _ = req(app, 'POST', f'/api/delete_upload/{naam}', body={})
+            assert status == 409 and body['key'] == 'inkoop_inbox'
+            assert (srv.UPLOAD_DIR / naam).exists()
+            srv._write_json('inkoop_inbox', [])
+            assert req(app, 'POST', f'/api/delete_upload/{naam}', body={})[0] == 200
+        finally:
+            self._clean()
+
+    def test_wachtwoord_staat_versleuteld_in_de_serverbackup(self, app, tmp_path, monkeypatch):
+        offsite = tmp_path / 'backup' / 'brewadmin'
+        offsite.mkdir(parents=True)
+        monkeypatch.setattr(srv, 'OFFSITE_BACKUP_DIR', offsite)
+        self._seed(creds={'password': 'IMAP_GEHEIM_4711'})
+        srv._write_json('inkoop_inbox', [{'id': 1, 'status': 'nieuw', 'sha256': 'x', 'bijlage': {'naam': 'a.pdf', 'bestand': 'inbox_a.pdf'}}])
+        try:
+            dest = srv.BACKUP_DIR / srv._run_backup()
+            geheim = b'IMAP_GEHEIM_4711'
+            assert geheim not in (dest / 'imap_creds.json').read_bytes()
+            assert geheim not in (dest / srv.DB_NAAM).read_bytes()
+            assert srv._is_versleuteld(json.loads((dest / 'imap_creds.json').read_text()))
+            # De wachtrij zelf hoort er wél in: dat is administratie, geen geheim.
+            assert json.loads((dest / 'inkoop_inbox.json').read_text())[0]['id'] == 1
+        finally:
+            self._clean()
+
+    def test_health_toont_de_controle(self, app):
+        srv._inbox_laatste_check = 1_757_500_000.0
+        srv._inbox_laatste_fout = 'login'
+        try:
+            status, body, _ = req(app, 'GET', '/api/health')
+            assert status == 200
+            assert body['inkoop_inbox']['laatste_fout'] == 'login'
+            assert body['inkoop_inbox']['laatste_check'].startswith('2025-09-10')
+        finally:
+            self._clean()
+
+
+class _MiniImapServer:
+    """Een piepkleine echte IMAP-server (alleen wat de ophaler gebruikt) op een
+    efemere poort, zodat `imaplib` zelf de antwoorden leest en de aannames
+    over zijn API kloppen. Houdt bij welke commando's binnenkwamen."""
+
+    def __init__(self, berichten, gebruiker='facturen@brouwerij.nl', wachtwoord='geheim',
+                 uidvalidity=1234, mappen=('INBOX',), banner=b'* OK IMAP4rev1 klaar\r\n'):
+        self.berichten = berichten
+        self.commandos = []
+        self.gekozen_mappen = []   # de SELECT/EXAMINE-argumenten zoals de server ze ontving
+        buiten = self
+
+        class Handler(socketserver.StreamRequestHandler):
+            def handle(self):
+                self.wfile.write(banner)
+                for regel in self.rfile:
+                    tag, _, rest = regel.rstrip(b'\r\n').decode('utf-8', 'replace').partition(' ')
+                    cmd, _, arg = rest.partition(' ')
+                    cmd = cmd.upper()
+                    sub, _, arg2 = arg.partition(' ')
+                    buiten.commandos.append(f'{cmd} {sub.upper()}' if cmd == 'UID' else cmd)
+                    if cmd == 'CAPABILITY':
+                        self.wfile.write(b'* CAPABILITY IMAP4rev1\r\n' + tag.encode() + b' OK klaar\r\n')
+                    elif cmd == 'LOGIN':
+                        # Twee IMAP-strings (gequote of kaal); \\ en \" zijn escapes.
+                        delen = [re.sub(r'\\(.)', r'\1', q if q or not k else k)
+                                 for q, k in re.findall(r'"((?:[^"\\]|\\.)*)"|(\S+)', arg)]
+                        if len(delen) == 2 and delen[0] == gebruiker and delen[1] == wachtwoord:
+                            self.wfile.write(tag.encode() + b' OK ingelogd\r\n')
+                        else:
+                            self.wfile.write(tag.encode() + b' NO [AUTHENTICATIONFAILED] Invalid credentials\r\n')
+                    elif cmd in ('SELECT', 'EXAMINE'):
+                        buiten.gekozen_mappen.append(arg)
+                        if arg.strip('"') in mappen:
+                            self.wfile.write(
+                                b'* %d EXISTS\r\n* OK [UIDVALIDITY %d] UIDs geldig\r\n' % (len(berichten), uidvalidity)
+                                + tag.encode() + b' OK [READ-ONLY] klaar\r\n')
+                        else:
+                            self.wfile.write(tag.encode() + b' NO bestaat niet\r\n')
+                    elif cmd == 'UID' and sub.upper() == 'SEARCH':
+                        alle = sorted(berichten)
+                        if arg2 == 'ALL':
+                            uids = alle
+                        else:  # 'UID n:*' — geeft altijd minstens het laatste bericht
+                            laagste = int(arg2.split()[1].split(':')[0])
+                            uids = [u for u in alle if u >= laagste] or alle[-1:]
+                        self.wfile.write(b'* SEARCH ' + b' '.join(str(u).encode() for u in uids)
+                                         + b'\r\n' + tag.encode() + b' OK klaar\r\n')
+                    elif cmd == 'UID' and sub.upper() == 'FETCH':
+                        nr, _, wat = arg2.partition(' ')
+                        raw = berichten.get(int(nr))
+                        if raw is None:
+                            self.wfile.write(tag.encode() + b' OK klaar\r\n')
+                        elif 'RFC822.SIZE' in wat:
+                            self.wfile.write(b'* 1 FETCH (UID %s RFC822.SIZE %d)\r\n' % (nr.encode(), len(raw))
+                                             + tag.encode() + b' OK klaar\r\n')
+                        else:
+                            if 'HEADER.FIELDS' in wat:
+                                raw = raw.split(b'\r\n\r\n', 1)[0] + b'\r\n\r\n'
+                            deel = re.search(r'<0\.(\d+)>', wat)
+                            label = b'BODY[]'
+                            if deel:
+                                raw = raw[:int(deel.group(1))]
+                                label = b'BODY[]<0>'
+                            self.wfile.write(b'* 1 FETCH (UID %s %s {%d}\r\n' % (nr.encode(), label, len(raw))
+                                             + raw + b')\r\n' + tag.encode() + b' OK klaar\r\n')
+                    elif cmd == 'LOGOUT':
+                        self.wfile.write(b'* BYE tot ziens\r\n' + tag.encode() + b' OK klaar\r\n')
+                        return
+                    else:
+                        self.wfile.write(tag.encode() + b' BAD onbekend commando\r\n')
+
+        class Server(socketserver.ThreadingTCPServer):
+            allow_reuse_address = True
+            daemon_threads = True
+
+        self._server = Server(('127.0.0.1', 0), Handler)
+        self.port = self._server.server_address[1]
+
+    def __enter__(self):
+        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+        return self
+
+    def __exit__(self, *exc):
+        self._server.shutdown()
+        self._server.server_close()
+
+
+class TestInkoopInboxEchteImap(_InboxBasis):
+    """Dezelfde ophaler, nu tegen een echte (mini-)IMAP-server met de echte
+    imaplib: vangt aannames over de API van imaplib die een nepclient verbergt."""
+
+    @classmethod
+    def _adres(cls, server, **extra):
+        return dict(cls.CREDS, host='127.0.0.1', port=server.port, security='none', **extra)
+
+    def test_ronde_tegen_een_echte_server(self, app):
+        pdf = _pdf(b'echt')
+        berichten = {7: _raw(onderwerp='Factuur echt', bijlagen=[('echt.pdf', pdf)]), 8: _raw(onderwerp='Praat')}
+        with _MiniImapServer(berichten, uidvalidity=99) as server:
+            self._seed(creds=self._adres(server))
+            try:
+                uitkomst = srv._inbox_tick(force=True)
+                assert uitkomst == {'ok': True, 'fout': None, 'berichten': 2, 'nieuw': 1, 'dubbel': 0,
+                                    'overgeslagen': 1}
+                item = srv._read_json('inkoop_inbox')[0]
+                assert item['onderwerp'] == 'Factuur echt' and item['van'] == 'jan@brouwerij.nl'
+                assert (srv.UPLOAD_DIR / item['bijlage']['bestand']).read_bytes() == pdf
+                st = srv._read_json('inkoop_inbox_status')
+                assert (st['laatste_uid'], st['uidvalidity'], st['mailbox']) == (8, 99, 'INBOX')
+                # Tweede ronde: `UID 9:*` geeft het laatste bericht terug, de waterlijn houdt het eruit.
+                assert srv._inbox_tick(force=True)['berichten'] == 0
+                berichten[9] = _raw(onderwerp='Nog een', bijlagen=[('nog.pdf', _pdf(b'nog'))])
+                assert srv._inbox_tick(force=True)['nieuw'] == 1
+                # Alleen lezen: geen SELECT, STORE, COPY of EXPUNGE — en netjes uitgelogd.
+                assert set(server.commandos) <= {'CAPABILITY', 'LOGIN', 'EXAMINE', 'UID SEARCH',
+                                                 'UID FETCH', 'LOGOUT'}
+                assert server.commandos.count('LOGOUT') == 3
+            finally:
+                self._clean()
+
+    def test_gebruikersnaam_met_spatie_backslash_en_aanhalingsteken(self, app):
+        # imaplib quote alleen het wachtwoord; de gebruikersnaam quoten we zelf (`DOMEIN\\jan`).
+        naam = 'DOMEIN\\jan "x"'
+        with _MiniImapServer({1: _raw(bijlagen=[('a.pdf', _pdf(b'a'))])}, gebruiker=naam) as server:
+            try:
+                self._seed(creds=self._adres(server, username=naam))
+                uitkomst = srv._inbox_tick(force=True)
+                assert uitkomst['ok'] is True and uitkomst['nieuw'] == 1
+                self._seed(creds=self._adres(server, username='DOMEIN\\ander'))
+                assert srv._inbox_tick(force=True)['fout'] == {'code': 'login'}
+            finally:
+                self._clean()
+
+    def test_mapnaam_met_niet_ascii_en_haken_tegen_een_echte_server(self, app):
+        mappen = ('Facturen &AOs-', '[Gmail]/Alle berichten')
+        with _MiniImapServer({3: _raw(onderwerp='In de map', bijlagen=[('a.pdf', _pdf(b'a'))])},
+                             mappen=mappen) as server:
+            try:
+                self._seed(creds=self._adres(server, mailbox='Facturen ë'))
+                assert srv._inbox_tick(force=True)['nieuw'] == 1
+                assert server.gekozen_mappen[-1] == '"Facturen &AOs-"'
+                self._seed(creds=self._adres(server, mailbox='[Gmail]/Alle berichten'))
+                assert srv._inbox_tick(force=True)['ok'] is True
+                assert server.gekozen_mappen[-1] == '"[Gmail]/Alle berichten"'
+                # Zo staat hij ook in de status: een andere map begint met een eigen waterlijn.
+                assert srv._read_json('inkoop_inbox_status')['mailbox'] == '[Gmail]/Alle berichten'
+                # De verbindingstest spreekt dezelfde taal.
+                assert req(app, 'POST', '/api/inbox/test', body=self._adres(server, mailbox='Facturen ë')
+                           )[1] == {'ok': True, 'berichten': 1, 'mailbox': 'Facturen ë'}
+            finally:
+                self._clean()
+
+    def test_gedeeltelijke_fetch_bij_een_te_groot_bericht_tegen_een_echte_server(self, app, monkeypatch):
+        # De server meldt geen bruikbare grootte (de helper geeft None): imaplib leest dan
+        # hooguit het plafond + 1 byte van het bericht, dat als te groot wordt overgeslagen.
+        monkeypatch.setattr(srv, 'INBOX_MAX_MAIL_BYTES', 1500)
+        monkeypatch.setattr(srv, '_inbox_grootte', lambda client, uid: None)
+        berichten = {1: _raw(onderwerp='Klein', bijlagen=[('k.pdf', _pdf(b'klein'))]),
+                     2: _raw(onderwerp='Enorm', bijlagen=[('e.pdf', _pdf(b'x' * 50000))])}
+        with _MiniImapServer(berichten) as server:
+            try:
+                self._seed(creds=self._adres(server))
+                uitkomst = srv._inbox_tick(force=True)
+                assert uitkomst['ok'] is True and uitkomst['nieuw'] == 1 and uitkomst['overgeslagen'] == 1
+                assert [i['onderwerp'] for i in srv._read_json('inkoop_inbox')] == ['Klein']
+                assert srv._read_json('inkoop_inbox_status')['overgeslagen'][0]['reden'] == 'te_groot'
+            finally:
+                self._clean()
+
+    def test_fouten_tegen_een_echte_server(self, app):
+        with _MiniImapServer({1: _raw(bijlagen=[('a.pdf', _pdf(b'a'))])}) as server:
+            try:
+                self._seed(creds=self._adres(server, password='verkeerd'))
+                assert srv._inbox_tick(force=True)['fout'] == {'code': 'login'}
+                self._seed(creds=self._adres(server, mailbox='Bestaat niet'))
+                assert srv._inbox_tick(force=True)['fout'] == {'code': 'map'}
+                assert srv._read_json('inkoop_inbox') is None
+                # De verbindingstest zegt hetzelfde, zonder iets op te slaan.
+                assert req(app, 'POST', '/api/inbox/test', body=self._adres(server, password='verkeerd')
+                           )[1] == {'ok': False, 'fout': {'code': 'login'}}
+                assert req(app, 'POST', '/api/inbox/test', body=self._adres(server, password='geheim')
+                           )[1] == {'ok': True, 'berichten': 1, 'mailbox': 'INBOX'}
+            finally:
+                self._clean()
+
+    def test_geen_imap_server_of_niets_op_die_poort(self, app):
+        with _MiniImapServer({}, banner=b'220 smtp.example ESMTP klaar\r\n') as server:
+            try:
+                self._seed(creds=self._adres(server))
+                assert srv._inbox_tick(force=True)['fout'] == {'code': 'protocol'}   # verkeerde poort
+            finally:
+                self._clean()
+        with socket.socket() as s:
+            s.bind(('127.0.0.1', 0))
+            dicht = s.getsockname()[1]
+        try:
+            self._seed(creds={'host': '127.0.0.1', 'port': dicht, 'security': 'none'})
+            assert srv._inbox_tick(force=True)['fout'] == {'code': 'verbinding', 'oorzaak': 'geweigerd'}
+        finally:
+            self._clean()
