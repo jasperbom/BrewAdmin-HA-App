@@ -37,6 +37,9 @@ import {
   filterInkoopFacturen, filterVerkoopFacturen, inkoopCenten, inkoopTotalen, verkoopCenten, verkoopTotalen,
 } from './factuurFilter'
 import { periodeBereik } from './periode'
+// Kringverwijzing (aangifteStappen leest btwUiterlijk hier): alleen functies,
+// die pas bij aanroep worden gebruikt — dat is veilig.
+import { controleFase, btwControleRecord } from './aangifteStappen'
 
 /**
  * Waarom deze rij om een besluit vraagt. De volgorde is bewust de volgorde
@@ -283,11 +286,14 @@ export function beslissingen(bron: BeslissingenBron): Beslissing[] {
   }
 
   // (d) Openstaande BTW-periodes: één rij per periode, net als de accijns per
-  //     maand. Is de uiterste aangiftedatum voorbij, dan is hij te laat.
+  //     maand. Is de uiterste aangiftedatum voorbij, dan is hij te laat. Zonder
+  //     akkoord van de controle is de volgende stap controleren (zoals op
+  //     Aangiftes › BTW), niet indienen.
   const jaren = [bron.vandaag.getFullYear() - 1, bron.vandaag.getFullYear()]
   const alleFacturen = [...(bron.verkoopFacturen || []), ...(bron.inkoopFacturen || [])]
   for (const p of openstaandeBtwPerioden(jaren, bron.btwPeriode, bron.btwAangiftes, bron.bankKoppelingen, alleFacturen, vandaag)) {
     const uiterlijk = btwUiterlijk(p.to)
+    const akkoord = controleFase(btwControleRecord(bron.btwAangiftes, p.key)) === 'akkoord'
     uit.push({
       id: `btw:${p.key}`,
       soort: 'btw',
@@ -298,7 +304,7 @@ export function beslissingen(bron: BeslissingenBron): Beslissing[] {
       vars: { periode: periodeKeyLabel(p.key), periodeKey: p.key, datum: uiterlijk },
       contextSleutel: 'besl_btw_aangifte_ctx',
       datum: uiterlijk || undefined,
-      actieSleutel: 'besl_actie_indienen',
+      actieSleutel: akkoord ? 'besl_actie_indienen' : 'besl_actie_controleren',
       // De periode zelf (`2026-Q3`, `2026-M09`) op Aangiftes › BTW.
       doel: { pagina: 'aangiftes', tab: 'btw', filter: p.key },
     })
@@ -323,7 +329,7 @@ export function beslissingen(bron: BeslissingenBron): Beslissing[] {
 
   // (f) Facturen die per e-mail binnenkwamen en op verwerking wachten: één rij
   //     met het aantal — het postvak is een wachtrij, geen stapel losse
-  //     besluiten (dezelfde selectie als de tab Inkoop).
+  //     besluiten (dezelfde selectie als Facturen → Inkoop).
   const inbox = inboxOpen(bron.inkoopInbox)
   if (inbox.length) {
     const oudste = inbox[inbox.length - 1]

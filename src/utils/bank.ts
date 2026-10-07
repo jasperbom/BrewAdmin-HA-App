@@ -22,7 +22,7 @@ import type { BewaardBankAfschrift, BewaardeBankTransactie } from '../types'
 const norm = (s: any): string => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 
 // ── MT940-parser ────────────────────────────────────────────────────────────
-// Verhuisd uit BoekhoudingPage (fase 3.1/3.5): puur, dus hier testbaar.
+// Verhuisd uit de oude BoekhoudingPage (fase 3.1/3.5): puur, dus hier testbaar.
 // Ondersteunt SEPA-gestructureerde :86:-velden (/KEY/-paren) en de ABN-AMRO
 // plain-text-stijl (NAAM:/OMSCHRIJVING:/KENMERK:).
 
@@ -136,6 +136,17 @@ export const parseMT940 = (text: string): any => {
   delete result._beginsaldoGezet
   return result
 }
+
+/**
+ * Leverde parseMT940 niets bruikbaars op — geen transacties, geen rekening en
+ * geen begin- of eindsaldo? Dan was het geen MT940-bestand (een CSV of een
+ * ander exportformaat): niets bewaren en dat melden, in plaats van een leeg
+ * afschrift met een rekening 'onbekend'.
+ */
+export const isLeegMt940 = (parsed: any): boolean =>
+  !(Array.isArray(parsed?.transacties) && parsed.transacties.length > 0)
+  && !String(parsed?.iban || '').trim()
+  && !parsed?.begindatum && !parsed?.einddatum
 
 // ── PSP-uitbetalingen (gebundelde betalingen) ───────────────────────────────
 // Payment service providers betalen meerdere factuurbetalingen gebundeld uit,
@@ -478,7 +489,7 @@ export interface OntvangstBoekingInvoer {
   klant_naam: string
   omschrijving: string
   btw_pct: number
-  // Rollover (BoekhoudingPage.getRolloverInfo): gezet wanneer de datum van de
+  // Rollover (getRolloverInfo in pages/admin/AdministratiePage.tsx): gezet wanneer de datum van de
   // bijschrijving in een al ingediende of betaalde BTW-periode valt.
   btw_periode?: string | null
 }
@@ -534,10 +545,26 @@ export const bouwOntvangstVerkoopFactuur = (
 //    transacties weg die in geen ander afschrift staan. De koppelingen
 //    blijven staan: opnieuw importeren zet ze terug.
 
-/** Unieke sleutel per banktransactie: de sleutel van `bank_koppelingen`. */
-export const txKey = (tx: any): string => {
+// De sleutel zonder volgnummer: datum, richting, bedrag en referentie (of
+// tegenpartij/omschrijving als de bank geen //-referentie meegeeft).
+const txBasisKey = (tx: any): string => {
   if (tx?.referentie) return `${tx.datum}|${tx.type}|${tx.bedrag}|${tx.referentie}`
   return `${tx?.datum}|${tx?.type}|${tx?.bedrag}|${String(tx?.tegenpartij || tx?.omschrijving || '').slice(0, 40)}`
+}
+
+/**
+ * Unieke sleutel per banktransactie: de sleutel van `bank_koppelingen`. Twee
+ * gelijke boekingen in één bestand (zelfde dag, bedrag en tegenpartij, geen
+ * referentie — twee incasso's van dezelfde leverancier) krijgen bij het
+ * inlezen een volgnummer (`volgnr`, bouwBankImport); de tweede en verdere
+ * dragen dat in de sleutel, zodat elk zijn eigen koppeling heeft. De eerste
+ * houdt de basissleutel: bestaande koppelingen blijven zo gelden, en de datum
+ * blijft vooraan staan (balans.ts, aangifteStappen.ts lezen hem eruit).
+ */
+export const txKey = (tx: any): string => {
+  const basis = txBasisKey(tx)
+  const n = Number(tx?.volgnr)
+  return Number.isInteger(n) && n > 1 ? `${basis}|#${n}` : basis
 }
 
 /** De koppelingsvlaggen op een transactie (één per soort koppeling). */
@@ -701,12 +728,27 @@ export function bouwBankImport(
     else perSleutel.set(k, [tx])
   }
 
+  // Gelijke boekingen in dit bestand nummeren (zie txKey): de n-de krijgt
+  // `volgnr: n`. Het nummer hoort bij de plek in het bestand, dus hetzelfde
+  // of een overlappend bestand opnieuw inlezen geeft dezelfde sleutels.
+  const telling = new Map<string, number>()
+  const genummerd = regels.map((tx: any) => {
+    const { volgnr: _oud, ...zonder } = (tx && typeof tx === 'object' ? tx : {}) as any
+    const basis = txBasisKey(zonder)
+    const n = (telling.get(basis) || 0) + 1
+    telling.set(basis, n)
+    return n > 1 ? { ...zonder, volgnr: n } : zonder
+  })
+
   const afschriftId = bestaandAfschrift ? Number(bestaandAfschrift.id) : opties.maakId()
   const nieuw: BewaardeBankTransactie[] = []
   const leden: number[] = []
   let dubbel = 0
-  for (const tx of regels) {
-    const rij = perSleutel.get(txKey(tx))
+  for (const tx of genummerd) {
+    let rij = perSleutel.get(txKey(tx))
+    // Bewaard zonder volgnummer (van vóór de nummering): dan telt de
+    // basissleutel, zoals voorheen per sleutel geteld werd.
+    if ((!rij || !rij.length) && tx.volgnr) rij = perSleutel.get(txBasisKey(tx))
     if (rij && rij.length) {
       const bestaand = rij.shift()
       dubbel++

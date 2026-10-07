@@ -175,7 +175,7 @@ function RapportenSectie() {
       </div>
       <div className="lg:hidden">{keuzelijst}</div>
       <div className="grid grid-cols-1 lg:grid-cols-[210px_minmax(0,1fr)] gap-4 items-start">
-        <nav aria-label={t('rap_nav_label')} className="hidden lg:block bg-white border border-gray-200 rounded-xl p-2 sticky top-4">
+        <nav aria-label={t('rap_nav_label')} className="hidden lg:block bg-white border border-gray-200 rounded-xl p-2 sticky top-[calc(var(--kopbalk)_+_1rem)]">
           {RAPPORT_GROEPEN.map(g => (
             <div key={g.id} className="mb-1 last:mb-0">
               <div className="px-2 pt-2 pb-1 text-xs font-medium text-gray-500">{t(g.sleutel)}</div>

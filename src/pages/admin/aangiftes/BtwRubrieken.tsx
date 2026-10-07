@@ -59,17 +59,25 @@ const BtwRubrieken: React.FC<BtwRubriekenProps> = ({ c, teBetalenCent, alle, set
   return (
     <div className="space-y-3">
       <div>
-        <div className="grid grid-cols-[2rem_minmax(0,1fr)_auto_auto] gap-x-2 text-[11px] text-gray-500 pb-1 border-b border-gray-100">
+        {/* Onder 1024 px (het smalle detailpaneel) geen eigen kolom voor de
+            grondslag: die staat dan als tweede regel onder het label, zodat
+            "Voorbelasting" niet midden in het woord breekt. */}
+        <div className="grid grid-cols-[2rem_minmax(0,1fr)_auto] lg:grid-cols-[2rem_minmax(0,1fr)_auto_auto] gap-x-2 text-[11px] text-gray-500 pb-1 border-b border-gray-100">
           <span>{t('agf_rub_kolom')}</span><span />
-          <span className="text-right w-20">{t('agf_rub_kolom_grondslag')}</span>
+          <span className="hidden lg:block text-right w-20">{t('agf_rub_kolom_grondslag')}</span>
           <span className="text-right w-20">{t('lbl_btw')}</span>
         </div>
         {getoond.map(r => (
           <div key={r.code} className="py-1.5 border-b border-gray-50">
-            <div className="grid grid-cols-[2rem_minmax(0,1fr)_auto_auto] gap-x-2 items-baseline text-sm">
+            <div className="grid grid-cols-[2rem_minmax(0,1fr)_auto] lg:grid-cols-[2rem_minmax(0,1fr)_auto_auto] gap-x-2 items-baseline text-sm">
               <span className="text-xs font-semibold text-gray-500 tabular-nums">{r.code}</span>
-              <span className="text-gray-800 min-w-0 break-words">{r.label}</span>
-              <span className="text-right w-20 tabular-nums text-gray-700">{r.grondslagCent === null ? '' : fmtCent(r.grondslagCent)}</span>
+              <span className="text-gray-800 min-w-0 break-words">
+                {r.label}
+                {r.grondslagCent !== null && (
+                  <span className="lg:hidden block text-xs text-gray-500 tabular-nums">{t('agf_rub_kolom_grondslag')} {fmtCent(r.grondslagCent)}</span>
+                )}
+              </span>
+              <span className="hidden lg:block text-right w-20 tabular-nums text-gray-700">{r.grondslagCent === null ? '' : fmtCent(r.grondslagCent)}</span>
               <span className="text-right w-20 tabular-nums text-gray-900">
                 {r.btwCent === null ? '' : `${r.aftrek && r.btwCent ? '− ' : ''}${fmtCent(r.btwCent)}`}
               </span>

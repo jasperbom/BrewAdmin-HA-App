@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom'
 import { t } from '../../../i18n'
 
 // ── Melding van de factuurpagina ────────────────────────────────────────────
-// Vervangt de alert()-meldingen: een balk bovenin die niets blokkeert en ook
+// Vervangt de alert-meldingen: een balk bovenin die niets blokkeert en ook
 // boven een open inkoopformulier of mailvenster te lezen is (z-index boven
 // Modal en het inkoopwerkblad). Sluit vanzelf na tien seconden, of met ×.
 

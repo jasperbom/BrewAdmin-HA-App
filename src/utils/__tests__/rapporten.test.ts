@@ -273,6 +273,19 @@ describe('liquide middelen op een peildatum', () => {
       .toEqual([{ iban: 'NL03OUD', cent: 25050, datum: '2026-06-30', bron: 'bank_saldi' }])
     expect(liquideMiddelenOp([], saldi, '2026-05-31', '2026-10-07')).toEqual({ cent: 0, rekeningen: [], onbekend: ['NL03OUD'] })
   })
+  it('een nieuwer saldo in bank_saldi gaat vóór een ouder, later ingelezen afschrift', () => {
+    const saldi = { NL12INGB0001234567: { iban: 'NL12INGB0001234567', eindsaldo: 4520.76, datum: '2026-10-02', geimporteerd_op: '' } }
+    const juni = [af(30, 'NL12INGB0001234567', '2026-06-01', '2026-06-15', 1000)]
+    expect(liquideMiddelenOp(juni, saldi, '2026-10-07', '2026-10-07').rekeningen)
+      .toEqual([{ iban: 'NL12INGB0001234567', cent: 452076, datum: '2026-10-02', bron: 'bank_saldi' }])
+    // Vóór de datum van het saldo telt het afschrift.
+    expect(liquideMiddelenOp(juni, saldi, '2026-07-01', '2026-10-07').rekeningen)
+      .toEqual([{ iban: 'NL12INGB0001234567', cent: 100000, datum: '2026-06-15', bron: 'afschrift' }])
+    // Zelfde datum = hetzelfde afschrift: het afschrift wint.
+    const gelijk = { NL01BANK: { iban: 'NL01BANK', eindsaldo: 9999, datum: '2026-10-06', geimporteerd_op: '' } }
+    expect(liquideMiddelenOp(afschriften, gelijk, '2026-10-07', '2026-10-07').rekeningen[0])
+      .toMatchObject({ iban: 'NL01BANK', cent: 170000, bron: 'afschrift' })
+  })
 })
 
 describe('balansOp', () => {

@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import { t } from '../../i18n'
+import { menuPositie, type MenuPositie, type VensterMaat } from '../../utils/menuPositie'
 
 export interface RowActie {
   id: string
@@ -20,6 +21,28 @@ interface RowActionsProps {
   cls?: string
 }
 
+const MENU_BREEDTE = 180
+
+/**
+ * Het bruikbare deel van het venster: tot de onderkant van wat zichtbaar is
+ * (visual viewport — een telefoontoetsenbord), en op de telefoon boven de
+ * onderbalk, zodat het menu daar niet overheen valt. Alleen als die balk ook
+ * echt bovenop ligt: in een Modal ligt de overlay eroverheen en telt hij niet.
+ */
+const vensterMaat = (menu: HTMLElement | null): VensterMaat => {
+  let hoogte = window.innerHeight
+  const vv = window.visualViewport
+  if (vv) hoogte = Math.min(hoogte, vv.offsetTop + vv.height)
+  const balkEl = document.querySelector('[data-onderbalk]')
+  const balk = balkEl?.getBoundingClientRect()
+  if (balkEl && balk && balk.height > 0 && balk.top > 0 && balk.top < hoogte) {
+    const bovenop = (document.elementsFromPoint?.(balk.left + balk.width / 2, balk.top + balk.height / 2) || [])
+      .find(n => !menu?.contains(n))
+    if (bovenop && balkEl.contains(bovenop)) hoogte = balk.top
+  }
+  return { breedte: document.documentElement.clientWidth || window.innerWidth, hoogte }
+}
+
 /**
  * Rij-acties: één knop plus een overflow-menu.
  *
@@ -32,9 +55,30 @@ const RowActions: React.FC<RowActionsProps> = ({ primair, acties, cls = '' }) =>
   const [open, setOpen] = useState(false)
   const knopRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const [pos, setPos] = useState<MenuPositie | null>(null)
 
   const bruikbaar = acties.filter(Boolean)
+
+  // Positie bij openen gemeten (utils/menuPositie.ts): onder de knop, of
+  // erboven als het daar niet past; altijd binnen het venster.
+  const plaats = useCallback(() => {
+    const knop = knopRef.current
+    if (!knop) return
+    const r = knop.getBoundingClientRect()
+    const el = menuRef.current
+    const venster = vensterMaat(el)
+    // Knop weggescrold: het menu hoort nergens meer bij.
+    if (r.bottom <= 0 || r.top >= venster.hoogte) { setOpen(false); return }
+    const maat = el
+      ? { breedte: el.offsetWidth || MENU_BREEDTE, hoogte: el.scrollHeight + (el.offsetHeight - el.clientHeight) }
+      : { breedte: MENU_BREEDTE, hoogte: 0 }
+    setPos(menuPositie(r, maat, venster))
+  }, [])
+
+  useLayoutEffect(() => {
+    if (open) plaats()
+    else setPos(null)
+  }, [open, plaats])
 
   useEffect(() => {
     if (!open) return
@@ -43,29 +87,39 @@ const RowActions: React.FC<RowActionsProps> = ({ primair, acties, cls = '' }) =>
       if (menuRef.current?.contains(n) || knopRef.current?.contains(n)) return
       setOpen(false)
     }
-    const sluitBijEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    // Bij scrollen loopt het menu van zijn knop weg; dan liever dicht.
-    const sluit = () => setOpen(false)
+    // Escape sluit alleen het menu (preventDefault: een Modal eromheen laat
+    // het dan staan, zie useDialoogFocus) en zet de focus terug op de knop.
+    const sluitBijEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      setOpen(false)
+      knopRef.current?.focus()
+    }
+    // Bij scrollen of een ander formaat schuift het menu met zijn knop mee
+    // (vroeger ging het dicht — op een telefoon scrol je juist om het menu
+    // te zien). Scrollen ín het menu zelf telt niet.
+    let frame = 0
+    const herplaats = (e?: Event) => {
+      if (e?.type === 'scroll' && e.target instanceof Node && menuRef.current?.contains(e.target)) return
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(plaats)
+    }
     document.addEventListener('mousedown', sluitBijBuiten)
-    document.addEventListener('keydown', sluitBijEscape)
-    window.addEventListener('scroll', sluit, true)
-    window.addEventListener('resize', sluit)
+    document.addEventListener('keydown', sluitBijEscape, true)
+    window.addEventListener('scroll', herplaats, true)
+    window.addEventListener('resize', herplaats)
+    window.visualViewport?.addEventListener('resize', herplaats)
     return () => {
+      cancelAnimationFrame(frame)
       document.removeEventListener('mousedown', sluitBijBuiten)
-      document.removeEventListener('keydown', sluitBijEscape)
-      window.removeEventListener('scroll', sluit, true)
-      window.removeEventListener('resize', sluit)
+      document.removeEventListener('keydown', sluitBijEscape, true)
+      window.removeEventListener('scroll', herplaats, true)
+      window.removeEventListener('resize', herplaats)
+      window.visualViewport?.removeEventListener('resize', herplaats)
     }
-  }, [open])
+  }, [open, plaats])
 
-  const toggle = () => {
-    const r = knopRef.current?.getBoundingClientRect()
-    if (r) {
-      // Rechts uitlijnen op de knop; het menu is 180px breed.
-      setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.right - 180, window.innerWidth - 188)) })
-    }
-    setOpen(v => !v)
-  }
+  const toggle = () => setOpen(v => !v)
 
   const knopCls = 'px-2 py-0.5 min-h-[40px] sm:min-h-0 rounded text-xs font-medium border transition-colors ' +
     'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 ' +
@@ -100,12 +154,15 @@ const RowActions: React.FC<RowActionsProps> = ({ primair, acties, cls = '' }) =>
           </svg>
         </button>
       )}
-      {open && pos && ReactDOM.createPortal(
+      {open && ReactDOM.createPortal(
         <div
           ref={menuRef}
           role="menu"
-          className="fixed z-[210] w-[180px] bg-white rounded-lg shadow-lg border border-gray-200 py-1"
-          style={{ top: pos.top, left: pos.left }}
+          className="fixed z-[210] w-[180px] bg-white rounded-lg shadow-lg border border-gray-200 py-1 overflow-x-hidden"
+          // Tot de eerste meting (useLayoutEffect, vóór het tekenen) onzichtbaar.
+          style={pos
+            ? { top: pos.top, left: pos.left, ...(pos.maxHoogte !== undefined ? { maxHeight: pos.maxHoogte, overflowY: 'auto' as const } : {}) }
+            : { top: 0, left: 0, visibility: 'hidden' as const }}
         >
           {bruikbaar.map(a => (
             <button

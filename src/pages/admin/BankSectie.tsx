@@ -9,8 +9,9 @@ import { bouwInkoopRegels } from '../../utils/inkoopOntvangst'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../../utils/journaal'
 import { inkoopRegelsMetCorrectie, toCent } from '../../utils/centen'
 import {
-  besteMatch, parseMT940, isPspTransactie, zoekPspCombinatie, pspKandidaten, bouwOntvangstVerkoopFactuur,
+  parseMT940, isLeegMt940, isPspTransactie, pspKandidaten, bouwOntvangstVerkoopFactuur,
   gekoppeldeFactuurIds, bouwBankImport, verwijderAfschrift, bankSaldiNaVerwijderen, sorteerAfschriften,
+  herstelKoppelingVlaggen,
   ibanSleutel, koppelingVan, filterBankTransacties, telBankStatussen, standaardBankStatus, isBankStatusFilter,
   BANK_STATUS_FILTERS, type BankStatusFilter,
 } from '../../utils/bank'
@@ -18,6 +19,7 @@ import {
   bankVoorstellen, bankVoorstelSleutel, btwKiezerKandidaten, accijnsKiezerKandidaten, AANGIFTE_MARGE_CENT,
   type BankVoorstel, type FactuurKiezerSoort,
 } from '../../utils/bankVoorstel'
+import { autoKoppelImport } from '../../utils/bankImportKoppeling'
 import { STANDAARD_PERIODE, vulIn } from '../../utils/periode'
 import InkoopFactuurModal from '../../components/InkoopFactuurModal'
 import { registreerScanCorrectie, leerKoppelingen } from '../../utils/scanGeheugen'
@@ -54,7 +56,9 @@ import {
 //
 // De handelingen zelf (MT940-import met samenvoegen en automatisch koppelen,
 // facturen, PSP-uitbetaling, BTW, SNd, accijns, kapitaal, aflossing, een
-// afschrift verwijderen) zijn ongewijzigd overgenomen uit de oude Bank-tab.
+// afschrift verwijderen) zijn overgenomen uit de oude Bank-tab; alleen het
+// automatisch koppelen bij het inlezen kent nu de datumgrens van het voorstel
+// (ERP-plan F11, utils/bankImportKoppeling.ts).
 // Afschriften en transacties worden bewaard (`bank_afschriften`,
 // `bank_transacties`); wat er gekoppeld is staat in `bank_koppelingen`, en de
 // context zet de vlaggen daaruit opnieuw. De schuld aan alternatieve
@@ -73,7 +77,8 @@ function BankSectie() {
     auditLog, setAuditLog, kostenSoorten, scanCorrecties, setScanCorrecties, setJournaal,
     bankSaldi, setBankSaldi, merchArtikelen, setMerchArtikelen, merchVoorraadLog, setMerchVoorraadLog,
     bankTransacties, setBankTransacties, bankAfschriften, setBankAfschriften,
-    klantNaamVoor, schuldPerAltRekening, knownLeveranciers, btwBetaaldePerioden, btwPeriodeType,
+    refreshBankTransacties, refreshBankAfschriften, refreshBankKoppelingen, refreshBankSaldi,
+    klantNaamVoor, schuldPerAltRekening, knownLeveranciers, btwPeriodeType,
     getRolloverInfo, boekInkoopVoorraad, markeerBetaald, koppelBtwBetaling, ontkoppelBtwBetaling, markeerAccijnsMaandBetaald,
     ontkoppelAccijnsBetaling, koppelAccijnsBetaling,
   } = useAdmin()
@@ -97,6 +102,11 @@ function BankSectie() {
   bankTxRef.current = bankTransacties
   const afschriftenRef = React.useRef<any[]>(bankAfschriften)
   afschriftenRef.current = bankAfschriften
+  const koppelingenRef = React.useRef<any>(bankKoppelingen)
+  koppelingenRef.current = bankKoppelingen
+  // Een afschriftverwijdering die net is doorgezet (undo.flush bij een nieuwe
+  // import): de import wacht tot die zijn lijsten heeft gezet.
+  const verwijderBezig = React.useRef<Promise<void> | null>(null)
 
   // ── Weergave-instellingen van de werklijst ────────────────────────────────
   const navStatus: BankStatusFilter | null = isBankStatusFilter(navDoel?.filter) ? navDoel.filter as BankStatusFilter : null
@@ -110,7 +120,7 @@ function BankSectie() {
   const [rekeningKeuze, setRekeningKeuze] = React.useState<string | null>(null)
   const [afschriftKeuze, setAfschriftKeuze] = React.useState<number | null>(null)
   // Uitkomst van de laatste import: nieuw / al bekend.
-  const [importMelding, setImportMelding] = React.useState<{soort: 'ok' | 'al', tekst: string} | null>(null)
+  const [importMelding, setImportMelding] = React.useState<{soort: 'ok' | 'al' | 'fout', tekst: string} | null>(null)
   const [afschriftenOpen, setAfschriftenOpen] = React.useState(false)
 
   // PSP-uitsplitsing modal state (één credittransactie → meerdere facturen)
@@ -156,31 +166,35 @@ function BankSectie() {
     logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'verwijderd', omschrijving:'Aflossing ontkoppeld'})
   }
 
-  // ── Accijns-bankkoppeling — spiegel van het BTW-patroon ─────────────────────
-  // Maanden waarvan een banktransactie als accijnsbetaling gekoppeld is
-  const accijnsBetaaldeMaanden = React.useMemo(() => {
-    const s = new Set<string>();
-    Object.values(bankKoppelingen as any).forEach((k: any) => {
-      if (k?.soort === 'accijns' && k.maandKey) s.add(k.maandKey);
-    });
-    return s;
-  }, [bankKoppelingen]);
-
   // ── MT940 importeren ──────────────────────────────────────────────────────
   // Het bestand wordt samengevoegd met wat er al bewaard is (bouwBankImport):
   // een transactie die er al staat komt er niet nog eens bij — het bestaande
   // record en zijn koppeling winnen. Alleen de nieuwe transacties gaan langs
-  // de automatische koppeling hieronder (dezelfde regels als altijd).
+  // de automatische koppeling (`autoKoppelImport`). Eerst de serverstand: een
+  // ander tabblad of apparaat kan hetzelfde bestand al hebben ingelezen, en
+  // tegen een oude lijst ontdubbelen maakt alles dubbel (zelfde patroon als
+  // refreshBestellingen bij de WooCommerce-import).
   const importMT940 = (file: File) => {
     const reader = new FileReader()
-    reader.onload = (e: any) => {
+    reader.onload = async (e: any) => {
       const text = e.target.result as string
       const afschrift = parseMT940(text)
-      const bestaand = bankTxRef.current || []
-      const imp = bouwBankImport(afschrift, bestaand, afschriftenRef.current || [], {
+      // Geen MT940 (een CSV, een ander bestand): niets bewaren, geen leeg
+      // afschrift en geen saldo voor een rekening 'onbekend'.
+      if (isLeegMt940(afschrift)) {
+        setImportMelding({soort: 'fout', tekst: t('bank_import_geen_mt940')})
+        return
+      }
+      try { await verwijderBezig.current } catch (_) { /* de verwijdering meldt zichzelf */ }
+      // bank_saldi ook: het saldo hieronder rekent dan vanaf de serverstand.
+      const [vTx, vAf, vK, vS] = await Promise.all([refreshBankTransacties(), refreshBankAfschriften(), refreshBankKoppelingen(), refreshBankSaldi()])
+      const bestaand: any[] = (Array.isArray(vTx) ? vTx : null) ?? bankTxRef.current ?? []
+      const bestaandeAfschriften: any[] = (Array.isArray(vAf) ? vAf : null) ?? afschriftenRef.current ?? []
+      const koppelingenNu: any = (vK && typeof vK === 'object' ? vK : null) ?? koppelingenRef.current ?? {}
+      const imp = bouwBankImport(afschrift, bestaand, bestaandeAfschriften, {
         maakId: () => newId(bestaand),
         nu: new Date().toISOString(),
-        bankSaldi,
+        bankSaldi: (vS && typeof vS === 'object' ? vS : null) ?? bankSaldi,
       })
       const afschriftNaam = imp.afschrift.afschriftNr || imp.afschrift.referentie || '—'
       // Het ingelezen afschrift meteen tonen: lijst en aansluitregel erop.
@@ -190,146 +204,17 @@ function BankSectie() {
         setImportMelding({soort: 'al', tekst: t('msg_bank_import_al_bekend').replace('{afschrift}', afschriftNaam)})
         return
       }
-      const openVerkoop = (verkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
-      const openInkoop = (inkoopFacturen||[]).filter((f: any) => f.status !== 'betaald')
-      // Facturen die al aan een banktransactie hangen (ook in een PSP-bundel)
-      // doen niet meer mee, en elke nieuwe koppeling in deze import komt erbij:
-      // een tweede betaling van hetzelfde bedrag mag nooit stil aan dezelfde
-      // factuur blijven hangen.
-      const bezetVerkoop = gekoppeldeFactuurIds(bankKoppelingen, 'verkoop')
-      const bezetInkoop = gekoppeldeFactuurIds(bankKoppelingen, 'inkoop')
-      const nieuweKoppelingen: Record<string, any> = {}
-      // Auto-gematchte accijnsmaanden: na de map als betaald markeren
-      // (aangiftestatus + accijnsrecords), met de transactiedatum als betaaldatum.
-      const accijnsAutoBetaald: {maand: string, datum: string}[] = []
-      const gematcht = imp.nieuw.map((tx: any) => {
-        const key = txKey(tx)
-        // Eerder opgeslagen koppeling terugzetten (van vóór het bewaren, of
-        // van een afschrift dat verwijderd en opnieuw ingelezen is)
-        const opgeslagen = (bankKoppelingen as any)[key]
-        if (opgeslagen) {
-          return {
-            ...tx,
-            gekoppeldFactuurId: opgeslagen.soort === 'verkoop' ? opgeslagen.factuurId : null,
-            gekoppeldInkoopId: opgeslagen.soort === 'inkoop' ? opgeslagen.factuurId : null,
-            gekoppeldKapitaalId: opgeslagen.soort === 'kapitaal' ? opgeslagen.factuurId : null,
-            gekoppeldBtwPeriode: opgeslagen.soort === 'btw' ? opgeslagen.periodeKey : undefined,
-            gekoppeldSndPeriode: opgeslagen.soort === 'snd' ? opgeslagen.periodeKey : undefined,
-            gekoppeldAccijnsMaand: opgeslagen.soort === 'accijns' ? opgeslagen.maandKey : undefined,
-            gekoppeldAflossingAltId: opgeslagen.soort === 'aflossing' ? opgeslagen.altRekeningId : undefined,
-            gekoppeldPspFactuurIds: opgeslagen.soort === 'psp' ? opgeslagen.factuurIds : undefined,
-            autoGematcht: true,
-            herinneringsGematcht: true,
-          }
-        }
-        // Terugboeking (MT940 'RC'/'RD'): nooit automatisch koppelen — een
-        // storno is geen betaling van een factuur, de gebruiker beslist.
-        if (tx.storno) return tx
-        // Automatisch koppelen op match-score (ERP-plan 2.4): bedrag is de
-        // toegangseis, kenmerk (factuurnummer) en tegenpartijnaam tellen mee.
-        // Meerdere kandidaten met gelijke score → bewust niet koppelen (ambigu).
-        if (tx.type === 'C') {
-          const verkoopKandidaat = (fs: any[]) => fs.map((f: any) => ({id: f.id, bedrag: f.bruto||0, nummer: f.factuurnummer, naam: f.klant_naam, f}))
-          const open = besteMatch(tx, verkoopKandidaat(openVerkoop), bezetVerkoop)
-          if (open.kandidaat) {
-            nieuweKoppelingen[key] = {soort: 'verkoop', factuurId: open.kandidaat.id}
-            bezetVerkoop.add(open.kandidaat.id)
-            return {...tx, gekoppeldFactuurId: open.kandidaat.id, autoGematcht: true}
-          }
-          if (open.ambigu) return {...tx, matchAmbigu: true}
-          // Fallback: zoek in betaalde facturen (retroactieve herkenning)
-          const retro = besteMatch(tx, verkoopKandidaat((verkoopFacturen||[]).filter((f: any) => f.status === 'betaald')), bezetVerkoop)
-          if (retro.kandidaat) {
-            nieuweKoppelingen[key] = {soort: 'verkoop', factuurId: retro.kandidaat.id}
-            bezetVerkoop.add(retro.kandidaat.id)
-            return {...tx, gekoppeldFactuurId: retro.kandidaat.id, autoGematcht: true, retroGematcht: true}
-          }
-          if (retro.ambigu) return {...tx, matchAmbigu: true}
-          // Negatieve inkoopfactuur (creditnota): bedrag komt overeen met abs(totaal_bruto)
-          const credit = besteMatch(tx, (inkoopFacturen||[])
-            .filter((f: any) => f.status !== 'betaald' && (f.totaal_bruto||0) < 0)
-            .map((f: any) => ({id: f.id, bedrag: Math.abs(f.totaal_bruto||0), nummer: f.factuurnummer, naam: f.leverancier})), bezetInkoop)
-          if (credit.kandidaat) {
-            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: credit.kandidaat.id}
-            bezetInkoop.add(credit.kandidaat.id)
-            return {...tx, gekoppeldInkoopId: credit.kandidaat.id, autoGematcht: true}
-          }
-          if (credit.ambigu) return {...tx, matchAmbigu: true}
-          // BTW-teruggave: een ingediende aangifte met negatief bedrag wordt
-          // door de Belastingdienst uitbetaald en komt dus als CREDIT binnen.
-          const teruggaveAangifte = (btwAangiftes||[]).find((a: any) => {
-            if (!a?.periodeKey) return false;
-            if (btwBetaaldePerioden.has(a.periodeKey)) return false;
-            const bedrag = Number(a.bedrag||0);
-            return bedrag < 0 && Math.abs(tx.bedrag - Math.abs(bedrag)) <= 1.00;
-          });
-          if (teruggaveAangifte) {
-            nieuweKoppelingen[key] = {soort: 'btw', periodeKey: teruggaveAangifte.periodeKey}
-            return {...tx, gekoppeldBtwPeriode: teruggaveAangifte.periodeKey, autoGematcht: true}
-          }
-          // PSP-uitbetaling (Mollie e.d.): gebundelde betalingen minus kosten.
-          // Geen automatische koppeling — wel herkennen en een combinatie van
-          // open facturen voorstellen; de gebruiker bevestigt in de modal.
-          if (isPspTransactie(tx)) {
-            // Ook al betaalde facturen tellen mee: een bundel bevat bijna
-            // altijd orders die al op betaald staan (kassa, handmatig vinkje,
-            // eerder gekoppelde losse betaling). Alleen op de open facturen
-            // zoeken leverde dan hélemaal geen voorstel op.
-            // Facturen die in deze import al aan een andere transactie hingen
-            // (bezetVerkoop) horen niet in het voorstel.
-            const voorstel = zoekPspCombinatie(tx.bedrag, pspKandidaten(verkoopFacturen || [], {datum: tx.datum, alGekoppeld: bezetVerkoop}))
-            return {...tx, pspHerkend: true, pspVoorstelIds: voorstel || undefined}
-          }
-        } else {
-          const inkoopKandidaat = (fs: any[]) => fs.map((f: any) => ({id: f.id, bedrag: f.totaal_bruto||0, nummer: f.factuurnummer, naam: f.leverancier, f}))
-          const open = besteMatch(tx, inkoopKandidaat(openInkoop), bezetInkoop)
-          if (open.kandidaat) {
-            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: open.kandidaat.id}
-            bezetInkoop.add(open.kandidaat.id)
-            return {...tx, gekoppeldInkoopId: open.kandidaat.id, autoGematcht: true}
-          }
-          if (open.ambigu) return {...tx, matchAmbigu: true}
-          // Fallback: zoek in betaalde facturen (retroactieve herkenning)
-          const retro = besteMatch(tx, inkoopKandidaat((inkoopFacturen||[]).filter((f: any) => f.status === 'betaald')), bezetInkoop)
-          if (retro.kandidaat) {
-            nieuweKoppelingen[key] = {soort: 'inkoop', factuurId: retro.kandidaat.id}
-            bezetInkoop.add(retro.kandidaat.id)
-            return {...tx, gekoppeldInkoopId: retro.kandidaat.id, autoGematcht: true, retroGematcht: true}
-          }
-          if (retro.ambigu) return {...tx, matchAmbigu: true}
-          // BTW-aangifte match op ingediende periode (±1 EUR tolerantie voor
-          // euro-afronding). Alleen aangiftes met een POSITIEF bedrag (te
-          // betalen) — een teruggave (negatief) komt als credit binnen en
-          // mag nooit aan een debettransactie gematcht worden.
-          const openAangifte = (btwAangiftes||[]).find((a: any) => {
-            if (!a?.periodeKey) return false;
-            if (btwBetaaldePerioden.has(a.periodeKey)) return false;
-            const bedrag = Number(a.bedrag||0);
-            return bedrag >= 0 && Math.abs(tx.bedrag - bedrag) <= 1.00;
-          });
-          if (openAangifte) {
-            nieuweKoppelingen[key] = {soort: 'btw', periodeKey: openAangifte.periodeKey}
-            return {...tx, gekoppeldBtwPeriode: openAangifte.periodeKey, autoGematcht: true}
-          }
-          // Accijnsaangifte match: ingediende maand met bedrag (±1 EUR)
-          const openAccijnsAangifte = (accijnsAangiftes||[]).find((a: any) => {
-            if (!a?.maand || a.status !== 'ingediend') return false;
-            if (accijnsBetaaldeMaanden.has(a.maand)) return false;
-            const bedrag = Number(a.bedrag||0);
-            return bedrag > 0 && Math.abs(tx.bedrag - bedrag) <= 1.00;
-          });
-          if (openAccijnsAangifte) {
-            nieuweKoppelingen[key] = {soort: 'accijns', maandKey: openAccijnsAangifte.maand}
-            accijnsAutoBetaald.push({maand: openAccijnsAangifte.maand, datum: tx.datum})
-            return {...tx, gekoppeldAccijnsMaand: openAccijnsAangifte.maand, autoGematcht: true}
-          }
-        }
-        return tx
-      })
-      if (Object.keys(nieuweKoppelingen).length > 0) {
-        setBankKoppelingen((prev: any) => ({...prev, ...nieuweKoppelingen}))
+      // Automatisch koppelen (utils/bankImportKoppeling.ts): opgeslagen
+      // koppelingen terug, facturen op match-score binnen de datumgrens van
+      // het voorstel, BTW/accijns op bedrag, PSP alleen herkend.
+      const auto = autoKoppelImport(imp.nieuw, {verkoopFacturen, inkoopFacturen, btwAangiftes, accijnsAangiftes, bankKoppelingen: koppelingenNu})
+      const gematcht = auto.transacties
+      if (Object.keys(auto.koppelingen).length > 0) {
+        setBankKoppelingen((prev: any) => ({...prev, ...auto.koppelingen}))
       }
-      accijnsAutoBetaald.forEach(({maand, datum}) => markeerAccijnsMaandBetaald(maand, datum))
+      // Auto-gematchte accijnsmaanden als betaald markeren (aangiftestatus +
+      // accijnsrecords), met de transactiedatum als betaaldatum.
+      auto.accijnsBetaald.forEach(({maand, datum}) => markeerAccijnsMaandBetaald(maand, datum))
       // Achteraan erbij (functioneel: een tussentijdse wijziging blijft staan).
       setBankTransacties((prev: any[]) => [...(prev || []), ...gematcht])
       setBankAfschriften((prev: any[]) => imp.alBekend
@@ -467,7 +352,9 @@ function BankSectie() {
   const ontkoppelPsp = (tx: any) => {
     if (!tx) return
     const key = txKey(tx)
-    const opgeslagen = (bankKoppelingen as any)[key]
+    // Via de ref: ook een uitgestelde ontkoppeling (afschrift verwijderen)
+    // leest de nieuwste stand.
+    const opgeslagen = (koppelingenRef.current || {})[key]
     if (opgeslagen?.soort === 'psp') {
       // Automatisch aangemaakte kostenpost weer verwijderen
       if (opgeslagen.kostenFactuurId) {
@@ -687,30 +574,77 @@ function BankSectie() {
   const gekozenAfschrift: any = afschriftKeuze == null ? null : (afschriftenVanRekening.find((a: any) => Number(a.id) === afschriftKeuze) || null)
   // De saldocontrole hoort bij één afschrift: het gekozen, anders het laatste.
   const controleAfschrift: any = gekozenAfschrift || afschriftenVanRekening[0] || null
-  // Saldo per rekening: het eindsaldo van het laatste afschrift.
+  // Saldo per rekening: het eindsaldo van het laatste afschrift — of het
+  // saldo uit bank_saldi als dat nieuwer is (een ouder afschrift opnieuw
+  // ingelezen; dezelfde regel als de Balans, liquideMiddelenOp).
   const laatstePerRekening: any[] = rekeningen
-    .map(iban => afschriften.find((a: any) => ibanSleutel(a) === iban))
+    .map(iban => {
+      const a = afschriften.find((x: any) => ibanSleutel(x) === iban)
+      const sl = (bankSaldi || {})[iban]
+      if (a && sl && typeof sl === 'object' && /^\d{4}-\d{2}-\d{2}$/.test(String(sl.datum || '')) && String(sl.datum) > String(a.tot || '')) {
+        return {id: `saldo-${iban}`, iban, tot: sl.datum, eindsaldo: Number(sl.eindsaldo) || 0}
+      }
+      return a
+    })
     .filter(Boolean)
     .filter((a: any) => !ibanFilter || ibanSleutel(a) === ibanFilter)
 
   // Een verkeerd ingelezen afschrift weghalen, met vijf seconden terugweg.
-  // De koppelingen in bank_koppelingen blijven staan, dus opnieuw importeren
-  // zet ze terug. Een transactie die ook in een ander afschrift staat blijft.
-  // De lijsten komen uit de refs: de uitvoering kan na een paginawissel komen.
+  // Een transactie die ook in een ander afschrift staat blijft. Wat weggaat
+  // wordt eerst ontkoppeld met dezelfde handeling als "Ontkoppelen" (een
+  // factuur komt weer vrij, een accijnsmaand terug op ingediend, een
+  // PSP-kostenpost verdwijnt): anders bleef het geld van een verkeerd
+  // afschrift aan facturen en aangiftes hangen, onzichtbaar op Bank. Opnieuw
+  // inlezen koppelt de automatische koppelingen gewoon weer.
+  // Vóór het uitrekenen de serverstand: een ander tabblad kan intussen een
+  // afschrift hebben ingelezen dat transacties met dit afschrift deelt.
+  // Zonder verse stand (eigen onbevestigde save, server weg) gelden de refs:
+  // de uitvoering kan ook na een paginawissel komen.
+  const koppelingenVanAfschrift = (a: any): number => {
+    const plan = verwijderAfschrift(bankTxRef.current || [], afschriftenRef.current || [], a.id)
+    const weg = new Set<number>(plan.verwijderdeIds)
+    const k = koppelingenRef.current || {}
+    const blijft = new Set<string>(plan.transacties.map((tx: any) => txKey(tx)))
+    return (bankTxRef.current || []).filter((tx: any) => weg.has(tx.id) && k[txKey(tx)] && !blijft.has(txKey(tx))).length
+  }
   const verwijderBankAfschrift = (a: any) => {
     if (!a) return
     const naam = a.afschriftNr || a.referentie || '—'
-    undo.plan(`${AFSCHRIFT_UNDO}${a.id}`, t('undo_bankafschrift_verwijderd').replace('{afschrift}', naam), () => {
-      const plan = verwijderAfschrift(bankTxRef.current || [], afschriftenRef.current || [], a.id)
-      const weg = new Set<number>(plan.verwijderdeIds)
-      setBankTransacties((prev: any[]) => (prev || [])
-        .filter((t: any) => !weg.has(t.id))
-        .map((t: any) => plan.nieuweEigenaar[t.id] !== undefined ? {...t, afschrift_id: plan.nieuweEigenaar[t.id]} : t))
-      setBankAfschriften((prev: any[]) => (prev || []).filter((x: any) => x.id !== a.id))
-      setBankSaldi((prev: any) => bankSaldiNaVerwijderen(prev || {}, a, plan.afschriften))
-      setAfschriftKeuze((k: number | null) => k === Number(a.id) ? null : k)
-      logAudit(auditLog, setAuditLog, {entiteit:'Bankafschrift', entiteit_id:a.id, actie:'verwijderd',
-        omschrijving:`Afschrift ${naam} (${a.iban || '—'}, ${a.van} t/m ${a.tot}) verwijderd — ${weg.size} transacties`})
+    const nKoppelingen = koppelingenVanAfschrift(a)
+    const label = (nKoppelingen > 0 ? t('undo_bankafschrift_verwijderd_koppelingen').replace('{n}', String(nKoppelingen)) : t('undo_bankafschrift_verwijderd'))
+      .replace('{afschrift}', naam)
+    undo.plan(`${AFSCHRIFT_UNDO}${a.id}`, label, () => {
+      const klaar = (async () => {
+        const [vTx, vAf, vK] = await Promise.all([refreshBankTransacties(), refreshBankAfschriften(), refreshBankKoppelingen(), refreshBankSaldi()])
+        const txNu: any[] = (Array.isArray(vTx) ? vTx : null) ?? bankTxRef.current ?? []
+        const afNu: any[] = (Array.isArray(vAf) ? vAf : null) ?? afschriftenRef.current ?? []
+        const koppelingenNu: any = (vK && typeof vK === 'object' ? vK : null) ?? koppelingenRef.current ?? {}
+        koppelingenRef.current = koppelingenNu
+        const plan = verwijderAfschrift(txNu, afNu, a.id)
+        const weg = new Set<number>(plan.verwijderdeIds)
+        // Ontkoppelen wat met dit afschrift verdwijnt — niet als een
+        // transactie die blijft dezelfde sleutel draagt (die koppeling is van hem).
+        const blijft = new Set<string>(plan.transacties.map((tx: any) => txKey(tx)))
+        const mee = herstelKoppelingVlaggen(txNu.filter((tx: any) => weg.has(tx.id)), koppelingenNu)
+          .filter((tx: any) => koppelingenNu[txKey(tx)] && !blijft.has(txKey(tx)))
+        mee.forEach((tx: any) => laatste.current.ontkoppelTx(tx))
+        // De refs meteen bijwerken: een import die op deze verwijdering wacht
+        // rekent dan met de lijsten zonder dit afschrift.
+        bankTxRef.current = plan.transacties
+        afschriftenRef.current = plan.afschriften
+        setBankTransacties((prev: any[]) => (prev || [])
+          .filter((t: any) => !weg.has(t.id))
+          .map((t: any) => plan.nieuweEigenaar[t.id] !== undefined ? {...t, afschrift_id: plan.nieuweEigenaar[t.id]} : t))
+        setBankAfschriften((prev: any[]) => (prev || []).filter((x: any) => x.id !== a.id))
+        setBankSaldi((prev: any) => bankSaldiNaVerwijderen(prev || {}, a, plan.afschriften))
+        setAfschriftKeuze((k: number | null) => k === Number(a.id) ? null : k)
+        logAudit(auditLog, setAuditLog, {entiteit:'Bankafschrift', entiteit_id:a.id, actie:'verwijderd',
+          omschrijving:`Afschrift ${naam} (${a.iban || '—'}, ${a.van} t/m ${a.tot}) verwijderd — ${weg.size} transacties, ${mee.length} koppelingen`})
+      })()
+      const bezig = klaar.then(() => undefined, () => undefined)
+      verwijderBezig.current = bezig
+      void bezig.then(() => { if (verwijderBezig.current === bezig) verwijderBezig.current = null })
+      return klaar
     })
   }
 
@@ -757,13 +691,11 @@ function BankSectie() {
   // kostenpost en de betaalstatus weg, accijns zet de maand terug op
   // ingediend. De uitvoering komt na vijf seconden en zoekt de transactie dan
   // pas op (via de ref naar de nieuwste stand).
-  const ontkoppelNu = (txId: number, verwacht?: string) => {
-    const tx = txMetId(txId)
+  // `tx` met zijn koppelvlaggen (herstelKoppelingVlaggen): uit de weergave, of
+  // bij het verwijderen van een afschrift opnieuw gezet uit bank_koppelingen.
+  const ontkoppelTx = (tx: any) => {
     const k = koppelingVan(tx)
     if (!tx || !k) return
-    // Binnen de vijf seconden opnieuw gekoppeld (via het transactievenster):
-    // die nieuwe koppeling blijft staan, alleen de geplande gaat eraf.
-    if (verwacht !== undefined && JSON.stringify(k) !== verwacht) return
     switch (k.soort) {
       case 'psp': ontkoppelPsp(tx); break
       case 'verkoop': koppelBankTransactie(tx, null, 'verkoop'); break
@@ -779,8 +711,17 @@ function BankSectie() {
       case 'aflossing': ontkoppelAflossing(tx); break
     }
   }
-  const laatste = React.useRef<{ontkoppelNu: (id: number, verwacht?: string) => void}>({ontkoppelNu})
-  laatste.current = {ontkoppelNu}
+  const ontkoppelNu = (txId: number, verwacht?: string) => {
+    const tx = txMetId(txId)
+    const k = koppelingVan(tx)
+    if (!tx || !k) return
+    // Binnen de vijf seconden opnieuw gekoppeld (via het transactievenster):
+    // die nieuwe koppeling blijft staan, alleen de geplande gaat eraf.
+    if (verwacht !== undefined && JSON.stringify(k) !== verwacht) return
+    ontkoppelTx(tx)
+  }
+  const laatste = React.useRef<{ontkoppelNu: (id: number, verwacht?: string) => void, ontkoppelTx: (tx: any) => void}>({ontkoppelNu, ontkoppelTx})
+  laatste.current = {ontkoppelNu, ontkoppelTx}
   const planOntkoppel = (tx: any) => {
     const titel = koppelingWeergave(tx, tekstData)?.titel
     const gepland = JSON.stringify(koppelingVan(tx))
@@ -930,6 +871,9 @@ function BankSectie() {
         <span className="block min-w-0">
           <span className="block font-medium text-gray-900 truncate" title={tx.tegenpartij || undefined}>{tx.tegenpartij || tx.omschrijving || '—'}</span>
           {tx.tegenpartij && tx.omschrijving && <span className="block text-xs text-gray-500 truncate" title={tx.omschrijving}>{tx.omschrijving}</span>}
+          {/* Onder 1024 px geen eigen kolom voor de koppeling (de rij-actie
+              viel dan buiten de kaart): hij staat hier onder de namen. */}
+          <span className="lg:hidden block mt-0.5">{koppelCel(tx, true)}</span>
         </span>
       ),
     },
@@ -937,7 +881,7 @@ function BankSectie() {
       id: 'bedrag', kop: t('bank_kol_bedrag'), rechts: true, klasse: 'whitespace-nowrap',
       cel: (tx: any) => <span className={`font-semibold ${tx.type === 'C' ? 'text-green-700' : 'text-red-700'}`}>{bedragMetTeken(tx)}</span>,
     },
-    {id: 'koppeling', kop: t('bank_kol_koppeling'), klasse: 'min-w-[14rem]', cel: (tx: any) => koppelCel(tx)},
+    {id: 'koppeling', kop: t('bank_kol_koppeling'), klasse: 'min-w-[14rem]', breed: true, cel: (tx: any) => koppelCel(tx)},
     {
       id: 'actie', kop: <span className="sr-only">{t('bank_kol_actie')}</span>, rechts: true, klasse: 'whitespace-nowrap w-1',
       cel: (tx: any) => (
@@ -1106,7 +1050,10 @@ function BankSectie() {
       {/* Uitkomst van de laatste import: hoeveel er nieuw was, of dat dit
           afschrift er al stond. */}
       {importMelding && (
-        <div role="status" className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${importMelding.soort === 'al' ? 'bg-gray-50 border-gray-200 text-gray-700' : 'bg-green-50 border-green-200 text-green-800'}`}>
+        <div role={importMelding.soort === 'fout' ? 'alert' : 'status'} className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
+          importMelding.soort === 'al' ? 'bg-gray-50 border-gray-200 text-gray-700'
+            : importMelding.soort === 'fout' ? 'bg-red-50 border-red-200 text-red-800'
+            : 'bg-green-50 border-green-200 text-green-800'}`}>
           <span className="flex-1 min-w-0 break-words">{importMelding.tekst}</span>
           <button type="button" onClick={()=>setImportMelding(null)} aria-label={t('btn_sluiten')} title={t('btn_sluiten')}
             className="flex-shrink-0 px-1 min-h-tap sm:min-h-0 text-gray-400 hover:text-gray-600">✕</button>

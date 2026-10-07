@@ -14,7 +14,7 @@ import {
   inboxTerugzetten, inboxVerwijder,
 } from '../utils/inkoopInbox'
 
-// Tab Inkoop → "Ontvangen per e-mail": de PDF-facturen die de server uit het
+// Administratie → Facturen → Inkoop → "Ontvangen per e-mail": de PDF-facturen die de server uit het
 // postvak heeft gehaald (`_inbox_tick` in server.py) en die op verwerking
 // wachten. Verwerken = de factuur openen, scannen en boeken via het gewone
 // inkoopformulier; dat opent de pagina zelf (`onVerwerk`). Hier alleen de

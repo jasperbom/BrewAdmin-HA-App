@@ -2,7 +2,7 @@ import React from 'react'
 import { t } from '../../../i18n'
 
 // ── Foutmelding in de pagina ────────────────────────────────────────────────
-// Vervangt de alert()-meldingen van de voorraadschermen: een rode regel op de
+// Vervangt de alert-meldingen van de voorraadschermen: een rode regel op de
 // plek waar het misging (boven de lijst of het formulier), met ✕ om weg te
 // klikken. Komt hij in beeld terwijl hij buiten het scherm valt, dan schuift
 // de pagina er even naartoe.

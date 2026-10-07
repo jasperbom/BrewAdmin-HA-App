@@ -146,6 +146,19 @@ describe('beslissingen', () => {
     expect(r.doel).toEqual({ pagina: 'aangiftes', tab: 'btw', filter: '2026-Q1' })
   })
 
+  it('een BTW-periode zonder akkoord vraagt om controleren, met akkoord om indienen — zoals op Aangiftes', () => {
+    const bron = leegBron()
+    bron.vandaag = new Date('2026-04-15T12:00:00')
+    bron.vandaagIso = '2026-04-15'
+    bron.verkoopFacturen = [{ id: 1, datum: '2026-02-10', bruto: 100, status: 'betaald' }]
+    expect(beslissingen(bron)[0]).toMatchObject({ id: 'btw:2026-Q1', actieSleutel: 'besl_actie_controleren' })
+    // Controle aangevraagd maar nog geen akkoord: nog steeds controleren.
+    bron.btwAangiftes = [{ periode: '2026-Q1', berekend_datum: '2026-04-10' }]
+    expect(beslissingen(bron)[0].actieSleutel).toBe('besl_actie_controleren')
+    bron.btwAangiftes = [{ periode: '2026-Q1', controle_status: 'akkoord' }]
+    expect(beslissingen(bron)[0]).toMatchObject({ id: 'btw:2026-Q1', actieSleutel: 'besl_actie_indienen' })
+  })
+
   it('een BTW-periode waarvan de uiterste datum voorbij is, is te laat', () => {
     const bron = leegBron()
     bron.verkoopFacturen = [{ id: 1, datum: '2026-02-10', bruto: 100, status: 'betaald' }]

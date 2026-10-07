@@ -976,6 +976,8 @@ export interface BewaardeBankTransactie {
   tegenpartij?: string
   omschrijving?: string
   storno?: boolean
+  /** De n-de (n ≥ 2) gelijke boeking in één bestand: maakt de txKey uniek (utils/bank.ts). */
+  volgnr?: number
   gekoppeldFactuurId?: number | null
   gekoppeldInkoopId?: number | null
   gekoppeldKapitaalId?: number | null

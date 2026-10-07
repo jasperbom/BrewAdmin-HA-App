@@ -3,8 +3,8 @@
  *
  * Het statiegeld op SNd-verpakkingen (blik, petfles) dat op de verkoopfacturen
  * staat (`statiegeld_soort: 'snd'`), draagt de brouwerij per periode af aan
- * Statiegeld Nederland. Een periode is afgedragen zodra er in de Boekhouding
- * een banktransactie aan gekoppeld is: `{soort: 'snd', periodeKey}` in
+ * Statiegeld Nederland. Een periode is afgedragen zodra er op Administratie →
+ * Bank een banktransactie aan gekoppeld is: `{soort: 'snd', periodeKey}` in
  * `bank_koppelingen` — hetzelfde patroon als de BTW-afdracht.
  *
  * De Statiegeld-pagina kijkt per kwartaal of per maand. Een koppeling op een

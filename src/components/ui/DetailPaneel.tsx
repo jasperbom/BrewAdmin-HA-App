@@ -69,6 +69,25 @@ const DetailPaneel: React.FC<DetailPaneelProps> = (props) => {
 const DetailKaart: React.FC<DetailPaneelProps> = ({ titel, ondertitel, onSluit, children, acties, kopExtra, cls = '' }) => {
   const titelId = React.useId()
   const ref = React.useRef<HTMLElement | null>(null)
+  // Na het sluiten (Escape, ×) de focus terug op wat het paneel opende (de
+  // rij in de lijst), niet op <body> — alleen als de focus in het paneel
+  // stond of nergens meer staat. Wordt intussen een andere rij gekozen, dan
+  // is díe de opener (het laatste focusdoel buiten het paneel).
+  const opener = React.useRef<HTMLElement | null>(null)
+  React.useEffect(() => {
+    const el = ref.current
+    const onthoud = (x: EventTarget | Element | null) => {
+      if (x instanceof HTMLElement && x !== document.body && !el?.contains(x)) opener.current = x
+    }
+    onthoud(document.activeElement)
+    const bijFocus = (e: FocusEvent) => onthoud(e.target)
+    document.addEventListener('focusin', bijFocus)
+    return () => {
+      document.removeEventListener('focusin', bijFocus)
+      const a = document.activeElement
+      if ((!a || a === document.body || !!el?.contains(a)) && opener.current?.isConnected) opener.current.focus()
+    }
+  }, [])
   const toets = (e: React.KeyboardEvent<HTMLElement>) => {
     // Alleen wat écht in het paneel gebeurt: een Modal uit het detail staat in
     // een portaal, maar zijn toetsen bubbelen door de React-boom wel hierheen.
@@ -108,9 +127,46 @@ const DetailKaart: React.FC<DetailPaneelProps> = ({ titel, ondertitel, onSluit, 
   )
 }
 
+// Telefoon: het detailscherm is een eigen history-entry (zelfde URL, dus geen
+// hashchange voor de router van App), zodat de terugknop van het toestel het
+// scherm sluit in plaats van de pagina te verlaten — net als de batch.
+let schermTeller = 0
 const DetailScherm: React.FC<DetailPaneelProps> = ({ titel, ondertitel, onSluit, children, acties, kopExtra, terugLabel, cls = '' }) => {
   const titelId = React.useId()
   const panelRef = React.useRef<HTMLDivElement | null>(null)
+
+  const sluitRef = React.useRef(onSluit)
+  sluitRef.current = onSluit
+  const tokenRef = React.useRef<number>(0)
+  React.useEffect(() => {
+    const token = ++schermTeller
+    tokenRef.current = token
+    const hash = window.location.hash
+    try { window.history.pushState({ ...(window.history.state || {}), detailScherm: token }, '') } catch (_) { /* geen history */ }
+    const bijPop = () => {
+      // Terug naar de entry onder het scherm: sluiten. (Staat ons merkteken er
+      // nog, dan was het een andere entry die wegging.)
+      if (window.history.state?.detailScherm !== token) sluitRef.current()
+    }
+    window.addEventListener('popstate', bijPop)
+    return () => {
+      window.removeEventListener('popstate', bijPop)
+      // Gesloten zonder de terugknop (de lijst sloot hem, de indeling wisselde):
+      // de eigen entry weer weghalen. Ná deze ronde: is er intussen naar een
+      // andere pagina genavigeerd (nieuwe entry, ander adres), dan blijft alles staan.
+      window.setTimeout(() => {
+        try {
+          if (window.history.state?.detailScherm === token && window.location.hash === hash) window.history.back()
+        } catch (_) { /* geen history */ }
+      }, 0)
+    }
+  }, [])
+  // Sluiten via de eigen knop of Escape: via de history, zodat er geen lege
+  // entry achterblijft; popstate sluit dan het scherm.
+  const sluit = React.useCallback(() => {
+    if (window.history.state?.detailScherm === tokenRef.current) window.history.back()
+    else sluitRef.current()
+  }, [])
 
   // De focus-trap werkt op het dialoog dat nú de focus heeft: opent vanuit
   // het detail een Modal (ook role="dialog", in een portaal), dan trapt deze
@@ -131,8 +187,8 @@ const DetailScherm: React.FC<DetailPaneelProps> = ({ titel, ondertitel, onSluit,
     const actief = document.activeElement
     // Escape in een Modal boven het detail sluit alleen die Modal.
     if (eigen && actief && actief !== document.body && !eigen.contains(actief)) return
-    onSluit()
-  }, [onSluit])
+    sluit()
+  }, [sluit])
   useDialoogFocus(trapRef, escape)
 
   React.useEffect(() => vergrendelScroll(), [])
@@ -150,7 +206,7 @@ const DetailScherm: React.FC<DetailPaneelProps> = ({ titel, ondertitel, onSluit,
         <div className="min-h-[56px] flex items-center gap-1 pl-1 pr-3">
           <button
             type="button"
-            onClick={onSluit}
+            onClick={sluit}
             className="flex-shrink-0 inline-flex items-center gap-0.5 pl-1 pr-2 min-h-tap rounded-lg text-sm font-semibold t-accent-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]"
           >
             <Icon n="chevronLeft" cls="text-xl" />

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { t } from '../../i18n'
 import { useSmalScherm } from './useSmalScherm'
 
@@ -38,9 +39,27 @@ function StatusChips<T extends string>({ chips, waarde, onKies, label, altijdSch
   const smal = useSmalScherm()
   // `.chips-vervaag` staat buiten de Tailwind-lagen en wint van elke md:-klasse;
   // daarom kiest de code de indeling, niet een breakpoint in de klassen.
-  const schuif = altijdSchuiven || smal ? 'flex-nowrap overflow-x-auto nav-scroll chips-vervaag' : 'flex-wrap'
+  const schuift = altijdSchuiven || smal
+  const schuif = schuift ? 'flex-nowrap overflow-x-auto nav-scroll chips-vervaag' : 'flex-wrap'
+  // Schuivende regel: de gekozen chip in beeld (staat "Alles" achteraan, dan
+  // leek er anders geen filter gekozen). Alleen de regel zelf schuift, de
+  // pagina niet (geen scrollIntoView).
+  const ref = useRef<HTMLDivElement | null>(null)
+  // Ook bij een andere set chips (Verkoop ↔ Inkoop) met dezelfde waarde.
+  const chipIds = chips.map(c => c.id).join('|')
+  useEffect(() => {
+    if (!schuift) return
+    const box = ref.current
+    const el = box?.querySelector<HTMLElement>('[aria-pressed="true"]')
+    if (!box || !el) return
+    const b = box.getBoundingClientRect()
+    const r = el.getBoundingClientRect()
+    const marge = 24
+    if (r.left < b.left) box.scrollLeft += r.left - b.left - marge
+    else if (r.right > b.right) box.scrollLeft += r.right - b.right + marge
+  }, [waarde, schuift, chipIds])
   return (
-    <div role="group" aria-label={groep} className={`flex gap-1.5 min-w-0 max-w-full ${schuif} ${cls}`}>
+    <div ref={ref} role="group" aria-label={groep} className={`flex gap-1.5 min-w-0 max-w-full ${schuif} ${cls}`}>
       {chips.map(c => {
         const aan = c.id === waarde
         const heeftAantal = c.aantal !== null && c.aantal !== undefined

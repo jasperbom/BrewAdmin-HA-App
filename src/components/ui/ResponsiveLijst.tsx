@@ -49,6 +49,8 @@ export interface ResponsiveLijstProps<R> {
   label?: string
   /** Extra klassen per rij/kaart (bijv. gedimd voor een creditnota). */
   rijKlasse?: (r: R) => string
+  /** Bureau: smallere celmarge (een smalle lijst naast een open detail). */
+  compact?: boolean
   cls?: string
 }
 
@@ -73,7 +75,7 @@ const veiligId = (s: string | number): string => String(s).replace(/[^A-Za-z0-9_
  */
 function ResponsiveLijst<R>({
   rijen, sleutel, kolommen, kaart, onKies, gekozenSleutel, rijLabel, primaireKolom,
-  voetCellen, voet, leeg, label, rijKlasse, cls = '',
+  voetCellen, voet, leeg, label, rijKlasse, compact = false, cls = '',
 }: ResponsiveLijstProps<R>) {
   const smal = useSmalScherm()
   const basisId = React.useId()
@@ -137,7 +139,7 @@ function ResponsiveLijst<R>({
 
   const primIndex = Math.max(0, primaireKolom ? kolommen.findIndex(k => k.id === primaireKolom) : 0)
   const celKlasse = (k: LijstKolom<R>) =>
-    `px-3 py-2 align-middle ${k.rechts ? 'text-right tabular-nums' : 'text-left'} ${k.breed ? 'hidden lg:table-cell' : ''} ${k.klasse || ''}`
+    `${compact ? 'px-2' : 'px-3'} py-2 align-middle ${k.rechts ? 'text-right tabular-nums' : 'text-left'} ${k.breed ? 'hidden lg:table-cell' : ''} ${k.klasse || ''}`
 
   const klikRij = (e: React.MouseEvent<HTMLTableRowElement>, r: R) => {
     if (!onKies) return
@@ -152,7 +154,9 @@ function ResponsiveLijst<R>({
   const heeftVoet = !!voetCellen && Object.keys(voetCellen).length > 0
   return (
     <div className={`bg-white rounded-xl border border-gray-200 overflow-hidden min-w-0 ${cls}`}>
-      <div className="overflow-x-auto">
+      {/* relative: een absoluut geplaatst kind (een sr-only kolomkop) valt zo
+          binnen deze schuifcontainer en duwt de pagina niet zijwaarts. */}
+      <div className="relative overflow-x-auto">
         <table className="w-full text-sm" aria-label={label}>
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50/70">

@@ -118,6 +118,22 @@ export const accijnsMaandKey = (datum: string | Date | null | undefined): string
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+/**
+ * Accijnsrecords van één maand (`accijnsMaandKey`) op betaald, met de
+ * betaaldatum; al betaalde records blijven zoals ze zijn. Gedeeld door de
+ * bankkoppeling (Administratie) en "Markeer betaald" op Aangiftes.
+ */
+export const accijnsRecordsBetaald = <T extends { datum?: string | null, betaald?: unknown }>(
+  acc: readonly T[] | null | undefined, maand: string, datum: string,
+): T[] => (acc || []).map(a =>
+  accijnsMaandKey(a?.datum) === maand && !a.betaald ? { ...a, betaald: true, betaal_datum: datum } : a)
+
+/** Het omgekeerde (ontkoppelen van de betaling): de maand weer onbetaald. */
+export const accijnsRecordsOnbetaald = <T extends { datum?: string | null, betaald?: unknown }>(
+  acc: readonly T[] | null | undefined, maand: string,
+): T[] => (acc || []).map(a =>
+  accijnsMaandKey(a?.datum) === maand && a.betaald ? { ...a, betaald: false, betaal_datum: null } : a)
+
 export interface AccijnsMaanden<T> {
   /** Records per maandsleutel; de lopende maand bestaat altijd (evt. leeg). */
   byMonth: Record<string, T[]>

@@ -348,7 +348,7 @@ const KlantenPage: React.FC<KlantenPageProps> = ({
   }
 
   // Terug naar de lijst. Met niet-opgeslagen wijzigingen vraagt de terugknop
-  // het eerst zelf (BevestigKnop), niet via een confirm()-venster.
+  // het eerst zelf (BevestigKnop), niet via een confirm-venster.
   const naarLijst = () => {
     setView('list')
     setSelectedId(null)

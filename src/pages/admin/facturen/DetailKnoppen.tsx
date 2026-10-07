@@ -7,7 +7,7 @@ import BevestigKnop from '../../../components/ui/BevestigKnop'
 // zet ze neer: één primaire en hooguit één tweede knop in de actiebalk (op
 // een telefoon onder de duim), de rest als rustige lijst knoppen in het
 // detail zelf. Een gevaarlijke of statuswijzigende handeling vraagt de
-// bevestiging in de knop (BevestigKnop), nooit met confirm().
+// bevestiging in de knop (BevestigKnop), nooit met een confirm-venster.
 
 export interface DetailKnop {
   id: string

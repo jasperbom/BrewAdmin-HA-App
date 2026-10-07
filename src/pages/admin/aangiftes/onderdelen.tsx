@@ -6,6 +6,7 @@ import {
   type AangifteRij, type PilKleur, type StapStand, type Tekst,
 } from '../../../utils/aangifteStappen'
 import { fmt } from '../adminContext'
+import { useTelefoonIndeling } from '../../../components/ui/useSmalScherm'
 
 // ── Kleine onderdelen van Aangiftes: stappenbalk, pil, bedrag, titels ───────
 
@@ -85,6 +86,11 @@ const STIP: Record<StapStand, string> = {
  * (het detail).
  */
 export const StappenBalk: React.FC<{ rij: AangifteRij, volledig?: boolean, cls?: string }> = ({ rij, volledig = false, cls = '' }) => {
+  // Het detailpaneel naast de lijst is onder 1024 px maar 320 px breed: daar
+  // alleen de naam van de huidige stap (de rest staat in de stip als title en
+  // in aria-label), anders lopen de namen in elkaar. Het detailscherm op een
+  // telefoon heeft de hele breedte.
+  const telefoon = useTelefoonIndeling()
   const huidig = t(stapSleutel(rij))
   const nr = Math.max(0, AANGIFTE_STAPPEN.indexOf(rij.stap)) + 1
   const aria = t('agf_stap_aria').replace('{n}', String(nr)).replace('{totaal}', String(AANGIFTE_STAPPEN.length)).replace('{stap}', huidig)
@@ -99,8 +105,8 @@ export const StappenBalk: React.FC<{ rij: AangifteRij, volledig?: boolean, cls?:
                 <span aria-hidden="true" className={`absolute top-[7px] right-1/2 w-full h-0.5 ${stand === 'open' ? 'bg-gray-200' : 'bg-[color:var(--t-accent-edge,var(--t-accent))]'}`} />
               )}
               {/* Boven het lijntje van de volgende stap, dat tot het midden van deze stip loopt. */}
-              <span aria-hidden="true" className={`relative z-10 w-4 h-4 rounded-full border-2 ${STIP[stand]}`} />
-              <span className={`mt-1 text-[10px] leading-tight whitespace-nowrap ${stand === 'nu' ? 'font-semibold text-gray-900' : stand === 'open' ? 'text-gray-400' : 'text-gray-600'} ${stand === 'overgeslagen' ? 'line-through' : ''}`}>
+              <span aria-hidden="true" title={t(stapNaamSleutel(rij, i))} className={`relative z-10 w-4 h-4 rounded-full border-2 ${STIP[stand]}`} />
+              <span className={`mt-1 text-[10px] leading-tight whitespace-nowrap ${stand === 'nu' || telefoon ? '' : 'hidden lg:block'} ${stand === 'nu' ? 'font-semibold text-gray-900' : stand === 'open' ? 'text-gray-400' : 'text-gray-600'} ${stand === 'overgeslagen' ? 'line-through' : ''}`}>
                 {t(stapNaamSleutel(rij, i))}
               </span>
             </li>

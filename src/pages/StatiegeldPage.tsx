@@ -71,7 +71,7 @@ const StatiegeldPage: React.FC<Props> = ({
   }, [verkoopFacturen])
 
   // Te remitteren SNd per periode, met de afdrachtstatus uit de bankkoppeling
-  // {soort:'snd', periodeKey} die de Boekhouding legt (utils/sndAfdracht.ts).
+  // {soort:'snd', periodeKey} die Administratie → Bank legt (utils/sndAfdracht.ts).
   const sndPerPeriode = useMemo(
     () => sndPerPeriodeUtil(verkoopFacturen, bankKoppelingen, aangifteYear, aangiftePeriode, tod(), {bestellingen, verpakkingen}),
     [verkoopFacturen, bankKoppelingen, aangifteYear, aangiftePeriode, bestellingen, verpakkingen])

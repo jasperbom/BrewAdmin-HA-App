@@ -46,7 +46,8 @@ export interface VerkoopDetailProps {
   cls?: string
 }
 
-const LINK = 't-accent-text font-medium hover:underline text-left break-words focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] rounded'
+// Tapdoel van 44 px op een telefoon (min-h-tap), compact op het bureau.
+const LINK = 'inline-flex items-center min-h-tap sm:min-h-0 t-accent-text font-medium hover:underline text-left break-words focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] rounded'
 
 const Rij: React.FC<{ label: string, children: React.ReactNode }> = ({ label, children }) => (
   <>

@@ -6,7 +6,7 @@ import { wcFoutMelding } from '../../utils/wcFout'
 import { logAudit } from '../../utils/audit'
 import { periodeKeyLabel, getPeriodes, wcOrdersNogNietGefactureerd } from '../../utils/btw'
 import { btwAangifteBoeking, accijnsAangifteBoeking, stornoBoekingVoor, voegBoekingToe } from '../../utils/journaal'
-import { accijnsMaandKey, groepeerAccijnsPerMaand } from '../../utils/afboeking'
+import { accijnsMaandKey, groepeerAccijnsPerMaand, accijnsRecordsBetaald } from '../../utils/afboeking'
 import { rolMagKey } from '../../utils/rollen'
 import { centNaarEuro } from '../../utils/centen'
 import { dagNotatie } from '../../utils/periode'
@@ -78,7 +78,7 @@ function AangiftesSectie() {
   const [gekozen, setGekozen] = React.useState<string | null>(doel.sleutel)
   const [focus, setFocus] = React.useState<Focus>(null)
 
-  // Webshoporders van het jaar (de bestaande ophaalactie van de BTW-tab).
+  // Webshoporders van het jaar (de ophaalactie van de oude BTW-tab).
   const [wcOrders, setWcOrders] = React.useState<any[]>([])
   const [wcBezig, setWcBezig] = React.useState(false)
   const [wcFout, setWcFout] = React.useState('')
@@ -235,8 +235,7 @@ function AangiftesSectie() {
   // Zonder bankkoppeling op betaald, met de opgegeven betaaldatum.
   const markeerAccijnsBetaald = (maand: string, datum: string) => {
     zetAccijns(maand, { status: 'betaald', betaald_datum: datum })
-    setAcc((prev: any[]) => (prev || []).map((a: any) =>
-      accijnsMaandKey(a.datum) === maand && !a.betaald ? { ...a, betaald: true, betaal_datum: datum } : a))
+    setAcc((prev: any[]) => accijnsRecordsBetaald(prev, maand, datum))
     logAudit(auditLog, setAuditLog, { entiteit: 'Accijnsaangifte', entiteit_id: 0, actie: 'gewijzigd', omschrijving: `Aangifte ${maand} → betaald op ${datum} (zonder bankkoppeling)` })
   }
 

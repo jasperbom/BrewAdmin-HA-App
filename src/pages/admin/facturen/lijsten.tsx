@@ -48,24 +48,36 @@ export interface VerkoopLijstOpties {
   klantNaam: (f: any) => string
   altNaam: (id: unknown) => string | undefined
   rijActie: (f: any) => DetailKnop | null
+  /** Smalle lijst (naast een open detail, onder 1024 px): geen statuskolom,
+      de pil staat onder de naam. */
+  statusOnderNaam?: boolean
 }
 
+// Naam die ook als één lang woord afbreekt (een smalle lijst naast het detail).
+const NAAM = 'block min-w-0 font-medium text-gray-900 break-words [overflow-wrap:anywhere]'
+
 export function verkoopKolommen(o: VerkoopLijstOpties): LijstKolom<any>[] {
+  const status = (f: any) => {
+    const s = o.stand(f)
+    return (
+      <span className="flex flex-wrap items-center gap-1">
+        <VerkoopPil stand={s} />
+        {s.verrekend && <VerrekendBadge naam={o.altNaam(f.verrekend_alt_id)} />}
+        {f.btw_periode && <RolloverBadge periode={f.btw_periode} sleutel="fct_btw_telt_in" />}
+      </span>
+    )
+  }
   return [
     { id: 'nummer', kop: t('fct_kol_nummer'), klasse: 'whitespace-nowrap', cel: f => <NummerCel nummer={f.factuurnummer || `F-${f.id}`} datum={f.datum} /> },
-    { id: 'klant', kop: t('lbl_klant'), cel: f => <span className="font-medium text-gray-900 break-words">{o.klantNaam(f) || '—'}</span> },
     {
-      id: 'status', kop: t('lbl_status'), cel: f => {
-        const s = o.stand(f)
-        return (
-          <span className="flex flex-wrap items-center gap-1">
-            <VerkoopPil stand={s} />
-            {s.verrekend && <VerrekendBadge naam={o.altNaam(f.verrekend_alt_id)} />}
-            {f.btw_periode && <RolloverBadge periode={f.btw_periode} sleutel="fct_btw_telt_in" />}
-          </span>
-        )
-      },
+      id: 'klant', kop: t('lbl_klant'), cel: f => o.statusOnderNaam ? (
+        <span className="block min-w-0">
+          <span className={NAAM}>{o.klantNaam(f) || '—'}</span>
+          <span className="block mt-1">{status(f)}</span>
+        </span>
+      ) : <span className="font-medium text-gray-900 break-words">{o.klantNaam(f) || '—'}</span>,
     },
+    ...(o.statusOnderNaam ? [] : [{ id: 'status', kop: t('lbl_status'), cel: status } as LijstKolom<any>]),
     { id: 'netto', kop: t('lbl_netto'), rechts: true, breed: true, klasse: 'whitespace-nowrap', cel: f => <span className="text-gray-700">{fmt(verkoopCenten(f).netto)}</span> },
     { id: 'btw', kop: t('lbl_btw'), rechts: true, breed: true, klasse: 'whitespace-nowrap', cel: f => <span className="text-gray-700">{fmt(verkoopCenten(f).btw)}</span> },
     { id: 'bruto', kop: t('lbl_bruto'), rechts: true, klasse: 'whitespace-nowrap', cel: f => <span className="font-semibold text-gray-900">{fmt(verkoopCenten(f).bruto)}</span> },
@@ -89,24 +101,28 @@ export interface InkoopLijstOpties {
   altNaam: (id: unknown) => string | undefined
   /** Open: markeer betaald; anders null (dan de bijlage als link, als die er is). */
   rijActie: (f: any) => DetailKnop | null
+  /** Zie VerkoopLijstOpties. */
+  statusOnderNaam?: boolean
 }
 
 export function inkoopKolommen(o: InkoopLijstOpties): LijstKolom<any>[] {
+  const status = (f: any) => <InkoopPil stand={o.stand(f)} altNaam={o.altNaam(f.betaald_via_alt_id)} />
   return [
     { id: 'nummer', kop: t('fct_kol_nummer'), klasse: 'whitespace-nowrap', cel: f => <NummerCel nummer={f.factuurnummer || '—'} datum={f.datum} /> },
     {
       id: 'leverancier', kop: t('lbl_supplier'), cel: f => {
         const v = o.verlegd(f)
         return (
-          <span className="flex flex-wrap items-center gap-1">
-            <span className="font-medium text-gray-900 break-words mr-1">{f.leverancier || '—'}</span>
+          <span className={`flex flex-wrap items-center gap-1 ${o.statusOnderNaam ? 'min-w-0' : ''}`}>
+            <span className={o.statusOnderNaam ? `${NAAM} mr-1` : 'font-medium text-gray-900 break-words mr-1'}>{f.leverancier || '—'}</span>
             {v && <VerlegdBadge info={v} />}
             {f.btw_periode && <RolloverBadge periode={f.btw_periode} />}
+            {o.statusOnderNaam && <span className="basis-full">{status(f)}</span>}
           </span>
         )
       },
     },
-    { id: 'status', kop: t('lbl_status'), cel: f => <InkoopPil stand={o.stand(f)} altNaam={o.altNaam(f.betaald_via_alt_id)} /> },
+    ...(o.statusOnderNaam ? [] : [{ id: 'status', kop: t('lbl_status'), cel: status } as LijstKolom<any>]),
     { id: 'netto', kop: t('lbl_netto'), rechts: true, breed: true, klasse: 'whitespace-nowrap', cel: f => <span className="text-gray-700">{fmt(inkoopCenten(f).netto)}</span> },
     { id: 'btw', kop: t('lbl_btw'), rechts: true, breed: true, klasse: 'whitespace-nowrap', cel: f => <span className="text-gray-700">{fmt(inkoopCenten(f).btw)}</span> },
     { id: 'bruto', kop: t('lbl_bruto'), rechts: true, klasse: 'whitespace-nowrap', cel: f => <span className="font-semibold text-gray-900">{fmt(inkoopCenten(f).bruto)}</span> },

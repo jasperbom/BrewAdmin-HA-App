@@ -90,6 +90,13 @@ export interface AdminContextWaarde {
   // op zijn plek in de lijst (die kan tussen weergave en klik veranderen).
   bankTransacties: any[]; setBankTransacties: any
   bankAfschriften: any[]; setBankAfschriften: any
+  /** De serverstand ophalen (useStore-refresh): de verse waarde, of null als er
+      een eigen wijziging openstaat of de server niet bereikbaar is — dan geldt
+      de eigen stand. De ruwe opslag, dus zonder herstelde koppelvlaggen. */
+  refreshBankTransacties: () => Promise<any[] | null>
+  refreshBankAfschriften: () => Promise<any[] | null>
+  refreshBankKoppelingen: () => Promise<Record<string, any> | null>
+  refreshBankSaldi: () => Promise<Record<string, any> | null>
 
   // ── Gedeelde afleidingen en handelingen ───────────────────────────────────
   klantNaamVoor: (f: any) => string

@@ -9,7 +9,7 @@ import type { Locatie } from '../../../types'
 // ── Voorraadlocaties beheren ────────────────────────────────────────────────
 // Eén actie per locatie (Bewerken), verwijderen achter ⋯ met de vraag in de
 // regel zelf. Een locatie met voorraad of de AGP zelf kan niet weg; dat staat
-// dan onder de regel in plaats van in een alert().
+// dan onder de regel in plaats van in een alert-venster.
 
 export interface LocatieInvoer {
   id?: number

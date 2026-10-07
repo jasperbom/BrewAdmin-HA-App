@@ -6,6 +6,7 @@ import { findLiveKlant } from '../../utils/klant'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../../utils/constants'
 import { logAudit } from '../../utils/audit'
 import { bepaalRollover } from '../../utils/btw'
+import { accijnsRecordsBetaald, accijnsRecordsOnbetaald } from '../../utils/afboeking'
 import { bouwIngredientOntvangst, boekOnderdelenOntvangst } from '../../utils/inkoopOntvangst'
 import { herstelKoppelingVlaggen } from '../../utils/bank'
 import { AdminContext, txKey } from './adminContext'
@@ -28,6 +29,7 @@ import RapportenSectie from './RapportenSectie'
 function AdministratiePage({sectie = 'facturen', navDoel = null, onNavDoelConsumed = () => {}, gaNaarDoel = () => {}, whoami = null,
   bankTransacties: bankTransactiesOpslag = [], setBankTransacties = () => {},
   bankAfschriften = [], setBankAfschriften = () => {},
+  refreshBankTransacties = async () => null, refreshBankAfschriften = async () => null, refreshBankKoppelingen = async () => null, refreshBankSaldi = async () => null,
   wcCreds, inkoopFacturen=[], setInkoopFacturen=()=>{}, ing=[], setIng=()=>{}, lots=[], setLots=()=>{}, onderdelen=[], setOnderdelen=()=>{}, verpakkingen=[], log=[], setLog=()=>{}, btwInst={}, claudeCreds=null, ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, verkoopFacturen=[], setVerkoopFacturen=()=>{}, bestellingen=[], setPage=()=>{}, setOpenOrderId=()=>{}, bat=[], acc=[], setAcc=()=>{}, breweryDetails={}, factuurLogo=null, klanten=[], setKlanten=()=>{}, factuurCounter={jaar:0,nr:0}, setFactuurCounter=()=>{}, artikelen=[], bankKoppelingen={}, setBankKoppelingen=()=>{}, kapitaalBoekingen=[], setKapitaalBoekingen=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, btwAangiftes=[], setBtwAangiftes=()=>{}, av=[], uit=[], afboekingen=[], bi=[], accijnsInst=null, auditLog=[], setAuditLog=()=>{}, kostenSoorten=BUILTIN_KOSTEN_SOORTEN, smtpCreds={enabled:false}, mollieCreds={enabled:false}, appName='', logo=null, mailTemplates={}, scanCorrecties=[], setScanCorrecties=()=>{}, journaal=[], setJournaal=()=>{}, bankSaldi={}, setBankSaldi=()=>{}, jaarafsluitingen=[], setJaarafsluitingen=()=>{}, merchArtikelen=[], setMerchArtikelen=()=>{}, merchVoorraadLog=[], setMerchVoorraadLog=()=>{}, inkoopInbox=[], setInkoopInbox=()=>{}, refreshInkoopInbox=async()=>null, imapCreds=null, onNaarPostvakInstellingen=()=>{}}: any) {
   // ── Bewaarde bankafschriften ───────────────────────────────────────────────
   // `bank_koppelingen` is de bron van waarheid voor wat er gekoppeld is; de
@@ -56,7 +58,8 @@ function AdministratiePage({sectie = 'facturen', navDoel = null, onNavDoelConsum
   }
 
   // Schuldberekening per rekening: (inkoopfacturen met betaald_via_alt_id) min
-  // (gekoppelde aflossingen). Wordt zowel in de Bank-tab als de Balans gebruikt.
+  // (gekoppelde aflossingen). Gebruikt door Bank (aflossing koppelen) en de
+  // Balans (Rapporten).
   const schuldPerAltRekening = React.useMemo<Record<number,{opgenomen:number,afgelost:number,openstaand:number}>>(() => {
     const map: Record<number,{opgenomen:number,afgelost:number,openstaand:number}> = {}
     for (const r of (altRekeningen||[])) map[r.id] = {opgenomen:0, afgelost:0, openstaand:0}
@@ -178,11 +181,9 @@ function AdministratiePage({sectie = 'facturen', navDoel = null, onNavDoelConsum
       if (existing) return prev.map((x: any) => x.maand === maandKey ? {...x, status: 'betaald', betaald_datum: datum} : x)
       return [...(prev||[]), {maand: maandKey, status: 'betaald', betaald_datum: datum}]
     })
-    setAcc((prev: any[]) => (prev||[]).map((a: any) => {
-      const d = new Date(a.datum)
-      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
-      return k === maandKey && !a.betaald ? {...a, betaald: true, betaal_datum: datum} : a
-    }))
+    // De maand uit de datum-string (accijnsMaandKey), niet via new Date():
+    // '2026-08-01' is UTC-middernacht en viel in een westelijke tijdzone in juli.
+    setAcc((prev: any[]) => accijnsRecordsBetaald(prev, maandKey, datum))
   }
 
   const ontkoppelAccijnsBetaling = (maandKey: string) => {
@@ -199,11 +200,7 @@ function AdministratiePage({sectie = 'facturen', navDoel = null, onNavDoelConsum
     setAccijnsAangiftes((prev: any[]) => (prev||[]).map((x: any) =>
       x.maand === maandKey ? {...x, status: 'ingediend', betaald_datum: undefined} : x
     ))
-    setAcc((prev: any[]) => (prev||[]).map((a: any) => {
-      const d = new Date(a.datum)
-      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
-      return k === maandKey && a.betaald ? {...a, betaald: false, betaal_datum: null} : a
-    }))
+    setAcc((prev: any[]) => accijnsRecordsOnbetaald(prev, maandKey))
   }
 
   // Een accijnsmaand aan een banktransactie koppelen (vanuit Bank of
@@ -231,6 +228,7 @@ function AdministratiePage({sectie = 'facturen', navDoel = null, onNavDoelConsum
     merchArtikelen, setMerchArtikelen, merchVoorraadLog, setMerchVoorraadLog, inkoopInbox, setInkoopInbox,
     refreshInkoopInbox, imapCreds,
     bankTransacties, setBankTransacties, bankAfschriften: Array.isArray(bankAfschriften) ? bankAfschriften : [], setBankAfschriften,
+    refreshBankTransacties, refreshBankAfschriften, refreshBankKoppelingen, refreshBankSaldi,
     klantNaamVoor, schuldPerAltRekening, totaleSchuldAltRekeningen, addLog, knownLeveranciers,
     btwBetaaldePerioden, btwIngediendePerioden, btwIngediendeKeys, btwPeriodeType, getRolloverInfo,
     boekInkoopVoorraad, markeerBetaald, koppelBtwBetaling, ontkoppelBtwBetaling,

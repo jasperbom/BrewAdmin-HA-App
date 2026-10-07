@@ -475,7 +475,9 @@ export type SaldoTransactie = Pick<BewaardeBankTransactie, 'id' | 'datum' | 'typ
  * peildatum — dat is preciezer dan het eindsaldo van een eerder afschrift.
  * Zonder bewaard afschrift het laatst bekende saldo uit `bank_saldi` als dat
  * van op of vóór de peildatum is (afschriften van vóór het bewaren); een
- * saldo zonder datum alleen op de balans van vandaag.
+ * saldo zonder datum alleen op de balans van vandaag. Is dat saldo nieuwer
+ * dan het laatste bewaarde afschrift tot de peildatum (een ouder afschrift
+ * opnieuw ingelezen), dan gaat het saldo voor.
  */
 export function liquideMiddelenOp(
   afschriften: readonly BewaardBankAfschrift[] | null | undefined,
@@ -518,12 +520,17 @@ export function liquideMiddelenOp(
       rekeningen.push({ iban, cent: toCent(lopend.beginsaldo) + mutatie, datum: peildatum, bron: 'afschrift' })
       continue
     }
-    if (laatste) {
+    const s = saldi.get(iban)
+    const sDatum = dag(s?.datum)
+    // Een nieuwer saldo in `bank_saldi` (van een afschrift dat niet bewaard is,
+    // bv. van vóór het bewaren) gaat vóór een ouder bewaard afschrift dat later
+    // opnieuw is ingelezen. Bij een gelijke datum is het hetzelfde afschrift.
+    const saldoNieuwer = !!s && isIsoDatum(sDatum) && sDatum <= peildatum
+      && (!laatste || sDatum > dag(laatste.tot))
+    if (laatste && !saldoNieuwer) {
       rekeningen.push({ iban, cent: toCent(laatste.eindsaldo), datum: dag(laatste.tot), bron: 'afschrift' })
       continue
     }
-    const s = saldi.get(iban)
-    const sDatum = dag(s?.datum)
     if (s && (isIsoDatum(sDatum) ? sDatum <= peildatum : peildatum >= vandaag)) {
       rekeningen.push({ iban, cent: toCent(s.eindsaldo), datum: isIsoDatum(sDatum) ? sDatum : '', bron: 'bank_saldi' })
       continue

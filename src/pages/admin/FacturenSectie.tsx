@@ -105,15 +105,18 @@ const RelatieFilter: React.FC<{
 }
 
 /**
- * De totaalregel onder de filterbalk: aantal, samen, waarvan te laat. Op een
+ * De totaalregel onder de filterbalk: aantal, samen, en hoeveel er te laat is.
+ * Dat laatste is hetzelfde getal als de chip "Te laat" (die negeert de
+ * periode, net als de badge), dus géén "waarvan": anders zegt de regel 3
+ * terwijl de chip en de lijst erachter er 5 tonen. Op een
  * telefoon ook netto en BTW: de totaalrij onder de tabel (voetCellen) is er
  * alleen op het bureau, en vroeger stonden die twee bedragen ook op de
  * telefoon (de inkoopkaartjes, de tabelvoet).
  */
 const Samenvatting: React.FC<{
-  tot: LijstTotalen, teLaatTonen: boolean, onTeLaat: () => void, periodeUit: boolean,
-  smal: boolean, btwLabel: string,
-}> = ({ tot, teLaatTonen, onTeLaat, periodeUit, smal, btwLabel }) => (
+  tot: LijstTotalen, teLaat: { aantal: number, bruto: number }, teLaatTonen: boolean,
+  onTeLaat: () => void, periodeUit: boolean, smal: boolean, btwLabel: string,
+}> = ({ tot, teLaat, teLaatTonen, onTeLaat, periodeUit, smal, btwLabel }) => (
   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 px-1" aria-live="polite">
     <span>{tot.aantal === 1 ? t('fct_som_aantal_1') : t('fct_som_aantal').replace('{n}', String(tot.aantal))}</span>
     <span>{t('fct_som_samen')} <b className="text-gray-900 tabular-nums">{fmt(tot.bruto)}</b></span>
@@ -122,10 +125,10 @@ const Samenvatting: React.FC<{
         {t('lbl_netto')} {fmt(tot.netto)} · {btwLabel} {fmt(tot.btw)}
       </span>
     )}
-    {teLaatTonen && tot.te_laat_aantal > 0 && (
+    {teLaatTonen && teLaat.aantal > 0 && (
       <button type="button" onClick={onTeLaat}
         className="inline-flex items-center min-h-tap sm:min-h-0 text-red-700 font-medium hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
-        {t('fct_som_waarvan_te_laat').replace('{n}', String(tot.te_laat_aantal)).replace('{bedrag}', fmt(tot.te_laat_bruto))}
+        {t('fct_som_te_laat').replace('{n}', String(teLaat.aantal)).replace('{bedrag}', fmt(teLaat.bruto))}
       </button>
     )}
     {periodeUit && <span className="text-gray-500">{t('fct_som_periode_uit')}</span>}
@@ -162,9 +165,12 @@ function FacturenSectie() {
   } = useAdmin()
   const smal = useSmalScherm()
   // Naast een open detail: netto en BTW pas vanaf 1600 px, de rij-handeling
-  // pas vanaf 1024 px (daaronder staat hij in het detail zelf).
+  // pas vanaf 1280 px (daaronder staat hij in het detail zelf), en onder
+  // 1024 px geen statuskolom maar de pil onder de naam — anders viel het
+  // bedrag of de knop rechts buiten de lijst.
   const ruim = useMinBreedte(1600)
-  const breed = useMinBreedte(1024)
+  const breed = useMinBreedte(1280)
+  const lg = useMinBreedte(1024)
 
   // ── Navigatiedoel (dashboard, attentie, klantkaart) ────────────────────────
   // tab = verkoop|inkoop; filter = een status ('open', 'te_laat', 'betaald',
@@ -201,10 +207,10 @@ function FacturenSectie() {
   // de datumkop van de inkooplijst) oudste eerst.
   const [oplopend, setOplopend] = React.useState(false)
 
-  // Meldingen die vroeger een alert() waren: een balk bovenin die niets blokkeert.
+  // Meldingen die vroeger een alert-venster waren: een balk bovenin die niets blokkeert.
   const [melding, setMelding] = React.useState<string | null>(null)
   const sluitMelding = React.useCallback(() => setMelding(null), [])
-  // E-factuur met ontbrekende gegevens: eerst de lijst tonen (vroeger confirm()).
+  // E-factuur met ontbrekende gegevens: eerst de lijst tonen (vroeger een confirm-venster).
   const [ublVraag, setUblVraag] = React.useState<{ factuur: any, problemen: string[] } | null>(null)
 
   const now = new Date();
@@ -845,6 +851,12 @@ function FacturenSectie() {
     () => telVerkoopStatussen(verkoopFacturen, {bereik, zoek: zoekVerkoop, klantId}, vCtx),
     [verkoopFacturen, bereik, zoekVerkoop, klantId, vCtx])
   const verkoopTot = React.useMemo(() => verkoopTotalen(verkoopGetoond, vCtx), [verkoopGetoond, vCtx])
+  // Te laat zoals de chip het telt: zelfde zoekterm en klant, periode doet
+  // niet mee (wat aandacht vraagt filter je niet weg).
+  const verkoopTeLaat = React.useMemo(() => {
+    const tl = verkoopTotalen(filterVerkoopFacturen<any>(verkoopFacturen, {status: 'te_laat', bereik, zoek: zoekVerkoop, klantId}, vCtx), vCtx)
+    return {aantal: tl.aantal, bruto: tl.bruto}
+  }, [verkoopFacturen, bereik, zoekVerkoop, klantId, vCtx])
   // Het segment noemt hoeveel er open staat, los van zoeken en periode.
   const verkoopOpenAantal = React.useMemo(() => telVerkoopStatussen(verkoopFacturen, {}, vCtx).open, [verkoopFacturen, vCtx])
 
@@ -855,6 +867,10 @@ function FacturenSectie() {
     () => telInkoopStatussen(inkoopFacturen, {bereik, zoek: zoekInkoop, leverancier: leverancierFilter || null}, iCtx, inkoopInbox),
     [inkoopFacturen, bereik, zoekInkoop, leverancierFilter, iCtx, inkoopInbox])
   const inkoopTot = React.useMemo(() => inkoopTotalen(inkoopGetoond, iCtx), [inkoopGetoond, iCtx])
+  const inkoopTeLaat = React.useMemo(() => {
+    const tl = inkoopTotalen(filterInkoopFacturen<any>(inkoopFacturen, {status: 'te_laat', bereik, zoek: zoekInkoop, leverancier: leverancierFilter || null}, iCtx), iCtx)
+    return {aantal: tl.aantal, bruto: tl.bruto}
+  }, [inkoopFacturen, bereik, zoekInkoop, leverancierFilter, iCtx])
   const inkoopOpenAantal = React.useMemo(() => telInkoopStatussen(inkoopFacturen, {}, iCtx).open, [inkoopFacturen, iCtx])
   const inboxOpenAantal = telInboxOpen(inkoopInbox)
 
@@ -1209,12 +1225,14 @@ function FacturenSectie() {
     stand: standVan,
     klantNaam: klantNaamVoor,
     altNaam,
+    statusOnderNaam: detailOpen && !lg,
     rijActie: (f: any) => verkoopActieKnop(f, verkoopPrimaireActie(standVan(f), smtpAan)),
   }
   const inkoopOpties = {
     stand: (f: any) => inkoopStand(f, vandaagIso),
     verlegd: inkoopVerlegd,
     altNaam,
+    statusOnderNaam: detailOpen && !lg,
     rijActie: (f: any) => {
       const s = inkoopStand(f, vandaagIso)
       return s.fase === 'open' || s.fase === 'te_laat' ? {id: 'betaald', label: t('btn_mark_paid'), onClick: () => markeerInkoopBetaald(f.id)} : null
@@ -1251,6 +1269,7 @@ function FacturenSectie() {
       rijen={getoond}
       sleutel={(f: any) => f.id}
       kolommen={kolommen}
+      compact={detailOpen && !lg}
       kaart={isVerkoop ? verkoopKaart(verkoopOpties) : inkoopKaart(inkoopOpties)}
       onKies={(f: any) => isVerkoop ? setGekozenVerkoop(f.id) : setGekozenInkoop(f.id)}
       gekozenSleutel={isVerkoop ? gekozenVerkoop : gekozenInkoop}
@@ -1329,7 +1348,7 @@ function FacturenSectie() {
         {!isVerkoop && postvakAan && postvakFout && (
           <PostvakFout tekst={t(inboxFoutSleutel(postvakFout))} onBekijk={() => kiesStatus('te_verwerken')} />
         )}
-        <Samenvatting tot={tot} teLaatTonen={status !== 'te_laat'} periodeUit={periodeUit}
+        <Samenvatting tot={tot} teLaat={isVerkoop ? verkoopTeLaat : inkoopTeLaat} teLaatTonen={status !== 'te_laat'} periodeUit={periodeUit}
           onTeLaat={() => kiesStatus('te_laat')} smal={smal} btwLabel={isVerkoop ? t('lbl_btw') : t('lbl_voorbelasting')} />
         <LijstMetDetail
           lijst={lijst}

@@ -4,7 +4,7 @@ import Modal from '../../../components/ui/Modal'
 import Btn from '../../../components/ui/Btn'
 
 // ── E-factuur met ontbrekende gegevens ──────────────────────────────────────
-// Vroeger een confirm(): de e-factuur mist gegevens die PEPPOL verplicht
+// Vroeger een confirm-venster: de e-factuur mist gegevens die PEPPOL verplicht
 // stelt. De download wordt niet geblokkeerd — de gebruiker weet zelf of de
 // ontvanger streng valideert — maar de ontbrekende gegevens staan eerst in
 // beeld, met "Toch downloaden" en "Annuleren".

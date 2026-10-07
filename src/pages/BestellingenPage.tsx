@@ -166,7 +166,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // afgeronde order vergrendeld.
   const [btwCorrectie, setBtwCorrectie] = useState<number | null>(null)
 
-  // Navigate to order when openOrderId is set (e.g. from BoekhoudingPage)
+  // Navigate to order when openOrderId is set (e.g. from Administratie → Facturen)
   React.useEffect(() => {
     if (openOrderId != null) {
       const order = bestellingen.find((b: any) => b.id === openOrderId)
@@ -1675,7 +1675,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const factuur = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
     if (!factuur) { alert(t('err_no_invoice_for_order')); return }
     // Termijn van de klantkaart (anders de brouwerij): dezelfde vervaldatum
-    // als vanuit Boekhouding en als waarmee de te-laat-badge rekent.
+    // als vanuit Administratie → Facturen en als waarmee de te-laat-badge rekent.
     printFactuur(resolvedSelectedOrder!, factuur, breweryMetTermijn(factuur, klanten, breweryDetails), appName, factuurLogo||logo)
   }
 
@@ -1760,7 +1760,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       // hij hier wordt afgerond; de factuur staat dan op betaald. Die klant
       // krijgt de "al voldaan"-mail (template `factuur_betaald`) met de
       // betaaldatum en -methode uit WooCommerce — niet een verzoek om
-      // over te maken. Zelfde logica als op de boekhoudpagina
+      // over te maken. Zelfde logica als op Administratie → Facturen
       // (utils/factuurMail.ts).
       const betaal = factuurMailBetaalVars(factuur)
       const vars = {
@@ -1774,7 +1774,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         betaalwijze: betaal.betaalwijze,
         betaalregel: betaal.betaalregel,
       }
-      // Mollie-betaallink: zelfde regels als op de boekhoudingspagina — alleen
+      // Mollie-betaallink: zelfde regels als op Administratie → Facturen — alleen
       // voor openstaande (niet-betaalde, niet-credit) facturen met een positief
       // bedrag, en alleen als Mollie aanstaat. Redirect-URL uit de instelling,
       // met de brouwerij-website als fallback.

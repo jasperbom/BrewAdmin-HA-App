@@ -22,8 +22,9 @@
 //
 // Een terugboeking (storno) krijgt nooit een voorstel: dat is geen betaling
 // van een factuur, de gebruiker beslist. De volgorde is die van de
-// automatische koppeling bij het inlezen (BankSectie `importMT940`), zodat
-// voorstel en import hetzelfde vinden.
+// automatische koppeling bij het inlezen (`autoKoppelImport` in
+// utils/bankImportKoppeling.ts), en de datumgrens deelt die via
+// `besteMatchBinnenDatum`, zodat voorstel en import hetzelfde vinden.
 //
 // Puur, zonder React of t(): redenen komen terug als i18n-sleutel met
 // variabelen; bedragen voor in de reden in centen.
@@ -31,7 +32,7 @@
 import {
   besteMatch, scoreMatch, gekoppeldeFactuurIds, isGekoppeld, isPspTransactie,
   isBelastingdienstTransactie, pspKandidaten, zoekPspCombinatie, txKey,
-  type MatchKandidaat,
+  type MatchKandidaat, type MatchTransactie,
 } from './bank'
 import { isVerkoopFactuurOpen, openInkoopFacturen } from './facturen'
 import { toCent } from './centen'
@@ -103,6 +104,21 @@ export function binnenDatumgrens(factuurDatum: unknown, txDatum: unknown, maxDag
   if (!ISO_DAG.test(f) || !ISO_DAG.test(tx)) return true
   const grens = dagPlus(tx, maxDagen)
   return grens === null || f <= grens
+}
+
+/**
+ * `besteMatch` met de datumgrens (ERP-plan F11): een kandidaat die meer dan
+ * VOORSTEL_MAX_DAGEN_VOORUIT dagen ná de transactie gedateerd is doet niet
+ * mee — ook niet voor "ambigu". Eén regel voor het voorstel hieronder én de
+ * automatische koppeling bij het inlezen (`autoKoppelImport` in
+ * utils/bankImportKoppeling.ts); geef de factuurdatum mee als `datum`.
+ */
+export function besteMatchBinnenDatum<T extends MatchKandidaat & { datum?: unknown }>(
+  tx: MatchTransactie & { datum?: unknown },
+  kandidaten: readonly T[] | null | undefined,
+  uitsluiten?: Set<number>,
+): { kandidaat: T | null; ambigu: boolean } {
+  return besteMatch(tx, (kandidaten || []).filter(k => binnenDatumgrens(k?.datum, tx?.datum)), uitsluiten)
 }
 
 /** Eerste dag van een BTW-periode: '2026-Q2' → '2026-04-01', '2026-M04' → '2026-04-01'. */
@@ -200,8 +216,7 @@ interface MetGewicht { voorstel: BankVoorstel, gewicht: number }
 function factuurMatch(
   tx: any, soort: 'verkoop' | 'inkoop', lijst: FactuurKandidaat[], bezet: Set<number>, retro: boolean,
 ): MetGewicht | 'ambigu' | null {
-  const kandidaten = lijst.filter(k => binnenDatumgrens(k.datum, tx?.datum))
-  const m = besteMatch(tx, kandidaten, bezet)
+  const m = besteMatchBinnenDatum(tx, lijst, bezet)
   if (m.kandidaat) {
     const score = scoreMatch(tx, m.kandidaat)
     return {
@@ -232,17 +247,48 @@ function aangifteMatch<A>(
   return { beste: binnen[0].a, verschilCent: binnen[0].verschil }
 }
 
-function btwMatch(tx: any, v: Voorbereid): MetGewicht | 'ambigu' | null {
+/**
+ * De BTW-aangifte waar deze transactie de betaling (afschrijving) of de
+ * teruggave (bijschrijving) van is: bedrag op € 1 na, niet vóór het begin van
+ * de periode, geen periode die al een betaling heeft (`betaald`). De
+ * dichtstbijzijnde wint; even dichtbij = ambigu. Gedeeld door het voorstel en
+ * de automatische koppeling bij het inlezen (utils/bankImportKoppeling.ts),
+ * zodat die hetzelfde vinden.
+ */
+export function btwAangifteMatch(
+  tx: any, btwAangiftes: readonly any[] | null | undefined, betaald: ReadonlySet<string>,
+): { beste: any, verschilCent: number } | 'ambigu' | null {
   const credit = tx?.type === 'C'
-  const kandidaten = (v.ctx.btwAangiftes || []).filter((a: any) => {
-    if (!a?.periodeKey || v.btwBetaald.has(String(a.periodeKey))) return false
+  const kandidaten = (btwAangiftes || []).filter((a: any) => {
+    if (!a?.periodeKey || betaald.has(String(a.periodeKey))) return false
     const b = toCent(a.bedrag)
     // Afschrijving = te betalen (> 0), bijschrijving = teruggave (< 0). Een
     // aangifte van nul kent geen betaling.
     if (credit ? b >= 0 : b <= 0) return false
     return nietVoor(tx?.datum, btwPeriodeStart(a.periodeKey))
   })
-  const m = aangifteMatch(tx, kandidaten, (a: any) => toCent(a.bedrag))
+  return aangifteMatch(tx, kandidaten, (a: any) => toCent(a.bedrag))
+}
+
+/**
+ * De ingediende accijnsmaand waar deze afschrijving de betaling van is (zie
+ * `btwAangifteMatch`): bedrag > 0 op € 1 na, niet vóór de maand, nog zonder
+ * betaling.
+ */
+export function accijnsAangifteMatch(
+  tx: any, accijnsAangiftes: readonly any[] | null | undefined, betaald: ReadonlySet<string>,
+): { beste: any, verschilCent: number } | 'ambigu' | null {
+  const kandidaten = (accijnsAangiftes || []).filter((a: any) => {
+    if (!a?.maand || a.status !== 'ingediend' || betaald.has(String(a.maand))) return false
+    if (toCent(a.bedrag) <= 0) return false
+    return nietVoor(tx?.datum, accijnsMaandStart(a.maand))
+  })
+  return aangifteMatch(tx, kandidaten, (a: any) => toCent(a.bedrag))
+}
+
+function btwMatch(tx: any, v: Voorbereid): MetGewicht | 'ambigu' | null {
+  const credit = tx?.type === 'C'
+  const m = btwAangifteMatch(tx, v.ctx.btwAangiftes, v.btwBetaald)
   if (m === 'ambigu') return 'ambigu'
   if (!m) return null
   const exact = m.verschilCent === 0
@@ -259,12 +305,7 @@ function btwMatch(tx: any, v: Voorbereid): MetGewicht | 'ambigu' | null {
 }
 
 function accijnsMatch(tx: any, v: Voorbereid): MetGewicht | 'ambigu' | null {
-  const kandidaten = (v.ctx.accijnsAangiftes || []).filter((a: any) => {
-    if (!a?.maand || a.status !== 'ingediend' || v.accijnsBetaald.has(String(a.maand))) return false
-    if (toCent(a.bedrag) <= 0) return false
-    return nietVoor(tx?.datum, accijnsMaandStart(a.maand))
-  })
-  const m = aangifteMatch(tx, kandidaten, (a: any) => toCent(a.bedrag))
+  const m = accijnsAangifteMatch(tx, v.ctx.accijnsAangiftes, v.accijnsBetaald)
   if (m === 'ambigu') return 'ambigu'
   if (!m) return null
   return {

@@ -4181,7 +4181,7 @@ def _website_loop(interval: float = 60.0) -> None:
 # De brouwer stuurt een inkoopfactuur door naar een eigen postvak. BrewAdmin is
 # niet publiek bereikbaar en kan dus geen mail *ontvangen*; de server haalt de
 # PDF-bijlagen daarom zelf uit dat postvak (IMAP) en zet ze als `nieuw` in
-# `inkoop_inbox`. Daar wachten ze op de tab Inkoop tot iemand ze verwerkt:
+# `inkoop_inbox`. Daar wachten ze op Facturen → Inkoop tot iemand ze verwerkt:
 # openen, scannen, boeken. Hier wordt niets geboekt.
 #
 # Alleen lezen. Het postvak gaat met EXAMINE (readonly) open: berichten worden
