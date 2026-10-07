@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.89] — 2026-10-07
+
+### Opzet: Productie en Verkoop overzichtelijker
+
+Alleen documentatie, geen wijziging in de app. Nieuw: `docs/OPZET-PRODUCTIE-VERKOOP.md`,
+een kritische doorlichting van de werkruimtes Productie en Verkoop met een opzet
+voor bureau en telefoon (de mockups staan op een apart ontwerpcanvas):
+
+- **De keten recept › batch › product** zichtbaar en klikbaar, en door de app
+  zelf gelegd: een nieuwe batch krijgt het product van zijn recept, CCP 3 en het
+  afvullen beginnen bij dat product.
+- **Etiket & website aan het einde van de batch**: alcohol met de wettelijke
+  marge, allergenen met de Bevat-regel, lotcode en THT, IBU, EBC, energie in kcal
+  én kJ, elk met bron. Etiket bijwerken blijft een bewuste handeling, zodat CCP 3
+  een onafhankelijke controle blijft.
+- **Recepten "in gebruik"**: afgeleid uit batches en producten, met een kiezer
+  "Wat brouw je?" die bij je producten begint.
+- Fasering in losse stappen, te beginnen met de snelle winst (o.a. de groep
+  "Zonder tag" die altijd leeg is).
+
+---
+
 ## [1.12.88] — 2026-10-07
 
 ### Inkoop boeken: liggend fotograferen werkt
