@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.88] — 2026-10-07
+
+### Inkoop boeken: liggend fotograferen werkt
+
+Een foto die je liggend maakte, kwam niet aan: geen foto, geen melding. Staand
+ging het goed.
+
+- **Oorzaak.** Een iPhone dwars is 844 px of breder. Draaide je de telefoon
+  terwijl de camera open stond, dan wisselde het inkoopscherm van de telefoon-
+  naar de bureau-indeling en bouwde zich opnieuw op. De invoer waarmee de camera
+  was geopend verdween daarbij uit de pagina: de foto kwam nog wel binnen, maar
+  er luisterde niemand meer.
+- **Een telefoon dwars houdt de telefoonindeling** (`useTelefoonIndeling`: smal,
+  of een aanraakscherm waarvan de korte kant onder 500 px blijft — het toestel,
+  niet het venster, zodat een toetsenbord een tablet niet laat wisselen). De
+  bureau-indeling paste op 390 px hoogte ook niet.
+- **Alle bestandsinvoer op een vaste plek.** Factuur, camera en de etiketfoto's
+  per regel gaan via invoer die bij een indelingswissel blijft bestaan; een iPad
+  mini wisselt bij het draaien nog wel van indeling, en ook daar komt de foto nu
+  aan.
+
+---
+
 ## [1.12.87] — 2026-10-07
 
 ### Inkoop boeken: niet meer zijwaarts scrollen op de telefoon

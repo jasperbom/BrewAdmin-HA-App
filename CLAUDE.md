@@ -27,13 +27,17 @@ BrewAdmin-HA-App/
 ├── src/                    # React/TypeScript frontend
 │   ├── components/
 │   │   ├── ui/             # Reusable UI primitives (o.a. `useDialoogFocus` — focus-trap/Escape van Modal
-│   │   │                   # en het inkoopwerkblad — en `useSmalScherm`: het omslagpunt van 768 px)
+│   │   │                   # en het inkoopwerkblad — en `useSmalScherm`: het omslagpunt van 768 px;
+│   │   │                   # `useTelefoonIndeling`: ook een telefoon dwars houdt de telefoonindeling)
 │   │   ├── InkoopFactuurModal.tsx  # Inkoop boeken: het werkblad (bureau: factuur naast de boeking; telefoon:
 │   │   │                           # wissel Factuur | Boeking, regel in een paneel van onderen). Alle regels in
 │   │   │                           # één lijst, factuurscan, etiketfoto's, totaalcontrole, "Bij opslaan". Geeft
 │   │   │                           # de pagina dezelfde `onSave`-vorm als vroeger (+ `lots`/`etiket_fotos` op een
 │   │   │                           # productregel); `false` terug = niet opgeslagen. `inboxItem` laadt een PDF uit
-│   │   │                           # het postvak (geen tweede upload) en kent "Opslaan en volgende"
+│   │   │                           # het postvak (geen tweede upload) en kent "Opslaan en volgende". Alle
+│   │   │                           # bestandsinvoer (ook de etiketcamera per regel, via `onKies` van
+│   │   │                           # EtiketFotos) staat als eerste kind van het portaal: hij overleeft een
+│   │   │                           # indelingswissel terwijl de camera open staat
 │   │   ├── inkoop/                 # Onderdelen van dat werkblad: FactuurDocument (pdf.js op canvas, zoom,
 │   │   │                           # knijpen, markering van de open regel), RegelLijst, RegelEditor, LotVelden
 │   │   │                           # (meer lots per regel), EtiketFotos, LotEtiket (etiketfoto bij een bestaand
@@ -558,6 +562,7 @@ Houd de UI consistent door altijd dezelfde patronen te gebruiken:
 | Tekstgrootte van een invoerveld | `text-sm`/`text-xs` (zit al in `Inp`/`Sel`); `index.css` maakt daar in de telefoonlayout en op iOS/iPadOS 16px van — kleiner laat iOS bij het aantikken inzoomen en ingezoomd (zijwaarts schuifbaar) achter. Geen `text-[13px]` e.d. op een `input`/`select`/`textarea`: daar geldt die regel niet |
 | Datumveld | `type="date"` met `w-full` (of `flex-1`/`min-w-0`) is genoeg: op iOS zet `index.css` dan de eigen weergave uit, anders legt iOS een minimumbreedte op en steekt het veld buiten een smalle kolom |
 | Verticaal scrollend paneel op een telefoon | `overflow-y-auto overflow-x-hidden`; een lang woord zonder spaties (bestandsnaam) in een flex-rij krijgt `min-w-0 break-words` |
+| Foto-/bestandsinvoer in een venster dat in code van indeling wisselt (`useSmalScherm`) | De `<input type="file">` op een plek die de wissel overleeft (zoals `invoer` in InkoopFactuurModal). Draait iemand de telefoon terwijl de camera open staat, dan verdwijnt een invoer in het gewisselde deel: de foto komt binnen op een losgekoppeld element en er gebeurt niets — geen foto, geen melding |
 
 **Regels:**
 - Gebruik `<SectionHeader title=... open=... onToggle=... info=... solid? rounded?>`

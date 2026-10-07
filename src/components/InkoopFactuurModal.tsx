@@ -4,7 +4,7 @@ import { t } from '../i18n'
 import Btn from './ui/Btn'
 import Icon from './ui/Icon'
 import { useDialoogFocus } from './ui/useDialoogFocus'
-import { useSmalScherm, isAanraakscherm } from './ui/useSmalScherm'
+import { useTelefoonIndeling, isAanraakscherm } from './ui/useSmalScherm'
 import Segment from './inkoop/Segment'
 import FactuurDocument, { type DocumentBron, type Markering } from './inkoop/FactuurDocument'
 import RegelLijst from './inkoop/RegelLijst'
@@ -171,7 +171,7 @@ function InkoopFactuurModal({
   getRolloverInfo, merchArtikelen = [], inboxItem = null, volgendeAantal = 0,
   inkoopFacturen = [], btwPeriodeType = 'kwartaal', bankBedrag = null,
 }: InkoopFactuurModalProps) {
-  const smal = useSmalScherm()
+  const smal = useTelefoonIndeling()
   const bewerken = !!(initialData && initialData.id !== undefined && initialData.id !== null)
   const defaultType = ingTypes[0] || 'Mout'
   const heeftSleutel = !!claudeCreds?.apiKey && claudeCreds?.enabled !== false
@@ -611,6 +611,17 @@ function InkoopFactuurModal({
     void voegEtiketFotosToe(r._id, files)
   }
   const etiketZonderFactuurRef = React.useRef<HTMLInputElement | null>(null)
+  // Eén camera- en één galerij-invoer voor de etiketfoto's van álle regels, op een
+  // vaste plek (zie `invoer`): de knop bij een regel zet het doel en opent hem.
+  const etiketCameraRef = React.useRef<HTMLInputElement | null>(null)
+  const etiketGalerijRef = React.useRef<HTMLInputElement | null>(null)
+  const etiketDoel = React.useRef<number | null>(null)
+  const kiesEtiketFotos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    const id = etiketDoel.current
+    if (id !== null && files.length && stand.current.regels.some(r => r._id === id)) void voegEtiketFotosToe(id, files)
+  }
 
   /** "Ingevuld: lotnummer, THT en 2 eigenschappen" — wat het etiket op de regel zette. */
   const ingevuldTekst = (r: InkoopRegel): string | null => {
@@ -638,6 +649,7 @@ function InkoopFactuurModal({
         heeftSleutel={heeftSleutel} bewaren={e.bewaren}
         onBewaren={aan => zetEtiket(r._id, { bewaren: aan })}
         onVoegToe={files => { void voegEtiketFotosToe(r._id, files) }}
+        onKies={bron => { etiketDoel.current = r._id; (bron === 'camera' ? etiketCameraRef : etiketGalerijRef).current?.click() }}
         onVerwijder={fotoId => verwijderEtiketFoto(r._id, fotoId)}
         onOpnieuw={() => { void leesEtiket(r._id) }}
         onTochToepassen={() => tochToepassen(r._id)} />
@@ -791,13 +803,19 @@ function InkoopFactuurModal({
   const documentNaam = pdf?.name || (factuurFotos.length ? t('inkoop_fotos_n').replace('{n}', String(factuurFotos.length)) : bijlage?.naam || '')
   const origineelUrl = bijlage?.bestand && !pdfNieuw && !factuurFotos.length ? `${ADDON_BASE}api/file/${bijlage.bestand}` : null
 
-  const documentInvoer = (
+  // Alle verborgen bestandsinvoer, als eerste kind van het portaal in béide indelingen:
+  // zo blijft hij bestaan als de indeling wisselt terwijl de camera open staat (een
+  // iPad mini draaien). Een invoer die dan verdwijnt, krijgt de foto nog wel, maar
+  // niemand luistert meer — geen foto, geen melding.
+  const invoer = (
     <>
       <input ref={docInvoer} type="file" accept=".pdf,image/*,.heic,.heif" multiple className="hidden" onChange={kiesBestanden} />
       <input ref={docCamera} type="file" accept="image/*" capture="environment" className="hidden" onChange={kiesBestanden} />
       <input ref={etiketZonderFactuurRef} type="file" accept="image/*,.heic,.heif" multiple className="hidden"
         {...(isAanraakscherm() ? { capture: 'environment' } : {})}
         onChange={e => { const f = Array.from(e.target.files || []); e.target.value = ''; etiketZonderFactuur(f) }} />
+      <input ref={etiketCameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={kiesEtiketFotos} />
+      <input ref={etiketGalerijRef} type="file" accept="image/*,.heic,.heif" multiple className="hidden" onChange={kiesEtiketFotos} />
     </>
   )
 
@@ -1038,6 +1056,8 @@ function InkoopFactuurModal({
   if (smal) {
     const sheetRegel = sheet ? regels.find(r => r._id === sheet.id) || null : null
     return ReactDOM.createPortal(
+      <>
+      {invoer}
       <div ref={panelRef} role="dialog" aria-modal="true" aria-label={titel} tabIndex={-1}
         className="fixed inset-0 z-[200] bg-gray-50 flex flex-col outline-none">
         <header className="bg-white border-b border-gray-200 px-2 flex items-center gap-1" style={{ paddingTop: 'var(--safe-top, 0px)' }}>
@@ -1130,8 +1150,8 @@ function InkoopFactuurModal({
           </Onderblad>
         )}
         {ongedaanBalk}
-        {documentInvoer}
-      </div>,
+      </div>
+      </>,
       document.body,
     )
   }
@@ -1139,6 +1159,8 @@ function InkoopFactuurModal({
   // ── Bureau ────────────────────────────────────────────────────────────────
   const toonDocument = heeftDocument && docZichtbaar
   return ReactDOM.createPortal(
+    <>
+    {invoer}
     <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-stretch justify-center p-3 lg:p-5">
       <div ref={panelRef} role="dialog" aria-modal="true" aria-label={titel} tabIndex={-1}
         className={`bg-gray-50 rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden outline-none ${toonDocument ? 'max-w-[1560px]' : 'max-w-4xl'}`}>
@@ -1208,9 +1230,9 @@ function InkoopFactuurModal({
           </main>
         </div>
         {ongedaanBalk}
-        {documentInvoer}
       </div>
-    </div>,
+    </div>
+    </>,
     document.body,
   )
 }

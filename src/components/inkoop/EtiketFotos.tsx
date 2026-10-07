@@ -36,6 +36,10 @@ interface EtiketFotosProps {
   /** Een inkoopregel (kan meer lots worden) of een bestaand lot. */
   context?: 'regel' | 'lot'
   onVoegToe: (files: File[]) => void
+  /** De ouder opent de keuze met een invoer op een vaste plek. Een eigen invoer
+   *  verdwijnt als dit onderdeel opnieuw wordt opgebouwd terwijl de camera open
+   *  staat (de telefoon draaien), en dan komt de foto nergens aan. */
+  onKies?: (bron: 'camera' | 'galerij') => void
   onVerwijder: (id: number) => void
   onOpnieuw: () => void
   onTochToepassen: () => void
@@ -49,7 +53,7 @@ interface EtiketFotosProps {
  */
 const EtiketFotos: React.FC<EtiketFotosProps> = ({
   fotos, status, fout, scan, oordeel, nietToegepast, ingevuld, lotWijktAf, heeftSleutel,
-  bewaren, onBewaren, onVoegToe, onVerwijder, onOpnieuw, onTochToepassen, toonBewaren = true, extra, context = 'regel',
+  bewaren, onBewaren, onVoegToe, onKies, onVerwijder, onOpnieuw, onTochToepassen, toonBewaren = true, extra, context = 'regel',
 }) => {
   const lotContext = context === 'lot'
   const cameraRef = React.useRef<HTMLInputElement | null>(null)
@@ -78,14 +82,18 @@ const EtiketFotos: React.FC<EtiketFotosProps> = ({
     if (files.length) onVoegToe(files)
   }
 
-  const invoer = (
+  const invoer = onKies ? null : (
     <>
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={kies} />
       <input ref={galerijRef} type="file" accept="image/*,.heic,.heif" multiple className="hidden" onChange={kies} />
     </>
   )
+  const kiesUit = (bron: 'camera' | 'galerij') => {
+    if (onKies) onKies(bron)
+    else (bron === 'camera' ? cameraRef : galerijRef).current?.click()
+  }
   // Op een telefoon opent de hoofdknop de camera; "uit je foto's" kiest uit de galerij.
-  const neemFoto = () => (aanraak ? cameraRef : galerijRef).current?.click()
+  const neemFoto = () => kiesUit(aanraak ? 'camera' : 'galerij')
 
   if (!heeftSleutel) {
     return (
@@ -116,7 +124,7 @@ const EtiketFotos: React.FC<EtiketFotosProps> = ({
             <Icon n="camera" /> {aanraak ? t('etiket_foto_maken') : t('etiket_foto_kiezen')}
           </button>
           {aanraak && (
-            <button type="button" onClick={() => galerijRef.current?.click()} className="text-sm t-accent-text font-medium min-h-tap">
+            <button type="button" onClick={() => kiesUit('galerij')} className="text-sm t-accent-text font-medium min-h-tap">
               {t('etiket_uit_fotos')}
             </button>
           )}
@@ -148,7 +156,7 @@ const EtiketFotos: React.FC<EtiketFotosProps> = ({
           {t('etiket_nog_een')}
         </button>
         {aanraak && (
-          <button type="button" onClick={() => galerijRef.current?.click()}
+          <button type="button" onClick={() => kiesUit('galerij')}
             className="flex-shrink-0 w-16 h-16 rounded-md border border-dashed border-gray-300 text-gray-500 hover:bg-gray-50 flex flex-col items-center justify-center gap-0.5 text-[11px] leading-tight">
             <Icon n="image" cls="text-base" />
             {t('etiket_uit_fotos_kort')}
