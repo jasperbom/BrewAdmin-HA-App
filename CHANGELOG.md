@@ -4,6 +4,60 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.88] — 2026-10-07
+
+### Inkoop boeken: liggend fotograferen werkt
+
+Een foto die je liggend maakte, kwam niet aan: geen foto, geen melding. Staand
+ging het goed.
+
+- **Oorzaak.** Een iPhone dwars is 844 px of breder. Draaide je de telefoon
+  terwijl de camera open stond, dan wisselde het inkoopscherm van de telefoon-
+  naar de bureau-indeling en bouwde zich opnieuw op. De invoer waarmee de camera
+  was geopend verdween daarbij uit de pagina: de foto kwam nog wel binnen, maar
+  er luisterde niemand meer.
+- **Een telefoon dwars houdt de telefoonindeling** (`useTelefoonIndeling`: smal,
+  of een aanraakscherm waarvan de korte kant onder 500 px blijft — het toestel,
+  niet het venster, zodat een toetsenbord een tablet niet laat wisselen). De
+  bureau-indeling paste op 390 px hoogte ook niet.
+- **Alle bestandsinvoer op een vaste plek.** Factuur, camera en de etiketfoto's
+  per regel gaan via invoer die bij een indelingswissel blijft bestaan; een iPad
+  mini wisselt bij het draaien nog wel van indeling, en ook daar komt de foto nu
+  aan.
+
+---
+
+## [1.12.87] — 2026-10-07
+
+### Inkoop boeken: niet meer zijwaarts scrollen op de telefoon
+
+- **Datumvelden op een iPhone.** iOS tekent een datumveld als keuzelijst en
+  geeft het als minimumbreedte de breedste datum in de taal van de telefoon;
+  `width: 100%` telt dan niet en het veld steekt buiten zijn kolom (de THT per
+  lot, de factuurdatum in een smalle kolom). Op iOS/iPadOS heeft een datumveld
+  dat zijn kolom volgt (`w-full`, `flex-1`, `min-w-0`) nu geen eigen weergave
+  meer, zodat breedte en padding gelden zoals geschreven; de datumkiezer opent
+  gewoon. Geldt in de hele app.
+- **Geen inzoomen meer bij het aantikken van een veld.** De 16px-regel tegen de
+  iOS-autozoom (sinds 1.12.44) verloor van `text-sm`/`text-xs` op de velden zelf,
+  dus vrijwel elk veld bleef 14px: iOS zoomde in en liet het scherm ingezoomd en
+  zijwaarts verschuifbaar achter. De regel wint nu: in de telefoonlayout op elk
+  toestel, en op iOS/iPadOS op elke breedte (een iPhone dwars, een iPad zoomt
+  ook in). Geldt in de hele app.
+- **Werkblad zelf.** Een lange keuze breekt af op een spatie in plaats van de
+  groep breder te maken dan het scherm ("EU (Reverse Charge)", Frans en Duits
+  op een klein scherm); een bestandsnaam zonder spaties breekt af onder *Bij
+  opslaan*; etiketfoto's lopen door op een volgende rij in plaats van een strook
+  die zijwaarts schuift; bij meer lots staan THT en hoeveelheid over de volle
+  breedte (het ✕ staat naast het lotnummer); met *Opslaan en volgende* erbij
+  krijgen de twee knoppen een eigen rij. Het boekingsdeel en het paneel van
+  onderen scrollen alleen nog verticaal.
+- **iPad staand.** Smaller dan 1024 px staat de factuur bóven de boeking in
+  plaats van ernaast: ernaast bleef er te weinig breedte over voor de
+  regeltabel.
+
+---
+
 ## [1.12.86] — 2026-10-07
 
 ### Inkoop boeken: nieuw scherm, betere scan en etiketfoto's

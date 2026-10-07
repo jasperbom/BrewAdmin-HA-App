@@ -4,7 +4,7 @@ import { t } from '../i18n'
 import Btn from './ui/Btn'
 import Icon from './ui/Icon'
 import { useDialoogFocus } from './ui/useDialoogFocus'
-import { useSmalScherm, isAanraakscherm } from './ui/useSmalScherm'
+import { useTelefoonIndeling, isAanraakscherm } from './ui/useSmalScherm'
 import Segment from './inkoop/Segment'
 import FactuurDocument, { type DocumentBron, type Markering } from './inkoop/FactuurDocument'
 import RegelLijst from './inkoop/RegelLijst'
@@ -171,7 +171,7 @@ function InkoopFactuurModal({
   getRolloverInfo, merchArtikelen = [], inboxItem = null, volgendeAantal = 0,
   inkoopFacturen = [], btwPeriodeType = 'kwartaal', bankBedrag = null,
 }: InkoopFactuurModalProps) {
-  const smal = useSmalScherm()
+  const smal = useTelefoonIndeling()
   const bewerken = !!(initialData && initialData.id !== undefined && initialData.id !== null)
   const defaultType = ingTypes[0] || 'Mout'
   const heeftSleutel = !!claudeCreds?.apiKey && claudeCreds?.enabled !== false
@@ -611,6 +611,17 @@ function InkoopFactuurModal({
     void voegEtiketFotosToe(r._id, files)
   }
   const etiketZonderFactuurRef = React.useRef<HTMLInputElement | null>(null)
+  // Eén camera- en één galerij-invoer voor de etiketfoto's van álle regels, op een
+  // vaste plek (zie `invoer`): de knop bij een regel zet het doel en opent hem.
+  const etiketCameraRef = React.useRef<HTMLInputElement | null>(null)
+  const etiketGalerijRef = React.useRef<HTMLInputElement | null>(null)
+  const etiketDoel = React.useRef<number | null>(null)
+  const kiesEtiketFotos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    const id = etiketDoel.current
+    if (id !== null && files.length && stand.current.regels.some(r => r._id === id)) void voegEtiketFotosToe(id, files)
+  }
 
   /** "Ingevuld: lotnummer, THT en 2 eigenschappen" — wat het etiket op de regel zette. */
   const ingevuldTekst = (r: InkoopRegel): string | null => {
@@ -638,6 +649,7 @@ function InkoopFactuurModal({
         heeftSleutel={heeftSleutel} bewaren={e.bewaren}
         onBewaren={aan => zetEtiket(r._id, { bewaren: aan })}
         onVoegToe={files => { void voegEtiketFotosToe(r._id, files) }}
+        onKies={bron => { etiketDoel.current = r._id; (bron === 'camera' ? etiketCameraRef : etiketGalerijRef).current?.click() }}
         onVerwijder={fotoId => verwijderEtiketFoto(r._id, fotoId)}
         onOpnieuw={() => { void leesEtiket(r._id) }}
         onTochToepassen={() => tochToepassen(r._id)} />
@@ -791,13 +803,19 @@ function InkoopFactuurModal({
   const documentNaam = pdf?.name || (factuurFotos.length ? t('inkoop_fotos_n').replace('{n}', String(factuurFotos.length)) : bijlage?.naam || '')
   const origineelUrl = bijlage?.bestand && !pdfNieuw && !factuurFotos.length ? `${ADDON_BASE}api/file/${bijlage.bestand}` : null
 
-  const documentInvoer = (
+  // Alle verborgen bestandsinvoer, als eerste kind van het portaal in béide indelingen:
+  // zo blijft hij bestaan als de indeling wisselt terwijl de camera open staat (een
+  // iPad mini draaien). Een invoer die dan verdwijnt, krijgt de foto nog wel, maar
+  // niemand luistert meer — geen foto, geen melding.
+  const invoer = (
     <>
       <input ref={docInvoer} type="file" accept=".pdf,image/*,.heic,.heif" multiple className="hidden" onChange={kiesBestanden} />
       <input ref={docCamera} type="file" accept="image/*" capture="environment" className="hidden" onChange={kiesBestanden} />
       <input ref={etiketZonderFactuurRef} type="file" accept="image/*,.heic,.heif" multiple className="hidden"
         {...(isAanraakscherm() ? { capture: 'environment' } : {})}
         onChange={e => { const f = Array.from(e.target.files || []); e.target.value = ''; etiketZonderFactuur(f) }} />
+      <input ref={etiketCameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={kiesEtiketFotos} />
+      <input ref={etiketGalerijRef} type="file" accept="image/*,.heic,.heif" multiple className="hidden" onChange={kiesEtiketFotos} />
     </>
   )
 
@@ -982,10 +1000,13 @@ function InkoopFactuurModal({
   const controleKort = controle.status === 'klopt' ? t(scan.totalen ? 'inkoop_klopt_kort_factuur' : 'inkoop_klopt_kort_bank')
     : controle.status === 'verschil' ? t('inkoop_verschil_kort').replace('{bedrag}', fmt(Math.abs(controle.verschil))) : null
 
+  const metVolgende = !!inboxItem && volgendeAantal > 0
   const knoppen = (
     <>
-      {inboxItem && volgendeAantal > 0 && (
-        <Btn v="secondary" onClick={() => { void opslaan(true) }} disabled={bezig}>{t('inkoop_opslaan_volgende').replace('{n}', String(volgendeAantal))}</Btn>
+      {metVolgende && (
+        <Btn v="secondary" onClick={() => { void opslaan(true) }} disabled={bezig} s={smal ? 'lg' : 'md'} cls={smal ? 'flex-1' : ''}>
+          {t('inkoop_opslaan_volgende').replace('{n}', String(volgendeAantal))}
+        </Btn>
       )}
       <Btn onClick={() => { void opslaan(false) }} disabled={bezig} s={smal ? 'lg' : 'md'} cls={smal ? 'flex-1' : ''}>
         {bezig ? t('btn_uploading') : bewerken ? t('btn_save_changes') : t('btn_save')}
@@ -1035,6 +1056,8 @@ function InkoopFactuurModal({
   if (smal) {
     const sheetRegel = sheet ? regels.find(r => r._id === sheet.id) || null : null
     return ReactDOM.createPortal(
+      <>
+      {invoer}
       <div ref={panelRef} role="dialog" aria-modal="true" aria-label={titel} tabIndex={-1}
         className="fixed inset-0 z-[200] bg-gray-50 flex flex-col outline-none">
         <header className="bg-white border-b border-gray-200 px-2 flex items-center gap-1" style={{ paddingTop: 'var(--safe-top, 0px)' }}>
@@ -1053,7 +1076,8 @@ function InkoopFactuurModal({
               opties={[{ v: 'factuur', l: t('inkoop_tab_factuur') }, { v: 'boeking', l: t('inkoop_tab_boeking') }]} />
           </div>
         )}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" {...(sheet ? { 'aria-hidden': true } : {})}>
+        {/* Verticaal scrollen; zijwaarts nooit, ook niet als een veld op een toestel breder uitvalt. */}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain" {...(sheet ? { 'aria-hidden': true } : {})}>
           {mobielTab === 'factuur' && documentBron ? (
             <div className="h-full flex flex-col">
               <div className="flex-1 min-h-0">
@@ -1073,18 +1097,23 @@ function InkoopFactuurModal({
               {boeking}
               <section className="rounded-xl border border-gray-200 bg-white p-3">
                 <h3 className="text-sm font-semibold text-gray-800 mb-1.5">{t('inkoop_bij_opslaan')}</h3>
-                <ul className="space-y-1 text-sm text-gray-700">{samenvatting.map((s, i) => <li key={i} className="flex gap-2"><span className="text-gray-400">•</span><span>{s}</span></li>)}</ul>
+                <ul className="space-y-1 text-sm text-gray-700">{samenvatting.map((s, i) => <li key={i} className="flex gap-2"><span className="text-gray-400">•</span><span className="min-w-0 break-words">{s}</span></li>)}</ul>
               </section>
             </div>
           )}
         </div>
         <footer data-werkblad-voet className="bg-white border-t border-gray-200 px-3 pt-2 space-y-2" style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 8px)' }}>
           {meldingBalk}
-          <div className="flex items-center gap-3">
-            <div className="min-w-0">
-              <div className="text-xs text-gray-500">{verlegd ? t('inkoop_totaal') : t('lbl_totaal_incl_btw')}</div>
+          {/* Met "Opslaan en volgende" erbij krijgen de twee knoppen een eigen rij:
+              naast het totaal werd de tweede knop vier regels hoog. */}
+          <div className={metVolgende ? 'space-y-2' : 'flex items-center gap-3'}>
+            <div className={metVolgende ? 'flex items-baseline justify-between gap-3' : 'min-w-0'}>
+              <div className="min-w-0">
+                <div className="text-xs text-gray-500">{verlegd ? t('inkoop_totaal') : t('lbl_totaal_incl_btw')}</div>
+                {controleKort && metVolgende && <div className={`text-[11px] ${controle.status === 'klopt' ? 'text-green-700' : 'text-orange-700'}`}>{controleKort}</div>}
+              </div>
               <div className="text-base font-bold text-gray-900 tabular-nums">{fmt(eff.bruto)}</div>
-              {controleKort && <div className={`text-[11px] ${controle.status === 'klopt' ? 'text-green-700' : 'text-orange-700'}`}>{controleKort}</div>}
+              {controleKort && !metVolgende && <div className={`text-[11px] ${controle.status === 'klopt' ? 'text-green-700' : 'text-orange-700'}`}>{controleKort}</div>}
             </div>
             <div className="flex-1 flex justify-end gap-2">{knoppen}</div>
           </div>
@@ -1121,8 +1150,8 @@ function InkoopFactuurModal({
           </Onderblad>
         )}
         {ongedaanBalk}
-        {documentInvoer}
-      </div>,
+      </div>
+      </>,
       document.body,
     )
   }
@@ -1130,6 +1159,8 @@ function InkoopFactuurModal({
   // ── Bureau ────────────────────────────────────────────────────────────────
   const toonDocument = heeftDocument && docZichtbaar
   return ReactDOM.createPortal(
+    <>
+    {invoer}
     <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-stretch justify-center p-3 lg:p-5">
       <div ref={panelRef} role="dialog" aria-modal="true" aria-label={titel} tabIndex={-1}
         className={`bg-gray-50 rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden outline-none ${toonDocument ? 'max-w-[1560px]' : 'max-w-4xl'}`}>
@@ -1146,9 +1177,11 @@ function InkoopFactuurModal({
           )}
           {sluitKnop}
         </header>
-        <div className="flex-1 min-h-0 flex">
+        {/* De factuur naast de boeking vraagt ruim 1000 px; smaller (een iPad staand) komt hij
+            erboven, anders past de regeltabel niet meer en schuift de boeking zijwaarts. */}
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
           {toonDocument && documentBron && (
-            <aside className="w-[46%] min-w-[380px] border-r border-gray-200 min-h-0 flex flex-col"
+            <aside className="h-[40vh] lg:h-auto lg:w-[46%] lg:min-w-[380px] flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-200 min-h-0 flex flex-col"
               onDragOver={e => { if (!inboxItem) e.preventDefault() }}
               onDrop={e => { if (inboxItem) return; e.preventDefault(); void kiesDocument(Array.from(e.dataTransfer.files || [])) }}>
               <FactuurDocument bron={documentBron} naam={documentNaam} markering={markering} origineelUrl={origineelUrl}
@@ -1197,9 +1230,9 @@ function InkoopFactuurModal({
           </main>
         </div>
         {ongedaanBalk}
-        {documentInvoer}
       </div>
-    </div>,
+    </div>
+    </>,
     document.body,
   )
 }

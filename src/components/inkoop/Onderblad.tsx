@@ -42,7 +42,7 @@ const Onderblad: React.FC<OnderbladProps> = ({ titel, onAnnuleer, onKlaar, klaar
             </button>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3" style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 16px)' }}>
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-3" style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 16px)' }}>
           {children}
         </div>
       </div>

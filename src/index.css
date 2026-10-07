@@ -14,10 +14,41 @@
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   }
   /* Voorkomt de iOS-autozoom bij focus op een invoerveld (<16px trekt iOS de
-     hele pagina in); de viewport laat pinch-zoom zelf weer gewoon toe. */
-  @media (max-width: 640px) {
-    input, select, textarea {
+     hele pagina in en zoomt bij het verlaten niet terug: dan schuift het
+     scherm zijwaarts); de viewport laat pinch-zoom zelf weer gewoon toe. De
+     velden dragen bijna allemaal `text-sm`/`text-xs`, en een klasse wint van
+     een elementselector — vandaar de selectors mét die klassen. Telefoonlayout
+     (< 768 px, het omslagpunt van de schil) op elk toestel, en iOS/iPadOS op
+     elke breedte (een iPhone dwars, een iPad). */
+  @media (max-width: 767.98px) {
+    input, select, textarea,
+    input.text-sm, select.text-sm, textarea.text-sm,
+    input.text-xs, select.text-xs, textarea.text-xs {
       font-size: 16px;
+    }
+  }
+  @supports (-webkit-touch-callout: none) {
+    input, select, textarea,
+    input.text-sm, select.text-sm, textarea.text-sm,
+    input.text-xs, select.text-xs, textarea.text-xs {
+      font-size: 16px;
+    }
+    /* iOS tekent een datumveld als keuzelijst en geeft het als minimumbreedte
+       de breedste datum in de taal van de telefoon: een veld dat zijn kolom
+       moet volgen (`w-full`, `flex-1`, `min-w-0`) steekt er dan buiten
+       (zijwaarts scrollen). Zonder de eigen weergave staan breedte en padding
+       zoals geschreven; de datumkiezer opent gewoon, die hoort bij het type.
+       Een veld zonder breedte houdt de eigen weergave: leeg zou het anders
+       inklappen. Alleen iOS/iPadOS (`-webkit-touch-callout`). */
+    :is(input[type="date"], input[type="time"], input[type="datetime-local"], input[type="month"], input[type="week"]):is(.w-full, .flex-1, .min-w-0) {
+      -webkit-appearance: none;
+      appearance: none;
+      min-width: 0;
+    }
+    /* Links uitgelijnd zoals elk ander veld, en een leeg veld klapt niet in. */
+    input::-webkit-date-and-time-value {
+      text-align: start;
+      min-height: 1.5em;
     }
   }
 }
