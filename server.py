@@ -5832,19 +5832,21 @@ def _cold_crash_tick() -> None:
 def _bijlage_in_gebruik(filename: str) -> str | None:
     """Naam van de data-key die nog naar deze bijlage verwijst, of None.
     Kijkt naar `bijlage.bestand` (inkoopfactuur, item in het postvak met
-    facturen per e-mail), `bijlagen[].bestand` (afboeking,
+    facturen per e-mail), `verslag.bestand` (het uitbetalingsverslag van een
+    PSP bij een banktransactie), `bijlagen[].bestand` (afboeking,
     verliesregistratie, vernietiging) en `etiket_fotos[].bestand` (de foto's
     van het etiket bij een ingrediëntlot: bewijs voor traceerbaarheid)."""
-    for key in ('inkoop_facturen', 'inkoop_inbox', 'afboekingen', 'verlies_registraties', 'lots'):
+    for key in ('inkoop_facturen', 'inkoop_inbox', 'afboekingen', 'verlies_registraties', 'lots', 'bank_transacties'):
         rijen = _read_json(key, [])
         if not isinstance(rijen, list):
             continue
         for rij in rijen:
             if not isinstance(rij, dict):
                 continue
-            een = rij.get('bijlage')
-            if isinstance(een, dict) and een.get('bestand') == filename:
-                return key
+            for veld in ('bijlage', 'verslag'):
+                een = rij.get(veld)
+                if isinstance(een, dict) and een.get('bestand') == filename:
+                    return key
             for veld in ('bijlagen', 'etiket_fotos'):
                 lijst = rij.get(veld)
                 if not isinstance(lijst, list):

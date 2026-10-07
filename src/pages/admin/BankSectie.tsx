@@ -1,7 +1,7 @@
 import React from 'react'
 import { t } from '../../i18n'
 import { tod, r2, fmtD } from '../../utils/format'
-import { newId } from '../../utils/api'
+import { newId, ADDON_BASE } from '../../utils/api'
 import { sndKoppelKandidaten } from '../../utils/sndAfdracht'
 import { logAudit } from '../../utils/audit'
 import { periodeKeyLabel, standaardBtwPct } from '../../utils/btw'
@@ -11,10 +11,18 @@ import { inkoopRegelsMetCorrectie, toCent } from '../../utils/centen'
 import {
   parseMT940, isLeegMt940, isPspTransactie, pspKandidaten, bouwOntvangstVerkoopFactuur,
   gekoppeldeFactuurIds, bouwBankImport, verwijderAfschrift, bankSaldiNaVerwijderen, sorteerAfschriften,
-  herstelKoppelingVlaggen,
+  herstelKoppelingVlaggen, isPspNaam, pspNaam,
   ibanSleutel, koppelingVan, filterBankTransacties, telBankStatussen, standaardBankStatus, isBankStatusFilter,
   BANK_STATUS_FILTERS, type BankStatusFilter,
 } from '../../utils/bank'
+import { koppelPspVerslag, normFactuurnummer, verslagKosten, type PspVerslag } from '../../utils/pspVerslag'
+import {
+  verslagInfo, verslagUitInfo, pspKostenCent, pspKostenOpenCent, pspKostenRegels,
+  pasPspVerrekeningToe, pspKostenVoorstel, kostenFactuurKandidaten,
+} from '../../utils/pspUitbetaling'
+import { leesVerslag, leesTekstlaag, verslagFoutTekst, type VerslagLezing } from './bank/verslagLezen'
+import { modelNaam } from '../../utils/claudeScan'
+import { uploadBijlage, uploadFoutSleutel } from '../../utils/bijlage'
 import {
   bankVoorstellen, bankVoorstelSleutel, btwKiezerKandidaten, accijnsKiezerKandidaten, AANGIFTE_MARGE_CENT,
   type BankVoorstel, type FactuurKiezerSoort,
@@ -38,7 +46,8 @@ import AfschriftenModal from './bank/AfschriftenModal'
 import FactuurKiezer from './bank/FactuurKiezer'
 import KeuzeModal, { type KeuzeOptie } from './bank/KeuzeModal'
 import TransactieModal, { type TransactieActie } from './bank/TransactieModal'
-import PspModal from './bank/PspModal'
+import PspModal, { type PspKostenWijze } from './bank/PspModal'
+import type { VerslagStand } from './bank/VerslagBlok'
 import KapitaalModal, { type KapitaalForm } from './bank/KapitaalModal'
 import {
   koppelingWeergave, voorstelWeergave, zoekTekstVoor, korteDatum, bedragMetTeken, ibanWeergave,
@@ -80,7 +89,7 @@ function BankSectie() {
     refreshBankTransacties, refreshBankAfschriften, refreshBankKoppelingen, refreshBankSaldi,
     klantNaamVoor, schuldPerAltRekening, knownLeveranciers, btwPeriodeType,
     getRolloverInfo, boekInkoopVoorraad, markeerBetaald, koppelBtwBetaling, ontkoppelBtwBetaling, markeerAccijnsMaandBetaald,
-    ontkoppelAccijnsBetaling, koppelAccijnsBetaling,
+    ontkoppelAccijnsBetaling, koppelAccijnsBetaling, werkVerrekendeFacturenBij, kostenpostMagVervallen, verrekenPspKosten,
   } = useAdmin()
 
   const bankFileRef = React.useRef<any>(null)
@@ -128,6 +137,20 @@ function BankSectie() {
   const [pspSelectie, setPspSelectie] = React.useState<number[]>([])
   const [pspBtwPct, setPspBtwPct] = React.useState('21')
   const [pspToonAlles, setPspToonAlles] = React.useState(false)
+  // De kosten: verrekenen met de factuur van de PSP (per factuurnummer uit het
+  // verslag de gekozen inkoopfactuur; null = factuur volgt) of als kostenpost.
+  const [pspKostenWijze, setPspKostenWijze] = React.useState<PspKostenWijze>('kostenpost')
+  const [pspKostenKeuze, setPspKostenKeuze] = React.useState<Record<string, number | null>>({})
+  // Het uitbetalingsverslag van de transactie in het venster, zoals de app het las.
+  const [pspVerslag, setPspVerslag] = React.useState<(VerslagStand & {txId: number}) | null>(null)
+  const pspTxRef = React.useRef<number | null>(pspTxId)
+  pspTxRef.current = pspTxId
+  // "Kosten verrekenen met factuur…" voor een al uitgesplitste uitbetaling.
+  const [kostenKiezerTxId, setKostenKiezerTxId] = React.useState<number|null>(null)
+  // De bestandsinvoer van het verslag staat buiten de vensters (zie de
+  // bijlage bij een inkoopfactuur): het transactievenster sluit bij de klik.
+  const verslagInvoer = React.useRef<HTMLInputElement | null>(null)
+  const verslagVoor = React.useRef<number | null>(null)
 
   // Nieuwe boeking modal state. Een afschrijving opent het inkoopformulier
   // (boekingTxId), een bijschrijving het ontvangstformulier dat een
@@ -287,13 +310,153 @@ function BankSectie() {
     negeerDatum,
   })
 
+  // ── Het uitbetalingsverslag (PDF van Mollie e.d.) ─────────────────────────
+  // Lezen gebeurt in de browser: eerst de tekstlaag (pdf.js,
+  // utils/pspVerslag.ts), anders — een scan, een foto, een onbekende opmaak —
+  // Claude, als er een sleutel is (bank/verslagLezen.ts). De PDF gaat als
+  // bijlage naar de server en het verslag komt op de transactie
+  // (`verslag`: kenmerk, totalen, kosten per factuur — geen klantnamen; las
+  // Claude het, dan ook de regels, zodat het venster niet opnieuw laat lezen).
+  const heeftSleutel = !!claudeCreds?.apiKey && claudeCreds?.enabled !== false
+
+  // De facturen uit het verslag aanvinken en de kosten per factuurnummer
+  // klaarzetten (de geboekte factuur van de PSP met dat nummer, anders
+  // "factuur volgt").
+  const voorselectieUitVerslag = (tx: any, gelezen: PspVerslag) => {
+    const k = koppelPspVerslag(gelezen, {verkoopFacturen, inkoopFacturen, bestellingen, alGekoppeld: verkoopIdsElders(txKey(tx))})
+    setPspSelectie(k.factuurIds)
+    setPspKostenWijze('verrekenen')
+    setPspKostenKeuze(Object.fromEntries(k.kosten.map(x => [x.nummer, x.factuurId])))
+  }
+
+  // Een verslag dat al op de transactie staat terughalen voor het venster: wat
+  // Claude las staat er al (`verslag.regels`), anders de PDF opnieuw lezen.
+  const laadVerslag = async (tx: any) => {
+    const bestand = tx?.verslag?.bestand
+    if (!bestand) return
+    const bewaard = verslagUitInfo(tx.verslag)
+    if (bewaard) {
+      setPspVerslag({txId: tx.id, gelezen: bewaard, bezig: false, fout: null})
+      voorselectieUitVerslag(tx, bewaard)
+      return
+    }
+    setPspVerslag({txId: tx.id, gelezen: null, bezig: true, fout: null})
+    let gelezen: PspVerslag | null = null
+    try {
+      const r = await fetch(`${ADDON_BASE}api/file/${encodeURIComponent(bestand)}`)
+      if (r.ok) gelezen = await leesTekstlaag(await r.arrayBuffer())
+    } catch { gelezen = null }
+    if (pspTxRef.current !== tx.id) return
+    setPspVerslag({txId: tx.id, gelezen, bezig: false, fout: gelezen ? null : t('psp_verslag_fout_laden')})
+    if (gelezen) voorselectieUitVerslag(tx, gelezen)
+  }
+
+  const kiesVerslag = (txId: number) => {
+    verslagVoor.current = txId
+    verslagInvoer.current?.click()
+  }
+
+  const koppelVerslagBestand = async (files: File[]) => {
+    const tx = txMetId(verslagVoor.current)
+    if (!tx || !files.length) return
+    // Het venster kan tijdens het lezen open of dicht gaan: pas bij de uitkomst kijken.
+    const inVenster = () => pspTxRef.current === tx.id
+    // Claude doet er even over: zeg dat hij bezig is, ook buiten het venster.
+    let bezigOpPagina = false
+    const opClaude = () => {
+      if (inVenster()) setPspVerslag(v => ({txId: tx.id, gelezen: v?.txId === tx.id ? v.gelezen : null, bezig: true, claude: true, fout: null}))
+      else { bezigOpPagina = true; setImportMelding({soort: 'al', tekst: t('psp_verslag_lezen_claude')}) }
+    }
+    // In het venster staat de stand bij het verslag; anders in de meldingsbalk.
+    const naarVenster = () => {
+      if (!inVenster()) return false
+      if (bezigOpPagina) setImportMelding(null)
+      return true
+    }
+    const meld = (soort: 'ok' | 'al' | 'fout', tekst: string) => {
+      if (naarVenster()) setPspVerslag(v => ({txId: tx.id, gelezen: v?.txId === tx.id ? v.gelezen : null, bezig: false, fout: soort === 'fout' ? tekst : null}))
+      else setImportMelding({soort, tekst})
+    }
+    if (inVenster()) setPspVerslag(v => ({txId: tx.id, gelezen: v?.txId === tx.id ? v.gelezen : null, bezig: true, fout: null}))
+    let lezing: VerslagLezing
+    try {
+      lezing = await leesVerslag(files, {sleutel: heeftSleutel, opClaude})
+    } catch (e) {
+      meld('fout', verslagFoutTekst(e))
+      return
+    }
+    const {verslag: gelezen, bijlage, model} = lezing
+    const u = await uploadBijlage(bijlage, 'psp')
+    if (!u.ok || !u.bijlage) { meld('fout', t(uploadFoutSleutel(u.status)).replace('{naam}', u.naam)); return }
+    const info = verslagInfo(gelezen, u.bijlage, new Date().toISOString(), model ? {bron: 'claude', model} : null)
+    wijzigTx(tx.id, (t2: any) => ({...t2, verslag: info}))
+    const ref = gelezen.referentie || bijlage.name
+    logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'aangemaakt',
+      omschrijving:`Uitbetalingsverslag ${ref} bij ${tx.tegenpartij || 'PSP'} ${tx.datum} (${fmt(tx.bedrag)}) — ${gelezen.regels.length} regels${model ? ` (gelezen door ${model})` : ''}`})
+    if (naarVenster()) {
+      setPspVerslag({txId: tx.id, gelezen, bezig: false, fout: null})
+      voorselectieUitVerslag(tx, gelezen)
+      return
+    }
+    const wijkt = gelezen.som_cent !== toCent(tx.bedrag)
+    const tekst = vulIn(t(wijkt ? 'psp_verslag_gekoppeld_wijkt' : 'psp_verslag_gekoppeld'),
+      {referentie: ref, som: geldCent(gelezen.som_cent), bedrag: fmt(tx.bedrag)})
+    meld(wijkt ? 'al' : 'ok', model ? `${tekst} ${vulIn(t('psp_verslag_door_claude'), {model: modelNaam(model)})}` : tekst)
+  }
+
   // Voorselectie: het voorstel van de werklijst, anders dat van de import.
+  // Staat er een verslag op de transactie, dan wint dat zodra het gelezen is.
   const openPspModal = (tx: any, voorstelIds?: number[]) => {
     const ids = voorstelIds || tx?.pspVoorstelIds
     setPspSelectie(ids ? [...ids] : [])
     setPspBtwPct('21')
     setPspToonAlles(false)
+    setPspKostenWijze(tx?.verslag ? 'verrekenen' : 'kostenpost')
+    setPspKostenKeuze({})
+    setPspVerslag(null)
     setPspTxId(tx?.id ?? null)
+    pspTxRef.current = tx?.id ?? null
+    if (tx?.verslag?.bestand) void laadVerslag(tx)
+  }
+
+  const sluitPspModal = () => { setPspTxId(null); setPspSelectie([]); setPspVerslag(null) }
+
+  // De kosten van een uitgesplitste uitbetaling verrekenen met een factuur
+  // van de PSP (vanuit de kiezer, of de knop "Kosten verrekenen" als het
+  // verslag de factuur noemt). Het bedrag: wat het verslag aan die factuur
+  // toeschrijft, anders alle open kosten (of de kostenpost die vervalt). De
+  // vastlegging zelf is gedeeld met Facturen (verrekenPspKosten).
+  const verrekenKosten = (tx: any, factuurIds: number[]) => {
+    if (!tx) return
+    const key = txKey(tx)
+    let koppelingen: Record<string, any> = {...(koppelingenRef.current || bankKoppelingen || {})}
+    const k = koppelingen[key]
+    if (k?.soort !== 'psp') return
+    if (k.kostenFactuurId != null && !kostenpostMagVervallen(Number(k.kostenFactuurId))) {
+      setImportMelding({soort: 'fout', tekst: t('bank_kostenpost_vergrendeld')})
+      return
+    }
+    const ops: {factuurId: number, keuzes: {key: string, cent: number}[]}[] = []
+    const gelukt: string[] = []
+    for (const factuurId of factuurIds) {
+      const f = (inkoopFacturen || []).find((x: any) => x.id === factuurId)
+      if (!f) continue
+      const huidig = koppelingen[key]
+      const beschikbaar = pspKostenOpenCent(huidig, inkoopFacturen) || (huidig?.kostenFactuurId != null ? pspKostenCent(huidig, inkoopFacturen) : 0)
+      const genoemd = (tx.verslag?.kosten || []).find((x: any) => normFactuurnummer(x?.nummer) && normFactuurnummer(x.nummer) === normFactuurnummer(f.factuurnummer))
+      const cent = genoemd ? Math.min(Math.round(Number(genoemd.cent) || 0), beschikbaar) : beschikbaar
+      if (cent <= 0) continue
+      // Het volgende bedrag rekent met wat deze factuur al opneemt.
+      koppelingen = pasPspVerrekeningToe(koppelingen, factuurId, [{key, cent}], inkoopFacturen).koppelingen
+      ops.push({factuurId, keuzes: [{key, cent}]})
+      gelukt.push(`${f.factuurnummer || f.leverancier || factuurId} (${geldCent(cent)})`)
+    }
+    if (!ops.length) return
+    const nieuw = verrekenPspKosten(ops, koppelingenRef.current || bankKoppelingen || {})
+    if (!nieuw) { setImportMelding({soort: 'fout', tekst: t('bank_kostenpost_vergrendeld')}); return }
+    koppelingenRef.current = nieuw
+    logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'gewijzigd',
+      omschrijving:`PSP-kosten ${tx.datum} verrekend met ${gelukt.join(', ')}`})
   }
 
   const savePspKoppeling = () => {
@@ -301,20 +464,36 @@ function BankSectie() {
     if (!tx) return
     const facturen = (verkoopFacturen||[]).filter((f: any) => pspSelectie.includes(f.id))
     if (!facturen.length) return
-    const som = r2(facturen.reduce((s: number, f: any) => s + (f.bruto||0), 0))
-    const kosten = r2(som - tx.bedrag)
-    if (kosten < -0.005) return
+    const brutoCentVan = (f: any) => (f?.bruto_cent != null && Number.isFinite(Number(f.bruto_cent))) ? Math.round(Number(f.bruto_cent)) : toCent(f?.bruto)
+    const kostenCent = facturen.reduce((s: number, f: any) => s + brutoCentVan(f), 0) - toCent(tx.bedrag)
+    if (kostenCent < 0) return
+    const kosten = kostenCent / 100
     const key = txKey(tx)
-    // Nog niet betaalde facturen markeren als betaald met de transactiedatum.
-    // De ids onthouden we in de koppeling zodat ontkoppelen ze kan terugzetten.
-    const gemarkeerdBetaald = facturen.filter((f: any) => f.status !== 'betaald').map((f: any) => f.id)
+    // Kosten verrekenen: per regel (factuurnummer uit het verslag) de gekozen
+    // factuur van de PSP; zonder keuze staan ze open ("factuur volgt").
+    let kostenVerrekend: {factuurId: number, cent: number}[] = []
+    if (kostenCent > 0 && pspKostenWijze === 'verrekenen') {
+      const gelezen = pspVerslag?.txId === tx.id ? pspVerslag.gelezen : null
+      const {regels, klopt} = pspKostenRegels(kostenCent, gelezen ? verslagKosten(gelezen) : tx.verslag?.kosten)
+      if (klopt === false) return
+      const perFactuur = new Map<number, number>()
+      for (const r of regels) {
+        const id = pspKostenKeuze[r.nummer]
+        if (id != null) perFactuur.set(Number(id), (perFactuur.get(Number(id)) || 0) + r.cent)
+      }
+      kostenVerrekend = [...perFactuur].map(([factuurId, cent]) => ({factuurId, cent}))
+    }
+    // Nog niet betaalde facturen markeren als betaald met de transactiedatum
+    // (geen creditnota: die blijft een creditnota). De ids onthouden we in de
+    // koppeling zodat ontkoppelen ze kan terugzetten.
+    const gemarkeerdBetaald = facturen.filter((f: any) => f.status !== 'betaald' && f.status !== 'credit' && brutoCentVan(f) > 0).map((f: any) => f.id)
     if (gemarkeerdBetaald.length) {
       setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
         gemarkeerdBetaald.includes(f.id) ? {...f, status: 'betaald', betaald_datum: f.betaald_datum || tx.datum} : f))
     }
     // Verschil tussen som facturen en uitbetaling → betaalde kostenpost
     let kostenFactuurId: number | undefined
-    if (kosten > 0.005) {
+    if (kostenCent > 0 && pspKostenWijze === 'kostenpost') {
       const btw = Number(pspBtwPct||0)
       const netto = btw > 0 ? r2(kosten / (1 + btw/100)) : kosten
       const btwBedrag = r2(kosten - netto)
@@ -342,11 +521,23 @@ function BankSectie() {
       setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(kostenFactuur, btwPeriodeType)))
       logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:kostenFactuur.id, actie:'aangemaakt', omschrijving:`PSP-kosten — ${kostenFactuur.leverancier} (${fmt(kosten)})`})
     }
-    setBankKoppelingen((k: any) => ({...k, [key]: {soort: 'psp', factuurIds: [...pspSelectie], kostenFactuurId, gemarkeerdBetaald}}))
+    // `kostenCent`: de kosten van deze uitbetaling, ook als ze nog niet
+    // geboekt of verrekend zijn ("factuur volgt") — utils/pspUitbetaling.ts.
+    const koppeling = {
+      soort: 'psp', factuurIds: [...pspSelectie], gemarkeerdBetaald, kostenCent,
+      ...(kostenFactuurId !== undefined ? {kostenFactuurId} : {}),
+      ...(kostenVerrekend.length ? {kostenVerrekend} : {}),
+    }
+    const nieuweKoppelingen = {...(koppelingenRef.current || bankKoppelingen || {}), [key]: koppeling}
+    koppelingenRef.current = nieuweKoppelingen
+    setBankKoppelingen((k: any) => ({...k, [key]: koppeling}))
     wijzigTx(tx.id, (t2: any) => ({...t2, gekoppeldPspFactuurIds: [...pspSelectie], pspHerkend: false, pspVoorstelIds: undefined, autoGematcht: false, herinneringsGematcht: false}))
-    logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'aangemaakt', omschrijving:`PSP-uitbetaling gekoppeld aan ${pspSelectie.length} facturen (kosten ${fmt(Math.max(kosten,0))})`})
-    setPspTxId(null)
-    setPspSelectie([])
+    werkVerrekendeFacturenBij(nieuweKoppelingen, kostenVerrekend.map(d => d.factuurId))
+    const verrekendTekst = kostenVerrekend.length
+      ? `, verrekend met ${kostenVerrekend.map(d => (inkoopFacturen || []).find((f: any) => f.id === d.factuurId)?.factuurnummer || d.factuurId).join(', ')}`
+      : kostenCent > 0 && kostenFactuurId === undefined ? ', factuur volgt' : ''
+    logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'aangemaakt', omschrijving:`PSP-uitbetaling gekoppeld aan ${pspSelectie.length} facturen (kosten ${fmt(Math.max(kosten,0))}${verrekendTekst})`})
+    sluitPspModal()
   }
 
   const ontkoppelPsp = (tx: any) => {
@@ -369,8 +560,17 @@ function BankSectie() {
           terug.includes(f.id) ? {...f, status: 'open', betaald_datum: undefined} : f))
       }
     }
+    const zonder = {...(koppelingenRef.current || {})}
+    delete zonder[key]
+    koppelingenRef.current = zonder
     setBankKoppelingen((k: any) => { const c = {...k}; delete c[key]; return c })
     wijzigTx(tx.id, (t2: any) => ({...t2, gekoppeldPspFactuurIds: undefined, pspHerkend: isPspTransactie(t2), autoGematcht: false, herinneringsGematcht: false}))
+    // De factuur van de PSP waarmee de kosten verrekend waren: dekken de
+    // overige uitbetalingen hem niet meer, dan weer open (als de verrekening
+    // hem op betaald had gezet). Het verslag blijft op de transactie staan.
+    if (opgeslagen?.soort === 'psp' && Array.isArray(opgeslagen.kostenVerrekend)) {
+      werkVerrekendeFacturenBij(zonder, opgeslagen.kostenVerrekend.map((d: any) => Number(d?.factuurId)).filter(Number.isFinite))
+    }
     logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'verwijderd', omschrijving:'PSP-koppeling ongedaan gemaakt'})
   }
 
@@ -739,6 +939,17 @@ function BankSectie() {
 
   // ── Handelingen per transactie (⋯-menu en het transactievenster) ──────────
   const heeftCreditnotas = (inkoopFacturen || []).some((f: any) => (Number(f?.totaal_bruto) || 0) < 0)
+  const verslagUrl = (tx: any): string | null => tx?.verslag?.bestand ? `${ADDON_BASE}api/file/${tx.verslag.bestand}` : null
+  // Het uitbetalingsverslag bij een PSP-uitbetaling: koppelen (of een ander)
+  // en openen. Een kosten­regel die nog openstaat ("factuur volgt") of een
+  // automatische kostenpost kan alsnog met de factuur van de PSP verrekend worden.
+  const verslagActies = (tx: any): TransactieActie[] => {
+    const uit: TransactieActie[] = []
+    const url = verslagUrl(tx)
+    uit.push({id: 'verslag', groep: 'koppelen', label: t(url ? 'bank_act_verslag_ander' : 'bank_act_verslag'), sub: t('bank_ba_sub_verslag'), onClick: () => kiesVerslag(tx.id)})
+    if (url) uit.push({id: 'verslag_open', groep: 'overig', label: t('bank_act_verslag_open'), onClick: () => { window.open(url, '_blank', 'noopener,noreferrer') }})
+    return uit
+  }
   const actiesVoor = (tx: any): TransactieActie[] => {
     const k = koppelingVan(tx)
     const credit = tx.type === 'C'
@@ -746,6 +957,13 @@ function BankSectie() {
     const kies = (soort: FactuurKiezerSoort) => () => setKiezer({soort, txId: tx.id})
     const kiesUit = (soort: KeuzeSoort) => () => setKeuze({soort, txId: tx.id})
     if (k) {
+      if (k.soort === 'psp') {
+        const opgeslagen = (bankKoppelingen || {})[txKey(tx)]
+        if (pspKostenOpenCent(opgeslagen, inkoopFacturen) > 0 || opgeslagen?.kostenFactuurId != null) {
+          uit.push({id: 'kosten', groep: 'koppelen', label: t('bank_act_kosten_verrekenen'), sub: t('bank_ba_sub_kosten_verrekenen'), onClick: () => setKostenKiezerTxId(tx.id)})
+        }
+        uit.push(...verslagActies(tx))
+      }
       if (k.soort === 'verkoop') {
         uit.push({id: 'open', groep: 'overig', label: t('bank_act_open_factuur'), onClick: () => gaNaarDoel({pagina: 'facturen', tab: 'verkoop', id: k.id})})
         uit.push({id: 'verkoop', groep: 'koppelen', label: t('bank_act_verkoop'), sub: t('bank_ba_sub_verkoop'), onClick: kies('verkoop')})
@@ -764,6 +982,7 @@ function BankSectie() {
     if (credit) {
       uit.push({id: 'verkoop', groep: 'koppelen', label: t('bank_act_verkoop'), sub: t('bank_ba_sub_verkoop'), onClick: kies('verkoop')})
       uit.push({id: 'psp', groep: 'koppelen', label: t('bank_act_psp'), sub: t('bank_ba_sub_psp'), onClick: () => openPspModal(tx, voorstelVan(tx)?.factuurIds)})
+      if (isPspTransactie(tx) || tx.verslag) uit.push(...verslagActies(tx))
       if (heeftCreditnotas) uit.push({id: 'creditnota', groep: 'koppelen', label: t('bank_act_creditnota'), sub: t('bank_ba_sub_creditnota'), onClick: kies('creditnota')})
       uit.push({id: 'btw', groep: 'koppelen', label: t('bank_act_btw_teruggave'), sub: t('bank_ba_sub_btw_teruggave'), onClick: kiesUit('btw')})
       // Bijschrijving = omzet: ontvangstformulier (verkoopfactuur), nooit het inkoopformulier
@@ -792,6 +1011,12 @@ function BankSectie() {
     if (ontkoppelWachtId === tx.id) return null
     const k = koppelingWeergave(tx, tekstData)
     if (k) {
+      // Uitgesplitst, kosten nog open, en de factuur die het verslag noemt is
+      // intussen geboekt: die verrekening in één klik.
+      const kostenVoorstel = pspKostenVoorstel((bankKoppelingen || {})[txKey(tx)], tx, inkoopFacturen)
+      if (kostenVoorstel.length) {
+        return {label: t('bank_btn_kosten_verrekenen'), soort: 'primair', onClick: () => verrekenKosten(tx, kostenVoorstel.map(v => v.factuurId))}
+      }
       const onbetaald = k.onbetaald
       if (!onbetaald) return null
       return {
@@ -830,10 +1055,11 @@ function BankSectie() {
       return (
         <span className="block min-w-0">
           <span className={`block text-sm font-medium break-words ${k.ontbreekt ? 'text-orange-700' : 'text-gray-900'}`}>✓ {k.titel}</span>
-          {(k.hints.length > 0 || k.onbetaald) && (
-            <span className="block text-xs text-gray-500">
+          {(k.hints.length > 0 || k.onbetaald || k.waarschuwing) && (
+            <span className="block text-xs text-gray-500 break-words">
               {k.hints.join(' · ')}
               {k.onbetaald && <span className="text-orange-700">{k.hints.length ? ' · ' : ''}{t('bank_hint_onbetaald')}</span>}
+              {k.waarschuwing && <span className="text-orange-700">{k.hints.length || k.onbetaald ? ' · ' : ''}{k.waarschuwing}</span>}
             </span>
           )}
         </span>
@@ -967,18 +1193,77 @@ function BankSectie() {
     const v = voorstelVan(tx)
     const h = hoofdknopVoor(tx)
     const toonKnop = h && h.soort !== 'secundair'
-    const status = (k || v?.soort || v?.redenSleutel) ? (
-      <div className="rounded-lg border border-gray-200 px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex-1 min-w-[12rem]">{koppelCel(tx, true)}</div>
-        {toonKnop && h && (
-          <button type="button" onClick={() => { setDetailTxId(null); h.onClick() }}
-            className={`px-3 min-h-tap sm:min-h-[32px] rounded-lg text-sm font-medium whitespace-nowrap ${knopKlasse(h.soort)}`}>{h.label}</button>
+    const url = verslagUrl(tx)
+    const status = (k || v?.soort || v?.redenSleutel || url) ? (
+      <div className="space-y-2">
+        {(k || v?.soort || v?.redenSleutel) && (
+          <div className="rounded-lg border border-gray-200 px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="flex-1 min-w-[12rem]">{koppelCel(tx, true)}</div>
+            {toonKnop && h && (
+              <button type="button" onClick={() => { setDetailTxId(null); h.onClick() }}
+                className={`px-3 min-h-tap sm:min-h-[32px] rounded-lg text-sm font-medium whitespace-nowrap ${knopKlasse(h.soort)}`}>{h.label}</button>
+            )}
+          </div>
+        )}
+        {/* Het uitbetalingsverslag dat bij deze transactie hoort. */}
+        {url && (
+          <p className="text-sm text-gray-700 px-1 break-words">
+            <span className="text-gray-500">{t('psp_verslag_kop')}: </span>
+            <a href={url} target="_blank" rel="noopener noreferrer" className="t-accent-text font-medium hover:underline break-all">{tx.verslag.naam || t('fct_bijlage_openen')}</a>
+            {[
+              tx.verslag.referentie,
+              typeof tx.verslag.som_cent === 'number' ? vulIn(t('psp_verslag_totaal'), {bedrag: geldCent(tx.verslag.som_cent)}) : '',
+              tx.verslag.bron === 'claude' ? t('psp_verslag_bron_claude') : '',
+            ].filter(Boolean).map((s: string) => <span key={s} className="text-gray-500"> · {s}</span>)}
+          </p>
         )}
       </div>
     ) : null
     return <TransactieModal tx={tx} titel={k ? t('bank_tx_titel') : t('bank_ba_titel')} status={status}
       acties={actiesVoor(tx)} onSluit={() => setDetailTxId(null)} />
   })()
+
+  // "Kosten verrekenen met factuur…": de facturen van de PSP (of met het
+  // nummer uit het verslag), die met de open kosten van deze uitbetaling.
+  const kostenKiezerModal = (() => {
+    const tx = txMetId(kostenKiezerTxId)
+    if (!tx) return null
+    const key = txKey(tx)
+    const k = (bankKoppelingen || {})[key]
+    const kosten = pspKostenOpenCent(k, inkoopFacturen) || (k?.kostenFactuurId != null ? pspKostenCent(k, inkoopFacturen) : 0)
+    const nummers = (tx.verslag?.kosten || []).map((x: any) => String(x?.nummer || '')).filter(Boolean)
+    const opties: KeuzeOptie[] = kostenFactuurKandidaten(inkoopFacturen, bankKoppelingen, {nummers, uitsluitKey: key, isPspNaam}).map(c => ({
+      id: String(c.id),
+      titel: [c.factuur.factuurnummer || t('lbl_naamloos'), c.factuur.leverancier].filter(Boolean).join(' · '),
+      sub: [fmtD(c.factuur.datum), c.uitVerslag ? t('bank_kies_kostenfactuur_verslag') : '',
+        c.restCent > 0 ? vulIn(t('bank_kies_kostenfactuur_rest'), {bedrag: geldCent(c.restCent)}) : t('bank_kies_kostenfactuur_vol')].filter(Boolean).join(' · '),
+      waarde: geldCent(c.bedragCent),
+      klopt: c.uitVerslag,
+    }))
+    const uitleg = [vulIn(t('bank_kies_kostenfactuur_uitleg'), {bedrag: geldCent(kosten)}),
+      k?.kostenFactuurId != null ? t('bank_kies_kostenfactuur_vervangt') : ''].filter(Boolean).join(' ')
+    return <KeuzeModal titel={t('bank_kies_kostenfactuur_titel')} tx={tx} uitleg={uitleg} opties={opties}
+      onSluit={() => setKostenKiezerTxId(null)} onKies={(id) => verrekenKosten(tx, [Number(id)])}
+      leeg={{titel: t('bank_kies_kostenfactuur_leeg'), tekst: t('bank_kies_kostenfactuur_leeg_tekst'),
+        knop: {label: t('bank_naar_inkoop'), onClick: () => gaNaarDoel({pagina: 'facturen', tab: 'inkoop'})}}} />
+  })()
+
+  // Het venster "PSP-uitbetaling uitsplitsen": verslag (gelezen) en de
+  // facturen waarmee de kosten verrekend kunnen worden.
+  const pspTx = txMetId(pspTxId)
+  const pspVerslagStand: VerslagStand | null = pspVerslag && pspTx && pspVerslag.txId === pspTx.id ? pspVerslag : null
+  const pspVerslagKoppeling = React.useMemo(() => pspVerslagStand?.gelezen && pspTx
+    ? koppelPspVerslag(pspVerslagStand.gelezen, {verkoopFacturen, inkoopFacturen, bestellingen, alGekoppeld: verkoopIdsElders(txKey(pspTx))})
+    : null,
+  // verkoopIdsElders leest bankKoppelingen; die staat in de deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [pspVerslagStand?.gelezen, pspTx, verkoopFacturen, inkoopFacturen, bestellingen, bankKoppelingen])
+  const pspKostenKandidaten = React.useMemo(() => {
+    if (!pspTx) return []
+    const gelezen = pspVerslagStand?.gelezen
+    const nummers = (gelezen ? verslagKosten(gelezen) : (pspTx.verslag?.kosten || [])).map((x: any) => String(x?.nummer || '')).filter(Boolean)
+    return kostenFactuurKandidaten(inkoopFacturen, bankKoppelingen, {nummers, uitsluitKey: txKey(pspTx), isPspNaam})
+  }, [pspTx, pspVerslagStand?.gelezen, inkoopFacturen, bankKoppelingen])
 
   const kiezerModal = (() => {
     const tx = kiezer ? txMetId(kiezer.txId) : null
@@ -1000,6 +1285,11 @@ function BankSectie() {
     <div className="space-y-4 min-w-0">
       <input ref={bankFileRef} type="file" accept=".sta,.txt,.mt940,.swi,.940,.swift" className="hidden"
         onChange={(e: any) => { const f = e.target.files?.[0]; if (f) { undo.flush(); importMT940(f); e.target.value=''; } }} />
+      {/* Het uitbetalingsverslag van een PSP-uitbetaling: een PDF, of met een
+          Claude-sleutel ook foto's (de pagina's van één verslag). */}
+      <input ref={verslagInvoer} type="file" accept={heeftSleutel ? 'application/pdf,.pdf,image/*' : 'application/pdf,.pdf'}
+        multiple={heeftSleutel} className="hidden" aria-hidden="true" tabIndex={-1}
+        onChange={(e: any) => { const f: File[] = Array.from(e.target.files || []); e.target.value = ''; if (f.length) void koppelVerslagBestand(f) }} />
 
       {/* Kop: rekening, saldo van het laatste afschrift, importeren */}
       {!leegBank && (
@@ -1120,13 +1410,19 @@ function BankSectie() {
       {kiezerModal}
       {keuzeModal}
 
+      {kostenKiezerModal}
+
       {/* PSP-uitbetaling uitsplitsen */}
-      {txMetId(pspTxId) && (
-        <PspModal tx={txMetId(pspTxId)} verkoopFacturen={verkoopFacturen || []}
+      {pspTx && (
+        <PspModal tx={pspTx} verkoopFacturen={verkoopFacturen || []}
           selectie={pspSelectie} setSelectie={setPspSelectie} btwPct={pspBtwPct} setBtwPct={setPspBtwPct}
           toonAlles={pspToonAlles} setToonAlles={setPspToonAlles} kandidatenVoor={pspKandidatenVoor}
-          klantNaamVoor={klantNaamVoor} onOpslaan={savePspKoppeling}
-          onSluit={() => { setPspTxId(null); setPspSelectie([]) }} />
+          klantNaamVoor={klantNaamVoor} psp={pspNaam(pspTx) || 'PSP'}
+          verslagInfo={pspTx.verslag || null} verslagStand={pspVerslagStand} verslagKoppeling={pspVerslagKoppeling}
+          verslagSleutel={heeftSleutel} onKiesVerslag={() => kiesVerslag(pspTx.id)}
+          kostenWijze={pspKostenWijze} setKostenWijze={setPspKostenWijze}
+          kostenKeuze={pspKostenKeuze} setKostenKeuze={setPspKostenKeuze} kostenKandidaten={pspKostenKandidaten}
+          onOpslaan={savePspKoppeling} onSluit={sluitPspModal} />
       )}
 
       {showKapitaalModal && (

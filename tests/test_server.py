@@ -1254,6 +1254,23 @@ class TestBijlagen:
         req(app, 'POST', '/api/data/lots', body=[{'id': 7, 'ingredient_id': 1, 'lotnummer': 'L26-0412'}])
         assert req(app, 'POST', '/api/delete_upload/etiket_zak.jpg', body={})[0] == 200
 
+    def test_uitbetalingsverslag_bij_een_banktransactie_gaat_niet_weg(self, app):
+        # Het uitbetalingsverslag van Mollie e.d. hoort bij de transactie
+        # (`verslag`): zolang die ernaar wijst, blijft de PDF staan — ook als
+        # de uitbetaling (nog) niet is uitgesplitst.
+        import base64
+        req(app, 'POST', '/api/upload/psp_1.pdf', body={'data': base64.b64encode(b'%PDF-1.4').decode()})
+        tx = {'id': 5, 'afschrift_id': 4, 'iban': 'NL12INGB0001234567', 'datum': '2026-09-10', 'type': 'C',
+              'bedrag': 18.33, 'tegenpartij': 'Stichting Mollie Payments'}
+        req(app, 'POST', '/api/data/bank_transacties', body=[{**tx, 'verslag': {
+            'naam': 'settlement.pdf', 'bestand': 'psp_1.pdf', 'referentie': '19463891.2609.02', 'som_cent': 1833,
+            'kosten': [{'nummer': 'MOL-NL-R2026.0001470611', 'cent': 117}]}}])
+        status, body, _ = req(app, 'POST', '/api/delete_upload/psp_1.pdf', body={})
+        assert status == 409 and body['key'] == 'bank_transacties'
+        assert (srv.UPLOAD_DIR / 'psp_1.pdf').exists()
+        req(app, 'POST', '/api/data/bank_transacties', body=[tx])
+        assert req(app, 'POST', '/api/delete_upload/psp_1.pdf', body={})[0] == 200
+
     def test_bijlage_in_gebruik_negeert_een_kapotte_fotolijst(self, app):
         # Een lot met een rare waarde in etiket_fotos mag de controle niet laten vallen.
         req(app, 'POST', '/api/data/lots', body=[{'id': 8, 'etiket_fotos': 'geen-lijst'},

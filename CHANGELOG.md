@@ -4,6 +4,58 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.93] — 2026-10-07
+
+### Uitbetalingsverslag: Claude leest wat de app zelf niet kan lezen
+
+- **Scan, foto of andere opmaak.** De app leest het uitbetalingsverslag eerst
+  zelf uit de tekst van de PDF. Lukt dat niet — een gescande PDF zonder tekst,
+  een foto van een afgedrukt verslag, een andere betaaldienst of een nieuwe
+  opmaak van Mollie — dan leest Claude AI het, als er een API-sleutel is
+  (Instellingen → Claude AI). Foto's (de pagina's van één verslag) worden samen
+  één PDF bij de transactie. Claude schrijft alleen de tabel over: welke
+  bestelling of factuur bij een regel hoort, wat kosten zijn en of alles
+  optelt tot de uitbetaling bepaalt de app zelf, net als bij een gewone PDF.
+  Het venster zegt dat Claude het verslag las; kijk de regels na voordat je
+  koppelt. Er wordt niets vanzelf gekoppeld.
+- **Eén keer lezen.** Wat Claude las wordt bij de transactie bewaard (zonder
+  namen van klanten), zodat het venster het verslag bij de volgende keer
+  openen niet opnieuw laat lezen.
+- **Zonder sleutel** zegt de melding nu dat een scan of foto met een
+  Claude-sleutel wel leesbaar is.
+
+## [1.12.92] — 2026-10-07
+
+### Mollie-uitbetalingen: verslag, facturen en de factuur van Mollie
+
+- **Uitbetalingsverslag koppelen.** Open een uitbetaling van Mollie (of een
+  andere PSP) op Bank en koppel het uitbetalingsverslag (de PDF). De app leest
+  het verslag in de browser en vinkt zelf de facturen aan: een webshopbetaling
+  via het bestelnummer ("Bestelling 3289"), een betaallink via het
+  factuurnummer ("Factuur F2026-0044"). Een bestelling die in hetzelfde verslag
+  betaald én teruggestort is telt niet mee; een gedeeltelijke terugstorting
+  gaat via de creditnota. Per regel staat erbij wat er gevonden is (of dat er
+  geen factuur is, of dat hij al aan een andere transactie hangt), en of het
+  verslag optelt tot het uitbetaalde bedrag. De PDF blijft bij de transactie,
+  ook na ontkoppelen.
+- **De kosten verrekenen met de factuur van Mollie.** Mollie houdt zijn kosten
+  in op elke uitbetaling en stuurt er per maand één factuur voor; die wordt
+  verrekend, niet per bank betaald. Bij het uitsplitsen kies je de factuur van
+  Mollie waar de ingehouden kosten bij horen (het verslag noemt het nummer) —
+  of "factuur volgt" als hij nog niet geboekt is. De oude automatische
+  kostenpost per uitbetaling kan nog steeds. Is de factuur later geboekt, dan
+  verrekent de knop "Kosten verrekenen" op de uitbetaling hem in één klik, of
+  vanaf de factuur zelf: "Verrekenen met uitbetalingen" vinkt de uitbetalingen
+  aan die het verslag aan die factuur toeschrijft (een oude kostenpost vervalt
+  dan, met tegenboeking). Dekken de uitbetalingen de factuur helemaal, dan
+  staat hij op betaald ("Verrekend") met de datum van de laatste uitbetaling;
+  ontkoppelen zet hem weer open.
+- **Verrekenen kan ook na "Betaald".** Een factuur die met de hand op betaald
+  is gezet hangt nergens aan; "Verrekenen" (verkoop, met een alt-rekening),
+  "Via alt. rekening" (inkoop) en "Verrekenen met uitbetalingen" blijven dan
+  beschikbaar. Ongedaan maken zet de factuur terug in de stand van daarvoor —
+  een betaalde factuur blijft betaald.
+
 ## [1.12.91] — 2026-10-07
 
 ### Administratie: afronding na de controle
