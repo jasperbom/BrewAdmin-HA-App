@@ -159,6 +159,12 @@ BACKUPS_RESTORE_PATH     = '/api/backups/restore'
 CLAUDE_PROXY_PREFIX      = '/api/claude/'
 ANTHROPIC_API_BASE       = 'https://api.anthropic.com'
 CLAUDE_MAX_CONTENT       = 20 * 1024 * 1024  # 20 MB — PDF + images can be large
+# Server-side terugval bij een weigering (`fallbacks: "default"` in het verzoek,
+# zie src/utils/claudeScan.ts TERUGVAL_BETA). PDF-invoer heeft geen beta meer nodig.
+CLAUDE_BETA              = 'server-side-fallback-2026-07-01'
+# Het model denkt eerst na; een factuur van twee pagina's of een stel
+# etiketfoto's duurt soms langer dan de oude 90 s.
+CLAUDE_TIMEOUT           = 180
 
 # Mollie-betaalproxy (betaallink op verkoopfacturen). Test-keys beginnen met
 # 'test_', live-keys met 'live_'. De server voegt de key server-side toe zodat
@@ -577,6 +583,16 @@ def extract_key(path: str) -> str | None:
         return None
     key = path[idx + len(API_DATA_PREFIX):].strip('/')
     return key if _valid_key(key) else None
+
+
+def _claude_headers(api_key: str) -> dict:
+    """Headers voor een verzoek aan de Messages API (de proxy voegt de sleutel toe)."""
+    return {
+        'x-api-key': api_key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': CLAUDE_BETA,
+        'content-type': 'application/json',
+    }
 
 
 def _load_claude_creds() -> str | None:
@@ -5814,9 +5830,10 @@ def _cold_crash_tick() -> None:
 def _bijlage_in_gebruik(filename: str) -> str | None:
     """Naam van de data-key die nog naar deze bijlage verwijst, of None.
     Kijkt naar `bijlage.bestand` (inkoopfactuur, item in het postvak met
-    facturen per e-mail) en `bijlagen[].bestand` (afboeking,
-    verliesregistratie, vernietiging)."""
-    for key in ('inkoop_facturen', 'inkoop_inbox', 'afboekingen', 'verlies_registraties'):
+    facturen per e-mail), `bijlagen[].bestand` (afboeking,
+    verliesregistratie, vernietiging) en `etiket_fotos[].bestand` (de foto's
+    van het etiket bij een ingrediëntlot: bewijs voor traceerbaarheid)."""
+    for key in ('inkoop_facturen', 'inkoop_inbox', 'afboekingen', 'verlies_registraties', 'lots'):
         rijen = _read_json(key, [])
         if not isinstance(rijen, list):
             continue
@@ -5826,9 +5843,13 @@ def _bijlage_in_gebruik(filename: str) -> str | None:
             een = rij.get('bijlage')
             if isinstance(een, dict) and een.get('bestand') == filename:
                 return key
-            for b in (rij.get('bijlagen') or []):
-                if isinstance(b, dict) and b.get('bestand') == filename:
-                    return key
+            for veld in ('bijlagen', 'etiket_fotos'):
+                lijst = rij.get(veld)
+                if not isinstance(lijst, list):
+                    continue
+                for b in lijst:
+                    if isinstance(b, dict) and b.get('bestand') == filename:
+                        return key
     return None
 
 
@@ -7264,16 +7285,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         req = urllib.request.Request(
             f'{ANTHROPIC_API_BASE}/v1/messages',
             data=body,
-            headers={
-                'x-api-key': api_key,
-                'anthropic-version': '2023-06-01',
-                'anthropic-beta': 'pdfs-2024-09-25',
-                'content-type': 'application/json',
-            },
+            headers=_claude_headers(api_key),
             method='POST',
         )
         try:
-            with urllib.request.urlopen(req, timeout=90) as resp:
+            with urllib.request.urlopen(req, timeout=CLAUDE_TIMEOUT) as resp:
                 data = resp.read()
                 status = resp.status
         except urllib.error.HTTPError as e:

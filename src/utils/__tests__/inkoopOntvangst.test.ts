@@ -45,6 +45,39 @@ describe('bouwIngredientOntvangst', () => {
   })
 })
 
+describe('bouwIngredientOntvangst — meerdere lots en etiketfoto\'s', () => {
+  it('een regel met twee lotnummers wordt twee lots, elk met zijn eigen hoeveelheid en THT', () => {
+    const fotos = [{naam: 'zak 1.jpg', bestand: 'etiket_a.jpg'}, {naam: '', bestand: 'etiket_b.jpg'}, {naam: 'kapot'}, null]
+    const r = bouwIngredientOntvangst([{
+      ing_id: '1', qty: '50', eenh: 'kg', prijs: '1.74', btw_tarief: 9, lotnr: '', tht: '',
+      lots: [{lotnr: 'L26-0412', tht: '2027-03-31', qty: '25'}, {lotnr: 'L26-0418', tht: '2027-04-30', qty: '25'}],
+      etiket_fotos: fotos,
+    }], kop, ing, [{id: 7}], {datum: '2026-05-03', nu: 'x'})
+    expect(r.nieuweLots).toHaveLength(2)
+    expect(r.nieuweLots.map((l: any) => [l.lotnummer, l.houdbaarheid, l.hoeveelheid])).toEqual([
+      ['L26-0412', '2027-03-31', 25], ['L26-0418', '2027-04-30', 25],
+    ])
+    expect(r.nieuweLots.every((l: any) => l.prijs_per_eenheid === 1.74 && l.factuur_nummer === 'INK-77')).toBe(true)
+    expect(new Set(r.nieuweLots.map((l: any) => l.id)).size).toBe(2)
+    expect(r.nieuweLots.map((l: any) => l.id)).not.toContain(7)
+    // De foto's van de regel staan bij elk lot; kapotte vermeldingen vallen weg.
+    expect(r.nieuweLots[0].etiket_fotos).toEqual([{naam: 'zak 1.jpg', bestand: 'etiket_a.jpg'}, {naam: 'etiket_b.jpg', bestand: 'etiket_b.jpg'}])
+    expect(r.nieuweLots[1].etiket_fotos).toEqual(r.nieuweLots[0].etiket_fotos)
+    expect(r.logRegels.map((l: any) => [l.lotnummer, l.hoeveelheid, l.lot_id])).toEqual([
+      ['L26-0412', 25, r.nieuweLots[0].id], ['L26-0418', 25, r.nieuweLots[1].id],
+    ])
+  })
+
+  it('één element in lots (of geen) gebruikt de velden van de regel zelf; geen foto\'s = geen veld', () => {
+    const r = bouwIngredientOntvangst([
+      {ing_id: '1', qty: '10', eenh: 'kg', lotnr: 'X', tht: '2027-01-01', lots: [{lotnr: 'Y', tht: '', qty: '10'}]},
+    ], kop, ing, [], {datum: '2026-05-03', nu: 'x'})
+    expect(r.nieuweLots).toHaveLength(1)
+    expect(r.nieuweLots[0]).toMatchObject({lotnummer: 'X', houdbaarheid: '2027-01-01', hoeveelheid: 10})
+    expect(r.nieuweLots[0]).not.toHaveProperty('etiket_fotos')
+  })
+})
+
 describe('boekOnderdelenOntvangst', () => {
   const onderdelen = [{id: 10, naam: 'Kroonkurk 26mm', voorraad: 100, leverancier: 'Oud', lotnr: 'A'}]
 

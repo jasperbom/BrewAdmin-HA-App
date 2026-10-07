@@ -12,6 +12,7 @@ import BevestigKnop from '../components/ui/BevestigKnop'
 import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS, NAV_THEMES } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, mailTestApi, mailSendApi, mollieTestApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker, getServerHealth, ServerHealth } from '../utils/api'
+import { SCAN_MODELLEN, modelNaam } from '../utils/claudeScan'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 import { berekenAccijnsImpact, AccijnsImpactResult, evalAccijnsFormule } from '../utils/calculations'
@@ -2374,7 +2375,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <div className="mt-4 pt-4 border-t text-xs text-gray-400 space-y-1">
           <p>{t('settings_claude_hint_pdf')}</p>
           <p>{t('settings_claude_hint_scan')}</p>
-          <p>{t('settings_claude_hint_model')} <code className="bg-gray-100 px-1 rounded">claude-haiku-4-5</code> {t('settings_claude_hint_fast')}</p>
+          <p>{t('settings_claude_hint_model').replace('{modellen}', SCAN_MODELLEN.map(m => modelNaam(m.id)).join(' → '))}</p>
         </div>
       </div>
 

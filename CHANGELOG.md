@@ -4,6 +4,70 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.86] — 2026-10-07
+
+### Inkoop boeken: nieuw scherm, betere scan en etiketfoto's
+
+Het inkoopformulier stond op een telefoon met de PDF en het formulier naast
+elkaar geperst, met tabbladen per soort regel en velden die van het scherm
+vielen. Het is opnieuw opgebouwd, op het bureau en op de telefoon.
+
+- **Eén werkblad.** Op het bureau staat de factuur links en de boeking rechts;
+  op de telefoon wissel je tussen *Factuur* en *Boeking*. De factuur wordt zelf
+  getekend (ook meer pagina's, zoomen, op de telefoon knijpen) en de regel die
+  je bewerkt is in de factuur gemarkeerd.
+- **Alle regels in één lijst**, in de volgorde van de factuur: ingrediënten,
+  verpakkingsmateriaal en overige kosten door elkaar. De soort is een keuze op
+  de regel, geen tabblad. Een regel klapt open op zijn plek; op de telefoon
+  opent hij in een paneel van onderen met *Annuleren* en *Klaar*. Bij elk veld
+  staat of het uit de scan of van het etiket komt.
+- **Meer lots per regel.** Twee zakken van dezelfde mout met een eigen
+  lotnummer staan op de factuur als één regel, maar worden nu twee lots in de
+  voorraad, elk met eigen hoeveelheid en THT. *Verdeel gelijk* zet de
+  hoeveelheid in één tik goed; het formulier bewaakt dat de lots samen de regel
+  zijn.
+- **Foto's van het etiket.** Bij een ingrediënt maak je een foto van de zak of
+  het zakje; BrewAdmin leest lotnummer, THT (alleen een maand = einde van die
+  maand) en de waarden die op het etiket staan (kleur, extract, vocht, alfazuur,
+  vergistingsgraad …). Meer foto's mag: een close-up als de tekst klein is, of
+  een foto per zak. Staan er verschillende lotnummers op, dan wordt de regel
+  vanzelf verdeeld. Twijfelt de scan over een teken (0 of O), dan zegt hij welk.
+  Hoort het etiket bij een ander product, dan vult hij niets in tot je dat
+  bevestigt. De foto's worden bewaard bij het lot, als bewijs bij een controle
+  of terugroepactie. Ook bij een lot dat al in de voorraad staat
+  (Ingrediënten → lot openen).
+- **Geen factuur bij de levering?** Een foto van het etiket maakt er een regel
+  van, met product, merk, hoeveelheid, lot en THT.
+- **Foto's van een factuur.** Een papieren factuur fotografeer je pagina voor
+  pagina; de foto's worden samen één PDF als bijlage.
+- **De scan zelf.** De factuur gaat als document naar de scan (tekst én
+  opmaak) in plaats van alleen de tekst. De scan vroeg om een instelling die het
+  model weigert en viel daardoor stil terug op het kleinste model; hij gebruikt
+  nu het sterkste model dat je API-sleutel mag gebruiken. Het antwoord heeft een
+  vast formaat met aantal × inhoud (2 zakken van 25 kg = 50 kg), artikelnummer,
+  lotnummer en THT per regel en de totalen van de factuur.
+- **De scan onthoudt per leverancier** hoe je elke regel boekte (soort,
+  ingrediënt of materiaal, kostensoort, eenheid), op artikelnummer of
+  omschrijving. De volgende factuur van die leverancier komt meteen goed binnen.
+- **Klopt het totaal?** De som van de regels wordt vergeleken met het totaal op
+  de factuur (of met de afschrijving bij een boeking vanuit de bank). Een paar
+  cent verschil is meestal afronding van de BTW per regel: *Neem over* maakt er
+  een correctieregel van.
+- **Al geboekt?** Staat hetzelfde factuurnummer van dezelfde leverancier er al,
+  dan zegt het formulier dat en vraagt het om bevestiging.
+- **Bij opslaan** staat onderaan wat er gebeurt: de factuur en in welke
+  BTW-aangifte, hoeveel lots, nieuw verpakkingsmateriaal, een nieuwe
+  leverancier, de bijlage. Een regel verwijderen heeft vijf seconden terugweg.
+  Een mislukte upload van de bijlage of een etiketfoto meldt zich in plaats van
+  stil te verdwijnen. Uit het postvak: *Opslaan en volgende*.
+- **Onderdeel heet nu Verpakkingsmateriaal.** "Verpakking" blijft wat het was
+  (een fles van 33 cl, een fust); de flessen, kroonkurken en etiketten waar die
+  uit bestaat heten nu overal verpakkingsmateriaal.
+- **Het waterrapport** (Gereedschap → Waterprofiel) gebruikt dezelfde, betere
+  scan.
+
+---
+
 ## [1.12.85] — 2026-09-30
 
 ### Facturen per e-mail: doorsturen en later verwerken

@@ -38,6 +38,8 @@ const PADEN: Record<string, string> = {
   target:      'M12 22a10 10 0 100-20 10 10 0 000 20z M12 16a4 4 0 100-8 4 4 0 000 8z M12 12h.01',
   search:      'M11 19a8 8 0 100-16 8 8 0 000 16z M21 21l-4.3-4.3',
   receipt:     'M5 3h14v18l-2.5-1.5L14 21l-2-1.5L10 21l-2.5-1.5L5 21V3z M9 8h6 M9 12h6',
+  camera:      'M3 8a2 2 0 012-2h2.5L9 4h6l1.5 2H19a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V8z M12 17a4 4 0 100-8 4 4 0 000 8z',
+  upload:      'M12 21V9 M7 14l5-5 5 5 M4 3h16',
   bank:        'M3 10l9-6 9 6 M4 10v9 M8 10v9 M12 10v9 M16 10v9 M20 10v9 M2 21h20',
   factory:     'M3 21V10l5 3V10l5 3V10l5 3V5h3v16H3z',
   building:    'M5 21V4a1 1 0 011-1h12a1 1 0 011 1v17 M2 21h20 M9 7h2 M13 7h2 M9 11h2 M13 11h2 M9 15h2 M13 15h2',

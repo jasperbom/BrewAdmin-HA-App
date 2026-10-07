@@ -4,6 +4,7 @@ import { ZUUR_MIDDELEN } from '../utils/constants'
 import { berekenZuurCorrectieMaisch, berekenZuurCorrectieWater } from '../utils/calculations'
 import { extractPdfText } from '../utils/pdfText'
 import { callClaudeProxy } from '../utils/api'
+import { voerScanUit, pdfBlok, tekstBlok, ScanFout, scanFoutSleutel } from '../utils/claudeScan'
 import { fmtQty, tod } from '../utils/format'
 import {
   WATER_ION_KEYS, WATER_ION_LABELS, WATER_ZOUTEN, WATER_DOELPROFIELEN,
@@ -133,33 +134,30 @@ const PhCorrectieTool: React.FC = () => {
 // de aanpassingscalculator: verdunning, brouwzouten en melkzuur richting een
 // stijl-doelprofiel.
 
-// Sonnet is betrouwbaarder op gescande rapporten; zonder toegang tot dat
-// model vallen we terug op Haiku (zelfde aanpak als de factuurscan).
-const WATER_SCAN_MODEL = 'claude-sonnet-5'
-const WATER_SCAN_MODEL_FALLBACK = 'claude-haiku-4-5-20251001'
-
-const WATER_EXTRACTIE_TOOL = {
-  name: 'water_extractie',
-  description: 'Geef de brouwrelevante waarden uit het waterkwaliteitsrapport door.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      ca:   {type: ['number', 'null'], description: 'Calcium in mg/L (gemiddelde van de meest recente periode)'},
-      mg:   {type: ['number', 'null'], description: 'Magnesium in mg/L'},
-      na:   {type: ['number', 'null'], description: 'Natrium in mg/L'},
-      cl:   {type: ['number', 'null'], description: 'Chloride in mg/L'},
-      so4:  {type: ['number', 'null'], description: 'Sulfaat in mg/L'},
-      hco3: {type: ['number', 'null'], description: 'Waterstofcarbonaat (bicarbonaat) in mg/L'},
-      ph:   {type: ['number', 'null'], description: 'Zuurgraad (pH)'},
-      hardheid_dh: {type: ['number', 'null'], description: 'Totale hardheid in °D (Duitse graden); bij alleen mmol/l: × 5,6'},
-      periode: {type: ['string', 'null'], description: 'Rapportageperiode, bijv. "Januari - Maart 2026"'},
-      bron: {type: ['string', 'null'], description: 'Naam van het waterbedrijf of pompstation'},
-    },
-    required: ['ca', 'mg', 'na', 'cl', 'so4', 'hco3'],
+// Het rapport gaat als PDF naar Claude (gestructureerde uitvoer via
+// utils/claudeScan.ts — dezelfde modelketen als de factuurscan). Elk veld is
+// verplicht en mag null zijn: een ion dat niet in het rapport staat blijft leeg.
+const waterGetal = (description: string) => ({ anyOf: [{type: 'number'}, {type: 'null'}], description })
+const waterTekst = (description: string) => ({ anyOf: [{type: 'string'}, {type: 'null'}], description })
+const WATER_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['ca', 'mg', 'na', 'cl', 'so4', 'hco3', 'ph', 'hardheid_dh', 'periode', 'bron'],
+  properties: {
+    ca:   waterGetal('Calcium in mg/L (gemiddelde van de meest recente periode)'),
+    mg:   waterGetal('Magnesium in mg/L'),
+    na:   waterGetal('Natrium in mg/L'),
+    cl:   waterGetal('Chloride in mg/L'),
+    so4:  waterGetal('Sulfaat in mg/L'),
+    hco3: waterGetal('Waterstofcarbonaat (bicarbonaat) in mg/L'),
+    ph:   waterGetal('Zuurgraad (pH)'),
+    hardheid_dh: waterGetal('Totale hardheid in °D (Duitse graden); bij alleen mmol/l: × 5,6'),
+    periode: waterTekst('Rapportageperiode, bijv. "Januari - Maart 2026"'),
+    bron: waterTekst('Naam van het waterbedrijf of pompstation'),
   },
 }
 
-const WATER_SCAN_PROMPT = `Extraheer de brouwrelevante waterwaarden uit dit waterkwaliteitsrapport van een drinkwaterbedrijf en geef ze door via de tool.
+const WATER_SCAN_PROMPT = `Lees de brouwrelevante waterwaarden uit dit waterkwaliteitsrapport van een drinkwaterbedrijf en geef ze terug in het gevraagde formaat.
 
 Regels:
 - Gebruik de GEMIDDELDE waarde van de MEEST RECENTE rapportageperiode.
@@ -245,33 +243,12 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, d
     }
     setClaudeBezig(true); setScanMsg(null)
     try {
-      let messages: any[]
-      if (pending.tekst.length > 120) {
-        messages = [{role: 'user', content: `${WATER_SCAN_PROMPT}\n\nRapporttekst:\n${pending.tekst.slice(0, 12000)}`}]
-      } else {
-        // Gescande PDF zonder tekstlaag → als document meesturen
-        const b64 = await fileToBase64(pending.file)
-        messages = [{role: 'user', content: [
-          {type: 'document', source: {type: 'base64', media_type: 'application/pdf', data: b64}},
-          {type: 'text', text: WATER_SCAN_PROMPT},
-        ]}]
-      }
-      // temperature 0: extractie moet deterministisch zijn, niet creatief.
-      const doCall = (model: string) => callClaudeProxy({
-        model, max_tokens: 1000, temperature: 0,
-        tools: [WATER_EXTRACTIE_TOOL],
-        tool_choice: {type: 'tool', name: 'water_extractie'},
-        messages,
+      // Het hele rapport als document: het model ziet dan ook de tabelopmaak.
+      const {data} = await voerScanUit(callClaudeProxy, {
+        inhoud: [pdfBlok(await fileToBase64(pending.file)), tekstBlok(WATER_SCAN_PROMPT)],
+        schema: WATER_SCHEMA, maxTokens: 8000, effort: 'low',
       })
-      let result: any
-      try {
-        result = await doCall(WATER_SCAN_MODEL)
-      } catch (err: any) {
-        if (/not_found|model/i.test(err?.message || '')) result = await doCall(WATER_SCAN_MODEL_FALLBACK)
-        else throw err
-      }
-      const toolUse = (result.content || []).find((b: any) => b.type === 'tool_use')
-      const inp: any = toolUse?.input
+      const inp: any = data
       if (!inp || typeof inp !== 'object') throw new Error(t('tool_water_parse_fail'))
       const num = (v: any): number | undefined => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? undefined : Number(v)
       const waarden: Partial<WaterIonen> = {}
@@ -286,7 +263,7 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, d
       setPending(null)
       setScanMsg({soort: 'ok', tekst: t('tool_water_parse_ok').replace('{n}', String(gevonden))})
     } catch (err: any) {
-      setScanMsg({soort: 'err', tekst: err?.message || String(err)})
+      setScanMsg({soort: 'err', tekst: err instanceof ScanFout ? t(scanFoutSleutel(err.code)) : (err?.message || String(err))})
     } finally { setClaudeBezig(false) }
   }
 

@@ -26,9 +26,18 @@ The app is "fully built with Claude AI" (noted in README). UI text and many code
 BrewAdmin-HA-App/
 ├── src/                    # React/TypeScript frontend
 │   ├── components/
-│   │   ├── ui/             # Reusable UI primitives
-│   │   ├── InkoopFactuurModal.tsx  # Inkoopformulier; `inboxItem` laadt een PDF uit het postvak (scan + weergave,
-│   │   │                           # geen tweede upload: de factuur wijst naar hetzelfde bestand)
+│   │   ├── ui/             # Reusable UI primitives (o.a. `useDialoogFocus` — focus-trap/Escape van Modal
+│   │   │                   # en het inkoopwerkblad — en `useSmalScherm`: het omslagpunt van 768 px)
+│   │   ├── InkoopFactuurModal.tsx  # Inkoop boeken: het werkblad (bureau: factuur naast de boeking; telefoon:
+│   │   │                           # wissel Factuur | Boeking, regel in een paneel van onderen). Alle regels in
+│   │   │                           # één lijst, factuurscan, etiketfoto's, totaalcontrole, "Bij opslaan". Geeft
+│   │   │                           # de pagina dezelfde `onSave`-vorm als vroeger (+ `lots`/`etiket_fotos` op een
+│   │   │                           # productregel); `false` terug = niet opgeslagen. `inboxItem` laadt een PDF uit
+│   │   │                           # het postvak (geen tweede upload) en kent "Opslaan en volgende"
+│   │   ├── inkoop/                 # Onderdelen van dat werkblad: FactuurDocument (pdf.js op canvas, zoom,
+│   │   │                           # knijpen, markering van de open regel), RegelLijst, RegelEditor, LotVelden
+│   │   │                           # (meer lots per regel), EtiketFotos, LotEtiket (etiketfoto bij een bestaand
+│   │   │                           # lot, lotvenster Ingrediënten), ItemKiezer, InkoopTotalen, Onderblad, Segment
 │   │   ├── InkoopInbox.tsx         # Tab Inkoop → "Ontvangen per e-mail": de wachtrij met doorgestuurde PDF-facturen
 │   │   ├── InkoopMailInstellingen.tsx # Instellingen → Koppelingen → Facturen per e-mail (`imap_creds`, test, status)
 │   │   ├── BatchRapportExport.tsx  # Batchdossier → print-HTML / printvenster / PDF-download
@@ -218,7 +227,31 @@ BrewAdmin-HA-App/
 │   │   │                   # een getal blijft een getal) — gebruik ze voor élke CSV-export, nooit eigen quoting;
 │   │   │                   # `inkoopRegelExport` leest de kolommen van een inkoopregel (ook oude boekingen)
 │   │   ├── inkoopOntvangst.ts # Inkoopformulier → lots + ontvangst-log, onderdelenvoorraad, factuurregels en
-│   │   │                   # merch-inkopen; gedeeld door de gewone inkoopfactuur en de boeking vanuit de bank
+│   │   │                   # merch-inkopen; gedeeld door de gewone inkoopfactuur, de boeking vanuit de bank én
+│   │   │                   # de ontvangst op de ingrediëntenpagina. Een productregel met `lots` wordt één lot
+│   │   │                   # per lotnummer; `etiket_fotos` komen op elk lot van die regel
+│   │   ├── inkoopRegels.ts # Eén regel van het inkoopformulier, elke soort (ingrediënt/verpakkingsmateriaal/
+│   │   │                   # overig): hoeveelheid ↔ prijs ↔ bedrag (excl./incl.), soort wisselen, meer lots per
+│   │   │                   # regel (`DeelLot`, verdelen, som bewaken), controle per regel (i18n-sleutels),
+│   │   │                   # totalen in centen zoals geboekt, `naarOpslag`/`vanFactuur` (de oude drie lijsten),
+│   │   │                   # `laatsteInkoop` (prijs/eenheid/leverancier van het vorige lot)
+│   │   ├── claudeScan.ts   # Eén aanroep van Claude voor alle scans (factuur, etiket, waterrapport):
+│   │   │                   # gestructureerde uitvoer (`output_config.format`), geen temperature, modelketen
+│   │   │                   # `SCAN_MODELLEN` (terugval alleen als een model niet beschikbaar is) + server-side
+│   │   │                   # `fallbacks: "default"`, `ScanFout` bij afgekapt/geweigerd/leeg/onleesbaar
+│   │   ├── factuurScan.ts  # Schema + prompt van de factuurscan (alles verplicht, "leeg" = "" of 0), PDF als
+│   │   │                   # document of foto's als pagina's (`factuurScanModus`), opschonen, regels verdelen
+│   │   │                   # (`regelsUitScan`: geheugen eerst, "overig" blijft overig, NL-tarief bij verlegd)
+│   │   ├── etiketScan.ts   # Etiketfoto's (meer foto's per regel, één verzoek) → lotnummer(s), THT, eigenschappen;
+│   │   │                   # `pasEtiketToe` (invoer van de gebruiker blijft staan), `lotsVoorRegel` (hoeveelheid
+│   │   │                   # verdelen over de lots), `etiketVoorLot` (bestaand lot), `productKlopt`
+│   │   ├── scanGeheugen.ts # Het scangeheugen (`scan_correcties`): per leverancier + artikelnummer of omschrijving
+│   │   │                   # hoe een regel geboekt is; geleerd bij elk opslaan (`koppelingenUitRegels`)
+│   │   ├── inkoopControle.ts # Totaal tegen de factuur (of de afschrijving), "Neem over" → correctieregel,
+│   │   │                   # handmatige totalen (`effectieveTotalen`, `naarTotaalManual`), dubbele factuur
+│   │   ├── afbeelding.ts   # Foto → JPEG op maat (scan 2576 px, archief 1600 px; HEIC alleen in Safari) en
+│   │   │                   # factuurfoto's samen als één PDF-bijlage (jsPDF)
+│   │   ├── pdfZoek.ts      # Waar staat een factuurregel in de PDF (tekstlaag per regel, bedrag weegt mee)
 │   │   ├── inkoopInbox.ts  # Facturen per e-mail: opslagvorm van `inkoop_inbox`/`inkoop_inbox_status`/`imap_creds`,
 │   │   │                   # de pure handelingen op de wachtrij (verwerkt, genegeerd, terugzetten, factuur verwijderd,
 │   │   │                   # definitief verwijderen), foutcodes en redenen → i18n en het afzenderfilter (spiegel van
@@ -312,7 +345,7 @@ werkruimtes, het **tweede menu** de pagina's van de gekozen werkruimte.
 | Build tool | Vite 5.4.10 with `vite-plugin-singlefile` |
 | Styling | Tailwind CSS 3.4.14 |
 | Excel | SheetJS (xlsx 0.20.3) |
-| PDF | pdfjs-dist 3.11.174 (lezen, factuur-scan); jsPDF 3 + html2canvas (genereren — mail-bijlagen en het batchdossier) |
+| PDF | pdfjs-dist 3.11.174 (lezen, factuur-scan, tekenen in het inkoopwerkblad); jsPDF 3 + html2canvas (genereren — mail-bijlagen, het batchdossier, factuurfoto's als één PDF) |
 | Backend | Python 3.12 (stdlib only, no pip dependencies) |
 | Container | Docker, multi-stage (node:20-alpine → python:3.12-alpine) |
 | Deployment | Home Assistant addon via ingress (port 8099) |
@@ -371,7 +404,13 @@ conflict-samenvoeging (`merge.ts` + het 409-pad van `api.ts`), de hash-routing
 van de schil (`route.ts`), het themacontrast (`kleurContrast.ts`, alle zeven
 thema's), de undo-planner (`undo.ts`), het batchdossier (`batchRapport.ts`:
 afbakening op de batch, kerncijfers, traceerregels, CCP-registraties,
-kostprijs) en de pagina-indeling van de PDF-export (`pdfPaginering.ts`).
+kostprijs), de pagina-indeling van de PDF-export (`pdfPaginering.ts`) en het
+inkoopformulier: de regels (`inkoopRegels.ts`, ook meer lots per regel), de
+scanhelper (`claudeScan.ts`: modelketen, geen temperature, foutcodes), de
+factuur- en etiketscan (schema's binnen de grenzen van gestructureerde
+uitvoer, opschonen, toepassen zonder invoer van de gebruiker te overschrijven),
+het scangeheugen, de totaal- en dubbelecontrole, de foto-omzetting
+(`afbeelding.ts`) en de regel-zoeker in de PDF (`pdfZoek.ts`).
 
 `server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
 key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
@@ -779,7 +818,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | Key | Type | Inhoud |
 |-----|------|--------|
 | `ingredienten` | array | Ingrediënten |
-| `lots` | array | Ingrediëntlots (voorraadeenheden) |
+| `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
 | `batches` | array | Brouwbatches |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
 | `afvullingen` | array | Afvullingen / releases |
@@ -817,7 +856,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_trace_oefeningen` | array | **Traceeroefeningen** (hoofdstuk 11): periodieke mock recall met bevroren omvang (lotcodes, afnemers), massabalans, traceergaten, doorlooptijd en conclusie. Append-only — een tegenvallende oefening mag niet achteraf bijgesteld worden |
 | `haccp_instellingen` | object | Kritische grenzen uit het handboek: stabiliteitsdagen, forced-fermentation-marge, THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |
 | `inkoop_facturen` | array | Inkoopfacturen |
-| `scan_correcties` | array | Handmatige herclassificaties van factuurscan-regels ({tekst, soort}) — sturen volgende scans |
+| `scan_correcties` | array | Het scangeheugen (`utils/scanGeheugen.ts`): `{tekst, soort, leverancier?, artikelcode?, naam?, kostensoort?, eenheid?}`, de nieuwste 500. Bij elk opslaan van een gescande factuur geleerd (per leverancier + artikelnummer, anders omschrijving); de oude `{tekst, soort}` blijft gelden als algemene correctie. Gaat vóór de indeling van het model |
 | `inkoop_inbox` | array | Facturen per e-mail: de PDF-bijlagen die de server-tick `_inbox_tick` uit het postvak (IMAP) haalde, met `status` `nieuw`/`verwerkt`/`genegeerd`. Item: `{id, ontvangen, mail_datum, van, van_naam, onderwerp, message_id, bijlage: {naam, bestand}, grootte, sha256, status, factuur_id?, afgehandeld?}`. De server voegt alleen nieuwe items toe (bestand `inbox_<sha256[:20]>.pdf` in de bijlagenmap); verwerken, negeren, terugzetten en verwijderen doet de app. Een PDF met een `sha256` die er al in staat (ook genegeerd/verwerkt) komt er nooit nog eens bij. Financiële key: alleen `boekhouding`/`beheer` schrijven. Wel in de Excel-backup |
 | `verkoop_facturen` | array | Verkoopfacturen |
 | `bestellingen` | array | WooCommerce-bestellingen |
@@ -972,7 +1011,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/backups/trigger` | Nu een backup maken (beheer-only) |
 | POST | `/api/backups/restore` | Eén data-key terugzetten uit een serverbackup (`{date, key}`) — beheer-only, geweigerd voor append-only keys, credentials en server-beheerde keys (`_NIET_TERUGZETBAAR`: `nummer_reeksen` + afgeleide serverdata), zelfde schrijfweg als `/api/data` (schemavalidatie, rollenvalidatie + lockout-guard via `_key_guard_fout`, versie, audit `backup_restore`). De rest van de administratie blijft staan |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB). Overschrijft nooit een bestaande bijlage: bij een botsing wijkt de server uit naar een vrije naam en geeft die terug als `bestand` — de client bewaart díé naam |
-| POST | `/api/delete_upload/<naam>` | Bijlage verwijderen; 409 zolang een inkoopfactuur, afboeking of verliesregistratie ernaar verwijst (`_bijlage_in_gebruik`) |
+| POST | `/api/delete_upload/<naam>` | Bijlage verwijderen; 409 zolang een inkoopfactuur, postvak-item, afboeking, verliesregistratie of lot (`etiket_fotos`) ernaar verwijst (`_bijlage_in_gebruik`) |
 | GET | `/*` | Serve `index.html` (SPA fallback) |
 
 ### Security constraints (do not remove)
@@ -1187,11 +1226,24 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 
 ### Claude AI (Anthropic)
 
-- Used for: purchase invoice scanning (PDF → structured data)
-- Client does PDFjs text extraction first; only calls Claude if needed
-- API key stored in `instellingen` (`claudeKey`)
-- Server proxies the request, adding the API key server-side
-- Response expected as JSON: `{ supplier, date, invoice_number, lines: [{description, quantity, unit_price, vat_rate, total}] }`
+- Used for: de inkoopfactuur (PDF of foto's), foto's van het etiket op een zak (lotnummer, THT, eigenschappen)
+  en het waterrapport (Gereedschap → Waterprofiel)
+- Eén plek: `utils/claudeScan.ts` (`voerScanUit`). Gestructureerde uitvoer via `output_config.format`
+  (`json_schema`), **geen temperature** en **geen geforceerde tool-aanroep** (de huidige modellen weigeren
+  beide met een 400), `max_tokens` 16k (het nadenken telt mee), `stop_reason` `max_tokens`/`refusal` →
+  `ScanFout`. Modelketen `SCAN_MODELLEN`; een volgend model alleen bij "niet beschikbaar" (404/`not_found_error`,
+  of 400/403 die het model noemt) — nooit op tekst raden. De oude regel `/not_found|model/i` liet elke scan
+  stil op het kleinste model draaien
+- Schema's zonder optionele velden en zonder null (grens: 24 optionele / 16 keuze-typen): "staat er niet" is
+  `""`, `0` of `false`. De opschoning (`normaliseer…`) maakt daar null van
+- Een PDF gaat als `document`-blok mee (tekst én opmaak; geen beta-header nodig), foto's als JPEG ≤ 2576 px
+  (`utils/afbeelding.ts`), de inhoud vóór de vraag. Zonder sleutel: lokaal alleen datum + factuurnummer uit de
+  PDF-tekst
+- API-key in de secure key `claude_creds`; de proxy (`_claude_proxy`) voegt hem server-side toe, stuurt de
+  beta-header `server-side-fallback-2026-07-01` mee (spiegel van `TERUGVAL_BETA`, pytest bewaakt dat) en
+  wacht `CLAUDE_TIMEOUT` (180 s)
+- De scan boekt nooit zelf: hij vult het formulier, de gebruiker controleert en slaat op. Wat de gebruiker al
+  invulde, overschrijft een (latere) scan niet
 
 ### Facturen per e-mail (postvak, IMAP)
 
@@ -1199,7 +1251,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - **Alleen lezen, waterlijn per map:** de map gaat met EXAMINE open; niets wordt als gelezen gemarkeerd, verplaatst of verwijderd. Wat al bekeken is staat als UID-waterlijn (`uidvalidity` + `laatste_uid`, per `mailbox`) in `inkoop_inbox_status`; `UID n:*` geeft altijd minstens het laatste bericht, dus filter op `uid > waterlijn`. Wisselt de map of de UIDVALIDITY, dan begint hij opnieuw (een server die UIDVALIDITY niet meldt houdt zijn waterlijn: `None` == `None`). Een mapnaam mag alles zijn behalve stuurtekens, aanhalingsteken en backslash (`[Gmail]/Alle berichten`, `Facturen ë`); niet-ASCII gaat als modified UTF-7 (`_inbox_imap_utf7`), `IMAP_MAP_RE` in `utils/inkoopInbox.ts` spiegelt de regex. De allereerste ronde in een map kijkt naar de nieuwste 50 berichten (`INBOX_MAX_BERICHTEN`), latere rondes nemen hooguit 50 nieuwe tegelijk mee — de rest volgt de volgende ronde
 - **Nooit twee keer dezelfde PDF:** `sha256` van de bytes tegen alle items in `inkoop_inbox` (ook genegeerd of verwerkt). Definitief verwijderen van een genegeerd item (record + bestand) maakt hem weer importeerbaar — dat is bedoeld
 - **Wat er in komt:** `_inbox_lees_bericht` (zuivere functie) zoekt in het hele bericht, ook in een als bijlage doorgestuurd bericht (`message/rfc822`). Overgeslagen berichten krijgen een reden (`geen_pdf`, `afzender`, `te_groot`, `te_veel`, `onleesbaar`, `dubbel`) in `inkoop_inbox_status.overgeslagen` en dus zichtbaar op de tab Inkoop en in de instellingen — een doorgestuurde factuur die niet verschijnt moet altijd te verklaren zijn. Het afzenderfilter (`afzenders`: adressen of `@domein`; leeg = iedereen) kijkt naar de afzender van de doorstuurmail, niet naar die van de leverancier; het is geen echte beveiliging (een afzender is te vervalsen)
-- **Verwerken = het gewone inkoopformulier:** tab Inkoop → *Ontvangen per e-mail* → *Verwerk* opent `InkoopFactuurModal` met `inboxItem`: de PDF wordt geladen, naast het formulier gezet en meteen gescand. Bij opslaan wijst de factuur naar **hetzelfde bestand** (`bijlage` = `inboxItem.bijlage`, geen tweede upload) en wordt het item `verwerkt` met `factuur_id`. `_bijlage_in_gebruik` telt `inkoop_inbox` mee, dus zo'n bestand gaat nooit weg zolang het item of de factuur ernaar wijst. Wordt de factuur verwijderd, dan komt het item terug op de wachtlijst (`inboxFactuurVerwijderd`). Zonder leverancier én factuurnummer maakt de pagina geen factuur; voor een postvak-item boekt ze dan ook geen voorraad en blijft het formulier open (`inbox_vul_factuurgegevens`) — anders stonden de lots er al in terwijl het item op `nieuw` bleef en het volgende verwerken ze nog eens boekte
+- **Verwerken = het gewone inkoopformulier:** tab Inkoop → *Ontvangen per e-mail* → *Verwerk* opent `InkoopFactuurModal` met `inboxItem`: de PDF wordt geladen, naast het formulier gezet en meteen gescand. Bij opslaan wijst de factuur naar **hetzelfde bestand** (`bijlage` = `inboxItem.bijlage`, geen tweede upload) en wordt het item `verwerkt` met `factuur_id`. `_bijlage_in_gebruik` telt `inkoop_inbox` mee, dus zo'n bestand gaat nooit weg zolang het item of de factuur ernaar wijst. Wordt de factuur verwijderd, dan komt het item terug op de wachtlijst (`inboxFactuurVerwijderd`). Wachten er meer, dan biedt het formulier *Opslaan en volgende*: de pagina opent meteen het volgende item (de modal is per item gesleuteld, `key={inboxVerwerk.id}`). Zonder leverancier én factuurnummer maakt de pagina geen factuur; voor een postvak-item boekt ze dan ook geen voorraad en blijft het formulier open (`inbox_vul_factuurgegevens`) — anders stonden de lots er al in terwijl het item op `nieuw` bleef en het volgende verwerken ze nog eens boekte
 - **Er wordt niets automatisch geboekt.** Ook niet als de scan alles goed heeft: het postvak is een wachtrij, de boeking blijft een handeling van een mens
 - **Zichtbaarheid:** badge op het tabblad Inkoop, attentiepost `inkoop_inbox` (werkruimte Administratie), een rij op het Administratie-dashboard (`beslissingen.ts`, `wacht_op_jou`) en één HA-melding per ophaalronde met nieuwe facturen (`notificatie_instellingen`). Een fout van de laatste ronde (`fout.code`: `verbinding`, `certificaat`, `tls`, `login`, `map`, `protocol`, `opslag`, `vol`) staat op de kaart met — bij een instellingsfout — een link die naar de kaart in Instellingen → Koppelingen scrolt
 - **Rollen:** `imap_creds` en `inkoop_inbox_status` alleen `beheer` (in `_BEHEER_KEYS`; `utils/rollen.ts` spiegelt), `inkoop_inbox` is financieel (`boekhouding` + `beheer`). *Test verbinding* is beheer-only, *Nu ophalen* ook voor `boekhouding`

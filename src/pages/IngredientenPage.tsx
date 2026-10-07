@@ -13,7 +13,11 @@ import Modal from '../components/ui/Modal'
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
-import InkoopFactuurModal, { registreerScanCorrectie } from '../components/InkoopFactuurModal'
+import InkoopFactuurModal from '../components/InkoopFactuurModal'
+import LotEtiket, { type LotFoto } from '../components/inkoop/LotEtiket'
+import { uploadBijlage, uploadFoutSleutel } from '../utils/bijlage'
+import { alsBestand } from '../utils/afbeelding'
+import { registreerScanCorrectie, leerKoppelingen } from '../utils/scanGeheugen'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
 import { useStore } from '../utils/api'
@@ -21,7 +25,7 @@ import { logAudit } from '../utils/audit'
 import { bepaalRollover } from '../utils/btw'
 import { inkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
 import { inkoopRegelsMetCorrectie } from '../utils/centen'
-import { bouwInkoopRegels } from '../utils/inkoopOntvangst'
+import { bouwInkoopRegels, bouwIngredientOntvangst, boekOnderdelenOntvangst } from '../utils/inkoopOntvangst'
 import { lotVoorraadTotaal, bfVoorraadHoeveelheid } from '../utils/ingredientVoorraad'
 
 interface Props {
@@ -123,6 +127,10 @@ const IngredientenPage: React.FC<Props> = ({
   const [lotBrewOpen, setLotBrewOpen] = useStore('lot_brew_open', true)
   const [showNote, setShowNote] = useState<{ label: string; text: string } | null>(null)
   const [lotEdit, setLotEdit] = useState<any>({})
+  // Nieuwe etiketfoto's in het lotvenster: pas bij Opslaan naar de server.
+  const [lotFotos, setLotFotos] = useState<LotFoto[]>([])
+  const [lotFout, setLotFout] = useState<string | null>(null)
+  const [lotBezig, setLotBezig] = useState(false)
   const [lotCorr, setLotCorr] = useState({ delta: '', richting: '+', reden: '', eenheid: '' })
   const [ingZoek, setIngZoek] = useState('')
   const [alleenOpVoorraad, setAlleenOpVoorraad] = useStore('ing_alleen_voorraad', false)
@@ -244,7 +252,17 @@ const IngredientenPage: React.FC<Props> = ({
     return usages.map((x: any) => ({ ...x, batch: bat.find((b: any) => b.id === x.batch_id) }))
   }
 
+  const sluitLot = () => {
+    lotFotos.forEach(f => URL.revokeObjectURL(f.url))
+    setLotFotos([])
+    setLotFout(null)
+    setShowLot(null)
+  }
+
   const openLot = (lot: any) => {
+    lotFotos.forEach(f => URL.revokeObjectURL(f.url))
+    setLotFotos([])
+    setLotFout(null)
     setShowLot(lot)
     setLotEdit({
       lotnummer: lot.lotnummer || '',
@@ -274,7 +292,24 @@ const IngredientenPage: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const saveLot = () => {
+  const saveLot = async () => {
+    if (lotBezig) return
+    // Eerst de nieuwe etiketfoto's: een mislukte upload meldt zich, het lot blijft open.
+    const nieuweFotos: any[] = []
+    if (lotFotos.length) {
+      setLotBezig(true)
+      setLotFout(null)
+      for (const f of lotFotos) {
+        const u = await uploadBijlage(alsBestand(f.archief.blob, f.naam), 'etiket')
+        if (!u.ok || !u.bijlage) {
+          setLotBezig(false)
+          setLotFout(t(uploadFoutSleutel(u.status)).replace('{naam}', u.naam))
+          return
+        }
+        nieuweFotos.push(u.bijlage)
+      }
+      setLotBezig(false)
+    }
     const cleanBrewProps = stripEmptyBrewProps(lotEdit.bf_props)
     setLots((prev: any[]) => prev.map((l: any) => {
       if (l.id !== showLot.id) return l
@@ -293,6 +328,7 @@ const IngredientenPage: React.FC<Props> = ({
       }
       if (Object.keys(cleanBrewProps).length > 0) next.bf_props = cleanBrewProps
       else delete next.bf_props
+      if (nieuweFotos.length) next.etiket_fotos = [...(Array.isArray(l.etiket_fotos) ? l.etiket_fotos : []), ...nieuweFotos]
       return next
     }))
     // Mutatielog sluitend houden (ERP-plan 0.7): een voorraadwijziging via het
@@ -313,7 +349,7 @@ const IngredientenPage: React.FC<Props> = ({
       })
     }
     logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: showLot.id, actie: 'gewijzigd', omschrijving: showLot.lotnummer || `Lot #${showLot.id}` })
-    setShowLot(null)
+    sluitLot()
   }
 
   const doCorrectie = (lot: any) => {
@@ -447,45 +483,34 @@ const IngredientenPage: React.FC<Props> = ({
     setSel(null)
   }
 
-  const saveOntvangst = async ({ factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual }: any) => {
-    let updatedIng = [...ing]
-    const newLots: any[] = []
-    productLijst.forEach((p: any) => {
-      let iid: number
-      if (p.ing_id) { iid = Number(p.ing_id) }
-      else {
-        const existing = updatedIng.find((i: any) => i.naam.toLowerCase() === p.nieuw.trim().toLowerCase())
-        if (existing) { iid = existing.id }
-        else {
-          const n = { id: newId(updatedIng), naam: p.nieuw.trim(), type: p.type, fabrikant: p.fabrikant }
-          updatedIng = [...updatedIng, n]; iid = n.id
-          logAudit(auditLog, setAuditLog, { entiteit: 'Ingrediënt', entiteit_id: n.id, actie: 'aangemaakt', omschrijving: n.naam })
+  const saveOntvangst = ({ factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual }: any): boolean => {
+    // Lots en ontvangst-log via dezelfde bouwer als de boekhoudpagina
+    // (utils/inkoopOntvangst.ts): een regel met meer lotnummers wordt meer
+    // lots, en etiketfoto's komen bij elk lot van die regel.
+    const ontvangst = bouwIngredientOntvangst(productLijst || [], factuurForm, ing, lots, { datum: tod(), nu: new Date().toISOString() })
+    const bestaandeIng = new Set(ing.map((i: any) => i.id))
+    ontvangst.ing.filter((i: any) => !bestaandeIng.has(i.id))
+      .forEach((n: any) => logAudit(auditLog, setAuditLog, { entiteit: 'Ingrediënt', entiteit_id: n.id, actie: 'aangemaakt', omschrijving: n.naam }))
+    ontvangst.nieuweLots.forEach((lot: any) => logAudit(auditLog, setAuditLog, {
+      entiteit: 'Lot', entiteit_id: lot.id, actie: 'aangemaakt',
+      omschrijving: `${ontvangst.ing.find((i: any) => i.id === lot.ingredient_id)?.naam || ''} ${lot.hoeveelheid} ${lot.eenheid}`,
+    }))
+    if ((productLijst || []).length) {
+      setIng(ontvangst.ing)
+      setLots((prev: any[]) => [...prev, ...ontvangst.nieuweLots])
+      ontvangst.logRegels.forEach((l: any) => addLog(l))
+    }
+    if ((verpakkingLijst || []).length) {
+      const na = boekOnderdelenOntvangst(onderdelen, verpakkingLijst, factuurForm)
+      for (const o of na) {
+        const voor = onderdelen.find((x: any) => x.id === o.id)
+        if (!voor) logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: o.id, actie: 'aangemaakt', omschrijving: o.naam })
+        else if (Number(voor.voorraad || 0) !== Number(o.voorraad || 0)) {
+          logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: o.id, actie: 'gewijzigd', omschrijving: `Ontvangst +${Number(o.voorraad || 0) - Number(voor.voorraad || 0)} ${o.naam}` })
         }
       }
-      const cleanBrewProps = p.bf_props ? Object.fromEntries(Object.entries(p.bf_props).filter(([, v]) => v !== undefined && v !== null && v !== '')) : {}
-      const lot: any = { id: newId([...lots, ...newLots]), ingredient_id: iid, hoeveelheid: Number(p.qty), eenheid: p.eenh, houdbaarheid: p.tht || null, lotnummer: p.lotnr || '', leverancier: factuurForm.leverancier || '', prijs_per_eenheid: p.prijs ? Number(p.prijs) : null, factuur_nummer: factuurForm.factuur || '', aankoop_datum: factuurForm.datum || tod(), btw_tarief: Number(p.btw_tarief) || 0, beschikbaar: true, created_at: new Date().toISOString() }
-      if (Object.keys(cleanBrewProps).length > 0) lot.bf_props = cleanBrewProps
-      newLots.push(lot)
-      logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: lot.id, actie: 'aangemaakt', omschrijving: `${updatedIng.find((i: any) => i.id === iid)?.naam || p.nieuw.trim()} ${p.qty} ${p.eenh}` })
-      addLog({ ingredient_id: iid, ingredient_naam: updatedIng.find((i: any) => i.id === iid)?.naam || p.nieuw.trim(), lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'ontvangst', hoeveelheid: Number(p.qty), eenheid: p.eenh, referentie: factuurForm.factuur || factuurForm.leverancier || '' })
-    })
-    setIng(updatedIng)
-    setLots((prev: any[]) => [...prev, ...newLots])
-    verpakkingLijst.forEach((v: any) => {
-      const n = Number(v.aantal)
-      const naam = v._naam || v.naam.trim()
-      const bestaand = v.od_id ? onderdelen.find((o: any) => o.id === Number(v.od_id)) : onderdelen.find((o: any) => o.naam.toLowerCase() === naam.toLowerCase())
-      if (bestaand) {
-        setOnderdelen((prev: any[]) => prev.map((o: any) => o.id === bestaand.id ? { ...o, voorraad: Number(o.voorraad || 0) + n, lotnr: v.lotnr || o.lotnr || '', leverancier: factuurForm.leverancier || o.leverancier || '', factuurnummer: factuurForm.factuur || o.factuurnummer || '' } : o))
-        logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: bestaand.id, actie: 'gewijzigd', omschrijving: `Ontvangst +${n} ${bestaand.naam}` })
-      } else {
-        setOnderdelen((prev: any[]) => {
-          const id = newId(prev)
-          logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: id, actie: 'aangemaakt', omschrijving: naam })
-          return [...prev, { id, naam, type: v.type || 'overig', lotnr: v.lotnr || '', kosten_per_stuk: v.prijs_per_stuk ? Number(v.prijs_per_stuk) : 0, leverancier: factuurForm.leverancier || '', factuurnummer: factuurForm.factuur || '', voorraad: n }]
-        })
-      }
-    })
+      setOnderdelen(na)
+    }
     const verlegd = (factuurForm.btw_soort || 'binnenlands') !== 'binnenlands'
     // Factuurregels via dezelfde bouwer als de boekhoudpagina
     // (utils/inkoopOntvangst.ts): het regelbedrag is de ingevoerde totaalprijs
@@ -512,6 +537,7 @@ const IngredientenPage: React.FC<Props> = ({
       setJournaal((prev: any[]) => voegBoekingToe(prev || [], inkoopFactuurBoeking(nieuweFactuur, btwPeriodeType)))
     }
     setShowO(false)
+    return true
   }
 
   const verpakkingLeegChip = <span className="text-xs font-semibold text-red-700 bg-red-100 rounded px-1.5 py-0.5">{t('ing_verpakking_leeg_chip')}</span>
@@ -946,6 +972,9 @@ const IngredientenPage: React.FC<Props> = ({
           getRolloverInfo={getRolloverInfo}
           scanCorrecties={scanCorrecties}
           onScanCorrectie={(c: any) => setScanCorrecties((prev: any) => registreerScanCorrectie(prev || [], c))}
+          onLeer={(k: any) => setScanCorrecties((prev: any) => leerKoppelingen(prev || [], k))}
+          inkoopFacturen={inkoopFacturen}
+          btwPeriodeType={btwPeriodeType}
         />
       )}
 
@@ -964,7 +993,7 @@ const IngredientenPage: React.FC<Props> = ({
         const previewLot = { ...l, bf_props: lotEdit.bf_props || {} }
         const effective = getEffectiveBrewProps(previewLot, lotIng)
         return (
-          <Modal title={t('ing_lot_titel').replace('{naam}', ingNaam)} onClose={() => setShowLot(null)}>
+          <Modal title={t('ing_lot_titel').replace('{naam}', ingNaam)} onClose={sluitLot}>
             <div className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-3">
                 <Inp label={t('ing_lot_number')} value={le('lotnummer')} onChange={(v: string) => setLe('lotnummer', v)} placeholder="—" />
@@ -983,6 +1012,13 @@ const IngredientenPage: React.FC<Props> = ({
                 <Inp label={t('lbl_tht')} type="date" value={le('houdbaarheid')} onChange={(v: string) => setLe('houdbaarheid', v)} />
                 <Inp label={t('modal_price_per_unit')} type="number" value={le('prijs_per_eenheid')} onChange={(v: string) => setLe('prijs_per_eenheid', v)} placeholder="—" />
                 {origQty > 0 && <div><div className="text-xs text-gray-400">{t('ing_original_received')}</div><div className="font-medium text-gray-700">{origQty} {l.eenheid}</div></div>}
+              </div>
+              <div className="border-t pt-3">
+                <LotEtiket bestaand={Array.isArray(l.etiket_fotos) ? l.etiket_fotos : []} nieuw={lotFotos} setNieuw={setLotFotos}
+                  waarden={{ lotnummer: lotEdit.lotnummer || '', houdbaarheid: lotEdit.houdbaarheid || '', bf_props: lotEdit.bf_props || {} }}
+                  onToepassen={w => setLotEdit((p: any) => ({ ...p, lotnummer: w.lotnummer, houdbaarheid: w.houdbaarheid, bf_props: w.bf_props }))}
+                  type={lotIng?.type || ''} ingNaam={ingNaam} ingTypes={ingTypes}
+                  heeftSleutel={!!claudeCreds?.apiKey && claudeCreds?.enabled !== false} />
               </div>
               {brewFields.length > 0 && (
                 <div className="border-t pt-3">
@@ -1103,9 +1139,10 @@ const IngredientenPage: React.FC<Props> = ({
                   <div className="mt-2"><input type="text" placeholder={t('ing_correction_reason')} className="w-full border rounded px-2 py-1.5 text-sm text-gray-700" value={lotCorr.reden} onChange={e => setLotCorr(p => ({ ...p, reden: e.target.value }))} /></div>
                 </div>
               )}
+              {lotFout && <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">⚠ {lotFout}</p>}
               <div className="flex justify-end gap-2 pt-1">
-                <Btn v="secondary" onClick={() => setShowLot(null)}>{t('btn_cancel')}</Btn>
-                <Btn onClick={saveLot}>{t('btn_save')}</Btn>
+                <Btn v="secondary" onClick={sluitLot}>{t('btn_cancel')}</Btn>
+                <Btn onClick={() => { void saveLot() }} disabled={lotBezig}>{lotBezig ? t('btn_uploading') : t('btn_save')}</Btn>
               </div>
             </div>
           </Modal>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { uploadBijlage, uploadFoutSleutel, bijlageExtensie, UPLOAD_TYPE_ONBEKEND } from '../bijlage'
+import { uploadBijlage, uploadFoutSleutel, bijlageExtensie, UPLOAD_TYPE_ONBEKEND, UPLOAD_MAX_BYTES, UPLOAD_TE_GROOT } from '../bijlage'
 
 const respons = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -34,6 +34,16 @@ describe('uploadBijlage', () => {
     expect(uitkomst).toEqual({ ok: false, status: UPLOAD_TYPE_ONBEKEND, naam: 'foto.heic' })
     expect(f).not.toHaveBeenCalled()
     expect(uploadFoutSleutel(UPLOAD_TYPE_ONBEKEND)).toBe('err_upload_type')
+  })
+
+  it('weigert een bestand dat groter is dan de server aanneemt, zonder te versturen', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const groot = new File([new Uint8Array(UPLOAD_MAX_BYTES + 1)], 'factuur.pdf')
+    const uitkomst = await uploadBijlage(groot, 'inkoop')
+    expect(uitkomst).toEqual({ ok: false, status: UPLOAD_TE_GROOT, naam: 'factuur.pdf' })
+    expect(f).not.toHaveBeenCalled()
+    expect(uploadFoutSleutel(UPLOAD_TE_GROOT)).toBe('err_upload_te_groot')
   })
 
   it('netwerkfout = mislukt', async () => {

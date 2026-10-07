@@ -523,6 +523,21 @@ class TestCommit:
         assert int(keys.group(1).replace('_', '')) == srv.COMMIT_MAX_KEYS
         assert int(byts.group(1).replace('_', '')) < srv.MAX_CONTENT_LENGTH
 
+    def test_claude_proxy_stuurt_de_terugval_beta_van_de_app(self):
+        # De scans sturen `fallbacks: "default"` mee (src/utils/claudeScan.ts);
+        # zonder de bijbehorende beta-header weigert de API dat met een 400.
+        bron = (Path(__file__).resolve().parent.parent
+                / 'src' / 'utils' / 'claudeScan.ts').read_text(encoding='utf-8')
+        beta = re.search(r"export const TERUGVAL_BETA\s*=\s*'([^']+)'", bron)
+        assert beta, 'TERUGVAL_BETA niet gevonden in claudeScan.ts'
+        headers = srv._claude_headers('sk-ant-x')
+        assert headers['anthropic-beta'] == beta.group(1) == srv.CLAUDE_BETA
+        assert headers['x-api-key'] == 'sk-ant-x'
+        assert headers['anthropic-version'] == '2023-06-01'
+        # PDF-invoer is algemeen beschikbaar: de oude preview-beta hoort er niet meer bij.
+        assert 'pdfs' not in headers['anthropic-beta']
+        assert srv.CLAUDE_TIMEOUT >= 120
+
     def test_backup_import_kent_de_append_only_keys(self):
         # Een backup terugzetten voegt op append-only keys alleen ontbrekende
         # regels toe (APPEND_ONLY_KEYS in src/utils/excel.ts). Een key die de
@@ -1225,6 +1240,27 @@ class TestBijlagen:
         req(app, 'POST', '/api/data/inkoop_facturen', body=[{'id': 1, 'leverancier': 'Mouterij'}])
         assert req(app, 'POST', '/api/delete_upload/bewijs.pdf', body={})[0] == 200
         assert not (srv.UPLOAD_DIR / 'bewijs.pdf').exists()
+
+    def test_etiketfoto_van_een_lot_gaat_niet_weg(self, app):
+        # Een foto van het etiket bij een lot is bewijs voor de
+        # traceerbaarheid: zolang het lot ernaar wijst, blijft hij staan.
+        import base64
+        req(app, 'POST', '/api/upload/etiket_zak.jpg', body={'data': base64.b64encode(b'jpg').decode()})
+        req(app, 'POST', '/api/data/lots', body=[{'id': 7, 'ingredient_id': 1, 'lotnummer': 'L26-0412',
+                                                    'etiket_fotos': [{'naam': 'zak.jpg', 'bestand': 'etiket_zak.jpg'}]}])
+        status, body, _ = req(app, 'POST', '/api/delete_upload/etiket_zak.jpg', body={})
+        assert status == 409 and body['key'] == 'lots'
+        assert (srv.UPLOAD_DIR / 'etiket_zak.jpg').exists()
+        req(app, 'POST', '/api/data/lots', body=[{'id': 7, 'ingredient_id': 1, 'lotnummer': 'L26-0412'}])
+        assert req(app, 'POST', '/api/delete_upload/etiket_zak.jpg', body={})[0] == 200
+
+    def test_bijlage_in_gebruik_negeert_een_kapotte_fotolijst(self, app):
+        # Een lot met een rare waarde in etiket_fotos mag de controle niet laten vallen.
+        req(app, 'POST', '/api/data/lots', body=[{'id': 8, 'etiket_fotos': 'geen-lijst'},
+                                                 {'id': 9, 'etiket_fotos': [None, 3, {'bestand': 'ander.jpg'}]}])
+        assert srv._bijlage_in_gebruik('nergens.jpg') is None
+        assert srv._bijlage_in_gebruik('ander.jpg') == 'lots'
+        req(app, 'POST', '/api/data/lots', body=[])
 
 
 class TestHealth:

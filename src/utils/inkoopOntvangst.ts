@@ -38,6 +38,11 @@ export interface IngredientOntvangst {
 /**
  * Ingrediëntregels → lots. Een regel zonder `ing_id` hoort bij een bestaand
  * ingrediënt met dezelfde naam, of maakt er een aan.
+ *
+ * Een regel met `lots` (meer dan één lotnummer voor hetzelfde product, zie
+ * DeelLot in utils/inkoopRegels.ts) wordt één lot per lotnummer, elk met zijn
+ * eigen hoeveelheid en THT. `etiket_fotos` (foto's van het etiket) komen op
+ * elk lot van de regel.
  */
 export const bouwIngredientOntvangst = (
   productLijst: any[],
@@ -66,20 +71,29 @@ export const bouwIngredientOntvangst = (
     const brewProps = p.bf_props
       ? Object.fromEntries(Object.entries(p.bf_props).filter(([, v]) => v !== undefined && v !== null && v !== ''))
       : {}
-    const lot: any = {
-      id: newId([...(lots || []), ...nieuweLots]), ingredient_id: iid, hoeveelheid: Number(p.qty), eenheid: p.eenh,
-      houdbaarheid: p.tht || null, lotnummer: p.lotnr || '', leverancier: kop.leverancier || '',
-      prijs_per_eenheid: p.prijs ? Number(p.prijs) : null, factuur_nummer: kop.factuur || '',
-      aankoop_datum: kop.datum || opties.datum, btw_tarief: Number(p.btw_tarief) || 0, beschikbaar: true,
-      created_at: opties.nu,
+    const fotos = Array.isArray(p.etiket_fotos)
+      ? p.etiket_fotos.filter((f: any) => f && typeof f.bestand === 'string' && f.bestand)
+      : []
+    const delen: Array<{ lotnr?: string, tht?: string, qty?: unknown }> = Array.isArray(p.lots) && p.lots.length > 1
+      ? p.lots
+      : [{ lotnr: p.lotnr, tht: p.tht, qty: p.qty }]
+    for (const deel of delen) {
+      const lot: any = {
+        id: newId([...(lots || []), ...nieuweLots]), ingredient_id: iid, hoeveelheid: Number(deel.qty), eenheid: p.eenh,
+        houdbaarheid: deel.tht || null, lotnummer: deel.lotnr || '', leverancier: kop.leverancier || '',
+        prijs_per_eenheid: p.prijs ? Number(p.prijs) : null, factuur_nummer: kop.factuur || '',
+        aankoop_datum: kop.datum || opties.datum, btw_tarief: Number(p.btw_tarief) || 0, beschikbaar: true,
+        created_at: opties.nu,
+      }
+      if (Object.keys(brewProps).length > 0) lot.bf_props = brewProps
+      if (fotos.length) lot.etiket_fotos = fotos.map((f: any) => ({ naam: tekst(f.naam) || f.bestand, bestand: f.bestand }))
+      nieuweLots.push(lot)
+      logRegels.push({
+        ingredient_id: iid, ingredient_naam: bijgewerkt.find((i: any) => i.id === iid)?.naam || tekst(p.nieuw),
+        lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'ontvangst',
+        hoeveelheid: Number(deel.qty), eenheid: p.eenh, referentie: kop.factuur || kop.leverancier || '',
+      })
     }
-    if (Object.keys(brewProps).length > 0) lot.bf_props = brewProps
-    nieuweLots.push(lot)
-    logRegels.push({
-      ingredient_id: iid, ingredient_naam: bijgewerkt.find((i: any) => i.id === iid)?.naam || tekst(p.nieuw),
-      lot_id: lot.id, lotnummer: lot.lotnummer || '', type: 'ontvangst',
-      hoeveelheid: Number(p.qty), eenheid: p.eenh, referentie: kop.factuur || kop.leverancier || '',
-    })
   }
   return { ing: bijgewerkt, nieuweLots, logRegels }
 }
