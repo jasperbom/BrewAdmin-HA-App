@@ -40,6 +40,8 @@ export interface PspModalProps {
   verslagInfo: PspVerslagInfo | null
   verslagStand: VerslagStand | null
   verslagKoppeling: VerslagKoppeling | null
+  /** Er is een Claude-sleutel: het verslag mag ook een scan of foto zijn. */
+  verslagSleutel: boolean
   onKiesVerslag: () => void
   kostenWijze: PspKostenWijze
   setKostenWijze: (w: PspKostenWijze) => void
@@ -58,7 +60,7 @@ const brutoCent = (f: any): number => {
 
 const PspModal: React.FC<PspModalProps> = ({
   tx, verkoopFacturen, selectie, setSelectie, btwPct, setBtwPct, toonAlles, setToonAlles,
-  kandidatenVoor, klantNaamVoor, psp, verslagInfo, verslagStand, verslagKoppeling, onKiesVerslag,
+  kandidatenVoor, klantNaamVoor, psp, verslagInfo, verslagStand, verslagKoppeling, verslagSleutel, onKiesVerslag,
   kostenWijze, setKostenWijze, kostenKeuze, setKostenKeuze, kostenKandidaten, onOpslaan, onSluit,
 }) => {
   // Alleen facturen die écht in een PSP-uitbetaling kúnnen zitten:
@@ -95,7 +97,7 @@ const PspModal: React.FC<PspModalProps> = ({
       <div className="space-y-3">
         <TransactieKop tx={tx} />
         <VerslagBlok info={verslagInfo} stand={verslagStand} koppeling={verslagKoppeling} uitbetaaldCent={uitbetaaldCent}
-          psp={psp} factuurNummer={nummerVan} onKies={onKiesVerslag} />
+          psp={psp} factuurNummer={nummerVan} sleutel={verslagSleutel} onKies={onKiesVerslag} />
         <p className="text-xs text-gray-500">{t('msg_psp_uitleg')}</p>
         {/* Niets voorgesteld: zeg wát de gebruiker dan kan doen in plaats
             van een lege lijst met vinkjes te tonen. */}

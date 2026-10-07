@@ -88,7 +88,8 @@ BrewAdmin-HA-App/
 │   │       │               # FactuurKiezer (zoeken i.p.v. keuzelijst), KeuzeModal (periode/maand/rekening),
 │   │       │               # TransactieModal ("Wat is deze transactie?"), PspModal (uitsplitsen: verslag +
 │   │       │               # facturen + kosten verrekenen/factuur volgt/kostenpost), VerslagBlok (het
-│   │       │               # uitbetalingsverslag en de factuur per regel), KapitaalModal, bankTekst
+│   │       │               # uitbetalingsverslag en de factuur per regel), verslagLezen (eerst de tekstlaag,
+│   │       │               # anders Claude: scan, foto's, onbekende opmaak), KapitaalModal, bankTekst
 │   │       ├── AangiftesSectie.tsx # BTW | Accijns: periodelijst met stappen, detail met invulhulp,
 │   │       │               # controle, indienen en betaling; webshopverkopen ophalen
 │   │       ├── aangiftes/  # PeriodeLijst (één component voor beide), BtwRubrieken, AccijnsBoekingen,
@@ -342,12 +343,18 @@ BrewAdmin-HA-App/
 │   │   │                   # (factuur via `wc_order_nummer` → `bestelling_id` of het factuurnummer van de
 │   │   │                   # betaallink; terugstorting in hetzelfde verslag = netto nul, anders de creditnota;
 │   │   │                   # kosten per factuur van de PSP via `verslagKosten`). Koppelt zelf niets
+│   │   ├── pspVerslagScan.ts # Terugval voor wat de tekstlaag niet levert (scan, foto's, andere PSP of
+│   │   │                   # opmaak): schema + prompt voor Claude, die alleen de tabel overschrijft — zonder
+│   │   │                   # consument en zonder het uitbetaalde bedrag (de optelcontrole blijft echt);
+│   │   │                   # `normaliseerVerslagScan` duidt de regels met dezelfde `verslagRegel` als de
+│   │   │                   # tekstlaag, `verslagInvoer` (eerste PDF, anders hooguit tien foto's)
 │   │   ├── pspUitbetaling.ts # De kosten van een PSP-uitbetaling verrekenen met de factuur van de PSP:
 │   │   │                   # `kostenCent`/`kostenVerrekend` op de koppeling, open kosten ("factuur volgt"),
 │   │   │                   # `pspVerrekeningenVoor` (factuur → uitbetalingen), `inkoopNaVerrekening` (helemaal
 │   │   │                   # gedekt = betaald, `betaald_door_verrekening`), `verrekenKandidaten` (het verslag
 │   │   │                   # noemt het nummer = voorgesteld), `pasPspVerrekeningToe` (een oude kostenpost
-│   │   │                   # vervalt), `kostenFactuurKandidaten`, `pspKostenRegels`, `verslagInfo`
+│   │   │                   # vervalt), `kostenFactuurKandidaten`, `pspKostenRegels`, `verslagInfo` (las Claude
+│   │   │                   # het verslag, dan ook de regels, `bron`, `model`) + `verslagUitInfo` (terug)
 │   │   ├── aangifteStappen.ts # BTW en accijns in hetzelfde ritme: Lopend → Berekend → Gecontroleerd →
 │   │   │                   # Ingediend → Betaald (of Terugontvangen; € 0 ingediend = Nihil). Per periode de
 │   │   │                   # stap, het bedrag met teken (centen), de uiterste datum, de ene volgende
@@ -608,7 +615,7 @@ uit `bank_koppelingen`, aansluiting per afschrift, verwijderen +
 `bank_saldi`), de bankwerklijst en de koppelvoorstellen
 (`bankWerklijst.test.ts`, `bankVoorstel.test.ts`: datumgrens, ambigu, storno,
 één factuur één betaling, deelbetaling in de kiezer), de automatische koppeling
-bij het inlezen (`bankImportKoppeling.test.ts`: dezelfde datumgrens), het uitbetalingsverslag van Mollie (`pspVerslag.test.ts`: bedragen en datums in vijf talen, kolommen uit de kopregel, een streepje is geen minteken, terugstorting tegen betaling, creditnota, in twee keer betaald, kosten per factuur van de PSP) en de kostenverrekening (`pspUitbetaling.test.ts`: vier uitbetalingen dekken de factuur → betaald op de laatste dag, ontkoppelen → weer open, een eigen 'betaald' blijft staan, kostenpost vervalt, nooit meer dan de kosten), de aangiftestappen
+bij het inlezen (`bankImportKoppeling.test.ts`: dezelfde datumgrens), het uitbetalingsverslag van Mollie (`pspVerslag.test.ts`: bedragen en datums in vijf talen, kolommen uit de kopregel, een streepje is geen minteken, terugstorting tegen betaling, creditnota, in twee keer betaald, kosten per factuur van de PSP), de terugval op Claude (`pspVerslagScan.test.ts`: schema binnen de grenzen en zonder consument, hetzelfde verslag en dezelfde koppeling als de tekstlaag, opschonen, kosten per transactie, bewaren en teruglezen) en de kostenverrekening (`pspUitbetaling.test.ts`: vier uitbetalingen dekken de factuur → betaald op de laatste dag, ontkoppelen → weer open, een eigen 'betaald' blijft staan, kostenpost vervalt, nooit meer dan de kosten), de aangiftestappen
 (`aangifteStappen.test.ts`: de telling op het segment = die van de badge, in
 kwartaal- én maandmodus; nihil; controlesleutel en migratie; navigatiedoel), de
 rapporten (`rapporten.test.ts`: W&V telt op tot `nettowinst`, peildatum, open
@@ -1146,7 +1153,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `journaal` | array | Onveranderlijke journaalregels (ERP 2.1): geboekt bij definitief maken van facturen/aangiftes, bedragen in centen, correcties via storno — server-side append-only (422 bij wijzigen/verwijderen van bestaande regels) |
 | `jaarafsluitingen` | array | Jaarafsluitingen (ERP 2.3): snapshot balansposten + eigen vermogen per afgesloten boekjaar; beginbalans voor het EV-verloop op de balans |
 | `bank_saldi` | object | Laatst bekende MT940-eindsaldo per IBAN (ERP 2.3): `{iban, eindsaldo, beginsaldo, datum, afschrift_nr, geimporteerd_op}`, gezet bij bankimport. `datum` = het einde van de periode van het afschrift (`tot`); een ouder afschrift draait een nieuwer saldo niet terug, en na het verwijderen van een afschrift geldt weer het laatst overgebleven afschrift van die rekening (of geen saldo). De balans leest de liquide middelen uit de bewaarde afschriften en valt hierop terug (`liquideMiddelenOp`) |
-| `bank_transacties` | array | Bewaarde banktransacties (v1.12.89): een regel uit `parseMT940` met `{id, afschrift_id, iban, datum, type: C\|D, bedrag, referentie?, tegenpartij?, omschrijving?, storno?}` plus de gekoppeld*-vlaggen (`gekoppeldFactuurId`, `gekoppeldBtwPeriode`, `gekoppeldAccijnsMaand`, …) en de markeringen van de automatische koppeling. **`bank_koppelingen` blijft de bron van waarheid** (sleutel `txKey`): de vlaggen worden bij elke lezing opnieuw gezet (`herstelKoppelingVlaggen` in AdministratiePage) — lees ze uit de context en wijzig een transactie op `id`/`txKey`, nooit op haar plek in de lijst. Hetzelfde bestand twee keer inlezen voegt niets dubbel toe (`bouwBankImport`). Een PSP-uitbetaling kan een `verslag` dragen: het uitbetalingsverslag (PDF in de bijlagenmap) plus kenmerk, totalen en de ingehouden kosten per factuur van de PSP (`utils/pspUitbetaling.ts`, geen klantnamen); dat blijft staan als de koppeling verdwijnt. Financieel (`boekhouding`/`beheer`); Excel-sheet `BankTransacties` |
+| `bank_transacties` | array | Bewaarde banktransacties (v1.12.89): een regel uit `parseMT940` met `{id, afschrift_id, iban, datum, type: C\|D, bedrag, referentie?, tegenpartij?, omschrijving?, storno?}` plus de gekoppeld*-vlaggen (`gekoppeldFactuurId`, `gekoppeldBtwPeriode`, `gekoppeldAccijnsMaand`, …) en de markeringen van de automatische koppeling. **`bank_koppelingen` blijft de bron van waarheid** (sleutel `txKey`): de vlaggen worden bij elke lezing opnieuw gezet (`herstelKoppelingVlaggen` in AdministratiePage) — lees ze uit de context en wijzig een transactie op `id`/`txKey`, nooit op haar plek in de lijst. Hetzelfde bestand twee keer inlezen voegt niets dubbel toe (`bouwBankImport`). Een PSP-uitbetaling kan een `verslag` dragen: het uitbetalingsverslag (PDF in de bijlagenmap) plus kenmerk, totalen en de ingehouden kosten per factuur van de PSP (`utils/pspUitbetaling.ts`, geen klantnamen) — las Claude het, dan ook `bron`, `model` en de regels zonder consument; dat blijft staan als de koppeling verdwijnt. Financieel (`boekhouding`/`beheer`); Excel-sheet `BankTransacties` |
 | `bank_afschriften` | array | Ingelezen MT940-bestanden: `{id, iban, referentie, afschriftNr, beginsaldo, eindsaldo, van, tot, geimporteerd_op, aantal, nieuw, overgeslagen, transactie_ids, vorig_eindsaldo?}`. `transactie_ids` = álle transacties uit het bestand, ook die er al waren (de saldocontrole per afschrift); de aansluiting op het vorige afschrift rekent live (`vorigEindsaldoVoor`; overlap = geen aansluiting). Verwijderen (vijf seconden terugweg, audit `Bankafschrift`) haalt alleen transacties weg die in geen ander afschrift staan, laat `bank_koppelingen` staan — opnieuw inlezen zet de koppelingen terug — en zet `bank_saldi` terug (`bankSaldiNaVerwijderen`). Financieel; Excel-sheet `BankAfschriften` |
 | `btw_aangiftes` | array | Twee soorten record in één key. **Indiening:** `{id, periodeKey, ingediend_datum, bedrag, ingediend_door?}` — een record mét `periodeKey` betekent "ingediend" (`geslotenPeriodeSets` in `utils/btw.ts`); `bedrag` in hele euro's, negatief = teruggave; terugzetten = het record weg + storno in het journaal. **Controle:** `{periode, status, berekend_datum, berekend_door, reviewer, controle_status, controle_datum, controle_door, bevindingen, zelfde_persoon_akkoord?}` met `periode` = de periodesleutel (`2026-Q3`, `2026-M09`) en nooit een `periodeKey`; een oud record onder `<jaar>-<maandnaam in de schermtaal>` wordt bij de volgende schrijfactie omgezet (`btwControleRecord`/`metBtwControle`). Wie berekende, controleerde en indiende is de ingelogde gebruiker (`whoami`); de controleur kies je uit `gebruikers_rollen` (zonder gebruikers: vrije naam) — nooit een vaste naam. Controleur = berekenaar/indiener mag alleen met "toch akkoord" + bevindingen. Financieel |
 | `accijns_aangiftes` | array | Eén record per maand: `{maand: 'JJJJ-MM', status: open\|berekend\|ingediend\|betaald, berekend_datum, berekend_door, reviewer, controle_status, controle_datum, controle_door, bevindingen, zelfde_persoon_akkoord?, ingediend_datum, ingediend_door, bedrag, betaald_datum}`. "Vraag controle aan" zet `berekend`; indienen kan pas na akkoord en legt het maandtotaal vast als `bedrag` (euro's) — dat maakt het matchen van de bankbetaling mogelijk. € 0 ingediend = nihil (afgerond, geen betaling). Betaald via een bankkoppeling (`{soort:'accijns', maandKey}`, transactiedatum) of met de hand met een gekozen datum. Financieel |
@@ -1273,7 +1280,14 @@ de transactie, niet bij de koppeling: `bank_transacties[].verslag` (`{naam,
 bestand, referentie, som_cent, totaal_cent, aantal, kosten: [{nummer, cent}]}`
 — geen klantnamen; `_bijlage_in_gebruik` houdt de PDF vast). Bij het
 uitsplitsen leest de app de PDF opnieuw (`koppelPspVerslag`) en vinkt de
-facturen aan. De factuur van de PSP (inkoop) staat op betaald zodra de
+facturen aan. Levert de tekstlaag niets op (een scan, foto's — die worden
+samen één PDF-bijlage —, een andere PSP of opmaak), dan leest Claude het
+verslag (`pages/admin/bank/verslagLezen.ts`, `utils/pspVerslagScan.ts`; alleen
+met een sleutel). Dan staan ook `bron: 'claude'`, `model` en de regels zelf op
+`verslag` (`{datum, methode, bedrag_cent, uitbetaald_cent, omschrijving}`,
+zonder consument): het venster leest die terug (`verslagUitInfo`) in plaats
+van opnieuw te laten lezen, en zegt dat Claude het las — nakijken voor het
+koppelen. Ook dan koppelt niets vanzelf. De factuur van de PSP (inkoop) staat op betaald zodra de
 uitbetalingen hem helemaal dekken (`inkoopNaVerrekening`, met
 `betaald_door_verrekening` — alleen dan zet ontkoppelen hem weer open); hij
 telt als gekoppeld in `gekoppeldeFactuurIds`. Verrekenen kan vanaf de
@@ -1538,8 +1552,9 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 
 ### Claude AI (Anthropic)
 
-- Used for: de inkoopfactuur (PDF of foto's), foto's van het etiket op een zak (lotnummer, THT, eigenschappen)
-  en het waterrapport (Gereedschap → Waterprofiel)
+- Used for: de inkoopfactuur (PDF of foto's), foto's van het etiket op een zak (lotnummer, THT, eigenschappen),
+  het waterrapport (Gereedschap → Waterprofiel) en het uitbetalingsverslag van een PSP als de tekstlaag van de
+  PDF niets oplevert (Bank: scan, foto's, onbekende opmaak — `utils/pspVerslagScan.ts`)
 - Eén plek: `utils/claudeScan.ts` (`voerScanUit`). Gestructureerde uitvoer via `output_config.format`
   (`json_schema`), **geen temperature** en **geen geforceerde tool-aanroep** (de huidige modellen weigeren
   beide met een 400), `max_tokens` 16k (het nadenken telt mee), `stop_reason` `max_tokens`/`refusal` →

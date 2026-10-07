@@ -4599,12 +4599,12 @@
   "psp_kosten_volgt_uitleg": "Facture à venir : les frais restent ouverts sur ce versement jusqu'à ce que vous ayez enregistré et compensé la facture du PSP.",
   "psp_verslag_ander": "Autre relevé",
   "psp_verslag_fout_laden": "Le relevé de versement n'a pas pu être lu.",
-  "psp_verslag_geen": "Aucun relevé de versement reconnu dans {naam}. L'application ne peut pas lire un scan sans texte.",
+  "psp_verslag_geen": "Aucun relevé de versement reconnu dans {naam}. Avec une clé API Claude (Paramètres → Claude AI), l'application lit aussi un scan, une photo ou une autre mise en page.",
   "psp_verslag_gekoppeld": "Relevé de versement {referentie} joint.",
   "psp_verslag_gekoppeld_wijkt": "Relevé de versement {referentie} joint, mais il totalise {som} alors que le versement est de {bedrag}.",
   "psp_verslag_klopt": "Correspond au montant versé",
   "psp_verslag_kop": "Relevé de versement",
-  "psp_verslag_koppelen": "Joindre le relevé (PDF)",
+  "psp_verslag_koppelen": "Joindre le relevé",
   "psp_verslag_lezen": "Lecture du relevé…",
   "psp_verslag_onvolledig": "Toutes les lignes n'ont pas été lues : elles totalisent {som}, le relevé indique {totaal}.",
   "psp_verslag_regels": "{n} lignes",
@@ -4620,5 +4620,12 @@
   "psp_vr_kosten_zonder_nr": "Frais retenus",
   "psp_vr_netto_nul": "Remboursé dans le même relevé : non compté",
   "psp_vr_niet_gevonden": "Aucune facture trouvée",
-  "psp_vr_overig": "Ligne inconnue"
+  "psp_vr_overig": "Ligne inconnue",
+  "psp_verslag_geen_claude": "Claude AI n'a pas non plus reconnu de relevé de versement dans {naam}.",
+  "psp_verslag_foto_geen_sleutel": "L'application ne peut lire la photo d'un relevé qu'avec une clé API Claude (Paramètres → Claude AI). Sinon, téléchargez le PDF depuis le tableau de bord du prestataire de paiement.",
+  "psp_verslag_uitleg_claude": "Le relevé de {psp} pour ce versement (PDF, scan ou photo) : l'application retrouve les factures et les frais retenus.",
+  "psp_verslag_lezen_claude": "Claude AI lit le relevé… cela peut prendre une demi-minute.",
+  "psp_verslag_door_claude": "Lu par {model} : vérifiez les lignes et les montants avant de lier.",
+  "psp_verslag_bron_claude": "lu par Claude AI",
+  "psp_verslag_claude_fout": "Claude AI n'a pas pu lire le relevé : {fout}"
 }

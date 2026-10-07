@@ -4,18 +4,22 @@ import { ADDON_BASE } from '../../../utils/api'
 import { vulIn } from '../../../utils/periode'
 import type { PspVerslag, VerslagKoppeling, VerslagMatch } from '../../../utils/pspVerslag'
 import type { PspVerslagInfo } from '../../../utils/pspUitbetaling'
+import { modelNaam } from '../../../utils/claudeScan'
 import { geldCent, korteDatum } from './bankTekst'
 
 // ── Het uitbetalingsverslag bij een PSP-uitbetaling ─────────────────────────
 // De PDF van Mollie (of een andere PSP) bij deze uitbetaling: wat de app eruit
-// las en welke factuur er bij elke regel hoort (utils/pspVerslag.ts). De
-// bestandsinvoer zelf staat in BankSectie, buiten de vensters; hier alleen de
-// knop. Het verslag hoort bij de transactie (`bank_transacties[].verslag`).
+// las en welke factuur er bij elke regel hoort (utils/pspVerslag.ts). Las
+// Claude het (een scan, een foto, een onbekende opmaak), dan staat dat erbij.
+// De bestandsinvoer zelf staat in BankSectie, buiten de vensters; hier alleen
+// de knop. Het verslag hoort bij de transactie (`bank_transacties[].verslag`).
 
 export interface VerslagStand {
   /** Het verslag zoals de app het las; null zolang het nog gelezen wordt of als dat mislukte. */
   gelezen: PspVerslag | null
   bezig: boolean
+  /** Bezig: Claude leest het verslag (een scan, een foto, een onbekende opmaak). */
+  claude?: boolean
   fout: string | null
 }
 
@@ -28,6 +32,8 @@ export interface VerslagBlokProps {
   psp: string
   /** Factuurnummer bij een id (verkoop), voor de regels. */
   factuurNummer: (id: number) => string
+  /** Er is een Claude-sleutel: dan leest de app ook een scan of een foto. */
+  sleutel: boolean
   onKies: () => void
 }
 
@@ -56,7 +62,7 @@ const uitkomstKleur = (m: VerslagMatch): string => {
   return 'text-gray-500'
 }
 
-const VerslagBlok: React.FC<VerslagBlokProps> = ({ info, stand, koppeling, uitbetaaldCent, psp, factuurNummer, onKies }) => {
+const VerslagBlok: React.FC<VerslagBlokProps> = ({ info, stand, koppeling, uitbetaaldCent, psp, factuurNummer, sleutel, onKies }) => {
   const gelezen = stand?.gelezen || null
   const som = gelezen ? gelezen.som_cent : (typeof info?.som_cent === 'number' ? info.som_cent : null)
   const totaal = gelezen ? gelezen.totaal_cent : (info?.totaal_cent ?? null)
@@ -75,7 +81,7 @@ const VerslagBlok: React.FC<VerslagBlokProps> = ({ info, stand, koppeling, uitbe
         </button>
       </div>
       {!info && !stand?.bezig && !stand?.fout && (
-        <p className="text-xs text-gray-500">{vulIn(t('psp_verslag_uitleg'), { psp })}</p>
+        <p className="text-xs text-gray-500">{vulIn(t(sleutel ? 'psp_verslag_uitleg_claude' : 'psp_verslag_uitleg'), { psp })}</p>
       )}
       {info && (
         <p className="text-sm text-gray-700 break-words">
@@ -88,6 +94,10 @@ const VerslagBlok: React.FC<VerslagBlokProps> = ({ info, stand, koppeling, uitbe
           ].filter(Boolean).map(s => <span key={s} className="text-gray-500"> · {s}</span>)}
         </p>
       )}
+      {/* Las Claude het verslag, dan zegt het venster dat: nakijken voor het koppelen. */}
+      {info?.bron === 'claude' && !stand?.bezig && (
+        <p className="text-xs text-blue-800">{vulIn(t('psp_verslag_door_claude'), { model: info.model ? modelNaam(info.model) : 'Claude AI' })}</p>
+      )}
       {klopt === true && !onvolledig && <p className="text-xs text-green-700">✓ {t('psp_verslag_klopt')}</p>}
       {klopt === false && (
         <p className="text-xs text-orange-700">{vulIn(t('psp_verslag_wijkt'), { bedrag: geldCent(uitbetaaldCent) })}</p>
@@ -95,7 +105,7 @@ const VerslagBlok: React.FC<VerslagBlokProps> = ({ info, stand, koppeling, uitbe
       {onvolledig && totaal !== null && som !== null && (
         <p className="text-xs text-orange-700">{vulIn(t('psp_verslag_onvolledig'), { som: geldCent(som), totaal: geldCent(totaal) })}</p>
       )}
-      {stand?.bezig && <p className="text-xs text-gray-500" role="status">{t('psp_verslag_lezen')}</p>}
+      {stand?.bezig && <p className="text-xs text-gray-500" role="status">{t(stand.claude ? 'psp_verslag_lezen_claude' : 'psp_verslag_lezen')}</p>}
       {stand?.fout && <p className="text-xs text-red-700" role="alert">{stand.fout}</p>}
       {koppeling && koppeling.matches.length > 0 && (
         <ul className="max-h-48 overflow-y-auto overflow-x-hidden divide-y divide-gray-100 border-t border-gray-100" aria-label={t('psp_verslag_kop')}>

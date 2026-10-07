@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.93] — 2026-10-07
+
+### Uitbetalingsverslag: Claude leest wat de app zelf niet kan lezen
+
+- **Scan, foto of andere opmaak.** De app leest het uitbetalingsverslag eerst
+  zelf uit de tekst van de PDF. Lukt dat niet — een gescande PDF zonder tekst,
+  een foto van een afgedrukt verslag, een andere betaaldienst of een nieuwe
+  opmaak van Mollie — dan leest Claude AI het, als er een API-sleutel is
+  (Instellingen → Claude AI). Foto's (de pagina's van één verslag) worden samen
+  één PDF bij de transactie. Claude schrijft alleen de tabel over: welke
+  bestelling of factuur bij een regel hoort, wat kosten zijn en of alles
+  optelt tot de uitbetaling bepaalt de app zelf, net als bij een gewone PDF.
+  Het venster zegt dat Claude het verslag las; kijk de regels na voordat je
+  koppelt. Er wordt niets vanzelf gekoppeld.
+- **Eén keer lezen.** Wat Claude las wordt bij de transactie bewaard (zonder
+  namen van klanten), zodat het venster het verslag bij de volgende keer
+  openen niet opnieuw laat lezen.
+- **Zonder sleutel** zegt de melding nu dat een scan of foto met een
+  Claude-sleutel wel leesbaar is.
+
 ## [1.12.92] — 2026-10-07
 
 ### Mollie-uitbetalingen: verslag, facturen en de factuur van Mollie

@@ -15,12 +15,13 @@ import {
   ibanSleutel, koppelingVan, filterBankTransacties, telBankStatussen, standaardBankStatus, isBankStatusFilter,
   BANK_STATUS_FILTERS, type BankStatusFilter,
 } from '../../utils/bank'
-import { laadPdf, pdfTekstPaginas } from '../../utils/pdfText'
-import { leesPspVerslag, koppelPspVerslag, normFactuurnummer, verslagKosten, type PspVerslag } from '../../utils/pspVerslag'
+import { koppelPspVerslag, normFactuurnummer, verslagKosten, type PspVerslag } from '../../utils/pspVerslag'
 import {
-  verslagInfo, pspKostenCent, pspKostenOpenCent, pspKostenRegels,
+  verslagInfo, verslagUitInfo, pspKostenCent, pspKostenOpenCent, pspKostenRegels,
   pasPspVerrekeningToe, pspKostenVoorstel, kostenFactuurKandidaten,
 } from '../../utils/pspUitbetaling'
+import { leesVerslag, leesTekstlaag, verslagFoutTekst, type VerslagLezing } from './bank/verslagLezen'
+import { modelNaam } from '../../utils/claudeScan'
 import { uploadBijlage, uploadFoutSleutel } from '../../utils/bijlage'
 import {
   bankVoorstellen, bankVoorstelSleutel, btwKiezerKandidaten, accijnsKiezerKandidaten, AANGIFTE_MARGE_CENT,
@@ -310,12 +311,13 @@ function BankSectie() {
   })
 
   // ── Het uitbetalingsverslag (PDF van Mollie e.d.) ─────────────────────────
-  // Lezen gebeurt in de browser (pdf.js, utils/pspVerslag.ts); de PDF gaat als
+  // Lezen gebeurt in de browser: eerst de tekstlaag (pdf.js,
+  // utils/pspVerslag.ts), anders — een scan, een foto, een onbekende opmaak —
+  // Claude, als er een sleutel is (bank/verslagLezen.ts). De PDF gaat als
   // bijlage naar de server en het verslag komt op de transactie
-  // (`verslag`: kenmerk, totalen, kosten per factuur — geen klantnamen).
-  const leesVerslagPdf = async (data: ArrayBuffer): Promise<PspVerslag | null> => {
-    try { return leesPspVerslag(await pdfTekstPaginas(await laadPdf(data))) } catch { return null }
-  }
+  // (`verslag`: kenmerk, totalen, kosten per factuur — geen klantnamen; las
+  // Claude het, dan ook de regels, zodat het venster niet opnieuw laat lezen).
+  const heeftSleutel = !!claudeCreds?.apiKey && claudeCreds?.enabled !== false
 
   // De facturen uit het verslag aanvinken en de kosten per factuurnummer
   // klaarzetten (de geboekte factuur van de PSP met dat nummer, anders
@@ -327,15 +329,22 @@ function BankSectie() {
     setPspKostenKeuze(Object.fromEntries(k.kosten.map(x => [x.nummer, x.factuurId])))
   }
 
-  // Een verslag dat al op de transactie staat opnieuw lezen voor het venster.
+  // Een verslag dat al op de transactie staat terughalen voor het venster: wat
+  // Claude las staat er al (`verslag.regels`), anders de PDF opnieuw lezen.
   const laadVerslag = async (tx: any) => {
     const bestand = tx?.verslag?.bestand
     if (!bestand) return
+    const bewaard = verslagUitInfo(tx.verslag)
+    if (bewaard) {
+      setPspVerslag({txId: tx.id, gelezen: bewaard, bezig: false, fout: null})
+      voorselectieUitVerslag(tx, bewaard)
+      return
+    }
     setPspVerslag({txId: tx.id, gelezen: null, bezig: true, fout: null})
     let gelezen: PspVerslag | null = null
     try {
       const r = await fetch(`${ADDON_BASE}api/file/${encodeURIComponent(bestand)}`)
-      if (r.ok) gelezen = await leesVerslagPdf(await r.arrayBuffer())
+      if (r.ok) gelezen = await leesTekstlaag(await r.arrayBuffer())
     } catch { gelezen = null }
     if (pspTxRef.current !== tx.id) return
     setPspVerslag({txId: tx.id, gelezen, bezig: false, fout: gelezen ? null : t('psp_verslag_fout_laden')})
@@ -347,33 +356,52 @@ function BankSectie() {
     verslagInvoer.current?.click()
   }
 
-  const koppelVerslagBestand = async (file: File) => {
+  const koppelVerslagBestand = async (files: File[]) => {
     const tx = txMetId(verslagVoor.current)
-    if (!tx) return
-    const inVenster = pspTxRef.current === tx.id
-    // In het venster staat een fout bij het verslag; anders in de meldingsbalk.
+    if (!tx || !files.length) return
+    // Het venster kan tijdens het lezen open of dicht gaan: pas bij de uitkomst kijken.
+    const inVenster = () => pspTxRef.current === tx.id
+    // Claude doet er even over: zeg dat hij bezig is, ook buiten het venster.
+    let bezigOpPagina = false
+    const opClaude = () => {
+      if (inVenster()) setPspVerslag(v => ({txId: tx.id, gelezen: v?.txId === tx.id ? v.gelezen : null, bezig: true, claude: true, fout: null}))
+      else { bezigOpPagina = true; setImportMelding({soort: 'al', tekst: t('psp_verslag_lezen_claude')}) }
+    }
+    // In het venster staat de stand bij het verslag; anders in de meldingsbalk.
+    const naarVenster = () => {
+      if (!inVenster()) return false
+      if (bezigOpPagina) setImportMelding(null)
+      return true
+    }
     const meld = (soort: 'ok' | 'al' | 'fout', tekst: string) => {
-      if (inVenster) setPspVerslag(v => ({txId: tx.id, gelezen: v?.gelezen ?? null, bezig: false, fout: soort === 'fout' ? tekst : null}))
+      if (naarVenster()) setPspVerslag(v => ({txId: tx.id, gelezen: v?.txId === tx.id ? v.gelezen : null, bezig: false, fout: soort === 'fout' ? tekst : null}))
       else setImportMelding({soort, tekst})
     }
-    if (inVenster) setPspVerslag(v => ({txId: tx.id, gelezen: v?.gelezen ?? null, bezig: true, fout: null}))
-    const gelezen = await leesVerslagPdf(await file.arrayBuffer())
-    if (!gelezen) { meld('fout', vulIn(t('psp_verslag_geen'), {naam: file.name})); return }
-    const u = await uploadBijlage(file, 'psp')
+    if (inVenster()) setPspVerslag(v => ({txId: tx.id, gelezen: v?.txId === tx.id ? v.gelezen : null, bezig: true, fout: null}))
+    let lezing: VerslagLezing
+    try {
+      lezing = await leesVerslag(files, {sleutel: heeftSleutel, opClaude})
+    } catch (e) {
+      meld('fout', verslagFoutTekst(e))
+      return
+    }
+    const {verslag: gelezen, bijlage, model} = lezing
+    const u = await uploadBijlage(bijlage, 'psp')
     if (!u.ok || !u.bijlage) { meld('fout', t(uploadFoutSleutel(u.status)).replace('{naam}', u.naam)); return }
-    const info = verslagInfo(gelezen, u.bijlage, new Date().toISOString())
+    const info = verslagInfo(gelezen, u.bijlage, new Date().toISOString(), model ? {bron: 'claude', model} : null)
     wijzigTx(tx.id, (t2: any) => ({...t2, verslag: info}))
-    const ref = gelezen.referentie || file.name
+    const ref = gelezen.referentie || bijlage.name
     logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'aangemaakt',
-      omschrijving:`Uitbetalingsverslag ${ref} bij ${tx.tegenpartij || 'PSP'} ${tx.datum} (${fmt(tx.bedrag)}) — ${gelezen.regels.length} regels`})
-    if (inVenster) {
+      omschrijving:`Uitbetalingsverslag ${ref} bij ${tx.tegenpartij || 'PSP'} ${tx.datum} (${fmt(tx.bedrag)}) — ${gelezen.regels.length} regels${model ? ` (gelezen door ${model})` : ''}`})
+    if (naarVenster()) {
       setPspVerslag({txId: tx.id, gelezen, bezig: false, fout: null})
       voorselectieUitVerslag(tx, gelezen)
       return
     }
     const wijkt = gelezen.som_cent !== toCent(tx.bedrag)
-    meld(wijkt ? 'al' : 'ok', vulIn(t(wijkt ? 'psp_verslag_gekoppeld_wijkt' : 'psp_verslag_gekoppeld'),
-      {referentie: ref, som: geldCent(gelezen.som_cent), bedrag: fmt(tx.bedrag)}))
+    const tekst = vulIn(t(wijkt ? 'psp_verslag_gekoppeld_wijkt' : 'psp_verslag_gekoppeld'),
+      {referentie: ref, som: geldCent(gelezen.som_cent), bedrag: fmt(tx.bedrag)})
+    meld(wijkt ? 'al' : 'ok', model ? `${tekst} ${vulIn(t('psp_verslag_door_claude'), {model: modelNaam(model)})}` : tekst)
   }
 
   // Voorselectie: het voorstel van de werklijst, anders dat van de import.
@@ -1185,6 +1213,7 @@ function BankSectie() {
             {[
               tx.verslag.referentie,
               typeof tx.verslag.som_cent === 'number' ? vulIn(t('psp_verslag_totaal'), {bedrag: geldCent(tx.verslag.som_cent)}) : '',
+              tx.verslag.bron === 'claude' ? t('psp_verslag_bron_claude') : '',
             ].filter(Boolean).map((s: string) => <span key={s} className="text-gray-500"> · {s}</span>)}
           </p>
         )}
@@ -1256,9 +1285,11 @@ function BankSectie() {
     <div className="space-y-4 min-w-0">
       <input ref={bankFileRef} type="file" accept=".sta,.txt,.mt940,.swi,.940,.swift" className="hidden"
         onChange={(e: any) => { const f = e.target.files?.[0]; if (f) { undo.flush(); importMT940(f); e.target.value=''; } }} />
-      {/* Het uitbetalingsverslag (PDF) van een PSP-uitbetaling. */}
-      <input ref={verslagInvoer} type="file" accept="application/pdf,.pdf" className="hidden" aria-hidden="true" tabIndex={-1}
-        onChange={(e: any) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void koppelVerslagBestand(f) }} />
+      {/* Het uitbetalingsverslag van een PSP-uitbetaling: een PDF, of met een
+          Claude-sleutel ook foto's (de pagina's van één verslag). */}
+      <input ref={verslagInvoer} type="file" accept={heeftSleutel ? 'application/pdf,.pdf,image/*' : 'application/pdf,.pdf'}
+        multiple={heeftSleutel} className="hidden" aria-hidden="true" tabIndex={-1}
+        onChange={(e: any) => { const f: File[] = Array.from(e.target.files || []); e.target.value = ''; if (f.length) void koppelVerslagBestand(f) }} />
 
       {/* Kop: rekening, saldo van het laatste afschrift, importeren */}
       {!leegBank && (
@@ -1388,7 +1419,7 @@ function BankSectie() {
           toonAlles={pspToonAlles} setToonAlles={setPspToonAlles} kandidatenVoor={pspKandidatenVoor}
           klantNaamVoor={klantNaamVoor} psp={pspNaam(pspTx) || 'PSP'}
           verslagInfo={pspTx.verslag || null} verslagStand={pspVerslagStand} verslagKoppeling={pspVerslagKoppeling}
-          onKiesVerslag={() => kiesVerslag(pspTx.id)}
+          verslagSleutel={heeftSleutel} onKiesVerslag={() => kiesVerslag(pspTx.id)}
           kostenWijze={pspKostenWijze} setKostenWijze={setPspKostenWijze}
           kostenKeuze={pspKostenKeuze} setKostenKeuze={setPspKostenKeuze} kostenKandidaten={pspKostenKandidaten}
           onOpslaan={savePspKoppeling} onSluit={sluitPspModal} />

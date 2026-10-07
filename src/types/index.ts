@@ -1009,7 +1009,9 @@ export interface BewaardeBankTransactie {
    * Het uitbetalingsverslag van de PSP bij deze uitbetaling (PDF in de
    * bijlagenmap, `_bijlage_in_gebruik` houdt hem vast) en wat de app eruit
    * las: kenmerk, totalen, kosten per factuur van de PSP — geen klantnamen
-   * (utils/pspUitbetaling.ts). Blijft staan als de koppeling verdwijnt.
+   * (utils/pspUitbetaling.ts). Blijft staan als de koppeling verdwijnt. Las
+   * Claude het (een scan, foto's of een onbekende opmaak), dan `bron:
+   * 'claude'`, het model en de regels zelf, zonder consument.
    */
   verslag?: {
     naam: string
@@ -1020,6 +1022,9 @@ export interface BewaardeBankTransactie {
     aantal?: number
     kosten?: { nummer: string, cent: number }[]
     ingelezen_op?: string
+    bron?: 'claude'
+    model?: string
+    regels?: { datum: string, methode: string, bedrag_cent: number, uitbetaald_cent: number, omschrijving: string }[]
   }
 }
 

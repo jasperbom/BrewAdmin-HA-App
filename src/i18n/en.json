@@ -4599,12 +4599,12 @@
   "psp_kosten_volgt_uitleg": "Invoice to follow: the fees stay open on this payout until you book and offset the PSP's invoice.",
   "psp_verslag_ander": "Different report",
   "psp_verslag_fout_laden": "The payout report could not be read.",
-  "psp_verslag_geen": "No payout report recognised in {naam}. The app cannot read a scan without text.",
+  "psp_verslag_geen": "No payout report recognised in {naam}. With a Claude API key (Settings → Claude AI) the app also reads a scan, a photo or a different layout.",
   "psp_verslag_gekoppeld": "Payout report {referentie} attached.",
   "psp_verslag_gekoppeld_wijkt": "Payout report {referentie} attached, but it adds up to {som} while the payout is {bedrag}.",
   "psp_verslag_klopt": "Adds up to the amount paid out",
   "psp_verslag_kop": "Payout report",
-  "psp_verslag_koppelen": "Attach report (PDF)",
+  "psp_verslag_koppelen": "Attach report",
   "psp_verslag_lezen": "Reading report…",
   "psp_verslag_onvolledig": "Not all lines were read: they add up to {som}, the report states {totaal}.",
   "psp_verslag_regels": "{n} lines",
@@ -4620,5 +4620,12 @@
   "psp_vr_kosten_zonder_nr": "Withheld fees",
   "psp_vr_netto_nul": "Refunded in the same report: not counted",
   "psp_vr_niet_gevonden": "No invoice found",
-  "psp_vr_overig": "Unknown line"
+  "psp_vr_overig": "Unknown line",
+  "psp_verslag_geen_claude": "Claude AI did not recognise a payout report in {naam} either.",
+  "psp_verslag_foto_geen_sleutel": "The app can only read a photo of a report with a Claude API key (Settings → Claude AI). Otherwise, download the PDF from the payment provider's dashboard.",
+  "psp_verslag_uitleg_claude": "The {psp} report for this payout (PDF, scan or photo): the app finds the invoices and the withheld fees for you.",
+  "psp_verslag_lezen_claude": "Claude AI is reading the report… this can take half a minute.",
+  "psp_verslag_door_claude": "Read by {model}: check the lines and amounts before you link.",
+  "psp_verslag_bron_claude": "read by Claude AI",
+  "psp_verslag_claude_fout": "Claude AI could not read the report: {fout}"
 }

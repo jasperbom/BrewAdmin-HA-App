@@ -26,7 +26,10 @@
 
 import { toCent } from './centen'
 import { txKey } from './bank'
-import { normFactuurnummer, verslagKosten, type PspVerslag } from './pspVerslag'
+import {
+  normFactuurnummer, verslagKosten, verslagRegel, leesVerslagDatum, MAX_VERSLAG_REGELS,
+  type PspVerslag, type PspVerslagRegel,
+} from './pspVerslag'
 
 export interface PspKostenDeel {
   /** De inkoopfactuur van de PSP. */
@@ -34,6 +37,9 @@ export interface PspKostenDeel {
   /** Het stuk van die factuur dat met deze uitbetaling verrekend is. */
   cent: number
 }
+
+/** Een regel van een verslag dat Claude las, zoals hij op de transactie bewaard wordt (zonder consument). */
+export type VerslagRegelOpslag = Pick<PspVerslagRegel, 'datum' | 'methode' | 'bedrag_cent' | 'uitbetaald_cent' | 'omschrijving'>
 
 /** Het uitbetalingsverslag op een banktransactie (`bank_transacties[].verslag`). Geen namen van klanten. */
 export interface PspVerslagInfo {
@@ -50,6 +56,22 @@ export interface PspVerslagInfo {
   /** Ingehouden kosten per factuur van de PSP. */
   kosten?: { nummer: string, cent: number }[]
   ingelezen_op?: string
+  /** Gelezen door Claude (een scan, een foto, een onbekende opmaak); ontbreekt = uit de tekstlaag van de PDF. */
+  bron?: 'claude'
+  /** Het model dat het verslag las. */
+  model?: string
+  /**
+   * Alleen bij Claude: de regels zoals hij ze las. Het venster leest ze hier
+   * terug in plaats van het verslag opnieuw te laten lezen (dat kost tijd en
+   * geld, en een tweede lezing kan anders uitvallen dan wat er gecontroleerd is).
+   */
+  regels?: VerslagRegelOpslag[]
+}
+
+/** Wie het verslag las, als het niet de tekstlaag was. */
+export interface VerslagLezer {
+  bron: 'claude'
+  model?: string
 }
 
 const isPsp = (k: unknown): k is Record<string, any> => !!k && typeof k === 'object' && (k as any).soort === 'psp'
@@ -65,8 +87,13 @@ export const inkoopBrutoCent = (f: any): number => {
   return c !== null && c !== undefined && c !== '' && Number.isFinite(Number(c)) ? Math.round(Number(c)) : toCent(f?.totaal_bruto)
 }
 
-/** Wat er van een gelezen verslag op de transactie komt: kenmerk, totalen en kosten per factuur. */
-export function verslagInfo(v: PspVerslag, bijlage: { naam: string, bestand: string }, nu: string): PspVerslagInfo {
+/**
+ * Wat er van een gelezen verslag op de transactie komt: kenmerk, totalen en
+ * kosten per factuur — en als Claude het las ook de regels, zonder consument.
+ */
+export function verslagInfo(
+  v: PspVerslag, bijlage: { naam: string, bestand: string }, nu: string, lezer?: VerslagLezer | null,
+): PspVerslagInfo {
   return {
     naam: String(bijlage.naam || ''),
     bestand: String(bijlage.bestand || ''),
@@ -76,6 +103,48 @@ export function verslagInfo(v: PspVerslag, bijlage: { naam: string, bestand: str
     aantal: v.regels.length,
     kosten: verslagKosten(v),
     ingelezen_op: nu,
+    ...(lezer?.bron === 'claude' ? {
+      bron: 'claude' as const,
+      ...(lezer.model ? { model: lezer.model } : {}),
+      regels: v.regels.slice(0, MAX_VERSLAG_REGELS).map(r => ({
+        datum: r.datum, methode: r.methode, bedrag_cent: r.bedrag_cent, uitbetaald_cent: r.uitbetaald_cent, omschrijving: r.omschrijving,
+      })),
+    } : {}),
+  }
+}
+
+const tekstVeld = (v: unknown, max: number): string => (typeof v === 'string' ? v.trim().slice(0, max) : '')
+
+/**
+ * Het verslag uit de bewaarde regels (alleen als Claude het las), met dezelfde
+ * duiding als bij het lezen. Geen bewaarde regels = null: dan leest het
+ * venster de PDF opnieuw (de tekstlaag, gratis en meteen).
+ */
+export function verslagUitInfo(info: unknown): PspVerslag | null {
+  const i = (info && typeof info === 'object' ? info : {}) as Record<string, any>
+  if (!Array.isArray(i.regels)) return null
+  const regels: PspVerslagRegel[] = []
+  for (const x of i.regels.slice(0, MAX_VERSLAG_REGELS)) {
+    if (!x || typeof x !== 'object') continue
+    const uitbetaald = Number(x.uitbetaald_cent)
+    if (!Number.isFinite(uitbetaald)) continue
+    const bedrag = Number(x.bedrag_cent)
+    regels.push(verslagRegel({
+      datum: leesVerslagDatum(x.datum),
+      methode: tekstVeld(x.methode, 60),
+      bedrag_cent: Number.isFinite(bedrag) ? Math.round(bedrag) : Math.round(uitbetaald),
+      uitbetaald_cent: Math.round(uitbetaald),
+      omschrijving: tekstVeld(x.omschrijving, 200),
+      consument: '',
+    }))
+  }
+  if (!regels.length) return null
+  const totaal = Number(i.totaal_cent)
+  return {
+    referentie: tekstVeld(i.referentie, 60),
+    regels,
+    som_cent: regels.reduce((s, r) => s + r.uitbetaald_cent, 0),
+    totaal_cent: i.totaal_cent !== null && i.totaal_cent !== undefined && Number.isFinite(totaal) ? Math.round(totaal) : null,
   }
 }
 

@@ -4599,12 +4599,12 @@
   "psp_kosten_volgt_uitleg": "Rechnung folgt: die Gebühren bleiben bei dieser Auszahlung offen, bis Sie die Rechnung des PSP gebucht und verrechnet haben.",
   "psp_verslag_ander": "Anderer Bericht",
   "psp_verslag_fout_laden": "Der Auszahlungsbericht konnte nicht gelesen werden.",
-  "psp_verslag_geen": "In {naam} wurde kein Auszahlungsbericht erkannt. Einen Scan ohne Text kann die App nicht lesen.",
+  "psp_verslag_geen": "In {naam} wurde kein Auszahlungsbericht erkannt. Mit einem Claude API-Schlüssel (Einstellungen → Claude AI) liest die App auch einen Scan, ein Foto oder ein anderes Layout.",
   "psp_verslag_gekoppeld": "Auszahlungsbericht {referentie} verknüpft.",
   "psp_verslag_gekoppeld_wijkt": "Auszahlungsbericht {referentie} verknüpft, er ergibt aber {som}, während die Auszahlung {bedrag} beträgt.",
   "psp_verslag_klopt": "Ergibt den ausgezahlten Betrag",
   "psp_verslag_kop": "Auszahlungsbericht",
-  "psp_verslag_koppelen": "Bericht verknüpfen (PDF)",
+  "psp_verslag_koppelen": "Bericht verknüpfen",
   "psp_verslag_lezen": "Bericht wird gelesen…",
   "psp_verslag_onvolledig": "Nicht alle Zeilen wurden gelesen: sie ergeben {som}, der Bericht nennt {totaal}.",
   "psp_verslag_regels": "{n} Zeilen",
@@ -4620,5 +4620,12 @@
   "psp_vr_kosten_zonder_nr": "Einbehaltene Gebühren",
   "psp_vr_netto_nul": "Im selben Bericht erstattet: zählt nicht",
   "psp_vr_niet_gevonden": "Keine Rechnung gefunden",
-  "psp_vr_overig": "Unbekannte Zeile"
+  "psp_vr_overig": "Unbekannte Zeile",
+  "psp_verslag_geen_claude": "Auch Claude AI hat in {naam} keinen Auszahlungsbericht erkannt.",
+  "psp_verslag_foto_geen_sleutel": "Ein Foto eines Berichts kann die App nur mit einem Claude API-Schlüssel lesen (Einstellungen → Claude AI). Lade sonst das PDF aus dem Dashboard des Zahlungsdienstes herunter.",
+  "psp_verslag_uitleg_claude": "Der Bericht von {psp} zu dieser Auszahlung (PDF, Scan oder Foto): die App sucht die Rechnungen und die einbehaltenen Gebühren dazu.",
+  "psp_verslag_lezen_claude": "Claude AI liest den Bericht… das kann eine halbe Minute dauern.",
+  "psp_verslag_door_claude": "Gelesen von {model}: prüfe die Zeilen und Beträge, bevor du verknüpfst.",
+  "psp_verslag_bron_claude": "gelesen von Claude AI",
+  "psp_verslag_claude_fout": "Claude AI konnte den Bericht nicht lesen: {fout}"
 }

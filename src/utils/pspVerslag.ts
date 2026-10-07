@@ -10,7 +10,9 @@
 // Deze module leest dat verslag uit de tekstlaag van de PDF (pdf.js, al
 // omgerekend naar paginacoördinaten — zie utils/pdfText.ts) en zoekt de
 // facturen erbij. Hij koppelt zelf niets: Bank toont de uitkomst en de
-// gebruiker bevestigt. Een gescande PDF zonder tekstlaag levert niets op.
+// gebruiker bevestigt. Een gescande PDF zonder tekstlaag, een foto of een
+// opmaak die hij niet kent levert hier niets op; die leest Claude
+// (utils/pspVerslagScan.ts), met dezelfde regels en koppeling als uitkomst.
 //
 // Puur en zonder pdf.js of React. Bedragen in centen, met teken.
 
@@ -163,6 +165,16 @@ export function duidVerslagRegel(
   return { soort: 'overig', ...verwijzing }
 }
 
+/** Zoveel regels van een verslag dat Claude las neemt de app hooguit over (en bewaart hij op de transactie). */
+export const MAX_VERSLAG_REGELS = 500
+
+/** Een volledige regel uit de gelezen velden: soort en verwijzingen erbij. */
+export function verslagRegel(
+  basis: Pick<PspVerslagRegel, 'datum' | 'methode' | 'bedrag_cent' | 'uitbetaald_cent' | 'omschrijving' | 'consument'>,
+): PspVerslagRegel {
+  return { ...basis, ...duidVerslagRegel(basis) }
+}
+
 // ── Het verslag lezen ───────────────────────────────────────────────────────
 
 type KolomVeld = 'datum' | 'methode' | 'bedrag' | 'uitbetaald' | 'omschrijving' | 'consument'
@@ -240,15 +252,14 @@ function leesRegel(items: PdfTekstItem[], kolommen: Kolom[] | null): PspVerslagR
     else consument = ''
   }
   const methode = String(m[2] || '').trim()
-  const basis = {
+  return verslagRegel({
     datum,
     methode: /^[-−–]*$/.test(methode) ? '' : methode,
     bedrag_cent: bedrag,
     uitbetaald_cent: uitbetaald,
     omschrijving: rest,
     consument,
-  }
-  return { ...basis, ...duidVerslagRegel(basis) }
+  })
 }
 
 /**

@@ -4599,12 +4599,12 @@
   "psp_kosten_volgt_uitleg": "Factuur volgt: de kosten blijven bij deze uitbetaling openstaan tot je de factuur van de PSP hebt geboekt en verrekend.",
   "psp_verslag_ander": "Ander verslag",
   "psp_verslag_fout_laden": "Het uitbetalingsverslag kon niet worden gelezen.",
-  "psp_verslag_geen": "In {naam} is geen uitbetalingsverslag herkend. Een scan zonder tekst kan de app niet lezen.",
+  "psp_verslag_geen": "In {naam} is geen uitbetalingsverslag herkend. Met een Claude API-sleutel (Instellingen → Claude AI) leest de app ook een scan, een foto of een andere opmaak.",
   "psp_verslag_gekoppeld": "Uitbetalingsverslag {referentie} gekoppeld.",
   "psp_verslag_gekoppeld_wijkt": "Uitbetalingsverslag {referentie} gekoppeld, maar het telt op tot {som} terwijl de uitbetaling {bedrag} is.",
   "psp_verslag_klopt": "Telt op tot het uitbetaalde bedrag",
   "psp_verslag_kop": "Uitbetalingsverslag",
-  "psp_verslag_koppelen": "Verslag koppelen (PDF)",
+  "psp_verslag_koppelen": "Verslag koppelen",
   "psp_verslag_lezen": "Verslag wordt gelezen…",
   "psp_verslag_onvolledig": "Niet alle regels zijn gelezen: ze tellen op tot {som}, het verslag noemt {totaal}.",
   "psp_verslag_regels": "{n} regels",
@@ -4620,5 +4620,12 @@
   "psp_vr_kosten_zonder_nr": "Ingehouden kosten",
   "psp_vr_netto_nul": "Terugbetaald in hetzelfde verslag: telt niet mee",
   "psp_vr_niet_gevonden": "Geen factuur gevonden",
-  "psp_vr_overig": "Onbekende regel"
+  "psp_vr_overig": "Onbekende regel",
+  "psp_verslag_geen_claude": "Ook Claude AI herkende in {naam} geen uitbetalingsverslag.",
+  "psp_verslag_foto_geen_sleutel": "Een foto van een verslag kan de app alleen lezen met een Claude API-sleutel (Instellingen → Claude AI). Kies anders de PDF uit het dashboard van de betaaldienst.",
+  "psp_verslag_uitleg_claude": "Het verslag van {psp} bij deze uitbetaling (PDF, scan of foto): de app zoekt er de facturen en de ingehouden kosten bij.",
+  "psp_verslag_lezen_claude": "Claude AI leest het verslag… dat kan een halve minuut duren.",
+  "psp_verslag_door_claude": "Gelezen door {model}: kijk de regels en bedragen na voordat je koppelt.",
+  "psp_verslag_bron_claude": "gelezen door Claude AI",
+  "psp_verslag_claude_fout": "Claude AI kon het verslag niet lezen: {fout}"
 }

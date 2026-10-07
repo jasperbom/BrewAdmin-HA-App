@@ -4599,12 +4599,12 @@
   "psp_kosten_volgt_uitleg": "Factura pendiente: las comisiones quedan abiertas en esta liquidación hasta que registres y compenses la factura del PSP.",
   "psp_verslag_ander": "Otro informe",
   "psp_verslag_fout_laden": "No se pudo leer el informe de liquidación.",
-  "psp_verslag_geen": "No se reconoció ningún informe de liquidación en {naam}. La app no puede leer un escaneo sin texto.",
+  "psp_verslag_geen": "No se reconoció ningún informe de liquidación en {naam}. Con una clave API de Claude (Configuración → Claude AI), la app también lee un escaneo, una foto u otro formato.",
   "psp_verslag_gekoppeld": "Informe de liquidación {referentie} vinculado.",
   "psp_verslag_gekoppeld_wijkt": "Informe de liquidación {referentie} vinculado, pero suma {som} mientras que la liquidación es de {bedrag}.",
   "psp_verslag_klopt": "Suma el importe liquidado",
   "psp_verslag_kop": "Informe de liquidación",
-  "psp_verslag_koppelen": "Vincular informe (PDF)",
+  "psp_verslag_koppelen": "Vincular informe",
   "psp_verslag_lezen": "Leyendo informe…",
   "psp_verslag_onvolledig": "No se leyeron todas las líneas: suman {som}, el informe indica {totaal}.",
   "psp_verslag_regels": "{n} líneas",
@@ -4620,5 +4620,12 @@
   "psp_vr_kosten_zonder_nr": "Comisiones retenidas",
   "psp_vr_netto_nul": "Reembolsado en el mismo informe: no cuenta",
   "psp_vr_niet_gevonden": "No se encontró ninguna factura",
-  "psp_vr_overig": "Línea desconocida"
+  "psp_vr_overig": "Línea desconocida",
+  "psp_verslag_geen_claude": "Claude AI tampoco reconoció un informe de liquidación en {naam}.",
+  "psp_verslag_foto_geen_sleutel": "La app solo puede leer la foto de un informe con una clave API de Claude (Configuración → Claude AI). Si no, descarga el PDF desde el panel del proveedor de pagos.",
+  "psp_verslag_uitleg_claude": "El informe de {psp} de esta liquidación (PDF, escaneo o foto): la app busca las facturas y las comisiones retenidas.",
+  "psp_verslag_lezen_claude": "Claude AI está leyendo el informe… puede tardar medio minuto.",
+  "psp_verslag_door_claude": "Leído por {model}: revisa las líneas y los importes antes de vincular.",
+  "psp_verslag_bron_claude": "leído por Claude AI",
+  "psp_verslag_claude_fout": "Claude AI no pudo leer el informe: {fout}"
 }
