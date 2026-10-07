@@ -114,7 +114,8 @@ export function verkoopPrimaireActie(stand: VerkoopStand, smtpAan: boolean): Ver
 
 // ── Stand van een inkoopfactuur ─────────────────────────────────────────────
 
-export type InkoopFase = 'open' | 'te_laat' | 'betaald' | 'betaald_alt'
+/** `verrekend`: betaald doordat de PSP hem op zijn uitbetalingen inhield (utils/pspUitbetaling.ts). */
+export type InkoopFase = 'open' | 'te_laat' | 'betaald' | 'betaald_alt' | 'verrekend'
 
 export interface InkoopStand {
   fase: InkoopFase
@@ -123,7 +124,9 @@ export interface InkoopStand {
 }
 
 export function inkoopStand(f: any, vandaagIso: string): InkoopStand {
-  if (f?.status === 'betaald') return { fase: f?.betaald_via_alt_id != null ? 'betaald_alt' : 'betaald', dagenTeLaat: 0 }
+  if (f?.status === 'betaald') {
+    return { fase: f?.betaald_via_alt_id != null ? 'betaald_alt' : f?.betaald_door_verrekening ? 'verrekend' : 'betaald', dagenTeLaat: 0 }
+  }
   if (isInkoopFactuurAchterstallig(f, vandaagIso)) {
     return { fase: 'te_laat', dagenTeLaat: Math.max(1, dagenOpen(f, vandaagIso) - INKOOP_ACHTERSTALLIG_DAGEN) }
   }
@@ -148,6 +151,77 @@ export function inkoopVerlegd(f: any): VerlegdInfo | null {
   if (!vr.length) return null
   const btw = vr.reduce((s, r) => s + (Number(r?.netto) || 0) * (Number(r?.btw_tarief) || 0) / 100, 0)
   return { rubriek: vr[0].btw_soort === 'intracom_eu' ? '4b' : '4a', btw_cent: toCent(btw) }
+}
+
+// ── Waarmee een factuur afgerekend is ───────────────────────────────────────
+// "Betaald" zegt niet waarmee: met de hand op betaald gezet hangt een factuur
+// nergens aan, en dan moet hij alsnog verrekend kunnen worden (met een
+// alt-rekening, of — de factuur van de PSP — met de uitbetalingen). Is hij al
+// ergens aan gekoppeld, dan niet: één factuur, één afrekening.
+
+export type VerkoopAfrekening = 'bank' | 'psp' | 'alt' | 'kassa'
+export type InkoopAfrekening = 'bank' | 'psp_kosten' | 'psp_verrekend' | 'alt'
+
+const KASSA_DIRECT = new Set(['contant', 'pin', 'kas', 'cash'])
+
+/** Waarmee een verkoopfactuur afgerekend is; null = nergens aan gekoppeld (ook als hij op betaald staat). */
+export function verkoopAfrekening(f: any, bankKoppelingen: Record<string, any> | null | undefined): VerkoopAfrekening | null {
+  if (!f || typeof f !== 'object') return null
+  if (f.verrekend_alt_id !== null && f.verrekend_alt_id !== undefined) return 'alt'
+  const id = String(f.id)
+  for (const k of Object.values(bankKoppelingen || {}) as any[]) {
+    if (!k || typeof k !== 'object') continue
+    if (k.soort === 'verkoop' && k.factuurId !== null && k.factuurId !== undefined && String(k.factuurId) === id) return 'bank'
+    if (k.soort === 'psp' && Array.isArray(k.factuurIds) && k.factuurIds.some((x: unknown) => String(x) === id)) return 'psp'
+  }
+  if (KASSA_DIRECT.has(String(f.betaalwijze || '').toLowerCase())) return 'kassa'
+  return null
+}
+
+/** Waarmee een inkoopfactuur afgerekend is; null = nergens aan gekoppeld (ook als hij op betaald staat). */
+export function inkoopAfrekening(f: any, bankKoppelingen: Record<string, any> | null | undefined): InkoopAfrekening | null {
+  if (!f || typeof f !== 'object') return null
+  if (f.betaald_via_alt_id !== null && f.betaald_via_alt_id !== undefined) return 'alt'
+  const id = String(f.id)
+  let verrekend = false
+  for (const k of Object.values(bankKoppelingen || {}) as any[]) {
+    if (!k || typeof k !== 'object') continue
+    if (k.soort === 'inkoop' && k.factuurId !== null && k.factuurId !== undefined && String(k.factuurId) === id) return 'bank'
+    if (k.soort === 'psp' && k.kostenFactuurId !== null && k.kostenFactuurId !== undefined && String(k.kostenFactuurId) === id) return 'psp_kosten'
+    if (k.soort === 'psp' && Array.isArray(k.kostenVerrekend) && k.kostenVerrekend.some((d: any) => d && String(d.factuurId) === id)) verrekend = true
+  }
+  return verrekend ? 'psp_verrekend' : null
+}
+
+/**
+ * Een factuur afrekenen met een alternatieve rekening: verkoop verrekend met
+ * de schuld (`verrekend_alt_id`), inkoop betaald vanaf die rekening
+ * (`betaald_via_alt_id`). De stand van daarvoor gaat mee (`vorige_stand`),
+ * zodat ongedaan maken een al betaalde factuur betaald laat.
+ */
+export function metAltAfrekening(f: any, veld: 'verrekend_alt_id' | 'betaald_via_alt_id', altId: number, vandaag: string): any {
+  if (!f || typeof f !== 'object') return f
+  return {
+    ...f,
+    [veld]: altId,
+    status: 'betaald',
+    betaald_datum: f.betaald_datum || vandaag,
+    vorige_stand: { status: f.status || 'open', ...(f.betaald_datum ? { betaald_datum: f.betaald_datum } : {}) },
+  }
+}
+
+const HERSTELBARE_STAND = new Set(['open', 'betaald', 'herinnering', 'tweede_herinnering', 'aanmaning'])
+
+/** De afrekening met een alt-rekening ongedaan maken: terug naar de stand van daarvoor (zonder: open). */
+export function zonderAltAfrekening(f: any, veld: 'verrekend_alt_id' | 'betaald_via_alt_id'): any {
+  if (!f || typeof f !== 'object') return f
+  const { [veld]: _alt, vorige_stand: vorig, betaald_datum: _datum, ...rest } = f
+  const status = vorig && typeof vorig === 'object' && HERSTELBARE_STAND.has(String(vorig.status)) ? String(vorig.status) : 'open'
+  return {
+    ...rest,
+    status,
+    ...(status === 'betaald' && vorig?.betaald_datum ? { betaald_datum: vorig.betaald_datum } : {}),
+  }
 }
 
 // ── Banktransactie bij een factuur ──────────────────────────────────────────

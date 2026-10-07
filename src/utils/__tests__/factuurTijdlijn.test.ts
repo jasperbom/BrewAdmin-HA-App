@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   volgendeHerinnering, verkoopStand, verkoopPrimaireActie, inkoopStand, inkoopVerlegd,
   bankBetalingVoor, bestellingRef, leesMailAudit, dagEnTijd, verkoopTijdlijn, HERINNERING_SLEUTEL,
+  verkoopAfrekening, inkoopAfrekening, metAltAfrekening, zonderAltAfrekening,
   type TijdlijnContext,
 } from '../factuurTijdlijn'
 import { txKey } from '../bank'
@@ -92,6 +93,7 @@ describe('inkoopStand en inkoopVerlegd', () => {
     expect(inkoopStand(inkoop[1], VANDAAG_ISO)).toEqual({ fase: 'open', dagenTeLaat: 0 })
     expect(inkoopStand(inkoop[2], VANDAAG_ISO).fase).toBe('betaald')
     expect(inkoopStand(inkoop[3], VANDAAG_ISO).fase).toBe('betaald_alt')
+    expect(inkoopStand({ id: 5, datum: '2026-09-01', status: 'betaald', betaald_door_verrekening: true }, VANDAAG_ISO).fase).toBe('verrekend')
   })
   it('verlegd: rubriek en zelf aan te geven BTW in centen', () => {
     expect(inkoopVerlegd({ regels: [{ btw_soort: 'binnenlands', netto: 10, btw_tarief: 21 }] })).toBeNull()
@@ -144,6 +146,52 @@ describe('bankBetalingVoor', () => {
     const later = { datum: '2026-09-30', type: 'C', bedrag: 300, referentie: 'R2', tegenpartij: 'Hoekstra' }
     const k2 = { ...koppelingen, [txKey(later)]: { soort: 'verkoop', factuurId: 4 } }
     expect(bankBetalingVoor(4, 'verkoop', k2, [...transacties, later])?.dag).toBe('2026-09-30')
+  })
+})
+
+describe('verkoopAfrekening en inkoopAfrekening', () => {
+  const koppelingen = {
+    a: { soort: 'verkoop', factuurId: 2 },
+    b: { soort: 'psp', factuurIds: [3], kostenFactuurId: 30, kostenVerrekend: [{ factuurId: 31, cent: 117 }] },
+    c: { soort: 'inkoop', factuurId: 32 },
+    d: null,
+  }
+  it('verkoop: bank, PSP-uitbetaling, alt-rekening, kassa — of nergens aan gekoppeld', () => {
+    expect(verkoopAfrekening({ id: 2, status: 'betaald' }, koppelingen)).toBe('bank')
+    expect(verkoopAfrekening({ id: 3, status: 'betaald' }, koppelingen)).toBe('psp')
+    expect(verkoopAfrekening({ id: 7, status: 'betaald', verrekend_alt_id: 9 }, koppelingen)).toBe('alt')
+    expect(verkoopAfrekening({ id: 8, status: 'betaald', betaalwijze: 'pin' }, koppelingen)).toBe('kassa')
+    // Met de hand op betaald gezet: nergens aan gekoppeld, dus nog te verrekenen.
+    expect(verkoopAfrekening({ id: 4, status: 'betaald', betaald_datum: '2026-08-10' }, koppelingen)).toBeNull()
+    expect(verkoopAfrekening({ id: 5, status: 'open', betaalwijze: 'rekening' }, null)).toBeNull()
+  })
+  it('inkoop: bank, kostenpost of verrekend in een PSP-uitbetaling, alt-rekening — of nergens', () => {
+    expect(inkoopAfrekening({ id: 32 }, koppelingen)).toBe('bank')
+    expect(inkoopAfrekening({ id: 30 }, koppelingen)).toBe('psp_kosten')
+    expect(inkoopAfrekening({ id: 31 }, koppelingen)).toBe('psp_verrekend')
+    expect(inkoopAfrekening({ id: 33, status: 'betaald', betaald_via_alt_id: 1 }, koppelingen)).toBe('alt')
+    expect(inkoopAfrekening({ id: 34, status: 'betaald' }, koppelingen)).toBeNull()
+  })
+})
+
+describe('metAltAfrekening en zonderAltAfrekening', () => {
+  it('een open factuur verrekenen en terug: weer open, zonder datum', () => {
+    const open = { id: 1, status: 'open' }
+    const v = metAltAfrekening(open, 'verrekend_alt_id', 9, '2026-10-07')
+    expect(v).toEqual({ id: 1, status: 'betaald', verrekend_alt_id: 9, betaald_datum: '2026-10-07', vorige_stand: { status: 'open' } })
+    expect(zonderAltAfrekening(v, 'verrekend_alt_id')).toEqual({ id: 1, status: 'open' })
+  })
+  it('een al betaalde factuur verrekenen en terug: weer betaald met de oude datum', () => {
+    const betaald = { id: 2, status: 'betaald', betaald_datum: '2026-09-12' }
+    const v = metAltAfrekening(betaald, 'betaald_via_alt_id', 3, '2026-10-07')
+    expect(v).toMatchObject({ status: 'betaald', betaald_via_alt_id: 3, betaald_datum: '2026-09-12' })
+    expect(zonderAltAfrekening(v, 'betaald_via_alt_id')).toEqual({ id: 2, status: 'betaald', betaald_datum: '2026-09-12' })
+  })
+  it('een herinnering blijft een herinnering; een oude verrekening zonder vorige stand gaat naar open', () => {
+    const h = metAltAfrekening({ id: 3, status: 'herinnering', herinnering_datum: '2026-09-01' }, 'verrekend_alt_id', 9, '2026-10-07')
+    expect(zonderAltAfrekening(h, 'verrekend_alt_id')).toEqual({ id: 3, status: 'herinnering', herinnering_datum: '2026-09-01' })
+    expect(zonderAltAfrekening({ id: 4, status: 'betaald', verrekend_alt_id: 9, betaald_datum: '2026-07-05' }, 'verrekend_alt_id'))
+      .toEqual({ id: 4, status: 'open' })
   })
 })
 

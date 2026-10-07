@@ -155,6 +155,9 @@ const PSP_PATROON = /mollie|stripe|adyen|sumup|zettle|paypal|pay\.nl|buckaroo|mu
 export const isPspTransactie = (tx: any): boolean =>
   tx.type === 'C' && PSP_PATROON.test(`${tx.tegenpartij||''} ${tx.omschrijving||''} ${tx.referentie||''}`)
 
+/** Is dit de naam van een PSP ("Mollie B.V.")? Voor de leverancier van een kostenfactuur. */
+export const isPspNaam = (naam: unknown): boolean => PSP_PATROON.test(String(naam ?? ''))
+
 // Betaling aan of van de Belastingdienst? Wordt gebruikt om een banktransactie
 // als BTW-betaling of -teruggave te herkennen, zodat de bankpagina meteen de
 // koppeling naar een aangifteperiode aanbiedt. De vaste ontvangstrekening van
@@ -376,9 +379,11 @@ export const besteMatch = <T extends MatchKandidaat>(
 /**
  * Factuur-ids die al aan een banktransactie gekoppeld zijn (`bank_koppelingen`).
  * Verkoop: losse koppelingen plus alle facturen in een PSP-bundel. Inkoop: losse
- * koppelingen (ook een creditnota die als bijschrijving binnenkwam) plus de
- * automatisch geboekte PSP-kostenfactuur. `uitsluitKey` laat de koppeling van
- * de transactie zelf buiten beschouwing (herkoppelen van dezelfde transactie).
+ * koppelingen (ook een creditnota die als bijschrijving binnenkwam), de
+ * automatisch geboekte PSP-kostenfactuur en de factuur van de PSP waarmee de
+ * ingehouden kosten van een uitbetaling verrekend zijn (`kostenVerrekend`).
+ * `uitsluitKey` laat de koppeling van de transactie zelf buiten beschouwing
+ * (herkoppelen van dezelfde transactie).
  */
 export const gekoppeldeFactuurIds = (
   bankKoppelingen: Record<string, any> | null | undefined,
@@ -394,6 +399,9 @@ export const gekoppeldeFactuurIds = (
     if (k.soort === 'psp') {
       if (soort === 'verkoop') for (const id of (k.factuurIds || [])) ids.add(Number(id))
       if (soort === 'inkoop' && k.kostenFactuurId != null) ids.add(Number(k.kostenFactuurId))
+      if (soort === 'inkoop' && Array.isArray(k.kostenVerrekend)) {
+        for (const d of k.kostenVerrekend) if (d && d.factuurId != null) ids.add(Number(d.factuurId))
+      }
     }
   }
   return ids

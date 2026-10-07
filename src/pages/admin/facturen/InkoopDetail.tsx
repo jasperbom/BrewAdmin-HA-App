@@ -5,10 +5,11 @@ import Btn from '../../../components/ui/Btn'
 import Icon from '../../../components/ui/Icon'
 import { ADDON_BASE } from '../../../utils/api'
 import { fmtQty } from '../../../utils/format'
-import { dagNotatie } from '../../../utils/periode'
+import { dagNotatie, vulIn } from '../../../utils/periode'
 import { periodeKeyLabel } from '../../../utils/btw'
 import { inkoopCenten } from '../../../utils/factuurFilter'
 import { inkoopRegelExport } from '../../../utils/csv'
+import { inkoopBrutoCent, type PspVerrekening } from '../../../utils/pspUitbetaling'
 import type { BankBetaling, InkoopStand, VerlegdInfo } from '../../../utils/factuurTijdlijn'
 import { fmt } from '../adminContext'
 import { InkoopPil } from './FactuurPil'
@@ -17,13 +18,16 @@ import { ActieBalk, MeerKnoppen, type DetailKnop } from './DetailKnoppen'
 // ── Detail van een inkoopfactuur ────────────────────────────────────────────
 // Leverancier, bedragen, de regels in het kort, de BTW-bijzonderheden
 // (rollover, verlegd), de bijlage (openen of toevoegen) en de betaling, met
-// de afschrijving erbij als die aan het bankafschrift gekoppeld is.
+// de afschrijving erbij als die aan het bankafschrift gekoppeld is — of, bij
+// de factuur van een PSP, de uitbetalingen waarop de kosten zijn ingehouden.
 
 export interface InkoopDetailProps {
   factuur: any
   stand: InkoopStand
   verlegd: VerlegdInfo | null
   bank: BankBetaling | null
+  /** De uitbetalingen waarmee deze factuur (van een PSP) verrekend is. */
+  verrekeningen?: PspVerrekening[]
   /** Betaaldatum zoals de boekhouding hem kent (veld, of de gekoppelde transactie). */
   betaaldDatum?: string
   altNaam?: string
@@ -56,12 +60,14 @@ const hoeveelheidTekst = (r: any): string => {
 }
 
 const InkoopDetail: React.FC<InkoopDetailProps> = ({
-  factuur: f, stand, verlegd, bank, betaaldDatum, altNaam, vergrendeld, onBijlage, bijlageBezig,
+  factuur: f, stand, verlegd, bank, verrekeningen = [], betaaldDatum, altNaam, vergrendeld, onBijlage, bijlageBezig,
   primair, tweede, meer, onSluit, terugLabel, cls,
 }) => {
   const c = inkoopCenten(f)
   const regels: any[] = Array.isArray(f.regels) ? f.regels : []
-  const betaald = stand.fase === 'betaald' || stand.fase === 'betaald_alt'
+  const betaald = stand.fase === 'betaald' || stand.fase === 'betaald_alt' || stand.fase === 'verrekend'
+  const verrekendCent = verrekeningen.reduce((s, v) => s + v.cent, 0)
+  const totaalCent = Math.abs(inkoopBrutoCent(f))
   return (
     <DetailPaneel
       titel={f.factuurnummer || '—'}
@@ -97,6 +103,21 @@ const InkoopDetail: React.FC<InkoopDetailProps> = ({
               {[bank.dag ? dagNotatie(bank.dag) : '', bank.tegenpartij, bank.bedrag_cent !== null ? fmt(bank.bedrag_cent / 100) : '']
                 .filter(Boolean).join(' · ') || '—'}
               {bank.soort === 'psp' && <span className="block text-xs text-gray-500">{t('fct_psp_kosten')}</span>}
+            </Rij>
+          )}
+          {verrekeningen.length > 0 && (
+            <Rij label={t('fct_verrekend_met')}>
+              <ul className="grid gap-0.5">
+                {verrekeningen.map(v => (
+                  <li key={v.key} className="flex items-baseline justify-between gap-3 min-w-0">
+                    <span className="min-w-0 break-words">{[v.dag ? dagNotatie(v.dag) : '', v.referentie || v.tegenpartij].filter(Boolean).join(' · ') || '—'}</span>
+                    <span className="text-gray-500 tabular-nums whitespace-nowrap">{fmt(v.cent / 100)}</span>
+                  </li>
+                ))}
+              </ul>
+              <span className={`block text-xs ${verrekendCent >= totaalCent ? 'text-green-700' : 'text-orange-700'}`}>
+                {vulIn(t('fct_verrekend_totaal'), { verrekend: fmt(verrekendCent / 100), totaal: fmt(totaalCent / 100) })}
+              </span>
             </Rij>
           )}
           <Rij label={t('fct_bijlage')}>

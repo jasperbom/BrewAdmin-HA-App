@@ -2,6 +2,7 @@ import { t } from '../../../i18n'
 import { fmtD } from '../../../utils/format'
 import { periodeKeyLabel } from '../../../utils/btw'
 import { koppelingVan, pspNaam, txKey } from '../../../utils/bank'
+import { pspKostenCent, pspKostenOpenCent } from '../../../utils/pspUitbetaling'
 import { vulIn } from '../../../utils/periode'
 import type { BankVoorstel } from '../../../utils/bankVoorstel'
 import { fmt } from '../adminContext'
@@ -58,6 +59,8 @@ export interface KoppelingWeergave {
   ontbreekt?: boolean
   /** Gekoppelde factuur die nog niet op betaald staat: "Markeer betaald". */
   onbetaald?: { soort: 'verkoop' | 'inkoop', id: number }
+  /** Iets wat nog moet gebeuren (oranje): de kosten van een PSP-uitbetaling, factuur volgt. */
+  waarschuwing?: string
 }
 
 /** Waaraan een gekoppelde transactie hangt, leesbaar; null = ongekoppeld. */
@@ -100,10 +103,25 @@ export function koppelingWeergave(tx: any, d: BankTekstData): KoppelingWeergave 
       return { titel: vulIn(t('bank_kop_aflossing'), { naam: r?.naam || t('lbl_onbekend') }), hints }
     }
     case 'psp': {
+      // Kosten: als kostenpost geboekt, verrekend met de factuur van de PSP,
+      // of nog open ("factuur volgt") — utils/pspUitbetaling.ts.
       const opgeslagen = (d.bankKoppelingen || {})[txKey(tx)]
-      const kf = opgeslagen?.kostenFactuurId ? (d.inkoopFacturen || []).find((f: any) => f.id === opgeslagen.kostenFactuurId) : null
-      const vars = { psp: pspNaam(tx) || 'PSP', n: (k.ids || []).length, kosten: fmt(Number(kf?.totaal_bruto) || 0) }
-      return { titel: vulIn(t(kf ? 'bank_kop_psp' : 'bank_kop_psp_zonder_kosten'), vars), hints }
+      const kosten = pspKostenCent(opgeslagen, d.inkoopFacturen)
+      const vars = { psp: pspNaam(tx) || 'PSP', n: (k.ids || []).length, kosten: geldCent(kosten) }
+      if (tx.verslag?.referentie) hints.push(vulIn(t('bank_hint_verslag'), { referentie: tx.verslag.referentie }))
+      else if (tx.verslag?.bestand) hints.push(t('bank_hint_verslag_zonder_ref'))
+      const verrekend: string[] = (Array.isArray(opgeslagen?.kostenVerrekend) ? opgeslagen.kostenVerrekend : [])
+        .map((x: any) => (d.inkoopFacturen || []).find((f: any) => f.id === x?.factuurId))
+        .filter(Boolean)
+        .map((f: any) => f.factuurnummer || f.leverancier || '')
+        .filter(Boolean)
+      if (verrekend.length) hints.push(vulIn(t('bank_hint_kosten_verrekend'), { nummers: verrekend.join(', ') }))
+      const open = pspKostenOpenCent(opgeslagen, d.inkoopFacturen)
+      return {
+        titel: vulIn(t(kosten > 0 ? 'bank_kop_psp' : 'bank_kop_psp_zonder_kosten'), vars),
+        hints,
+        ...(open > 0 ? { waarschuwing: vulIn(t('bank_hint_kosten_volgt'), { bedrag: geldCent(open) }) } : {}),
+      }
     }
   }
   return null

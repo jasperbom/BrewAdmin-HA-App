@@ -70,7 +70,9 @@ BrewAdmin-HA-App/
 │   │       ├── AdministratiePage.tsx # Container van Facturen, Bank, Aangiftes en Rapporten (`sectie`): de
 │   │       │               # props uit App, plus wat meer dan één sectie nodig heeft (BTW-rollover,
 │   │       │               # alt-rekeningschuld, BTW-/accijnsbetaling (ont)koppelen, `markeerBetaald`,
-│   │       │               # `bankTransacties` met de vlaggen uit `herstelKoppelingVlaggen`). Wist het
+│   │       │               # `bankTransacties` met de vlaggen uit `herstelKoppelingVlaggen`, en de
+│   │       │               # PSP-kostenverrekening: `verrekenPspKosten`, `werkVerrekendeFacturenBij`,
+│   │       │               # `kostenpostMagVervallen` — Bank én Facturen). Wist het
 │   │       │               # navigatiedoel na het mounten (`onNavDoelConsumed`)
 │   │       ├── adminContext.ts # `AdminContextWaarde` + `useAdmin()`. Wordt iets later gedeeld, dan verhuist
 │   │       │               # het naar AdministratiePage en komt het hier bij — geen tweede kopie in een sectie
@@ -78,12 +80,15 @@ BrewAdmin-HA-App/
 │   │       │               # "Te verwerken", CSV van precies de gefilterde lijst
 │   │       ├── facturen/   # VerkoopDetail/InkoopDetail, Tijdlijn ("Gebeurd"), FactuurPil, DetailKnoppen
 │   │       │               # (één primaire knop + "Meer"), lijsten (kolommen + telefoonkaarten),
-│   │       │               # LosseFactuurModal, AltRekeningKiezer, UblWaarschuwing, Melding (i.p.v. alert())
+│   │       │               # LosseFactuurModal, AltRekeningKiezer, UblWaarschuwing, Melding (i.p.v. alert()),
+│   │       │               # PspVerrekenModal (de factuur van Mollie e.d. verrekenen met de uitbetalingen)
 │   │       ├── BankSectie.tsx # Werkwachtrij Te koppelen | Gekoppeld | Alles: rekeningkeuze, saldo,
 │   │       │               # aansluitregel, één voorstel + één knop per transactie, import en afschriften
 │   │       ├── bank/       # Aansluiting, AfschriftenModal (lijst + verwijderen met terugweg),
 │   │       │               # FactuurKiezer (zoeken i.p.v. keuzelijst), KeuzeModal (periode/maand/rekening),
-│   │       │               # TransactieModal ("Wat is deze transactie?"), PspModal, KapitaalModal, bankTekst
+│   │       │               # TransactieModal ("Wat is deze transactie?"), PspModal (uitsplitsen: verslag +
+│   │       │               # facturen + kosten verrekenen/factuur volgt/kostenpost), VerslagBlok (het
+│   │       │               # uitbetalingsverslag en de factuur per regel), KapitaalModal, bankTekst
 │   │       ├── AangiftesSectie.tsx # BTW | Accijns: periodelijst met stappen, detail met invulhulp,
 │   │       │               # controle, indienen en betaling; webshopverkopen ophalen
 │   │       ├── aangiftes/  # PeriodeLijst (één component voor beide), BtwRubrieken, AccijnsBoekingen,
@@ -331,6 +336,18 @@ BrewAdmin-HA-App/
 │   │   ├── bankImportKoppeling.ts # Automatische koppeling bij het inlezen (`autoKoppelImport`): een koppeling uit
 │   │   │                   # `bank_koppelingen` komt terug, nooit een storno, facturen via `besteMatchBinnenDatum`
 │   │   │                   # (zelfde datumgrens als het voorstel), BTW/accijns op ± € 1, PSP alleen als voorstel
+│   │   ├── pspVerslag.ts   # Het uitbetalingsverslag van Mollie e.d. (PDF, tekstlaag via pdf.js): `leesPspVerslag`
+│   │   │                   # (regels: datum, methode, bedragen, omschrijving, consument; soort betaling/
+│   │   │                   # terugbetaling/kosten/compensatie/overig; kenmerk + totaal) en `koppelPspVerslag`
+│   │   │                   # (factuur via `wc_order_nummer` → `bestelling_id` of het factuurnummer van de
+│   │   │                   # betaallink; terugstorting in hetzelfde verslag = netto nul, anders de creditnota;
+│   │   │                   # kosten per factuur van de PSP via `verslagKosten`). Koppelt zelf niets
+│   │   ├── pspUitbetaling.ts # De kosten van een PSP-uitbetaling verrekenen met de factuur van de PSP:
+│   │   │                   # `kostenCent`/`kostenVerrekend` op de koppeling, open kosten ("factuur volgt"),
+│   │   │                   # `pspVerrekeningenVoor` (factuur → uitbetalingen), `inkoopNaVerrekening` (helemaal
+│   │   │                   # gedekt = betaald, `betaald_door_verrekening`), `verrekenKandidaten` (het verslag
+│   │   │                   # noemt het nummer = voorgesteld), `pasPspVerrekeningToe` (een oude kostenpost
+│   │   │                   # vervalt), `kostenFactuurKandidaten`, `pspKostenRegels`, `verslagInfo`
 │   │   ├── aangifteStappen.ts # BTW en accijns in hetzelfde ritme: Lopend → Berekend → Gecontroleerd →
 │   │   │                   # Ingediend → Betaald (of Terugontvangen; € 0 ingediend = Nihil). Per periode de
 │   │   │                   # stap, het bedrag met teken (centen), de uiterste datum, de ene volgende
@@ -591,7 +608,7 @@ uit `bank_koppelingen`, aansluiting per afschrift, verwijderen +
 `bank_saldi`), de bankwerklijst en de koppelvoorstellen
 (`bankWerklijst.test.ts`, `bankVoorstel.test.ts`: datumgrens, ambigu, storno,
 één factuur één betaling, deelbetaling in de kiezer), de automatische koppeling
-bij het inlezen (`bankImportKoppeling.test.ts`: dezelfde datumgrens), de aangiftestappen
+bij het inlezen (`bankImportKoppeling.test.ts`: dezelfde datumgrens), het uitbetalingsverslag van Mollie (`pspVerslag.test.ts`: bedragen en datums in vijf talen, kolommen uit de kopregel, een streepje is geen minteken, terugstorting tegen betaling, creditnota, in twee keer betaald, kosten per factuur van de PSP) en de kostenverrekening (`pspUitbetaling.test.ts`: vier uitbetalingen dekken de factuur → betaald op de laatste dag, ontkoppelen → weer open, een eigen 'betaald' blijft staan, kostenpost vervalt, nooit meer dan de kosten), de aangiftestappen
 (`aangifteStappen.test.ts`: de telling op het segment = die van de badge, in
 kwartaal- én maandmodus; nihil; controlesleutel en migratie; navigatiedoel), de
 rapporten (`rapporten.test.ts`: W&V telt op tot `nettowinst`, peildatum, open
@@ -631,6 +648,8 @@ de secret-bestemming en de backup-versleuteling van `imap_creds`.
 `TestBankAfschriften` bewaakt de bewaarde bankafschriften: `bank_transacties`
 en `bank_afschriften` alleen als lijst (422), `productie` krijgt 403 (ook in
 een commit), `boekhouding` mag schrijven, delta toevoegen/verwijderen werkt.
+Het uitbetalingsverslag op een banktransactie (`verslag.bestand`) houdt zijn
+PDF vast tegen `/api/delete_upload` (409), net als een factuurbijlage.
 De suite start de echte handler op een efemere poort met een tijdelijke
 DATA_DIR.
 
@@ -1103,10 +1122,10 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_afwijkingen` | array | Expliciete afwijkingsregistraties: de enige manier om langs een harde CCP-blokkade te komen, altijd met onderbouwing + CAPA. Append-only |
 | `haccp_trace_oefeningen` | array | **Traceeroefeningen** (hoofdstuk 11): periodieke mock recall met bevroren omvang (lotcodes, afnemers), massabalans, traceergaten, doorlooptijd en conclusie. Append-only — een tegenvallende oefening mag niet achteraf bijgesteld worden |
 | `haccp_instellingen` | object | Kritische grenzen uit het handboek: stabiliteitsdagen, forced-fermentation-marge, THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |
-| `inkoop_facturen` | array | Inkoopfacturen |
+| `inkoop_facturen` | array | Inkoopfacturen. `betaald_via_alt_id` = betaald vanaf een alt-rekening; `betaald_door_verrekening` = de factuur van een PSP staat op betaald omdat de uitbetalingen hem dekken (`kostenVerrekend` in `bank_koppelingen`); `vorige_stand` = de stand van vóór een afrekening via een alt-rekening (ongedaan maken zet hem terug) |
 | `scan_correcties` | array | Het scangeheugen (`utils/scanGeheugen.ts`): `{tekst, soort, leverancier?, artikelcode?, naam?, kostensoort?, eenheid?}`, de nieuwste 500. Bij elk opslaan van een gescande factuur geleerd (per leverancier + artikelnummer, anders omschrijving); de oude `{tekst, soort}` blijft gelden als algemene correctie. Gaat vóór de indeling van het model |
 | `inkoop_inbox` | array | Facturen per e-mail: de PDF-bijlagen die de server-tick `_inbox_tick` uit het postvak (IMAP) haalde, met `status` `nieuw`/`verwerkt`/`genegeerd`. Item: `{id, ontvangen, mail_datum, van, van_naam, onderwerp, message_id, bijlage: {naam, bestand}, grootte, sha256, status, factuur_id?, afgehandeld?}`. De server voegt alleen nieuwe items toe (bestand `inbox_<sha256[:20]>.pdf` in de bijlagenmap); verwerken, negeren, terugzetten en verwijderen doet de app. Een PDF met een `sha256` die er al in staat (ook genegeerd/verwerkt) komt er nooit nog eens bij. Financiële key: alleen `boekhouding`/`beheer` schrijven. Wel in de Excel-backup |
-| `verkoop_facturen` | array | Verkoopfacturen |
+| `verkoop_facturen` | array | Verkoopfacturen. `verrekend_alt_id` = verrekend met de schuld aan een alt-rekening (ook nadat de factuur met de hand op betaald is gezet); `vorige_stand` = de stand daarvoor |
 | `bestellingen` | array | WooCommerce-bestellingen |
 | `bestelling_picks` | array | Pickregels per bestelling |
 | `afboekingen` | array | Biervoorraadbewegingen (vermis, vernietiging, overig). `bron_locatie_id` = waar het bier lág — bepaalt van welke locatie het afgaat én of er accijns verschuldigd wordt. Ontbreekt op records van vóór v1.12.52; die gelden als AGP |
@@ -1127,7 +1146,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `journaal` | array | Onveranderlijke journaalregels (ERP 2.1): geboekt bij definitief maken van facturen/aangiftes, bedragen in centen, correcties via storno — server-side append-only (422 bij wijzigen/verwijderen van bestaande regels) |
 | `jaarafsluitingen` | array | Jaarafsluitingen (ERP 2.3): snapshot balansposten + eigen vermogen per afgesloten boekjaar; beginbalans voor het EV-verloop op de balans |
 | `bank_saldi` | object | Laatst bekende MT940-eindsaldo per IBAN (ERP 2.3): `{iban, eindsaldo, beginsaldo, datum, afschrift_nr, geimporteerd_op}`, gezet bij bankimport. `datum` = het einde van de periode van het afschrift (`tot`); een ouder afschrift draait een nieuwer saldo niet terug, en na het verwijderen van een afschrift geldt weer het laatst overgebleven afschrift van die rekening (of geen saldo). De balans leest de liquide middelen uit de bewaarde afschriften en valt hierop terug (`liquideMiddelenOp`) |
-| `bank_transacties` | array | Bewaarde banktransacties (v1.12.89): een regel uit `parseMT940` met `{id, afschrift_id, iban, datum, type: C\|D, bedrag, referentie?, tegenpartij?, omschrijving?, storno?}` plus de gekoppeld*-vlaggen (`gekoppeldFactuurId`, `gekoppeldBtwPeriode`, `gekoppeldAccijnsMaand`, …) en de markeringen van de automatische koppeling. **`bank_koppelingen` blijft de bron van waarheid** (sleutel `txKey`): de vlaggen worden bij elke lezing opnieuw gezet (`herstelKoppelingVlaggen` in AdministratiePage) — lees ze uit de context en wijzig een transactie op `id`/`txKey`, nooit op haar plek in de lijst. Hetzelfde bestand twee keer inlezen voegt niets dubbel toe (`bouwBankImport`). Financieel (`boekhouding`/`beheer`); Excel-sheet `BankTransacties` |
+| `bank_transacties` | array | Bewaarde banktransacties (v1.12.89): een regel uit `parseMT940` met `{id, afschrift_id, iban, datum, type: C\|D, bedrag, referentie?, tegenpartij?, omschrijving?, storno?}` plus de gekoppeld*-vlaggen (`gekoppeldFactuurId`, `gekoppeldBtwPeriode`, `gekoppeldAccijnsMaand`, …) en de markeringen van de automatische koppeling. **`bank_koppelingen` blijft de bron van waarheid** (sleutel `txKey`): de vlaggen worden bij elke lezing opnieuw gezet (`herstelKoppelingVlaggen` in AdministratiePage) — lees ze uit de context en wijzig een transactie op `id`/`txKey`, nooit op haar plek in de lijst. Hetzelfde bestand twee keer inlezen voegt niets dubbel toe (`bouwBankImport`). Een PSP-uitbetaling kan een `verslag` dragen: het uitbetalingsverslag (PDF in de bijlagenmap) plus kenmerk, totalen en de ingehouden kosten per factuur van de PSP (`utils/pspUitbetaling.ts`, geen klantnamen); dat blijft staan als de koppeling verdwijnt. Financieel (`boekhouding`/`beheer`); Excel-sheet `BankTransacties` |
 | `bank_afschriften` | array | Ingelezen MT940-bestanden: `{id, iban, referentie, afschriftNr, beginsaldo, eindsaldo, van, tot, geimporteerd_op, aantal, nieuw, overgeslagen, transactie_ids, vorig_eindsaldo?}`. `transactie_ids` = álle transacties uit het bestand, ook die er al waren (de saldocontrole per afschrift); de aansluiting op het vorige afschrift rekent live (`vorigEindsaldoVoor`; overlap = geen aansluiting). Verwijderen (vijf seconden terugweg, audit `Bankafschrift`) haalt alleen transacties weg die in geen ander afschrift staan, laat `bank_koppelingen` staan — opnieuw inlezen zet de koppelingen terug — en zet `bank_saldi` terug (`bankSaldiNaVerwijderen`). Financieel; Excel-sheet `BankAfschriften` |
 | `btw_aangiftes` | array | Twee soorten record in één key. **Indiening:** `{id, periodeKey, ingediend_datum, bedrag, ingediend_door?}` — een record mét `periodeKey` betekent "ingediend" (`geslotenPeriodeSets` in `utils/btw.ts`); `bedrag` in hele euro's, negatief = teruggave; terugzetten = het record weg + storno in het journaal. **Controle:** `{periode, status, berekend_datum, berekend_door, reviewer, controle_status, controle_datum, controle_door, bevindingen, zelfde_persoon_akkoord?}` met `periode` = de periodesleutel (`2026-Q3`, `2026-M09`) en nooit een `periodeKey`; een oud record onder `<jaar>-<maandnaam in de schermtaal>` wordt bij de volgende schrijfactie omgezet (`btwControleRecord`/`metBtwControle`). Wie berekende, controleerde en indiende is de ingelogde gebruiker (`whoami`); de controleur kies je uit `gebruikers_rollen` (zonder gebruikers: vrije naam) — nooit een vaste naam. Controleur = berekenaar/indiener mag alleen met "toch akkoord" + bevindingen. Financieel |
 | `accijns_aangiftes` | array | Eén record per maand: `{maand: 'JJJJ-MM', status: open\|berekend\|ingediend\|betaald, berekend_datum, berekend_door, reviewer, controle_status, controle_datum, controle_door, bevindingen, zelfde_persoon_akkoord?, ingediend_datum, ingediend_door, bedrag, betaald_datum}`. "Vraag controle aan" zet `berekend`; indienen kan pas na akkoord en legt het maandtotaal vast als `bedrag` (euro's) — dat maakt het matchen van de bankbetaling mogelijk. € 0 ingediend = nihil (afgerond, geen betaling). Betaald via een bankkoppeling (`{soort:'accijns', maandKey}`, transactiedatum) of met de hand met een gekozen datum. Financieel |
@@ -1238,12 +1257,33 @@ Het `bankKoppelingen` object (sleutel: `txKey(tx)`, de enige definitie staat in 
 { soort: 'snd', periodeKey: string }
 
 // PSP-uitbetaling (Mollie e.d.): één credittransactie dekt meerdere
-// verkoopfacturen; het verschil (transactiekosten) wordt automatisch als
-// betaalde inkoopfactuur geboekt (kostenFactuurId). gemarkeerdBetaald bevat
-// de factuur-ids die door de koppeling op betaald zijn gezet, zodat
-// ontkoppelen ze kan terugzetten.
-{ soort: 'psp', factuurIds: number[], kostenFactuurId?: number, gemarkeerdBetaald: number[] }
+// verkoopfacturen (ook een creditnota bij een terugstorting); het verschil
+// zijn de kosten die de PSP inhield (kostenCent). Die kosten zijn óf
+// automatisch als betaalde inkoopfactuur geboekt (kostenFactuurId, de oude
+// manier), óf verrekend met de factuur die de PSP er per maand voor stuurt
+// (kostenVerrekend: per inkoopfactuur het deel uit deze uitbetaling), óf nog
+// open ("factuur volgt"). gemarkeerdBetaald bevat de factuur-ids die door de
+// koppeling op betaald zijn gezet, zodat ontkoppelen ze kan terugzetten.
+{ soort: 'psp', factuurIds: number[], gemarkeerdBetaald: number[], kostenCent?: number,
+  kostenFactuurId?: number, kostenVerrekend?: { factuurId: number, cent: number }[] }
 ```
+
+**Het uitbetalingsverslag** (de PDF van Mollie bij een uitbetaling) hoort bij
+de transactie, niet bij de koppeling: `bank_transacties[].verslag` (`{naam,
+bestand, referentie, som_cent, totaal_cent, aantal, kosten: [{nummer, cent}]}`
+— geen klantnamen; `_bijlage_in_gebruik` houdt de PDF vast). Bij het
+uitsplitsen leest de app de PDF opnieuw (`koppelPspVerslag`) en vinkt de
+facturen aan. De factuur van de PSP (inkoop) staat op betaald zodra de
+uitbetalingen hem helemaal dekken (`inkoopNaVerrekening`, met
+`betaald_door_verrekening` — alleen dan zet ontkoppelen hem weer open); hij
+telt als gekoppeld in `gekoppeldeFactuurIds`. Verrekenen kan vanaf de
+uitbetaling (Bank: "Kosten verrekenen") en vanaf de factuur (Facturen ›
+Inkoop: "Verrekenen met uitbetalingen"); de vastlegging is gedeeld
+(`verrekenPspKosten` in AdministratiePage). Een factuur die met de hand op
+betaald is gezet hangt nergens aan (`verkoopAfrekening`/`inkoopAfrekening` in
+`utils/factuurTijdlijn.ts` = null): verrekenen met een alt-rekening of met
+uitbetalingen kan dan nog, en ongedaan maken zet hem terug in zijn
+`vorige_stand`.
 
 De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, via `useAdmin()` in elke sectie) leest alle `soort: 'btw'`-entries en bouwt een `Set<string>` van betaalde periodeKeys; `aangifteStappen.ts` en `geslotenPeriodeSets` (`utils/btw.ts`) lezen dezelfde bron. Omdat de transacties bewaard worden (`bank_transacties`) zijn de gekoppeld*-vlaggen alleen nog een afgeleide: `herstelKoppelingVlaggen` zet ze bij elke lezing gelijk aan dit object (ook na ontkoppelen vanuit Aangiftes, een ander apparaat of een teruggezette backup), en een opnieuw ingelezen afschrift krijgt zijn koppelingen hieruit terug. Een BTW-, accijns- of SNd-ontkoppeling haalt elke betaling van die periode weg.
 
@@ -1283,7 +1323,7 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 | POST | `/api/backups/trigger` | Nu een backup maken (beheer-only) |
 | POST | `/api/backups/restore` | Eén data-key terugzetten uit een serverbackup (`{date, key}`) — beheer-only, geweigerd voor append-only keys, credentials en server-beheerde keys (`_NIET_TERUGZETBAAR`: `nummer_reeksen` + afgeleide serverdata), zelfde schrijfweg als `/api/data` (schemavalidatie, rollenvalidatie + lockout-guard via `_key_guard_fout`, versie, audit `backup_restore`). De rest van de administratie blijft staan |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB). Overschrijft nooit een bestaande bijlage: bij een botsing wijkt de server uit naar een vrije naam en geeft die terug als `bestand` — de client bewaart díé naam |
-| POST | `/api/delete_upload/<naam>` | Bijlage verwijderen; 409 zolang een inkoopfactuur, postvak-item, afboeking, verliesregistratie of lot (`etiket_fotos`) ernaar verwijst (`_bijlage_in_gebruik`) |
+| POST | `/api/delete_upload/<naam>` | Bijlage verwijderen; 409 zolang een inkoopfactuur, postvak-item, afboeking, verliesregistratie, lot (`etiket_fotos`) of banktransactie (`verslag`, het uitbetalingsverslag van een PSP) ernaar verwijst (`_bijlage_in_gebruik`) |
 | GET | `/*` | Serve `index.html` (SPA fallback) |
 
 ### Security constraints (do not remove)
@@ -1536,7 +1576,7 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 - Server gebruikt de **Payment Links API** (`/v2/payment-links`), niet de Payments API: een betaallink **verloopt standaard niet** en blijft geldig tot de klant betaalt. De deelbare URL komt uit `_links.paymentLink.href` (pure helper `_mollie_link_url`). Een Payments-checkout zou kortlevend zijn en na verlopen naar de `redirectUrl` (de website/homepagina) leiden
 - **Eén link per factuur** (`utils/mollieLink.ts`): omdat een link niet verloopt, komt de eerste link op de verkoopfactuur (`mollie_link: {id, url, amount_cent, aangemaakt}`) en gebruikt elke volgende mail (herinnering, aanmaning, opnieuw versturen) díe link zolang de factuur openstaat en het bedrag gelijk is (`herbruikbareBetaallink`). Maak nooit per mail een nieuwe link: twee links = de klant kan dezelfde factuur twee keer betalen. Een link die na betaling via de bank of een creditnota nog openstaat, wordt (nog) niet bij Mollie gearchiveerd
 - Redirect-URL valt terug op `brewery_details.website`; zonder een geldige URL blijft de checkbox uitgeschakeld (Mollie vereist een `redirectUrl`)
-- Betaling-terugkoppeling loopt via de bestaande **PSP-bankreconciliatie** (`bank.ts`): een Mollie-uitbetaling op het afschrift wordt aan de factuur/facturen gekoppeld — er is (bewust) geen webhook, want de addon is doorgaans niet publiek bereikbaar
+- Betaling-terugkoppeling loopt via de bestaande **PSP-bankreconciliatie** (`bank.ts`): een Mollie-uitbetaling op het afschrift wordt aan de factuur/facturen gekoppeld — er is (bewust) geen webhook, want de addon is doorgaans niet publiek bereikbaar. Met het **uitbetalingsverslag** (PDF) erbij zoekt de app de facturen zelf (`utils/pspVerslag.ts`: "Factuur F2026-0044" = de betaallink, "Bestelling 3289" = de webshoporder) en worden de ingehouden kosten verrekend met de maandfactuur van Mollie (`utils/pspUitbetaling.ts`, zie "`bankKoppelingen` — koppelingtypen")
 
 ### Home Assistant
 

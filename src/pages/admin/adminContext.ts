@@ -118,6 +118,21 @@ export interface AdminContextWaarde {
   ontkoppelAccijnsBetaling: (maandKey: string) => void
   /** Transactie als object (voorkeur) of als txKey; zet de maand op betaald (transactiedatum). */
   koppelAccijnsBetaling: (tx: any, maandKey: string) => void
+
+  // ── PSP-uitbetalingen: kosten verrekenen met de factuur van de PSP ─────────
+  // (utils/pspUitbetaling.ts) — vanuit Bank (de uitbetaling) én Facturen (de
+  // factuur van Mollie e.d.).
+  /** De status van deze inkoopfacturen gelijkzetten met de verrekeningen in `koppelingen`. */
+  werkVerrekendeFacturenBij: (koppelingen: Record<string, any>, factuurIds: number[]) => void
+  /** Mag deze automatische kostenpost vervallen (niet in een ingediende BTW-periode)? */
+  kostenpostMagVervallen: (factuurId: number) => boolean
+  /**
+   * Verrekeningen vastleggen, per factuur de gekozen uitbetalingen (cent 0 =
+   * niet meer). Vervallen kostenposten gaan weg met een tegenboeking; de
+   * facturen volgen met hun status. `basis`: de nieuwste koppelingen als de
+   * aanroeper die al heeft. False = niets gedaan (kostenpost vergrendeld).
+   */
+  verrekenPspKosten: (ops: { factuurId: number, keuzes: { key: string, cent: number }[] }[], basis?: Record<string, any>) => Record<string, any> | false
 }
 
 export const AdminContext = React.createContext<AdminContextWaarde | null>(null)

@@ -489,6 +489,19 @@ export interface InkoopFactuur {
   // hier het id uit `alt_rekeningen`. De factuur telt dan als schuld aan
   // die rekening tot een aflossing wordt gekoppeld.
   betaald_via_alt_id?: number
+  // De factuur van een PSP (Mollie e.d.) staat op betaald doordat de
+  // uitbetalingen hem helemaal dekken (`kostenVerrekend` in bank_koppelingen,
+  // utils/pspUitbetaling.ts). Alleen dan zet ontkoppelen hem weer op open.
+  betaald_door_verrekening?: boolean
+  // De stand van vóór een afrekening via een alt-rekening, zodat ongedaan
+  // maken een al betaalde factuur betaald laat (utils/factuurTijdlijn.ts).
+  vorige_stand?: VorigeFactuurStand
+}
+
+/** Stand van een factuur vóór een verrekening of betaling via een alt-rekening. */
+export interface VorigeFactuurStand {
+  status: string
+  betaald_datum?: string
 }
 
 // Alternatieve betaalrekening — een rekening waarvan soms uitgaven worden
@@ -992,6 +1005,22 @@ export interface BewaardeBankTransactie {
   matchAmbigu?: boolean
   pspHerkend?: boolean
   pspVoorstelIds?: number[]
+  /**
+   * Het uitbetalingsverslag van de PSP bij deze uitbetaling (PDF in de
+   * bijlagenmap, `_bijlage_in_gebruik` houdt hem vast) en wat de app eruit
+   * las: kenmerk, totalen, kosten per factuur van de PSP — geen klantnamen
+   * (utils/pspUitbetaling.ts). Blijft staan als de koppeling verdwijnt.
+   */
+  verslag?: {
+    naam: string
+    bestand: string
+    referentie?: string
+    som_cent?: number
+    totaal_cent?: number | null
+    aantal?: number
+    kosten?: { nummer: string, cent: number }[]
+    ingelezen_op?: string
+  }
 }
 
 // Bewaard bankafschrift (`bank_afschriften`): één ingelezen MT940-bestand.
@@ -1090,8 +1119,10 @@ export interface VerkoopFactuur {
   credit_van_factuur_id?: number | null
   // Verrekend met de schuld aan een alternatieve betaalrekening (aflossing in
   // natura, bijv. bier geleverd aan de eigenaar i.p.v. een bankbetaling).
-  // Het brutobedrag telt als aflossing van die schuld.
+  // Het brutobedrag telt als aflossing van die schuld. Kan ook nadat de
+  // factuur met de hand op betaald is gezet; `vorige_stand` onthoudt die.
   verrekend_alt_id?: number | null
+  vorige_stand?: VorigeFactuurStand
   betaald_datum?: string
   // Zelfde rollover als bij inkoop (InkoopFactuur.btw_periode): alleen gezet
   // wanneer de factuurdatum in een al ingediende of betaalde BTW-periode valt.

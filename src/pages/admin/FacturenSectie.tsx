@@ -33,7 +33,11 @@ import { periodeBereik, OPEN_BEREIK, STANDAARD_PERIODE } from '../../utils/perio
 import {
   verkoopStand, verkoopPrimaireActie, inkoopStand, inkoopVerlegd, bankBetalingVoor, bestellingRef,
   verkoopTijdlijn, HERINNERING_SLEUTEL, type HerinneringNiveau, type VerkoopActie, type VerkoopStand,
+  verkoopAfrekening, inkoopAfrekening, metAltAfrekening, zonderAltAfrekening,
 } from '../../utils/factuurTijdlijn'
+import { isPspNaam } from '../../utils/bank'
+import { normFactuurnummer } from '../../utils/pspVerslag'
+import { verrekenKandidaten, verrekenVoorstelAantal, pspVerrekeningenVoor, inkoopBrutoCent, pasPspVerrekeningToe } from '../../utils/pspUitbetaling'
 import Btn from '../../components/ui/Btn'
 import Icon from '../../components/ui/Icon'
 import LegeStaat from '../../components/ui/LegeStaat'
@@ -48,6 +52,7 @@ import VerkoopDetail, { type BetaallinkStatus } from './facturen/VerkoopDetail'
 import InkoopDetail from './facturen/InkoopDetail'
 import LosseFactuurModal from './facturen/LosseFactuurModal'
 import AltRekeningKiezer from './facturen/AltRekeningKiezer'
+import PspVerrekenModal from './facturen/PspVerrekenModal'
 import UblWaarschuwing from './facturen/UblWaarschuwing'
 import Melding from './facturen/Melding'
 import type { DetailKnop } from './facturen/DetailKnoppen'
@@ -156,12 +161,12 @@ function FacturenSectie() {
     navDoel, gaNaarDoel, inkoopFacturen, setInkoopFacturen, ing, lots, onderdelen,
     claudeCreds, ingTypes, ingTypeBtw, verkoopFacturen, setVerkoopFacturen, bestellingen,
     setPage, setOpenOrderId, breweryDetails, factuurLogo, klanten,
-    bankKoppelingen, altRekeningen, auditLog, setAuditLog, kostenSoorten,
+    bankKoppelingen, setBankKoppelingen, altRekeningen, auditLog, setAuditLog, kostenSoorten,
     smtpCreds, mollieCreds, appName, logo, mailTemplates, scanCorrecties,
     setScanCorrecties, setJournaal, merchArtikelen, setMerchArtikelen, merchVoorraadLog,
     setMerchVoorraadLog, inkoopInbox, setInkoopInbox, refreshInkoopInbox, imapCreds, onNaarPostvakInstellingen,
     bankTransacties, klantNaamVoor, schuldPerAltRekening, knownLeveranciers, btwBetaaldePerioden, btwIngediendeKeys,
-    btwPeriodeType, getRolloverInfo, boekInkoopVoorraad, markeerBetaald,
+    btwPeriodeType, getRolloverInfo, boekInkoopVoorraad, markeerBetaald, verrekenPspKosten, kostenpostMagVervallen,
   } = useAdmin()
   const smal = useSmalScherm()
   // Naast een open detail: netto en BTW pas vanaf 1600 px, de rij-handeling
@@ -239,17 +244,20 @@ function FacturenSectie() {
   // InstellingenPage waar de rekeningen beheerd worden.
   const [betaalViaAltFactuurId, setBetaalViaAltFactuurId] = React.useState<number|null>(null)
 
+  // Ook een factuur die al met de hand op betaald staat (en dus nergens aan
+  // hangt) kan nog via een alt-rekening afgerekend worden; ongedaan maken zet
+  // hem terug in de stand van daarvoor (utils/factuurTijdlijn.ts).
   const markeerBetaaldViaAlt = (factuurId: number, altRekeningId: number) => {
     const r = (altRekeningen||[]).find((x: any) => x.id === altRekeningId)
     setInkoopFacturen((prev: any[]) => prev.map((f: any) =>
-      f.id === factuurId ? {...f, status:'betaald', betaald_via_alt_id: altRekeningId, betaald_datum: f.betaald_datum || tod()} : f
+      f.id === factuurId ? metAltAfrekening(f, 'betaald_via_alt_id', altRekeningId, tod()) : f
     ))
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd', omschrijving:`Betaald via ${r?.naam||'alt. rekening'}`})
   }
 
   const ontkoppelBetaaldViaAlt = (factuurId: number) => {
     setInkoopFacturen((prev: any[]) => prev.map((f: any) =>
-      f.id === factuurId ? {...f, status:'open', betaald_via_alt_id: undefined, betaald_datum: undefined} : f
+      f.id === factuurId ? zonderAltAfrekening(f, 'betaald_via_alt_id') : f
     ))
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd', omschrijving:'Betaling via alt. rekening ongedaan gemaakt'})
   }
@@ -273,16 +281,51 @@ function FacturenSectie() {
   const verrekenMetAltRekening = (factuurId: number, altRekeningId: number) => {
     const r = (altRekeningen||[]).find((x: any) => x.id === altRekeningId)
     setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
-      f.id === factuurId ? {...f, status: 'betaald', verrekend_alt_id: altRekeningId, betaald_datum: f.betaald_datum || tod()} : f
+      f.id === factuurId ? metAltAfrekening(f, 'verrekend_alt_id', altRekeningId, tod()) : f
     ))
     logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd', omschrijving:`Verrekend met schuld aan ${r?.naam||'alt. rekening'}`})
   }
 
   const ontkoppelVerrekening = (factuurId: number) => {
     setVerkoopFacturen((prev: any[]) => prev.map((f: any) =>
-      f.id === factuurId ? {...f, status: 'open', verrekend_alt_id: undefined, betaald_datum: undefined} : f
+      f.id === factuurId ? zonderAltAfrekening(f, 'verrekend_alt_id') : f
     ))
     logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd', omschrijving:'Verrekening met alt. rekening ongedaan gemaakt'})
+  }
+
+  // ── De factuur van een PSP verrekenen met de uitbetalingen ─────────────────
+  // Mollie e.d. houden hun kosten in op de uitbetalingen en sturen er per maand
+  // één factuur voor: die is dan niet per bank betaald maar verrekend. Kiezen
+  // welke uitbetalingen hem dekten (het uitbetalingsverslag zegt het al);
+  // vastleggen doet de gedeelde verrekenPspKosten (AdministratiePage).
+  const [pspVerrekenFactuurId, setPspVerrekenFactuurId] = React.useState<number|null>(null)
+  // Factuurnummers die een uitbetalingsverslag bij de ingehouden kosten noemt.
+  const verslagNummers = React.useMemo(() => {
+    const s = new Set<string>()
+    for (const tx of bankTransacties || []) for (const k of (tx?.verslag?.kosten || [])) {
+      const nr = normFactuurnummer(k?.nummer)
+      if (nr) s.add(nr)
+    }
+    return s
+  }, [bankTransacties])
+  /** Kan deze inkoopfactuur met PSP-uitbetalingen verrekend worden, en noemt een verslag hem (voorstel)? */
+  const pspVerrekenStand = (f: any): {kan: boolean, voorstel: boolean} => {
+    const afrekening = inkoopAfrekening(f, bankKoppelingen)
+    if (afrekening !== null && afrekening !== 'psp_verrekend') return {kan: false, voorstel: false}
+    if (afrekening === null && !isPspNaam(f.leverancier) && !verslagNummers.has(normFactuurnummer(f.factuurnummer))) return {kan: false, voorstel: false}
+    const kandidaten = verrekenKandidaten(f, bankKoppelingen, bankTransacties, inkoopFacturen)
+    if (!kandidaten.length) return {kan: false, voorstel: false}
+    const verrekend = pspVerrekeningenVoor(f.id, bankKoppelingen, bankTransacties).reduce((s, v) => s + v.cent, 0)
+    return {kan: true, voorstel: verrekenVoorstelAantal(kandidaten) > 0 && verrekend < inkoopBrutoCent(f)}
+  }
+  const slaPspVerrekeningOp = (f: any, keuzes: {key: string, cent: number}[]) => {
+    if (!keuzes.length) { setPspVerrekenFactuurId(null); return }
+    const r = verrekenPspKosten([{factuurId: f.id, keuzes}])
+    if (!r) { setMelding(t('bank_kostenpost_vergrendeld')); return }
+    const n = pspVerrekeningenVoor(f.id, r, bankTransacties).length
+    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:f.id, actie:'gewijzigd',
+      omschrijving:`${f.factuurnummer || f.leverancier || ''} verrekend met ${n} PSP-uitbetaling(en)`})
+    setPspVerrekenFactuurId(null)
   }
 
   // ── Bijlage bij een inkoopfactuur toevoegen ─────────────────────────────────
@@ -327,6 +370,18 @@ function FacturenSectie() {
       fetch(`${ADDON_BASE}api/delete_upload/${f.bijlage.bestand}`, {method:'POST', body:'{}'}).catch(()=>{});
     }
     setInkoopFacturen((prev: any) => prev.filter((f: any)=>f.id!==id));
+    // Was dit de factuur van een PSP waarmee uitbetalingen verrekend zijn, dan
+    // staan die kosten weer open ("factuur volgt") in plaats van te verwijzen
+    // naar een factuur die er niet meer is.
+    const verrekend = pspVerrekeningenVoor(id, bankKoppelingen, bankTransacties)
+    if (verrekend.length) {
+      const {koppelingen} = pasPspVerrekeningToe(bankKoppelingen, id, verrekend.map(v => ({key: v.key, cent: 0})))
+      setBankKoppelingen((prev: any) => {
+        const c = {...(prev || {})}
+        for (const v of verrekend) if (koppelingen[v.key]) c[v.key] = koppelingen[v.key]
+        return c
+      })
+    }
     // Kwam de factuur uit het postvak, dan wacht de PDF daar weer op verwerking:
     // het bewijsstuk blijft dus nooit zonder factuur of postvakitem achter.
     if ((inkoopInbox||[]).some((i: any) => i?.status === 'verwerkt' && i?.factuur_id === id)) {
@@ -957,12 +1012,15 @@ function FacturenSectie() {
       if (primair.id !== 'herinner_pdf') meer.push(herinneringPdfKnop(f, stand.volgende))
       if (primair.id !== 'herinner_mail') meer.push(herinneringMailKnop(f, stand.volgende))
     }
-    if (open && (altRekeningen || []).length > 0) {
+    // Verrekenen kan zolang de factuur nergens aan hangt — ook als hij al met de
+    // hand op betaald staat (dan is er nog niets van vastgelegd).
+    if (stand.fase !== 'credit' && verkoopAfrekening(f, bankKoppelingen) === null && (altRekeningen || []).length > 0) {
       meer.push({id: 'verreken', label: t('btn_verreken_alt'), title: t('title_verreken_alt'), onClick: () => setVerrekenFactuurId(f.id)})
     }
-    // Terugdraaien zet de factuur weer op open: bevestiging in de knop.
+    // Terugdraaien zet de factuur terug in de stand van daarvoor: bevestiging in de knop.
     if (f.verrekend_alt_id != null) {
-      meer.push({id: 'ontkoppel_verreken', label: t('btn_verrekening_ongedaan'), gevaar: true, bevestig: t('fct_terug_naar_open'),
+      meer.push({id: 'ontkoppel_verreken', label: t('btn_verrekening_ongedaan'), gevaar: true,
+        bevestig: t(f.vorige_stand?.status === 'betaald' ? 'fct_terug_naar_betaald' : 'fct_terug_naar_open'),
         onClick: () => ontkoppelVerrekening(f.id)})
     }
     return {stand, primair, tweede, meer}
@@ -971,18 +1029,31 @@ function FacturenSectie() {
   const inkoopVergrendeld = (f: any): boolean => !magFactuurMuteren(f, btwPeriodeType, btwIngediendeKeys, btwBetaaldePerioden)
   const bewerkInkoop = (f: any) => { const bd = getBetaaldDatum(f); setEditingFactuur(bd ? {...f, betaald_datum: bd} : f) }
 
+  const pspVerrekenKnop = (f: any): DetailKnop => ({
+    id: 'psp_verreken', label: t('fct_psp_verrekenen'), title: t('fct_psp_verrekenen_titel'), onClick: () => setPspVerrekenFactuurId(f.id),
+  })
+
   const inkoopKnoppen = (f: any) => {
     const stand = inkoopStand(f, vandaagIso)
     const open = stand.fase === 'open' || stand.fase === 'te_laat'
     const bewerk: DetailKnop = {id: 'bewerk', label: t('btn_edit'), onClick: () => bewerkInkoop(f)}
-    const primair: DetailKnop = open ? {id: 'betaald', label: t('btn_mark_paid'), onClick: () => markeerInkoopBetaald(f.id)} : bewerk
-    const tweede = open ? bewerk : null
+    const betaald: DetailKnop = {id: 'betaald', label: t('btn_mark_paid'), onClick: () => markeerInkoopBetaald(f.id)}
+    // De factuur van een PSP: noemt een uitbetalingsverslag hem, dan is
+    // verrekenen de handeling — ook als hij al op betaald staat.
+    const psp = pspVerrekenStand(f)
+    const primair: DetailKnop = psp.voorstel ? pspVerrekenKnop(f) : open ? betaald : bewerk
+    const tweede: DetailKnop | null = psp.voorstel ? (open ? betaald : bewerk) : open ? bewerk : null
     const meer: DetailKnop[] = []
-    if (f.status !== 'betaald' && (altRekeningen || []).length > 0) {
+    if (psp.kan && !psp.voorstel) meer.push(pspVerrekenKnop(f))
+    if (primair.id !== 'bewerk' && tweede?.id !== 'bewerk') meer.push(bewerk)
+    // Via een alt-rekening: zolang de factuur nergens aan hangt, ook als hij al
+    // met de hand op betaald staat.
+    if (inkoopAfrekening(f, bankKoppelingen) === null && (altRekeningen || []).length > 0) {
       meer.push({id: 'via_alt', label: t('btn_betaald_via_alt'), title: t('title_betaald_via_alt'), onClick: () => setBetaalViaAltFactuurId(f.id)})
     }
     if (f.betaald_via_alt_id != null) {
-      meer.push({id: 'ontkoppel_alt', label: t('fct_alt_ontkoppel'), gevaar: true, bevestig: t('fct_terug_naar_open'),
+      meer.push({id: 'ontkoppel_alt', label: t('fct_alt_ontkoppel'), gevaar: true,
+        bevestig: t(f.vorige_stand?.status === 'betaald' ? 'fct_terug_naar_betaald' : 'fct_terug_naar_open'),
         onClick: () => ontkoppelBetaaldViaAlt(f.id)})
     }
     const slot = inkoopVergrendeld(f)
@@ -1205,6 +1276,7 @@ function FacturenSectie() {
         stand={stand}
         verlegd={inkoopVerlegd(f)}
         bank={bankBetalingVoor(f.id, 'inkoop', bankKoppelingen, bankTransacties)}
+        verrekeningen={pspVerrekeningenVoor(f.id, bankKoppelingen, bankTransacties)}
         betaaldDatum={getBetaaldDatum(f)}
         altNaam={altNaam(f.betaald_via_alt_id)}
         vergrendeld={inkoopVergrendeld(f)}
@@ -1235,6 +1307,7 @@ function FacturenSectie() {
     statusOnderNaam: detailOpen && !lg,
     rijActie: (f: any) => {
       const s = inkoopStand(f, vandaagIso)
+      if (pspVerrekenStand(f).voorstel) return pspVerrekenKnop(f)
       return s.fase === 'open' || s.fase === 'te_laat' ? {id: 'betaald', label: t('btn_mark_paid'), onClick: () => markeerInkoopBetaald(f.id)} : null
     },
   }
@@ -1490,6 +1563,20 @@ function FacturenSectie() {
             onKies={(id: number) => { markeerBetaaldViaAlt(betaalViaAltFactuurId!, id); setBetaalViaAltFactuurId(null) }}
             onClose={() => setBetaalViaAltFactuurId(null)}
           />
+        )
+      })()}
+
+      {/* De factuur van een PSP verrekenen met de uitbetalingen */}
+      {pspVerrekenFactuurId !== null && (() => {
+        const f = (inkoopFacturen||[]).find((x: any) => x.id === pspVerrekenFactuurId)
+        if (!f) return null
+        return (
+          <PspVerrekenModal factuur={f}
+            kandidaten={verrekenKandidaten(f, bankKoppelingen, bankTransacties, inkoopFacturen)}
+            kostenpostMagVervallen={kostenpostMagVervallen}
+            onOpslaan={(keuzes) => slaPspVerrekeningOp(f, keuzes)}
+            onNaarBank={() => { setPspVerrekenFactuurId(null); gaNaarDoel({pagina: 'bank'}) }}
+            onSluit={() => setPspVerrekenFactuurId(null)} />
         )
       })()}
 

@@ -38,9 +38,10 @@ export const VerkoopPil: React.FC<{ stand: VerkoopStand }> = ({ stand }) => {
   )
 }
 
-/** De pil van een inkoopfactuur: Open, Te laat n d, Betaald of Via <alt-rekening>. */
+/** De pil van een inkoopfactuur: Open, Te laat n d, Betaald, Verrekend (PSP) of Via <alt-rekening>. */
 export const InkoopPil: React.FC<{ stand: InkoopStand, altNaam?: string }> = ({ stand, altNaam }) => {
   if (stand.fase === 'betaald') return <span className={`${PIL} bg-green-100 text-green-800`}>{t('factuur_paid')}</span>
+  if (stand.fase === 'verrekend') return <span className={`${PIL} bg-green-100 text-green-800`} title={t('fct_pil_verrekend_titel')}>{t('fct_pil_verrekend')}</span>
   if (stand.fase === 'betaald_alt') {
     const naam = altNaam || t('lbl_alt_rekening')
     return (

@@ -5,10 +5,12 @@ import { newId } from '../../utils/api'
 import { findLiveKlant } from '../../utils/klant'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN } from '../../utils/constants'
 import { logAudit } from '../../utils/audit'
-import { bepaalRollover } from '../../utils/btw'
+import { bepaalRollover, magFactuurMuteren } from '../../utils/btw'
 import { accijnsRecordsBetaald, accijnsRecordsOnbetaald } from '../../utils/afboeking'
 import { bouwIngredientOntvangst, boekOnderdelenOntvangst } from '../../utils/inkoopOntvangst'
 import { herstelKoppelingVlaggen } from '../../utils/bank'
+import { stornoBoekingVoor, voegBoekingToe } from '../../utils/journaal'
+import { pasPspVerrekeningToe, pspVerrekeningenVoor, inkoopNaVerrekening } from '../../utils/pspUitbetaling'
 import { AdminContext, txKey } from './adminContext'
 import type { AdminContextWaarde, AdminSectie } from './adminContext'
 import FacturenSectie from './FacturenSectie'
@@ -216,6 +218,60 @@ function AdministratiePage({sectie = 'facturen', navDoel = null, onNavDoelConsum
     logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'aangemaakt', omschrijving:`Accijnsmaand ${maandKey} gekoppeld (betaald ${tx.datum})`});
   }
 
+  // ── PSP-uitbetalingen: kosten verrekenen met de factuur van de PSP ─────────
+  // Een PSP houdt zijn kosten in op de uitbetalingen en factureert ze per
+  // maand (utils/pspUitbetaling.ts). Vanuit Bank (de uitbetaling) en Facturen
+  // (de factuur) dezelfde vastlegging: de verrekening in bank_koppelingen,
+  // een automatische kostenpost die erdoor vervalt weg (met tegenboeking), en
+  // de factuur op betaald zodra de uitbetalingen hem helemaal dekken.
+  const werkVerrekendeFacturenBij = (koppelingen: Record<string, any>, factuurIds: number[]) => {
+    const ids = [...new Set((factuurIds || []).map(Number).filter(Number.isFinite))]
+    if (!ids.length) return
+    const voor = new Map<number, any>((inkoopFacturen || []).filter((f: any) => ids.includes(Number(f.id))).map((f: any) => [Number(f.id), f]))
+    const na = new Map<number, any>()
+    for (const [id, f] of voor) {
+      const nieuw = inkoopNaVerrekening(f, pspVerrekeningenVoor(id, koppelingen, bankTransacties), tod())
+      if (nieuw !== f) na.set(id, nieuw)
+    }
+    if (!na.size) return
+    setInkoopFacturen((prev: any[]) => (prev || []).map((f: any) => na.get(Number(f.id)) ?? f))
+    for (const [id, f] of na) {
+      if (f.status === voor.get(id)?.status) continue
+      logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:id, actie:'gewijzigd',
+        omschrijving: f.status === 'betaald' ? 'Status → betaald (verrekend met PSP-uitbetalingen)' : 'Status → open (verrekening ongedaan)'})
+    }
+  }
+
+  const kostenpostMagVervallen = (factuurId: number): boolean => {
+    const f = (inkoopFacturen || []).find((x: any) => Number(x.id) === Number(factuurId))
+    return !f || magFactuurMuteren(f, btwPeriodeType, btwIngediendeKeys, btwBetaaldePerioden)
+  }
+
+  const verrekenPspKosten = (ops: { factuurId: number, keuzes: { key: string, cent: number }[] }[], basis?: Record<string, any>): Record<string, any> | false => {
+    let koppelingen: Record<string, any> = { ...(basis || bankKoppelingen || {}) }
+    const vervallen: number[] = []
+    const keys = new Set<string>()
+    for (const op of ops || []) {
+      const r = pasPspVerrekeningToe(koppelingen, op.factuurId, op.keuzes, inkoopFacturen)
+      koppelingen = r.koppelingen
+      vervallen.push(...r.vervallenKostenposten)
+      op.keuzes.forEach(k => keys.add(k.key))
+    }
+    if (vervallen.some(id => !kostenpostMagVervallen(id))) return false
+    setBankKoppelingen((prev: any) => {
+      const c = { ...(prev || {}) }
+      for (const key of keys) if (koppelingen[key]) c[key] = koppelingen[key]
+      return c
+    })
+    for (const id of vervallen) {
+      setInkoopFacturen((prev: any[]) => (prev || []).filter((f: any) => Number(f.id) !== id))
+      setJournaal((prev: any[]) => voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'inkoop_factuur', id)))
+      logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:id, actie:'verwijderd', omschrijving:'PSP-kostenpost vervangen door de factuur van de PSP'})
+    }
+    werkVerrekendeFacturenBij(koppelingen, (ops || []).map(op => op.factuurId))
+    return koppelingen
+  }
+
   const ctx: AdminContextWaarde = {
     sectie: sectie as AdminSectie, navDoel, gaNaarDoel, whoami, setPage, setOpenOrderId, onNaarPostvakInstellingen,
     wcCreds, inkoopFacturen, setInkoopFacturen, verkoopFacturen, setVerkoopFacturen, ing, setIng, lots, setLots,
@@ -233,6 +289,7 @@ function AdministratiePage({sectie = 'facturen', navDoel = null, onNavDoelConsum
     btwBetaaldePerioden, btwIngediendePerioden, btwIngediendeKeys, btwPeriodeType, getRolloverInfo,
     boekInkoopVoorraad, markeerBetaald, koppelBtwBetaling, ontkoppelBtwBetaling,
     markeerAccijnsMaandBetaald, ontkoppelAccijnsBetaling, koppelAccijnsBetaling,
+    werkVerrekendeFacturenBij, kostenpostMagVervallen, verrekenPspKosten,
   }
 
   return (
