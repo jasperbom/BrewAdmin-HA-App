@@ -45,7 +45,14 @@ describe('beslissingen', () => {
     expect(r.vars).toMatchObject({ klant: 'Café De Kroon', nr: '2026-004', dagen: '25' })
     expect(r.bedragCent).toBe(12100)
     expect(r.actieSleutel).toBe('besl_actie_herinnering')
-    expect(r.doel).toEqual({ pagina: 'boekhouding', tab: 'verkoop' })
+    // De factuur zelf: Facturen › Verkoop, "te laat" aan, deze factuur open.
+    expect(r.doel).toEqual({ pagina: 'facturen', tab: 'verkoop', filter: 'te_laat', id: 12 })
+  })
+
+  it('zet geen record-id in het doel als de factuur er geen bruikbare heeft', () => {
+    const bron = leegBron()
+    bron.verkoopFacturen = [{ klant_naam: 'X', datum: '2026-01-01', bruto: 10, status: 'open' }]
+    expect(beslissingen(bron)[0].doel).toEqual({ pagina: 'facturen', tab: 'verkoop', filter: 'te_laat' })
   })
 
   it('gebruikt het cent-veld van de factuur als dat er is', () => {
@@ -71,7 +78,7 @@ describe('beslissingen', () => {
     expect(rijen[0].vars).toMatchObject({ leverancier: 'Mouterij', nr: 'M-88', dagen: '39' })
     expect(rijen[0].bedragCent).toBe(25000)
     expect(rijen[0].actieSleutel).toBe('besl_actie_betalen')
-    expect(rijen[0].doel).toEqual({ pagina: 'boekhouding', tab: 'inkoop' })
+    expect(rijen[0].doel).toEqual({ pagina: 'facturen', tab: 'inkoop', filter: 'te_laat', id: 3 })
   })
 
   it('vraagt eerst om controle en pas na akkoord om indienen van de accijnsaangifte', () => {
@@ -84,7 +91,7 @@ describe('beslissingen', () => {
     expect(zonder[0].urgentie).toBe('wacht_op_jou')
     expect(zonder[0].sleutel).toBe('besl_accijns_controle')
     expect(zonder[0].actieSleutel).toBe('besl_actie_controleren')
-    expect(zonder[0].doel).toEqual({ pagina: 'boekhouding', tab: 'accijns' })
+    expect(zonder[0].doel).toEqual({ pagina: 'aangiftes', tab: 'accijns', filter: '2026-03' })
 
     bron.accijnsAangiftes = [{ maand: '2026-03', status: 'berekend', controle_status: 'akkoord' }]
     const met = beslissingen(bron)
@@ -111,7 +118,7 @@ describe('beslissingen', () => {
     expect(r.vars).toMatchObject({ periode: 'Q1 2026', datum: '2026-04-30', n: '1' })
     expect(r.contextSleutel).toBe('besl_btw_aangifte_ctx')
     expect(r.datum).toBe('2026-04-30')
-    expect(r.doel).toEqual({ pagina: 'boekhouding', tab: 'btw_aangifte' })
+    expect(r.doel).toEqual({ pagina: 'aangiftes', tab: 'btw', filter: '2026-Q1' })
   })
 
   it('meldt in de context hoeveel BTW-periodes er openstaan', () => {
@@ -142,7 +149,7 @@ describe('beslissingen', () => {
       urgentie: 'klopt_niet',
       bedragCent: -4250,
       actieSleutel: 'besl_actie_afschrift',
-      doel: { pagina: 'boekhouding', tab: 'bank' },
+      doel: { pagina: 'bank' },
     })
   })
 
@@ -192,7 +199,7 @@ describe('beslissingen — facturen per e-mail', () => {
     expect(rijen).toHaveLength(1)
     expect(rijen[0]).toMatchObject({
       id: 'inbox', urgentie: 'wacht_op_jou', sleutel: 'besl_inbox', contextSleutel: 'besl_inbox_ctx',
-      actieSleutel: 'besl_actie_verwerken', doel: { pagina: 'boekhouding', tab: 'inkoop' }, datum: '2026-04-30',
+      actieSleutel: 'besl_actie_verwerken', doel: { pagina: 'facturen', tab: 'inkoop', filter: 'te_verwerken' }, datum: '2026-04-30',
       vars: { n: '2', afzender: 'Jan Jansen', onderwerp: 'Factuur 1' },
     })
   })

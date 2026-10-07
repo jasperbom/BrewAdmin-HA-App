@@ -960,6 +960,62 @@ export interface BankSaldo {
   geimporteerd_op: string  // ISO-timestamp van de import
 }
 
+// Bewaarde banktransactie (`bank_transacties`): een regel uit parseMT940
+// (utils/bank.ts) met een eigen id, het afschrift waarmee hij binnenkwam en
+// de rekening. Wát er gekoppeld is staat in `bank_koppelingen` (sleutel =
+// txKey); de gekoppeld*-velden hier zijn daar een afgeleide van en worden bij
+// het lezen opnieuw gezet (herstelKoppelingVlaggen).
+export interface BewaardeBankTransactie {
+  id: number
+  afschrift_id: number
+  iban: string
+  datum: string
+  type: 'C' | 'D'
+  bedrag: number
+  referentie?: string
+  tegenpartij?: string
+  omschrijving?: string
+  storno?: boolean
+  gekoppeldFactuurId?: number | null
+  gekoppeldInkoopId?: number | null
+  gekoppeldKapitaalId?: number | null
+  gekoppeldBtwPeriode?: string
+  gekoppeldSndPeriode?: string
+  gekoppeldAccijnsMaand?: string
+  gekoppeldAflossingAltId?: number
+  gekoppeldPspFactuurIds?: number[]
+  autoGematcht?: boolean
+  herinneringsGematcht?: boolean
+  retroGematcht?: boolean
+  matchAmbigu?: boolean
+  pspHerkend?: boolean
+  pspVoorstelIds?: number[]
+}
+
+// Bewaard bankafschrift (`bank_afschriften`): één ingelezen MT940-bestand.
+// `transactie_ids` = alle transacties die in dít bestand stonden, ook die er
+// al waren (een overlappend afschrift); daarop rekent de saldocontrole per
+// afschrift, en verwijderen haalt alleen weg wat in geen ander afschrift staat.
+export interface BewaardBankAfschrift {
+  id: number
+  iban: string
+  referentie: string
+  afschriftNr: string
+  beginsaldo: number
+  eindsaldo: number
+  van: string              // eerste transactiedatum (anders de saldodatum)
+  tot: string              // laatste transactiedatum (anders de saldodatum)
+  geimporteerd_op: string  // ISO-timestamp van de import
+  aantal: number           // transacties in het bestand
+  nieuw: number            // daarvan nieuw toegevoegd
+  overgeslagen: number     // onleesbare transactieregels
+  transactie_ids: number[]
+  // Laatst bekende eindsaldo (bank_saldi) bij de import, alleen als er voor
+  // deze rekening nog geen afschrift bewaard was — de aansluiting op wat er
+  // vóór het bewaren werd ingelezen.
+  vorig_eindsaldo?: number | null
+}
+
 // Jaarafsluiting (ERP-plan 2.3): snapshot van de balansposten bij het
 // afsluiten van een boekjaar. Het eigen vermogen hieruit is de beginbalans
 // van het volgende boekjaar; de balans toont daarmee een EV-verloop

@@ -31,9 +31,16 @@ export interface AttentieDoel {
   tab?: string
   filter?: string
   lotId?: number
+  /** Eén record dat de doelpagina meteen opent (bv. de factuur in het detail). */
+  id?: number
+  /** Een handeling die de doelpagina bij het openen start: `nieuw` (formulier
+      voor een nieuwe factuur), `importeren` (bestandskiezer van de bank). */
+  actie?: string
 }
 
-export interface AttentiePost extends AttentieDoel {
+// `id` is hier de id van de post zelf (een tekst), niet een record-id: die
+// van AttentieDoel valt daarom weg.
+export interface AttentiePost extends Omit<AttentieDoel, 'id'> {
   /** Stabiele id van de post (test-/keyhaak, geen gebruikerstekst). */
   id: string
   /** i18n-sleutel voor het label — de UI vertaalt, deze module nooit. */
@@ -126,17 +133,18 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
     ]),
     // Administratie: eerst wat geld kost als je het laat liggen (vervallen
     // facturen), dan de aangiftes, dan de eigen betalingen. Elke post landt
-    // op het tabblad van Boekhouding waar hij afgehandeld wordt. Het
-    // Administratie-dashboard toont dezelfde lijst — één bron, één getal.
+    // op de plek waar hij afgehandeld wordt (Facturen, Aangiftes), met het
+    // segment en de statusfilter erbij. Het Administratie-dashboard toont
+    // dezelfde lijst — één bron, één getal.
     administratie: nietLeeg([
       {
-        // Boekhouding → Verkoop: de rode "Vervallen facturen"-lijst bovenaan.
-        id: 'verkoop_vervallen', sleutel: 'attentie_verkoop_vervallen', pagina: 'boekhouding', tab: 'verkoop',
+        // Facturen → Verkoop, statusfilter "te laat".
+        id: 'verkoop_vervallen', sleutel: 'attentie_verkoop_vervallen', pagina: 'facturen', tab: 'verkoop', filter: 'te_laat',
         aantal: vervallenVerkoopFacturen(bron.verkoopFacturen, bron.klanten || [], bron.breweryDetails, bron.vandaagIso).length,
       },
       {
-        // Boekhouding → tabblad BTW-aangifte.
-        id: 'btw', sleutel: 'attentie_btw', pagina: 'boekhouding', tab: 'btw_aangifte',
+        // Aangiftes → BTW.
+        id: 'btw', sleutel: 'attentie_btw', pagina: 'aangiftes', tab: 'btw',
         aantal: telOpenstaandeBtwPerioden(
           [bron.vandaag.getFullYear() - 1, bron.vandaag.getFullYear()],
           bron.btwPeriode, bron.btwAangiftes, bron.bankKoppelingen,
@@ -144,21 +152,22 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
         ),
       },
       {
-        // Boekhouding → tabblad Accijns: afgelopen maanden met uitslagen
-        // waarvan de aangifte nog niet ingediend of betaald is.
-        id: 'accijns', sleutel: 'attentie_accijns', pagina: 'boekhouding', tab: 'accijns',
+        // Aangiftes → Accijns: afgelopen maanden met uitslagen waarvan de
+        // aangifte nog niet ingediend of betaald is.
+        id: 'accijns', sleutel: 'attentie_accijns', pagina: 'aangiftes', tab: 'accijns',
         aantal: telOpenAccijnsMaanden(bron.accijnsAangiftes || [], bron.accijns || [], bron.vandaag),
       },
       {
-        // Boekhouding → Inkoop: onbetaald en ouder dan de vuistregel-termijn
-        // (INKOOP_ACHTERSTALLIG_DAGEN in utils/facturen.ts).
-        id: 'inkoop_achterstallig', sleutel: 'attentie_inkoop_achterstallig', pagina: 'boekhouding', tab: 'inkoop',
+        // Facturen → Inkoop, "te laat": onbetaald en ouder dan de vuistregel-
+        // termijn (INKOOP_ACHTERSTALLIG_DAGEN in utils/facturen.ts).
+        id: 'inkoop_achterstallig', sleutel: 'attentie_inkoop_achterstallig', pagina: 'facturen', tab: 'inkoop', filter: 'te_laat',
         aantal: achterstalligeInkoopFacturen(bron.inkoopFacturen, bron.vandaagIso).length,
       },
       {
-        // Boekhouding → Inkoop: facturen die per e-mail zijn binnengekomen en op
-        // scannen en boeken wachten (utils/inkoopInbox → telInboxOpen).
-        id: 'inkoop_inbox', sleutel: 'attentie_inkoop_inbox', pagina: 'boekhouding', tab: 'inkoop',
+        // Facturen → Inkoop, "te verwerken": facturen die per e-mail zijn
+        // binnengekomen en op scannen en boeken wachten (utils/inkoopInbox →
+        // telInboxOpen).
+        id: 'inkoop_inbox', sleutel: 'attentie_inkoop_inbox', pagina: 'facturen', tab: 'inkoop', filter: 'te_verwerken',
         aantal: telInboxOpen(bron.inkoopInbox),
       },
     ]),

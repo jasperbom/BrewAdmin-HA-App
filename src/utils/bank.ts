@@ -15,6 +15,9 @@
 // Puur en zonder React — direct unit-testbaar (fase 3.1).
 
 import { toCent, centNaarEuro } from './centen'
+import { zoekPast } from './factuurFilter'
+import { inBereik, type Bereik } from './periode'
+import type { BewaardBankAfschrift, BewaardeBankTransactie } from '../types'
 
 const norm = (s: any): string => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 
@@ -38,7 +41,9 @@ export const mt940Richting = (code: string): 'C' | 'D' => {
 }
 
 export const parseMT940 = (text: string): any => {
-  const result: any = { iban:'', referentie:'', afschriftNr:'', beginsaldo:0, eindsaldo:0, transacties:[], overgeslagen:0 }
+  // begindatum/einddatum: de datums van het begin- en eindsaldo (:60F:/:62F:)
+  // — de periode van een afschrift zonder transacties.
+  const result: any = { iban:'', referentie:'', afschriftNr:'', beginsaldo:0, eindsaldo:0, begindatum:'', einddatum:'', transacties:[], overgeslagen:0 }
   const parseAmt = (s: string) => parseFloat(s.replace(',','.'))
   const parseDate6 = (s: string) => {
     const yy=s.slice(0,2),mm=s.slice(2,4),dd=s.slice(4,6)
@@ -82,10 +87,14 @@ export const parseMT940 = (text: string): any => {
     else if (field==='60F'||field==='60M') {
       const m = v.match(/^([CD])(\d{6})[A-Z]{3}(\d+,\d*)/)
       // Alleen het eerste beginsaldo bewaren (bij meerdere statements in één bestand)
-      if (m && !result._beginsaldoGezet) { result.beginsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3]); result._beginsaldoGezet = true }
+      if (m && !result._beginsaldoGezet) {
+        result.beginsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3])
+        result.begindatum = parseDate6(m[2])
+        result._beginsaldoGezet = true
+      }
     } else if (field==='62F'||field==='62M') {
       const m = v.match(/^([CD])(\d{6})[A-Z]{3}(\d+,\d*)/)
-      if (m) result.eindsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3])
+      if (m) { result.eindsaldo = m[1]==='C' ? parseAmt(m[3]) : -parseAmt(m[3]); result.einddatum = parseDate6(m[2]) }
     } else if (field==='61') {
       // Debet/credit-markering: C, D of een terugboeking RC/RD. De 'R' ná C/D
       // (bijv. 'DR') is geen markering maar de derde letter van de valutacode
@@ -395,7 +404,8 @@ export interface SaldoControle {
   aantalTransacties: number
 }
 
-const isGekoppeld = (tx: any): boolean => !!(
+/** Hangt deze transactie al aan iets (factuur, aangifte, kapitaal, aflossing, PSP-bundel)? */
+export const isGekoppeld = (tx: any): boolean => !!(
   tx?.gekoppeldFactuurId || tx?.gekoppeldInkoopId || tx?.gekoppeldKapitaalId
   || tx?.gekoppeldBtwPeriode || tx?.gekoppeldAccijnsMaand || tx?.gekoppeldSndPeriode
   || tx?.gekoppeldAflossingAltId || tx?.gekoppeldPspFactuurIds
@@ -508,3 +518,498 @@ export const bouwOntvangstVerkoopFactuur = (
     ...(invoer.btw_periode ? { btw_periode: invoer.btw_periode } : {}),
   }
 }
+
+// ── Bewaarde afschriften (`bank_transacties` / `bank_afschriften`) ──────────
+// Een ingelezen MT940-bestand leefde vroeger alleen in de sessie: wie later
+// een BTW-betaling wilde koppelen, moest het afschrift opnieuw importeren.
+// Nu worden afschrift en transacties bewaard, met drie regels:
+//  - `bank_koppelingen` blijft de bron van waarheid voor wát er gekoppeld is
+//    (sleutel = txKey). De gekoppeld*-vlaggen op een bewaarde transactie zijn
+//    daar een afgeleide van en worden bij het lezen opnieuw gezet
+//    (herstelKoppelingVlaggen), zodat ze nooit uit de pas kunnen lopen.
+//  - Opnieuw importeren voegt samen (bouwBankImport): een transactie die er
+//    al staat komt er niet nog eens bij — het bestaande record en zijn
+//    vlaggen winnen. Alleen de nieuwe gaan langs de automatische koppeling.
+//  - Een afschrift verwijderen (verwijderAfschrift) haalt alleen de
+//    transacties weg die in geen ander afschrift staan. De koppelingen
+//    blijven staan: opnieuw importeren zet ze terug.
+
+/** Unieke sleutel per banktransactie: de sleutel van `bank_koppelingen`. */
+export const txKey = (tx: any): string => {
+  if (tx?.referentie) return `${tx.datum}|${tx.type}|${tx.bedrag}|${tx.referentie}`
+  return `${tx?.datum}|${tx?.type}|${tx?.bedrag}|${String(tx?.tegenpartij || tx?.omschrijving || '').slice(0, 40)}`
+}
+
+/** De koppelingsvlaggen op een transactie (één per soort koppeling). */
+export const KOPPEL_VLAGGEN = [
+  'gekoppeldFactuurId', 'gekoppeldInkoopId', 'gekoppeldKapitaalId', 'gekoppeldBtwPeriode',
+  'gekoppeldSndPeriode', 'gekoppeldAccijnsMaand', 'gekoppeldAflossingAltId', 'gekoppeldPspFactuurIds',
+] as const
+export type KoppelVlag = typeof KOPPEL_VLAGGEN[number]
+
+// De markeringen van de automatische koppeling ("automatisch gekoppeld",
+// "onthouden koppeling", "herkend in betaalde facturen"): zonder koppeling
+// horen die er ook niet te staan.
+const AUTO_VLAGGEN = ['autoGematcht', 'herinneringsGematcht', 'retroGematcht'] as const
+
+/**
+ * Welke vlaggen een koppeling uit `bank_koppelingen` op de transactie zet —
+ * dezelfde indeling als de import altijd gebruikte. Zonder koppeling (null)
+ * zijn ze allemaal leeg.
+ */
+export const vlaggenVoorKoppeling = (k: any): Record<KoppelVlag, unknown> => {
+  const soort = k && typeof k === 'object' ? k.soort : null
+  return {
+    gekoppeldFactuurId: soort === 'verkoop' ? (k.factuurId ?? null) : null,
+    gekoppeldInkoopId: soort === 'inkoop' ? (k.factuurId ?? null) : null,
+    gekoppeldKapitaalId: soort === 'kapitaal' ? (k.factuurId ?? null) : null,
+    gekoppeldBtwPeriode: soort === 'btw' ? k.periodeKey : undefined,
+    gekoppeldSndPeriode: soort === 'snd' ? k.periodeKey : undefined,
+    gekoppeldAccijnsMaand: soort === 'accijns' ? k.maandKey : undefined,
+    gekoppeldAflossingAltId: soort === 'aflossing' ? k.altRekeningId : undefined,
+    gekoppeldPspFactuurIds: soort === 'psp' ? k.factuurIds : undefined,
+  }
+}
+
+const zelfdeVlag = (a: unknown, b: unknown): boolean => {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i])
+  }
+  return (a ?? null) === (b ?? null)
+}
+
+/**
+ * Zet de koppelingsvlaggen van elke transactie gelijk aan `bank_koppelingen`
+ * en wist een vlag waarvan de koppeling niet meer bestaat (ontkoppeld vanuit
+ * Aangiftes, een ander apparaat, een teruggezette backup). Een transactie die
+ * al klopt komt ongewijzigd terug (zelfde object).
+ */
+export function herstelKoppelingVlaggen<T extends Record<string, any>>(
+  transacties: T[] | null | undefined,
+  bankKoppelingen: Record<string, any> | null | undefined,
+): T[] {
+  const koppelingen = bankKoppelingen && typeof bankKoppelingen === 'object' ? bankKoppelingen : {}
+  return (transacties || []).map((tx: T) => {
+    if (!tx || typeof tx !== 'object') return tx
+    const k = koppelingen[txKey(tx)]
+    const gekoppeld = !!k && typeof k === 'object'
+    const doel = vlaggenVoorKoppeling(gekoppeld ? k : null)
+    const vlagAnders = KOPPEL_VLAGGEN.some(v => !zelfdeVlag(tx[v], doel[v]))
+    const autoAnders = !gekoppeld && AUTO_VLAGGEN.some(v => !!tx[v])
+    if (!vlagAnders && !autoAnders) return tx
+    const uit: Record<string, unknown> = { ...tx, ...doel }
+    if (!gekoppeld) for (const v of AUTO_VLAGGEN) uit[v] = false
+    return uit as T
+  })
+}
+
+/** Rekening als sleutel, zoals `bank_saldi` hem gebruikt ('onbekend' zonder IBAN). */
+export const ibanSleutel = (x: any): string => String(x?.iban || '').trim() || 'onbekend'
+
+const afschriftVolgorde = (a: any, b: any): number =>
+  String(a?.tot || '').localeCompare(String(b?.tot || ''))
+  || String(a?.van || '').localeCompare(String(b?.van || ''))
+  || String(a?.geimporteerd_op || '').localeCompare(String(b?.geimporteerd_op || ''))
+  || (Number(a?.id) || 0) - (Number(b?.id) || 0)
+
+/** Afschriften op volgorde van hun periode, oudste eerst. */
+export const sorteerAfschriften = <T>(afschriften: T[] | null | undefined): T[] =>
+  [...(afschriften || [])].filter(Boolean).sort(afschriftVolgorde)
+
+/** Het afschrift met de laatste periode, of null. */
+export const laatsteAfschrift = <T>(afschriften: T[] | null | undefined): T | null => {
+  const s = sorteerAfschriften(afschriften)
+  return s.length ? s[s.length - 1] : null
+}
+
+// Periode van een ingelezen bestand: eerste en laatste transactiedatum, en
+// zonder transacties de datums van het begin- en eindsaldo.
+const periodeVanBestand = (parsed: any): { van: string, tot: string } => {
+  const datums = (Array.isArray(parsed?.transacties) ? parsed.transacties : [])
+    .map((t: any) => String(t?.datum || '')).filter(Boolean).sort()
+  return {
+    van: datums[0] || String(parsed?.begindatum || parsed?.einddatum || ''),
+    tot: datums[datums.length - 1] || String(parsed?.einddatum || parsed?.begindatum || ''),
+  }
+}
+
+const zelfdeAfschrift = (a: any, b: any): boolean =>
+  ibanSleutel(a) === ibanSleutel(b)
+  && String(a?.afschriftNr || '') === String(b?.afschriftNr || '')
+  && String(a?.referentie || '') === String(b?.referentie || '')
+  && toCent(a?.beginsaldo) === toCent(b?.beginsaldo)
+  && toCent(a?.eindsaldo) === toCent(b?.eindsaldo)
+  && String(a?.van || '') === String(b?.van || '')
+  && String(a?.tot || '') === String(b?.tot || '')
+  && (Number(a?.aantal) || 0) === (Number(b?.aantal) || 0)
+
+export interface BankImportOpties {
+  /** Een nieuwe, unieke id per aanroep (utils/api `newId`). */
+  maakId: () => number
+  /** ISO-tijdstempel van de import. */
+  nu: string
+  /** `bank_saldi`: alleen gebruikt zolang er voor deze rekening nog geen afschrift bewaard is. */
+  bankSaldi?: Record<string, any> | null
+}
+
+export interface BankImportResultaat {
+  /** Het afschriftrecord: nieuw, of bij een tweede import van hetzelfde bestand het bestaande. */
+  afschrift: BewaardBankAfschrift
+  /** Hetzelfde bestand was al ingelezen: het record vervangen, niet toevoegen. */
+  alBekend: boolean
+  /** De transacties die er nog niet waren, met id/afschrift_id/iban — nog zonder automatische koppeling. */
+  nieuw: BewaardeBankTransactie[]
+  /** Transacties uit het bestand die er al stonden en niet opnieuw zijn toegevoegd. */
+  dubbel: number
+}
+
+/**
+ * Een ingelezen MT940-bestand (parseMT940) samenvoegen met wat er al bewaard
+ * is. Een transactie met een txKey die voor deze rekening al bestaat komt er
+ * niet nog eens bij; per sleutel wordt geteld, zodat twee échte, gelijke
+ * boekingen in één bestand er wel allebei in komen. Het afschrift onthoudt
+ * álle transacties uit het bestand (`transactie_ids`), ook de bestaande.
+ */
+export function bouwBankImport(
+  parsed: any,
+  bestaandeTx: any[] | null | undefined,
+  afschriften: any[] | null | undefined,
+  opties: BankImportOpties,
+): BankImportResultaat {
+  const iban = String(parsed?.iban || '').trim()
+  const sleutel = ibanSleutel(parsed)
+  const { van, tot } = periodeVanBestand(parsed)
+  const regels: any[] = Array.isArray(parsed?.transacties) ? parsed.transacties : []
+  const bewaard = (afschriften || []).filter((a: any) => a && typeof a === 'object')
+  const kop = {
+    iban,
+    referentie: String(parsed?.referentie || ''),
+    afschriftNr: String(parsed?.afschriftNr || ''),
+    beginsaldo: Number(parsed?.beginsaldo) || 0,
+    eindsaldo: Number(parsed?.eindsaldo) || 0,
+    van, tot,
+    aantal: regels.length,
+  }
+  const bestaandAfschrift = bewaard.find((a: any) => zelfdeAfschrift(a, kop)) || null
+
+  const perSleutel = new Map<string, any[]>()
+  for (const tx of bestaandeTx || []) {
+    if (!tx || typeof tx !== 'object' || ibanSleutel(tx) !== sleutel) continue
+    const k = txKey(tx)
+    const rij = perSleutel.get(k)
+    if (rij) rij.push(tx)
+    else perSleutel.set(k, [tx])
+  }
+
+  const afschriftId = bestaandAfschrift ? Number(bestaandAfschrift.id) : opties.maakId()
+  const nieuw: BewaardeBankTransactie[] = []
+  const leden: number[] = []
+  let dubbel = 0
+  for (const tx of regels) {
+    const rij = perSleutel.get(txKey(tx))
+    if (rij && rij.length) {
+      const bestaand = rij.shift()
+      dubbel++
+      if (Number.isFinite(Number(bestaand?.id))) leden.push(Number(bestaand.id))
+      continue
+    }
+    const id = opties.maakId()
+    nieuw.push({ ...tx, id, afschrift_id: afschriftId, iban })
+    leden.push(id)
+  }
+
+  if (bestaandAfschrift) {
+    const al = new Set<number>((Array.isArray(bestaandAfschrift.transactie_ids) ? bestaandAfschrift.transactie_ids : []).map(Number))
+    const erbij = leden.filter(id => !al.has(id))
+    const afschrift = erbij.length
+      ? { ...bestaandAfschrift, transactie_ids: [...al, ...erbij], nieuw: (Number(bestaandAfschrift.nieuw) || 0) + nieuw.length }
+      : bestaandAfschrift
+    return { afschrift, alBekend: true, nieuw, dubbel }
+  }
+
+  // Aansluiting op wat er vóór het bewaren werd ingelezen: het laatst bekende
+  // eindsaldo, mits het van vóór dit afschrift is en er voor deze rekening
+  // nog niets bewaard is (daarna volgt de aansluiting uit de afschriften zelf).
+  let vorig: number | null = null
+  const saldo = (opties.bankSaldi || {})[sleutel]
+  const eerderBewaard = bewaard.some((a: any) => ibanSleutel(a) === sleutel)
+  if (!eerderBewaard && saldo && typeof saldo === 'object' && Number.isFinite(Number(saldo.eindsaldo))) {
+    const datum = String(saldo.datum || '')
+    const ditAfschrift = String(saldo.afschrift_nr || '') === kop.afschriftNr
+      && toCent(saldo.eindsaldo) === toCent(kop.eindsaldo) && datum === tot
+    if (!ditAfschrift && (!van || !datum || datum < van)) vorig = Number(saldo.eindsaldo)
+  }
+
+  const afschrift: BewaardBankAfschrift = {
+    id: afschriftId,
+    ...kop,
+    geimporteerd_op: opties.nu,
+    nieuw: nieuw.length,
+    overgeslagen: Number(parsed?.overgeslagen) || 0,
+    transactie_ids: leden,
+    vorig_eindsaldo: vorig,
+  }
+  return { afschrift, alBekend: false, nieuw, dubbel }
+}
+
+/** De transacties die in dit afschrift stonden (ook die er al waren). */
+export function transactiesVanAfschrift<T extends Record<string, any>>(afschrift: any, transacties: T[] | null | undefined): T[] {
+  if (!afschrift) return []
+  const ids = new Set<number>((Array.isArray(afschrift.transactie_ids) ? afschrift.transactie_ids : []).map(Number))
+  const id = Number(afschrift.id)
+  return (transacties || []).filter((tx: T) => !!tx && (ids.has(Number(tx.id)) || Number(tx.afschrift_id) === id))
+}
+
+export interface VorigEindsaldo {
+  saldo: number | null
+  /**
+   * afschrift: het vorige bewaarde afschrift van deze rekening; saldo: het
+   * banksaldo van vóór het bewaren; overlap: een ander afschrift beslaat het
+   * begin van dit afschrift (geen zuivere aansluiting te maken); geen: het
+   * eerste afschrift van deze rekening.
+   */
+  bron: 'afschrift' | 'saldo' | 'overlap' | 'geen'
+}
+
+/**
+ * Het eindsaldo waarop dit afschrift hoort aan te sluiten. Live uit de
+ * bewaarde afschriften: een later ingelezen ouder afschrift of een
+ * verwijderd tussenliggend afschrift telt meteen mee.
+ */
+export function vorigEindsaldoVoor(afschrift: any, afschriften: any[] | null | undefined): VorigEindsaldo {
+  if (!afschrift) return { saldo: null, bron: 'geen' }
+  const sleutel = ibanSleutel(afschrift)
+  const van = String(afschrift.van || '')
+  const andere = (afschriften || []).filter((b: any) => b && Number(b.id) !== Number(afschrift.id) && ibanSleutel(b) === sleutel)
+  if (van) {
+    if (andere.some((b: any) => b.van && b.tot && String(b.van) <= van && String(b.tot) >= van)) {
+      return { saldo: null, bron: 'overlap' }
+    }
+    const eerder = sorteerAfschriften(andere.filter((b: any) => b.tot && String(b.tot) < van))
+    if (eerder.length) return { saldo: Number(eerder[eerder.length - 1].eindsaldo) || 0, bron: 'afschrift' }
+  }
+  const v = afschrift.vorig_eindsaldo
+  if (v != null && v !== '' && Number.isFinite(Number(v))) return { saldo: Number(v), bron: 'saldo' }
+  return { saldo: null, bron: 'geen' }
+}
+
+export interface AfschriftVerwijdering<T> {
+  transacties: T[]
+  afschriften: any[]
+  /** Transacties die weggaan: ze stonden in geen ander afschrift. */
+  verwijderdeIds: number[]
+  /** Transacties van dit afschrift die ook in een ander staan: daar horen ze voortaan bij. */
+  nieuweEigenaar: Record<number, number>
+}
+
+/**
+ * Een (verkeerd ingelezen) afschrift weghalen. Zijn transacties gaan mee,
+ * behalve die ook in een ander bewaard afschrift staan. `bank_koppelingen`
+ * blijft ongemoeid: opnieuw importeren zet de koppelingen terug.
+ */
+export function verwijderAfschrift<T extends Record<string, any>>(
+  transacties: T[] | null | undefined,
+  afschriften: any[] | null | undefined,
+  afschriftId: number,
+): AfschriftVerwijdering<T> {
+  const lijst = (afschriften || []).filter(Boolean)
+  const doelId = Number(afschriftId)
+  const doel = lijst.find((a: any) => Number(a.id) === doelId)
+  const overige = lijst.filter((a: any) => Number(a.id) !== doelId)
+  if (!doel) return { transacties: [...(transacties || [])], afschriften: overige, verwijderdeIds: [], nieuweEigenaar: {} }
+
+  const elders = new Map<number, number>()
+  for (const a of overige) {
+    for (const id of (Array.isArray(a.transactie_ids) ? a.transactie_ids : [])) {
+      if (!elders.has(Number(id))) elders.set(Number(id), Number(a.id))
+    }
+  }
+  const overigeIds = new Set<number>(overige.map((a: any) => Number(a.id)))
+  const leden = new Set<number>(transactiesVanAfschrift(doel, transacties).map((t: T) => Number(t.id)))
+  const uit: T[] = []
+  const verwijderdeIds: number[] = []
+  const nieuweEigenaar: Record<number, number> = {}
+  for (const tx of transacties || []) {
+    const id = Number(tx?.id)
+    if (!tx || !leden.has(id)) { uit.push(tx); continue }
+    const eigenaar = Number(tx.afschrift_id)
+    if (eigenaar !== doelId && overigeIds.has(eigenaar)) { uit.push(tx); continue }
+    const ander = elders.get(id)
+    if (ander !== undefined) {
+      nieuweEigenaar[id] = ander
+      uit.push({ ...tx, afschrift_id: ander })
+      continue
+    }
+    verwijderdeIds.push(id)
+  }
+  return { transacties: uit, afschriften: overige, verwijderdeIds, nieuweEigenaar }
+}
+
+/**
+ * `bank_saldi` na het verwijderen van een afschrift. Kwam het bekende saldo
+ * van dít afschrift, dan geldt weer het laatste overgebleven afschrift van die
+ * rekening — of geen saldo meer: een verkeerd saldo op de balans is erger dan
+ * "nog geen banksaldo bekend". Een saldo van een ander afschrift blijft staan.
+ */
+export function bankSaldiNaVerwijderen(
+  bankSaldi: Record<string, any> | null | undefined,
+  verwijderd: any,
+  overige: any[] | null | undefined,
+): Record<string, any> {
+  const saldi: Record<string, any> = bankSaldi && typeof bankSaldi === 'object' ? bankSaldi : {}
+  if (!verwijderd) return saldi
+  const sleutel = ibanSleutel(verwijderd)
+  const huidig = saldi[sleutel]
+  if (!huidig || typeof huidig !== 'object') return saldi
+  const vanDitAfschrift = toCent(huidig.eindsaldo) === toCent(verwijderd.eindsaldo)
+    && String(huidig.afschrift_nr || '') === String(verwijderd.afschriftNr || '')
+    && String(huidig.datum || '') === String(verwijderd.tot || '')
+  if (!vanDitAfschrift) return saldi
+  const rest = sorteerAfschriften((overige || [])
+    .filter((a: any) => a && ibanSleutel(a) === sleutel && Number(a.id) !== Number(verwijderd.id)))
+  const volgend: Record<string, any> = { ...saldi }
+  if (!rest.length) { delete volgend[sleutel]; return volgend }
+  const laatste: any = rest[rest.length - 1]
+  volgend[sleutel] = {
+    iban: sleutel,
+    eindsaldo: Number(laatste.eindsaldo) || 0,
+    beginsaldo: Number(laatste.beginsaldo) || 0,
+    datum: String(laatste.tot || ''),
+    afschrift_nr: String(laatste.afschriftNr || ''),
+    geimporteerd_op: String(laatste.geimporteerd_op || ''),
+  }
+  return volgend
+}
+
+// ── Werklijst van het Bank-scherm ───────────────────────────────────────────
+// Bank is een wachtrij: Te koppelen | Gekoppeld | Alles, met zoeken op
+// tegenpartij, omschrijving en bedrag, de gedeelde periode (niet bij Te
+// koppelen: wat nog werk is filter je niet weg) en de keuze van rekening of
+// afschrift. Het koppelvoorstel zelf staat in utils/bankVoorstel.ts.
+
+export type BankStatusFilter = 'te_koppelen' | 'gekoppeld' | 'alles'
+
+/** De chips in de volgorde van de filterbalk (`sleutel` = i18n-label). */
+export const BANK_STATUS_FILTERS: readonly { id: BankStatusFilter, sleutel: string }[] = [
+  { id: 'te_koppelen', sleutel: 'bank_status_te_koppelen' },
+  { id: 'gekoppeld', sleutel: 'bank_status_gekoppeld' },
+  { id: 'alles', sleutel: 'bank_status_alles' },
+]
+
+export const isBankStatusFilter = (x: unknown): x is BankStatusFilter =>
+  x === 'te_koppelen' || x === 'gekoppeld' || x === 'alles'
+
+/** Doet de periode mee? Niet bij Te koppelen: een oude ongekoppelde transactie blijft werk. */
+export const bankPeriodeGeldt = (status: BankStatusFilter): boolean => status !== 'te_koppelen'
+
+export type KoppelingSoort = 'verkoop' | 'inkoop' | 'kapitaal' | 'btw' | 'accijns' | 'snd' | 'aflossing' | 'psp'
+
+export interface KoppelingInfo {
+  soort: KoppelingSoort
+  /** Factuur-, kapitaalboeking- of alt-rekening-id. */
+  id?: number
+  /** PSP: de facturen in de bundel. */
+  ids?: number[]
+  /** BTW / SNd: de periode. */
+  periodeKey?: string
+  /** Accijns: de maand. */
+  maand?: string
+}
+
+/**
+ * Waaraan hangt deze transactie? Leest de koppelvlaggen (die de context uit
+ * `bank_koppelingen` zet; er staat er altijd hooguit één). Null = ongekoppeld.
+ */
+export function koppelingVan(tx: any): KoppelingInfo | null {
+  if (!tx || typeof tx !== 'object') return null
+  if (Array.isArray(tx.gekoppeldPspFactuurIds) && tx.gekoppeldPspFactuurIds.length) {
+    return { soort: 'psp', ids: tx.gekoppeldPspFactuurIds.map(Number) }
+  }
+  if (tx.gekoppeldFactuurId) return { soort: 'verkoop', id: Number(tx.gekoppeldFactuurId) }
+  if (tx.gekoppeldInkoopId) return { soort: 'inkoop', id: Number(tx.gekoppeldInkoopId) }
+  if (tx.gekoppeldKapitaalId) return { soort: 'kapitaal', id: Number(tx.gekoppeldKapitaalId) }
+  if (tx.gekoppeldBtwPeriode) return { soort: 'btw', periodeKey: String(tx.gekoppeldBtwPeriode) }
+  if (tx.gekoppeldAccijnsMaand) return { soort: 'accijns', maand: String(tx.gekoppeldAccijnsMaand) }
+  if (tx.gekoppeldSndPeriode) return { soort: 'snd', periodeKey: String(tx.gekoppeldSndPeriode) }
+  if (tx.gekoppeldAflossingAltId) return { soort: 'aflossing', id: Number(tx.gekoppeldAflossingAltId) }
+  return null
+}
+
+const PSP_NAMEN: readonly [RegExp, string][] = [
+  [/mollie/i, 'Mollie'], [/stripe/i, 'Stripe'], [/adyen/i, 'Adyen'], [/sumup/i, 'SumUp'],
+  [/zettle/i, 'Zettle'], [/paypal/i, 'PayPal'], [/pay\.nl/i, 'Pay.nl'], [/buckaroo/i, 'Buckaroo'],
+  [/multisafepay/i, 'MultiSafepay'], [/cm\.com/i, 'CM.com'],
+]
+
+/** Korte naam van de PSP ("Mollie" uit "Stichting Mollie Payments"), anders de tegenpartij. */
+export function pspNaam(tx: any): string {
+  const tekst = `${tx?.tegenpartij || ''} ${tx?.omschrijving || ''} ${tx?.referentie || ''}`
+  for (const [re, naam] of PSP_NAMEN) if (re.test(tekst)) return naam
+  return String(tx?.tegenpartij || '').trim()
+}
+
+export interface BankLijstFilter {
+  /** Alleen deze rekening (`ibanSleutel`); leeg = alle rekeningen. */
+  iban?: string | null
+  /** Alleen de transacties van dit afschrift. */
+  afschrift?: any | null
+  zoek?: string
+  /** De periode (inclusief); doet niet mee bij Te koppelen. Null = alles. */
+  bereik?: Bereik | null
+  /** Extra zoektekst per transactie (de naam van wat eraan hangt: factuurnummer, klant). */
+  extraTekst?: (tx: any) => readonly unknown[]
+}
+
+const nieuwsteEerst = (a: any, b: any): number =>
+  String(b?.datum || '').localeCompare(String(a?.datum || '')) || (Number(b?.id) || 0) - (Number(a?.id) || 0)
+
+/** Rekening, afschrift en zoeken: wat voor alle chips hetzelfde is. */
+function basisFilter<T extends Record<string, any>>(transacties: T[] | null | undefined, f: BankLijstFilter): T[] {
+  const lijst = (transacties || []).filter((tx: T) => !!tx && typeof tx === 'object')
+  const afschrift = f.afschrift ? transactiesVanAfschrift(f.afschrift, lijst) : lijst
+  const iban = f.iban ? String(f.iban) : ''
+  const zoek = String(f.zoek || '')
+  return afschrift.filter((tx: T) => {
+    if (iban && ibanSleutel(tx) !== iban) return false
+    if (!zoek.trim()) return true
+    const velden = [tx.tegenpartij, tx.omschrijving, tx.referentie, tx.datum, ...(f.extraTekst ? f.extraTekst(tx) : [])]
+    return zoekPast(velden, [tx.bedrag], zoek)
+  })
+}
+
+const inPeriode = (tx: any, bereik: Bereik | null | undefined): boolean => !bereik || inBereik(tx?.datum, bereik)
+
+/**
+ * De transacties onder een chip, nieuwste eerst. Te koppelen = alles wat aan
+ * niets hangt (ook een storno), ongeacht de periode; Gekoppeld en Alles
+ * binnen de periode.
+ */
+export function filterBankTransacties<T extends Record<string, any>>(
+  transacties: T[] | null | undefined, status: BankStatusFilter, f: BankLijstFilter = {},
+): T[] {
+  return basisFilter(transacties, f)
+    .filter((tx: T) => {
+      if (status === 'te_koppelen') return !isGekoppeld(tx)
+      if (!inPeriode(tx, f.bereik)) return false
+      return status === 'alles' || isGekoppeld(tx)
+    })
+    .sort(nieuwsteEerst)
+}
+
+/** Aantallen per chip, met dezelfde regels als `filterBankTransacties`. */
+export function telBankStatussen(transacties: any[] | null | undefined, f: BankLijstFilter = {}): Record<BankStatusFilter, number> {
+  const tel: Record<BankStatusFilter, number> = { te_koppelen: 0, gekoppeld: 0, alles: 0 }
+  for (const tx of basisFilter(transacties, f)) {
+    const gekoppeld = isGekoppeld(tx)
+    if (!gekoppeld) tel.te_koppelen++
+    if (inPeriode(tx, f.bereik)) {
+      tel.alles++
+      if (gekoppeld) tel.gekoppeld++
+    }
+  }
+  return tel
+}
+
+/** De beginchip: Te koppelen als daar iets staat, anders Alles. */
+export const standaardBankStatus = (aantallen: Record<BankStatusFilter, number>): BankStatusFilter =>
+  aantallen.te_koppelen > 0 ? 'te_koppelen' : 'alles'

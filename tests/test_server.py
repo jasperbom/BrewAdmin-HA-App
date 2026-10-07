@@ -1584,6 +1584,85 @@ class TestRollen:
             assert req(app, 'POST', '/api/data/gebruikers_rollen', body={})[0] == 200
 
 
+class TestBankAfschriften:
+    """Bewaarde bankafschriften: `bank_transacties` (de regels) en
+    `bank_afschriften` (de ingelezen bestanden). Financiële data: lijsten,
+    alleen boekhouding en beheer schrijven."""
+
+    ADMIN = {'X-Remote-User-Name': 'admin'}
+    CONFIG = {'gebruikers': {'admin': 'beheer', 'piet': 'productie', 'fien': 'boekhouding'}}
+    TX = [{'id': 1759, 'afschrift_id': 1758, 'iban': 'NL12INGB0001234567', 'datum': '2026-09-28',
+           'type': 'D', 'bedrag': 229.69, 'referentie': 'BTWQ2', 'tegenpartij': 'Belastingdienst',
+           'omschrijving': 'Omzetbelasting', 'gekoppeldBtwPeriode': '2026-Q2', 'autoGematcht': True}]
+    AFSCHRIFT = [{'id': 1758, 'iban': 'NL12INGB0001234567', 'referentie': 'DEKADE', 'afschriftNr': '00042',
+                  'beginsaldo': 3200, 'eindsaldo': 2970.31, 'van': '2026-09-28', 'tot': '2026-09-28',
+                  'geimporteerd_op': '2026-10-07T09:00:00Z', 'aantal': 1, 'nieuw': 1,
+                  'overgeslagen': 0, 'transactie_ids': [1759], 'vorig_eindsaldo': None}]
+
+    def test_containertype_is_een_lijst(self):
+        for key in ('bank_transacties', 'bank_afschriften'):
+            assert srv._payload_geldig(key, [])
+            assert not srv._payload_geldig(key, {})
+            assert not srv._payload_geldig(key, 'x')
+
+    def test_financiele_keys(self):
+        for key in ('bank_transacties', 'bank_afschriften'):
+            assert key in srv._FINANCIELE_KEYS
+            assert key not in srv._BEHEER_KEYS
+            assert srv._rol_mag_key('boekhouding', key)
+            assert not srv._rol_mag_key('productie', key)
+            assert not srv._rol_mag_key('alleen_lezen', key)
+
+    def test_geen_lijst_geeft_422(self, app):
+        for key in ('bank_transacties', 'bank_afschriften'):
+            status, body, _ = req(app, 'POST', f'/api/data/{key}', body={'transacties': []})
+            assert status == 422 and body['key'] == key
+
+    def test_round_trip_en_delta(self, app):
+        status, body, _ = req(app, 'POST', '/api/data/bank_afschriften', body=self.AFSCHRIFT)
+        assert status == 200
+        status, body, _ = req(app, 'POST', '/api/data/bank_transacties', body=self.TX)
+        assert status == 200
+        assert req(app, 'GET', '/api/data/bank_transacties')[1] == self.TX
+        assert req(app, 'GET', '/api/data/bank_afschriften')[1] == self.AFSCHRIFT
+        # Een volgend afschrift gaat als delta (alleen de nieuwe regels erbij)
+        nieuw = {**self.TX[0], 'id': 1760, 'referentie': 'HOEK79', 'type': 'C', 'bedrag': 496.1}
+        status, body, _ = req(app, 'POST', '/api/delta/bank_transacties',
+                              body={'upsert': [nieuw], 'delete': []},
+                              headers={'X-Data-Version': body['version']})
+        assert status == 200 and body['records'] == 2
+        # Afschrift verwijderen = zijn transacties weg, ook via delta
+        status, body, _ = req(app, 'POST', '/api/delta/bank_transacties',
+                              body={'upsert': [], 'delete': [1759, 1760]},
+                              headers={'X-Data-Version': body['version']})
+        assert status == 200 and body['records'] == 0
+        assert req(app, 'POST', '/api/data/bank_afschriften', body=[])[0] == 200
+
+    def test_productie_mag_niet_schrijven_boekhouding_wel(self, app):
+        assert req(app, 'POST', '/api/data/gebruikers_rollen', body=self.CONFIG,
+                   headers=self.ADMIN)[0] == 200
+        try:
+            piet = {'X-Remote-User-Name': 'piet'}
+            fien = {'X-Remote-User-Name': 'fien'}
+            for key, waarde in (('bank_transacties', self.TX), ('bank_afschriften', self.AFSCHRIFT)):
+                status, body, _ = req(app, 'POST', f'/api/data/{key}', body=waarde, headers=piet)
+                assert status == 403 and body['reden'] == 'rol'
+                assert req(app, 'POST', f'/api/data/{key}', body=waarde, headers=fien)[0] == 200
+                # lezen mag iedereen (de bankpagina toont ze; schrijven is het punt)
+                assert req(app, 'GET', f'/api/data/{key}', headers=piet)[0] == 200
+            # Ook in één commit met een gedeelde key: integraal geweigerd
+            status, body, _ = req(app, 'POST', '/api/commit', body={
+                'data': {'koel_logs': [], 'bank_transacties': []},
+            }, headers=piet)
+            assert status == 403 and body['key'] == 'bank_transacties'
+            assert req(app, 'GET', '/api/data/bank_transacties')[1] == self.TX
+        finally:
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={},
+                       headers=self.ADMIN)[0] == 200
+            for key in ('bank_transacties', 'bank_afschriften'):
+                assert req(app, 'POST', f'/api/data/{key}', body=[])[0] == 200
+
+
 class TestDirectLogin:
     """Directe-toegangspoort: HA-login met sessiecookie i.p.v. ingress."""
 

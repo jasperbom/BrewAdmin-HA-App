@@ -14,6 +14,10 @@ interface AdministratieDashboardProps {
   btwInst?: any
   btwAangiftes: any[]
   bankKoppelingen: Record<string, any>
+  /** `bank_transacties`: de bewaarde bankregels. Nog niet gelezen; voor een
+      volgende beslissing (ongekoppelde transacties, aansluiting). Lees de
+      koppelvlaggen via herstelKoppelingVlaggen (utils/bank.ts). */
+  bankTransacties?: any[]
   accijnsAangiftes: any[]
   acc: any[]
   inkoopFacturen: any[]
@@ -28,13 +32,13 @@ interface AdministratieDashboardProps {
       utils/btw.ts, utils/calculations.ts), dus ze blijven elkaar dekken. */
   attentie?: AttentiePost[]
   /** Aansluitverschil van de balans in centen (zie utils/beslissingen.ts).
-      Nog niet gevuld: die berekening leeft in de render van BoekhoudingPage. */
+      Nog niet gevuld: die berekening leeft in de render van Rapporten → Balans. */
   aansluitverschilCent?: number
-  /** Navigeert naar het doel van een beslissing (pagina + tabblad). Zonder
-      deze prop valt het dashboard terug op setPage + setBoekhoudingTab. */
-  gaNaarDoel?: (d: AttentieDoel) => void
-  setPage: (id: string) => void
-  setBoekhoudingTab: (tab: string | null) => void
+  /** Navigeert naar het doel van een beslissing: de pagina (Facturen, Bank,
+      Aangiftes …) met segment, filter, record (`id`) en handeling (`actie`). */
+  gaNaarDoel: (d: AttentieDoel) => void
+  /** Blijft voor App.tsx; het dashboard navigeert via gaNaarDoel. */
+  setPage?: (id: string) => void
 }
 
 // Vaste, semantische kleuren (geen themakleuren): de urgentie betekent altijd
@@ -49,14 +53,9 @@ const URGENTIE_CHIP: Record<Urgentie, string> = {
 function AdministratieDashboard({
   btwInst = {}, btwAangiftes = [], bankKoppelingen = {}, accijnsAangiftes = [], acc = [],
   inkoopFacturen = [], verkoopFacturen = [], inkoopInbox = [], klanten = [], breweryDetails = null,
-  aansluitverschilCent, gaNaarDoel, setPage, setBoekhoudingTab,
+  aansluitverschilCent, gaNaarDoel,
 }: AdministratieDashboardProps) {
-  const ga = (d: AttentieDoel) => {
-    if (gaNaarDoel) gaNaarDoel(d)
-    else if (d.pagina === 'boekhouding') { setBoekhoudingTab(d.tab || null); setPage('boekhouding') }
-    else setPage(d.pagina)
-  }
-  const gaNaarBoekhouding = (tab: string) => ga({ pagina: 'boekhouding', tab })
+  const ga = (d: AttentieDoel) => gaNaarDoel(d)
 
   const vandaag = tod()
   const vandaagDate = new Date(); vandaagDate.setHours(0, 0, 0, 0)
@@ -173,21 +172,25 @@ function AdministratieDashboard({
         <h3 className="text-xs font-semibold text-gray-500 mb-2">{t('besl_maand_titel')}</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label={t('besl_stat_omzet')} value={fmt(cijfers.omzet)} sub={t('besl_stat_omzet_sub')}
-            onClick={() => gaNaarBoekhouding('verkoop')} />
+            onClick={() => ga({ pagina: 'facturen', tab: 'verkoop' })} />
           <StatCard label={t('besl_stat_inkoop')} value={fmt(cijfers.inkoop)} sub={t('besl_stat_inkoop_sub')}
-            onClick={() => gaNaarBoekhouding('inkoop')} />
+            onClick={() => ga({ pagina: 'facturen', tab: 'inkoop' })} />
+          {/* Openstaand = statusfilter "open" (alle periodes): dezelfde
+              selectie als het getal op de kaart. */}
           <StatCard label={t('besl_stat_debiteuren')} value={fmt(cijfers.debiteuren)} sub={nFacturen(cijfers.debiteurenN)}
-            onClick={() => gaNaarBoekhouding('verkoop')} />
+            onClick={() => ga({ pagina: 'facturen', tab: 'verkoop', filter: 'open' })} />
           <StatCard label={t('besl_stat_crediteuren')} value={fmt(cijfers.crediteuren)} sub={nFacturen(cijfers.crediteurenN)}
-            onClick={() => gaNaarBoekhouding('inkoop')} />
+            onClick={() => ga({ pagina: 'facturen', tab: 'inkoop', filter: 'open' })} />
         </div>
       </div>
 
       {/* ── Secundaire acties ────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Btn v="secondary" onClick={() => gaNaarBoekhouding('inkoop')}>{t('dash_nieuwe_inkoopfactuur')}</Btn>
-        <Btn v="secondary" onClick={() => gaNaarBoekhouding('btw_aangifte')}>{t('tab_btw_aangifte')}</Btn>
-        <Btn v="secondary" onClick={() => gaNaarBoekhouding('bank')}>{t('dash_bank_importeren')}</Btn>
+        {/* De knoppen doen wat ze zeggen: het inkoopwerkblad openen, de
+            BTW-aangifte tonen, de bestandskiezer voor een afschrift openen. */}
+        <Btn v="secondary" onClick={() => ga({ pagina: 'facturen', tab: 'inkoop', actie: 'nieuw' })}>{t('dash_nieuwe_inkoopfactuur')}</Btn>
+        <Btn v="secondary" onClick={() => ga({ pagina: 'aangiftes', tab: 'btw' })}>{t('tab_btw_aangifte')}</Btn>
+        <Btn v="secondary" onClick={() => ga({ pagina: 'bank', actie: 'importeren' })}>{t('dash_bank_importeren')}</Btn>
       </div>
     </div>
   )

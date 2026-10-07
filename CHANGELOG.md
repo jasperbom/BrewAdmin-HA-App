@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.89] — 2026-10-07
+
+### Administratie opnieuw ingedeeld (deel 1: fundament)
+
+De werkruimte Administratie had vier menu-items, een pagina zonder menuplek,
+zeven tabbladen in Boekhouding en daaronder nog zes. Dit is de eerste stap naar
+vijf vaste plekken.
+
+- **Nieuw menu:** Facturen (Verkoop | Inkoop), Bank, Aangiftes (BTW | Accijns),
+  Voorraad (AGP-stand | Verloop | Tellingen) en Rapporten. Boekhouding en de
+  wegwijzer Rapporten zijn weg; oude links (`#/administratie/boekhouding`,
+  `agp`, `inventarisatie`, `voorraadverloop`) openen de nieuwe plek.
+- **Klanten alleen nog in Verkoop:** het dubbele tabblad Klanten in Boekhouding
+  is verwijderd.
+- **Bankafschriften worden bewaard** (`bank_transacties`, `bank_afschriften`,
+  in de backup). Een afschrift twee keer inlezen voegt niets dubbel toe; een
+  afschrift verwijderen kan met vijf seconden terugweg.
+- **Gedeelde onderdelen** voor de volgende stap: filterbalk, periodekiezer,
+  statuschips, lijst die op de telefoon kaarten wordt en een detailpaneel;
+  `utils/periode.ts` en `utils/factuurFilter.ts` (open en te laat negeren de
+  periode).
+
 ## [1.12.88] — 2026-10-07
 
 ### Inkoop boeken: liggend fotograferen werkt

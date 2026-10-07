@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { t, setLang as i18nSetLang } from './i18n'
-import { WerkruimteId, WERKRUIMTE_IDS, PAGINA_WERKRUIMTE, Route, parseRoute, bouwHash, routeGelijk, isDetailRoute } from './utils/route'
+import { WerkruimteId, WERKRUIMTE_IDS, PAGINA_WERKRUIMTE, PAGINA_ALIAS, Route, parseRoute, bouwHash, routeGelijk, isDetailRoute, resolveerDoel } from './utils/route'
 import { afgeleideThemaKleuren } from './utils/kleurContrast'
 import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet, newId } from './utils/api'
 import { maakAppIcoon } from './utils/icoon'
@@ -36,7 +36,8 @@ import MeerPage from './pages/MeerPage'
 import ProductieDashboard from './pages/ProductieDashboard'
 import VerkoopDashboard from './pages/VerkoopDashboard'
 import AdministratieDashboard from './pages/AdministratieDashboard'
-import RapportenPage from './pages/RapportenPage'
+import AdministratiePage from './pages/admin/AdministratiePage'
+import VoorraadPage from './pages/admin/VoorraadPage'
 import IngredientenPage from './pages/IngredientenPage'
 import BatchFlowPage from './pages/BatchFlowPage'
 import BestellingenPage from './pages/BestellingenPage'
@@ -44,13 +45,9 @@ import KassaPage from './pages/KassaPage'
 import KlantenPage from './pages/KlantenPage'
 import StatiegeldPage from './pages/StatiegeldPage'
 import ReceptenPage from './pages/ReceptenPage'
-import BoekhoudingPage from './pages/BoekhoudingPage'
 import InstellingenPage from './pages/InstellingenPage'
-import InventarisatiePage from './pages/InventarisatiePage'
 import ProductenPage from './pages/ProductenPage'
-import VoorraadverloopPage from './pages/VoorraadverloopPage'
 import HACCPPage from './pages/HACCPPage'
-import AgpPage from './pages/AgpPage'
 import GereedschapPage from './pages/GereedschapPage'
 import { WEBSITE_TELEMETRIE_DEFAULT } from './utils/websiteTelemetrie'
 import { IMAP_DEFAULT, imapActief } from './utils/inkoopInbox'
@@ -238,6 +235,10 @@ function App() {
   const [journaalMigratie, setJournaalMigratie] = useStore('journaal_migratie_v1', null);
   // Balans compleet (ERP-plan 2.3): banksaldi per IBAN + jaarafsluitingen.
   const [bankSaldi, setBankSaldi] = useStore('bank_saldi', {});
+  // Bewaarde bankafschriften: de ingelezen MT940-regels en de bestanden zelf.
+  // Wat er gekoppeld is blijft in bank_koppelingen (utils/bank.ts).
+  const [bankTransacties, setBankTransacties] = useStore('bank_transacties', []);
+  const [bankAfschriften, setBankAfschriften] = useStore('bank_afschriften', []);
   const [jaarafsluitingen, setJaarafsluitingen] = useStore('jaarafsluitingen', []);
   const [locaties, setLocaties] = useStore('locaties', [{id:1, naam:'AGP', is_agp:true}]);
   const [verplaatsingen, setVerplaatsingen] = useStore('verplaatsingen', []);
@@ -356,6 +357,9 @@ function App() {
   // opent en niet meteen weer hetzelfde detail toont.
   const [navNonce, setNavNonce] = useState(0);
   const setPage = (id: string) => {
+    // Een oude pagina-id (boekhouding, agp, inventarisatie, voorraadverloop)
+    // opent de plek waar het onderdeel nu staat, met het segment erbij.
+    if (PAGINA_ALIAS[id]) { gaNaarDoel({ pagina: id }); return; }
     const w = PAGINA_WERKRUIMTE[id];
     if (w && w !== routeRef.current.werkruimte) kiesWerkruimte(w);
     if (id === routeRef.current.pagina) {
@@ -402,7 +406,15 @@ function App() {
     if (typeof window === 'undefined') return;
     const bijHash = () => {
       const r = parseRoute(window.location.hash);
-      if (!r || routeGelijk(r, routeRef.current)) return;
+      if (!r) return;
+      // Een oude link (#/administratie/inventarisatie) brengt een segment mee:
+      // als navigatiedoel naar de pagina, en de hash meteen naar de nieuwe vorm.
+      if (r.tab) {
+        setNavDoel({ pagina: r.pagina, tab: r.tab });
+        try { window.history.replaceState(null, '', bouwHash(r)); } catch (_) { /* geen history */ }
+        if (routeGelijk(r, routeRef.current)) { setNavNonce(n => n + 1); return; }
+      }
+      if (routeGelijk(r, routeRef.current)) return;
       setWerkruimteState(r.werkruimte);
       try { localStorage.setItem(WERKRUIMTE_KEY, r.werkruimte); } catch (_) { /* localStorage niet beschikbaar */ }
       setPageIntern(r.pagina);
@@ -435,27 +447,22 @@ function App() {
     setPageIntern('dashboard');
   };
   const [preNieuwBatch, setPreNieuwBatch] = useState<any>(null);
-  // Deep-link naar een specifieke Boekhouding-tab (bv. vanuit het
-  // Administratie-dashboard) — eenmalig signaal; BoekhoudingPage consumeert
-  // en wist het.
-  const [boekhoudingTab, setBoekhoudingTab] = useState<string|null>(null);
-  // Sub-tab binnen Boekhouding → Rapporten (W&V, balans, …) — de rapportkaarten
-  // op de Rapporten-pagina wijzen er rechtstreeks naar.
-  const [boekhoudingRapportTab, setBoekhoudingRapportTab] = useState<string|null>(null);
   // Deep-link vanuit de attentie-uitklap in de header (en de THT-regels op het
   // productie-dashboard): welk tabblad/filter/record de doelpagina bij het
   // openen moet tonen, zodat een klik op "Lots over de THT-datum" precies op
   // het THT-overzicht landt en niet op een lijst waarin je zelf moet zoeken.
-  // Zelfde eenmalige-consume-patroon als boekhoudingTab: de pagina leest het
-  // in zijn useState-initializer en wist het daarna via onNavDoelConsumed.
-  const [navDoel, setNavDoel] = useState<AttentieDoel|null>(null);
+  // Eenmalig signaal: de pagina leest het in zijn useState-initializer en
+  // wist het daarna via onNavDoelConsumed. Ook de pagina's van Administratie
+  // (Facturen, Bank, Aangiftes, Voorraad, Rapporten) lezen hun segment,
+  // filter, record (`id`) en handeling (`actie`) hieruit. Een oude link
+  // (`#/administratie/agp`) start met het segment dat erbij hoort.
+  const [navDoel, setNavDoel] = useState<AttentieDoel|null>(() => startRoute?.tab ? { pagina: startRoute.pagina, tab: startRoute.tab } : null);
   const gaNaarDoel = (d: AttentieDoel) => {
-    if (d.pagina === 'boekhouding') {
-      setBoekhoudingTab(d.tab || null);
-      setBoekhoudingRapportTab(d.tab === 'rapporten' && d.filter ? d.filter : null);
-    }
-    else setNavDoel(d);
-    setPage(d.pagina);
+    // Oude doelen (pagina 'boekhouding' met een tabblad, 'agp', …) landen op
+    // de plek waar het onderdeel nu staat (utils/route.ts → resolveerDoel).
+    const doel = resolveerDoel(d);
+    setNavDoel(doel);
+    setPage(doel.pagina);
   };
   const doelVoor = (pagina: string): AttentieDoel | null => navDoel?.pagina === pagina ? navDoel : null;
   const wisNavDoel = () => setNavDoel(null);
@@ -1717,6 +1724,8 @@ function App() {
       producten, product_artikelen: productArtikelen,
       bank_koppelingen: bankKoppelingen,
       bank_saldi: bankSaldi,
+      bank_transacties: bankTransacties,
+      bank_afschriften: bankAfschriften,
       haccp_schoonmaak_taken: haccpSchoonmaakTaken, haccp_schoonmaak_log: haccpSchoonmaakLog,
       haccp_ccp_definities: haccpCcpDefinities, haccp_ccp_metingen: haccpCcpMetingen,
       haccp_capa: haccpCapa, haccp_waterkwaliteit: haccpWaterkwaliteit,
@@ -1808,6 +1817,8 @@ function App() {
       if (Array.isArray(d.journaal)) setJournaal((prev: any[]) => voegToeOpId(prev, d.journaal));
       if (Array.isArray(d.jaarafsluitingen)) setJaarafsluitingen(d.jaarafsluitingen);
       if (d.bank_saldi && typeof d.bank_saldi === 'object' && !Array.isArray(d.bank_saldi)) setBankSaldi(d.bank_saldi);
+      if (Array.isArray(d.bank_transacties)) setBankTransacties(d.bank_transacties);
+      if (Array.isArray(d.bank_afschriften)) setBankAfschriften(d.bank_afschriften);
       if (Array.isArray(d.locaties)) setLocaties(d.locaties);
       if (Array.isArray(d.verplaatsingen)) setVerplaatsingen(d.verplaatsingen);
       if (Array.isArray(d.producten)) setProducten(d.producten);
@@ -1932,12 +1943,10 @@ function App() {
   // opsplitsing per post staat in utils/attentie.ts — de badge is uitklapbaar,
   // zodat zichtbaar is wáár het getal vandaan komt en één klik naar de
   // bijbehorende pagina springt.
-  // "Ongekoppelde banktransacties" ontbreekt bewust in Administratie:
-  // bankafschriften worden nooit opgeslagen (alleen zichtbaar binnen de
-  // sessie na een MT940-import, zie BoekhoudingPage) en dat alsnog
-  // persistent tellen zou een nieuwe opslaglaag vergen — dat raakt
-  // server.py, wat voor deze werkruimte-herstructurering uitdrukkelijk
-  // buiten scope is.
+  // "Ongekoppelde banktransacties" telt (nog) niet mee in Administratie.
+  // Sinds de afschriften bewaard worden (`bank_transacties`) kan dat als
+  // post in utils/attentie.ts, met de vlaggen uit herstelKoppelingVlaggen
+  // (utils/bank.ts) — nooit uit de ruwe opgeslagen vlaggen.
   const attentie = attentiePosten({
     batches: bat, batchTakenItems, batchTakenGroepen,
     schoonmaakTaken: haccpSchoonmaakTaken, schoonmaakLog: haccpSchoonmaakLog,
@@ -1979,22 +1988,32 @@ function App() {
       {id:'klanten',l:t('nav_klanten')},
       {id:'statiegeld',l:t('nav_statiegeld')},
     ],
-    // Administratie heeft twee ingangen: het dashboard (beslissingen) en
-    // Rapporten (terugkijken/exporteren). Voorraadverloop is een rapport en
-    // staat daaronder; de pagina zelf blijft via deep-links bereikbaar.
+    // Administratie: het dashboard (beslissingen) als startpunt en vijf vaste
+    // plekken. Verkoop | Inkoop, BTW | Accijns en AGP-stand | Verloop |
+    // Tellingen zijn segmenten binnen de pagina, geen derde menulaag.
     administratie: [
-      {id:'boekhouding',l:t('nav_boekhouding')},
+      {id:'facturen',l:t('nav_facturen')},
+      {id:'bank',l:t('nav_bank')},
+      {id:'aangiftes',l:t('nav_aangiftes')},
+      {id:'voorraad',l:t('nav_voorraad')},
       {id:'rapporten',l:t('nav_rapporten')},
-      {id:'agp',l:t('nav_agp')},
-      {id:'inventarisatie',l:t('nav_inventarisatie')},
     ],
   };
   const nav = navPerWerkruimte[werkruimte];
+  // Administratie: de badge op Facturen en Aangiftes telt de attentieposten
+  // die daar landen — dezelfde bron als de werkruimte-badge.
+  const adminBadge = (pagina: string): { badge?: number, badgeTitel?: string } => {
+    if (werkruimte !== 'administratie') return {};
+    const posten = attentieVoorPagina(attentie.administratie, pagina);
+    const n = attentieTotaal(posten);
+    return n > 0 ? { badge: n, badgeTitel: posten.map(p => `${p.aantal}× ${t(p.sleutel)}`).join(' · ') } : {};
+  };
   const paginaItems: PaginaNavItem[] = nav.map(n => ({
     id: n.id, label: n.l,
     sub: n.sub?.map(s => ({ id: s.id, label: s.l })),
     badge: n.id === 'bestellingen' ? openBestellingen : undefined,
     badgeTitel: n.id === 'bestellingen' && openBestellingen > 0 ? bestellingenTitel : undefined,
+    ...adminBadge(n.id),
   }));
   // Titel van het huidige scherm: de werkruimte op haar dashboard, anders de
   // naam van de pagina (ook een sub-item van een groep).
@@ -2320,7 +2339,7 @@ function App() {
         {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankBewaking={tankBewaking} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} setPreNieuwBatch={setPreNieuwBatch} gaNaarDoel={gaNaarDoel} producten={producten} recepten={recepten} carbSessies={carbSessies} geselecteerdeBatchId={navBatchId} onSelecteerBatch={setNavBatchId} metingSignaal={metingSignaal}
           batchPaneel={navBatchId != null ? <BatchFlowPage key={`paneel-${navBatchId}`} {...batchFlowProps} embedded onSluit={() => setNavBatchId(null)} /> : null} />}
         {page==='dashboard' && werkruimte==='verkoop' && <VerkoopDashboard bestellingen={bestellingen} bestellingPicks={bestellingPicks} setOpenOrderId={setOpenOrderId} av={av} producten={producten} locaties={locaties} uit={uit} verplaatsingen={verplaatsingen} afboekingen={afboekingen} wcCreds={wcCreds} wcSyncLog={wcSyncLog} setPage={setPage} />}
-        {page==='dashboard' && werkruimte==='administratie' && <AdministratieDashboard btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} accijnsAangiftes={accijnsAangiftes} acc={acc} inkoopFacturen={inkoopFacturen} inkoopInbox={inkoopInbox} verkoopFacturen={verkoopFacturen} klanten={klanten} breweryDetails={breweryDetails} attentie={attentie.administratie} gaNaarDoel={gaNaarDoel} setPage={setPage} setBoekhoudingTab={setBoekhoudingTab} />}
+        {page==='dashboard' && werkruimte==='administratie' && <AdministratieDashboard btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} bankTransacties={bankTransacties} accijnsAangiftes={accijnsAangiftes} acc={acc} inkoopFacturen={inkoopFacturen} inkoopInbox={inkoopInbox} verkoopFacturen={verkoopFacturen} klanten={klanten} breweryDetails={breweryDetails} attentie={attentie.administratie} gaNaarDoel={gaNaarDoel} setPage={setPage} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} kostenSoorten={kostenSoorten} bfCreds={bfCreds} auditLog={auditLog} setAuditLog={setAuditLog} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} setJournaal={setJournaal} navDoel={doelVoor('ingredienten')} onNavDoelConsumed={wisNavDoel} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bat={bat} av={av} verliesRegistraties={verliesRegistraties} inkoopFacturen={inkoopFacturen} verpakkingen={verpakkingen} onderdelen={onderdelen} accijnsInst={accijnsInst} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} ing={ing} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} onderdelen={onderdelen} av={av} setAv={setAv} uit={uit} bi={bi} lots={lots} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={wcCredsSchrijfbaar ? setWcCreds : undefined} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} />}
@@ -2331,12 +2350,9 @@ function App() {
         {page==='kassa' && <KassaPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} producten={producten} productArtikelen={productArtikelen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} factuurLogo={factuurLogo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} klanten={klanten} setKlanten={setKlanten} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsAangiftes={accijnsAangiftes} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} />}
         {page==='klanten' && <KlantenPage klanten={klanten} setKlanten={setKlanten} bestellingen={bestellingen} setBestellingen={setBestellingen} verkoopFacturen={verkoopFacturen} breweryDetails={breweryDetails} smtpCreds={smtpCreds} factuurLogo={factuurLogo} logo={logo} appName={appName} setPage={setPage} setOpenOrderId={setOpenOrderId} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} bestellingen={bestellingen} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} />}
-        {page==='inventarisatie' && <InventarisatiePage lots={lots} ing={ing} av={av} bat={bat} uit={uit} afboekingen={afboekingen} setAfboekingen={setAfboekingen} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingPicks={bestellingPicks} bestellingen={bestellingen} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} setLots={setLots} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} accijnsInst={accijnsInst} />}
-        {page==='voorraadverloop' && <VoorraadverloopPage lots={lots} bat={bat} bi={bi} av={av} uit={uit} afboekingen={afboekingen} log={log} ing={ing} accijnsInst={accijnsInst} producten={producten} locaties={locaties} verplaatsingen={verplaatsingen} />}
-        {page==='rapporten' && <RapportenPage gaNaarDoel={gaNaarDoel} />}
-        {page==='agp' && <AgpPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} producten={producten} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsInst={accijnsInst} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} accijnsAangiftes={accijnsAangiftes} verliezen={verliesRegistraties} bestellingen={bestellingen} bestellingPicks={bestellingPicks} />}
+        {page==='voorraad' && <VoorraadPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} bi={bi} lots={lots} setLots={setLots} ing={ing} log={log} setLog={setLog} producten={producten} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} setAfboekingen={setAfboekingen} accijnsInst={accijnsInst} accijnsAangiftes={accijnsAangiftes} verliezen={verliesRegistraties} bestellingen={bestellingen} bestellingPicks={bestellingPicks} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('voorraad')} onNavDoelConsumed={wisNavDoel} />}
         {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} tankStatussen={tankStatussen} tankLog={tankReinigingLog} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} producten={producten} setProducten={setProducten} setBat={setBat} vrijgaven={haccpVrijgaven} sessies={afvulSessies} sluitcontroles={haccpSluitcontroles} etiketcontroles={haccpEtiketcontroles} afwijkingen={haccpAfwijkingen} traceOefeningen={haccpTraceOefeningen} setTraceOefeningen={setHaccpTraceOefeningen} whoami={whoami} afboekingen={afboekingen} klanten={klanten} bestellingen={bestellingen} bestellingPicks={bestellingPicks} haccpInst={haccpInst} breweryDetails={breweryDetails} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('haccp')} onNavDoelConsumed={wisNavDoel} />}
-        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} verpakkingen={verpakkingen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} mollieCreds={mollieCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} journaal={journaal} setJournaal={setJournaal} bankSaldi={bankSaldi} setBankSaldi={setBankSaldi} jaarafsluitingen={jaarafsluitingen} setJaarafsluitingen={setJaarafsluitingen} initialTab={boekhoudingTab} initialRapportTab={boekhoudingRapportTab} onInitialTabConsumed={() => { setBoekhoudingTab(null); setBoekhoudingRapportTab(null) }} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} inkoopInbox={inkoopInbox} setInkoopInbox={setInkoopInbox} refreshInkoopInbox={refreshInkoopInbox} imapCreds={imapCreds} onNaarPostvakInstellingen={() => gaNaarDoel({pagina: 'instellingen', tab: 'koppelingen', filter: 'postvak'})} />}
+        {(page==='facturen' || page==='bank' || page==='aangiftes' || page==='rapporten') && <AdministratiePage sectie={page} navDoel={doelVoor(page)} onNavDoelConsumed={wisNavDoel} gaNaarDoel={gaNaarDoel} whoami={whoami} bankTransacties={bankTransacties} setBankTransacties={setBankTransacties} bankAfschriften={bankAfschriften} setBankAfschriften={setBankAfschriften} wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} verpakkingen={verpakkingen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} mollieCreds={mollieCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} journaal={journaal} setJournaal={setJournaal} bankSaldi={bankSaldi} setBankSaldi={setBankSaldi} jaarafsluitingen={jaarafsluitingen} setJaarafsluitingen={setJaarafsluitingen} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} inkoopInbox={inkoopInbox} setInkoopInbox={setInkoopInbox} refreshInkoopInbox={refreshInkoopInbox} imapCreds={imapCreds} onNaarPostvakInstellingen={() => gaNaarDoel({pagina: 'instellingen', tab: 'koppelingen', filter: 'postvak'})} />}
         {page==='instellingen' && <InstellingenPage haccpSchoonmaakTaken={haccpSchoonmaakTaken} accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} wcImportStatus={wcImportStatus} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} mollieCreds={mollieCreds} setMollieCreds={setMollieCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} acc={acc} accijnsAangiftes={accijnsAangiftes} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} notificatieInst={notificatieInst} setNotificatieInst={setNotificatieInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} websiteTelemetrie={websiteTelemetrie} setWebsiteTelemetrie={setWebsiteTelemetrie} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} haccpInst={haccpInst} setHaccpInst={setHaccpInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} gebruikersRollen={gebruikersRollen} setGebruikersRollen={setGebruikersRollen} loginInst={loginInst} setLoginInst={setLoginInst} resetApp={resetApp} integriteitData={{ingredienten: ing, lots, batches: bat, batch_ingredienten: bi, afvullingen: av, uitleveringen: uit, accijns: acc, bestellingen, bestelling_picks: bestellingPicks, verkoop_facturen: verkoopFacturen, afboekingen, klanten, producten, product_artikelen: productArtikelen, locaties, verplaatsingen, verpakkingen}} integriteitSetters={{lots: setLots, batches: setBat, afvullingen: setAv, product_artikelen: setProductArtikelen}} imapCreds={imapCreds} setImapCreds={setImapCreds} navDoel={doelVoor('instellingen')} onNavDoelConsumed={wisNavDoel} />}
         {page==='meer' && <MeerPage whoami={whoami} appName={appName} onInstellingen={()=>setPage('instellingen')} />}
       </main>

@@ -105,15 +105,18 @@ interface AccijnsPageProps {
   accijnsInst?: AccijnsInst | null
   auditLog?: any[]
   setAuditLog?: (v: any) => void
-  // Onkoppelbare bankdebets voor de betaalkoppeling (uit BoekhoudingPage)
+  // Nog niet gekoppelde bankdebets voor de betaalkoppeling (de bewaarde
+  // banktransacties, via Administratie → Aangiftes)
   bankDebets?: {key: string, datum: string, label: string, bedrag: number}[]
+  // Naar Bank om een afschrift in te lezen (als er geen debet past)
+  onBankImporteren?: (() => void) | null
   koppelAccijnsBetaling?: ((txKey: string, maandKey: string) => void) | null
   ontkoppelAccijnsBetaling?: ((maandKey: string) => void) | null
   accijnsKoppelingInfo?: ((maandKey: string) => {datum?: string, bedrag?: number} | null) | null
   setJournaal?: (v: any) => void
 }
 
-function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}, bankDebets=[], koppelAccijnsBetaling=null, ontkoppelAccijnsBetaling=null, accijnsKoppelingInfo=null, setJournaal=()=>{}}: AccijnsPageProps) {
+function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setAccijnsAangiftes=()=>{}, accijnsInst=null, auditLog=[], setAuditLog=()=>{}, bankDebets=[], koppelAccijnsBetaling=null, ontkoppelAccijnsBetaling=null, accijnsKoppelingInfo=null, setJournaal=()=>{}, onBankImporteren=null}: AccijnsPageProps) {
   const {useState, useMemo} = React;
   // acc records: {id, batch_id, batch_nummer, uitlevering_id, verpakking_type, datum, aantal, liter, abv, accijns, betaald, betaal_datum}
   const getAccijns = (a: any) => Number(a.accijns ?? a.totaal_accijns ?? 0);
@@ -332,14 +335,17 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
                 const retro = wfStatus === 'betaald' || (allPaid && wfStatus !== 'ingediend')
                 if (wfStatus !== 'ingediend' && !retro) return null
                 const aangifteBedrag = Math.abs(Number(aangifte?.bedrag ?? monthTotal))
-                const nearMatches = (bankDebets||[]).filter((tx: any) => Math.abs(Math.abs(tx.bedrag) - aangifteBedrag) <= 1.00)
-                const others = (bankDebets||[]).filter((tx: any) => !nearMatches.includes(tx))
+                // Een betaling voor deze maand ligt niet vóór de maand zelf: de
+                // bewaarde afschriften gaan jaren terug, de keuzelijst niet.
+                const debets = (bankDebets||[]).filter((tx: any) => String(tx.datum || '') >= `${monthKey}-01`)
+                const nearMatches = debets.filter((tx: any) => Math.abs(Math.abs(tx.bedrag) - aangifteBedrag) <= 1.00)
+                const others = debets.filter((tx: any) => !nearMatches.includes(tx))
                 return (
                   <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50 p-3 space-y-1.5">
                     {retro && <p className="text-xs t-accent-text">{t('msg_accijns_koppel_achteraf')}</p>}
                     <div className="flex items-center gap-2">
                       <span className="text-xs t-accent-text font-medium shrink-0">{t('lbl_koppel_betaling')}</span>
-                      {(bankDebets||[]).length > 0 ? (
+                      {debets.length > 0 ? (
                         <select onChange={(e: any) => { if (e.target.value) koppelAccijnsBetaling(e.target.value, monthKey) }} defaultValue=""
                           className="border t-border rounded px-2 py-0.5 text-xs focus:outline-none t-input flex-1 min-w-0 bg-white">
                           <option value="">— {t('lbl_selecteer_transactie')} —</option>
@@ -361,7 +367,15 @@ function AccijnsPage({bat, acc, setAcc, uit=[], av=[], accijnsAangiftes=[], setA
                           )}
                         </select>
                       ) : (
-                        <span className="text-xs t-accent-text italic">{t('msg_geen_banktxn_geladen')}</span>
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+                          <span className="text-xs text-gray-500">{t('msg_geen_banktxn_kandidaat')}</span>
+                          {onBankImporteren && (
+                            <button type="button" onClick={onBankImporteren}
+                              className="text-xs font-medium t-accent-text hover:underline min-h-tap sm:min-h-0">
+                              {t('btn_afschrift_importeren')}
+                            </button>
+                          )}
+                        </span>
                       )}
                     </div>
                   </div>

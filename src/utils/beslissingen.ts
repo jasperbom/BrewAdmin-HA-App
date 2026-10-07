@@ -54,7 +54,8 @@ export interface Beslissing {
   datum?: string
   /** i18n-sleutel van de knoptekst. */
   actieSleutel: string
-  /** Waar de actie wordt uitgevoerd (pagina + tabblad/filter). */
+  /** Waar de actie wordt uitgevoerd (pagina + segment/filter, en waar het
+      kan het record zelf: de factuur, de BTW-periode, de accijnsmaand). */
   doel: AttentieDoel
 }
 
@@ -76,7 +77,7 @@ export interface BeslissingenBron {
   /**
    * Verschil tussen het eigen vermogen als sluitpost en het EV dat uit de
    * beginbalans + het resultaat van het boekjaar volgt (de aansluitcontrole
-   * op de balans, BoekhoudingPage → Rapporten → Balans). ≠ 0 betekent dat er
+   * op de balans, Rapporten → Balans). ≠ 0 betekent dat er
    * boekingen ontbreken — meestal een niet-geïmporteerd bankafschrift.
    *
    * Optioneel omdat die berekening nu nog in de render van de balans leeft en
@@ -93,6 +94,12 @@ export interface BeslissingenBron {
 }
 
 const tekst = (v: any): string => (v === null || v === undefined ? '' : String(v))
+
+/** Numerieke record-id voor het navigatiedoel; een factuur zonder bruikbare id opent alleen de lijst. */
+const idVan = (f: any): number | undefined => {
+  const n = Number(f?.id)
+  return f?.id !== null && f?.id !== undefined && f?.id !== '' && Number.isFinite(n) ? n : undefined
+}
 
 /**
  * Uiterste aangiftedatum van een BTW-periode: één maand na afloop van het
@@ -130,8 +137,8 @@ export function beslissingen(bron: BeslissingenBron): Beslissing[] {
   const klanten = bron.klanten || []
   const vandaag = bron.vandaagIso
 
-  // (a) Vervallen verkoopfacturen — dezelfde selectie als de badge en de rode
-  //     lijst op Boekhouding → Verkoop.
+  // (a) Vervallen verkoopfacturen — dezelfde selectie als de badge en de
+  //     statusfilter "te laat" op Facturen → Verkoop.
   for (const f of vervallenVerkoopFacturen(bron.verkoopFacturen, klanten, bron.breweryDetails, vandaag)) {
     const klant = tekst(findLiveKlant(f, klanten)?.naam || f?.klant_naam)
     uit.push({
@@ -147,7 +154,8 @@ export function beslissingen(bron: BeslissingenBron): Beslissing[] {
       bedragCent: verkoopBrutoCent(f),
       datum: tekst(f?.datum) || undefined,
       actieSleutel: 'besl_actie_herinnering',
-      doel: { pagina: 'boekhouding', tab: 'verkoop' },
+      // De factuur zelf: Facturen › Verkoop met "te laat" aan en deze factuur open.
+      doel: { pagina: 'facturen', tab: 'verkoop', filter: 'te_laat', ...(idVan(f) != null ? { id: idVan(f) } : {}) },
     })
   }
 
@@ -167,7 +175,7 @@ export function beslissingen(bron: BeslissingenBron): Beslissing[] {
       bedragCent: inkoopBrutoCent(f),
       datum: tekst(f?.datum) || undefined,
       actieSleutel: 'besl_actie_betalen',
-      doel: { pagina: 'boekhouding', tab: 'inkoop' },
+      doel: { pagina: 'facturen', tab: 'inkoop', filter: 'te_laat', ...(idVan(f) != null ? { id: idVan(f) } : {}) },
     })
   }
 
@@ -187,7 +195,8 @@ export function beslissingen(bron: BeslissingenBron): Beslissing[] {
       contextSleutel: akkoord ? 'besl_accijns_indienen_ctx' : 'besl_accijns_controle_ctx',
       datum: `${maand}-01`,
       actieSleutel: akkoord ? 'besl_actie_indienen' : 'besl_actie_controleren',
-      doel: { pagina: 'boekhouding', tab: 'accijns' },
+      // De maand zelf (`JJJJ-MM`) op Aangiftes › Accijns.
+      doel: { pagina: 'aangiftes', tab: 'accijns', filter: maand },
     })
   }
 
@@ -214,7 +223,8 @@ export function beslissingen(bron: BeslissingenBron): Beslissing[] {
       contextSleutel: aantal > 1 ? 'besl_btw_aangifte_ctx_meer' : 'besl_btw_aangifte_ctx',
       datum: uiterlijk || undefined,
       actieSleutel: 'besl_actie_indienen',
-      doel: { pagina: 'boekhouding', tab: 'btw_aangifte' },
+      // De periode zelf (`2026-Q3`, `2026-M09`) op Aangiftes › BTW.
+      doel: { pagina: 'aangiftes', tab: 'btw', filter: btwPeriode.key },
     })
   }
 
@@ -228,7 +238,7 @@ export function beslissingen(bron: BeslissingenBron): Beslissing[] {
       contextSleutel: 'besl_aansluitverschil_ctx',
       bedragCent: Math.round(verschil),
       actieSleutel: 'besl_actie_afschrift',
-      doel: { pagina: 'boekhouding', tab: 'bank' },
+      doel: { pagina: 'bank' },
     })
   }
 
@@ -250,7 +260,7 @@ export function beslissingen(bron: BeslissingenBron): Beslissing[] {
       contextSleutel: 'besl_inbox_ctx',
       datum: tekst(oudste.mail_datum || oudste.ontvangen).slice(0, 10) || undefined,
       actieSleutel: 'besl_actie_verwerken',
-      doel: { pagina: 'boekhouding', tab: 'inkoop' },
+      doel: { pagina: 'facturen', tab: 'inkoop', filter: 'te_verwerken' },
     })
   }
 

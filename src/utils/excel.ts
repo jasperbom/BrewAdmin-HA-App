@@ -192,6 +192,10 @@ export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
     addSheet('BatchNotities',         data.batch_notities)
     addSheet('KapitaalBoekingen',     data.kapitaal_boekingen)
     addSheet('AltRekeningen',         data.alt_rekeningen)
+    // Bewaarde bankafschriften: de regels en de ingelezen bestanden. De
+    // koppelingen zelf staan in bank_koppelingen (Instellingen-tabblad).
+    addSheet('BankTransacties',       data.bank_transacties)
+    addSheet('BankAfschriften',       data.bank_afschriften)
     addSheet('Inventarisaties',       data.inventarisaties)
     addSheet('AuditLog',             data.audit_log)
     addSheet('AccijnsAangiftes',     data.accijns_aangiftes)
@@ -391,6 +395,8 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
         batch_notities:               parse('BatchNotities'),
         kapitaal_boekingen:           parse('KapitaalBoekingen'),
         alt_rekeningen:               parse('AltRekeningen'),
+        bank_transacties:             parse('BankTransacties'),
+        bank_afschriften:             parse('BankAfschriften'),
         inventarisaties:              parse('Inventarisaties'),
         audit_log:                    parse('AuditLog'),
         accijns_aangiftes:            parse('AccijnsAangiftes'),

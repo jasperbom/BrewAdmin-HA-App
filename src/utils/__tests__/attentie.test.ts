@@ -72,10 +72,10 @@ describe('attentiePosten', () => {
       tht_verlopen: { pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_verlopen' },
       tht_binnenkort: { pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_binnenkort' },
       bestellingen: { pagina: 'bestellingen', filter: 'te_picken' },
-      verkoop_vervallen: { pagina: 'boekhouding', tab: 'verkoop' },
-      btw: { pagina: 'boekhouding', tab: 'btw_aangifte' },
-      accijns: { pagina: 'boekhouding', tab: 'accijns' },
-      inkoop_achterstallig: { pagina: 'boekhouding', tab: 'inkoop' },
+      verkoop_vervallen: { pagina: 'facturen', tab: 'verkoop', filter: 'te_laat' },
+      btw: { pagina: 'aangiftes', tab: 'btw' },
+      accijns: { pagina: 'aangiftes', tab: 'accijns' },
+      inkoop_achterstallig: { pagina: 'facturen', tab: 'inkoop', filter: 'te_laat' },
     })
   })
 
@@ -125,7 +125,7 @@ describe('attentiePosten', () => {
     expect(posten.map(p => p.id)).toEqual(['btw'])
     // Q4-2025 en Q1-2026 zijn voorbij, niets ingediend of betaald.
     expect(posten[0].aantal).toBe(2)
-    expect(posten[0].pagina).toBe('boekhouding')
+    expect(posten[0].pagina).toBe('aangiftes')
   })
 
   it('telt vervallen verkoopfacturen: open én voorbij de betalingstermijn van klant of brouwerij', () => {
@@ -224,9 +224,9 @@ describe('attentiePosten — facturen per e-mail', () => {
     bron.inkoopInbox = [inboxItem(1, 'nieuw'), inboxItem(2, 'nieuw'), inboxItem(3, 'verwerkt'), inboxItem(4, 'genegeerd')]
     const posten = attentiePosten(bron).administratie
     expect(posten).toEqual([{
-      id: 'inkoop_inbox', sleutel: 'attentie_inkoop_inbox', pagina: 'boekhouding', tab: 'inkoop', aantal: 2,
+      id: 'inkoop_inbox', sleutel: 'attentie_inkoop_inbox', pagina: 'facturen', tab: 'inkoop', filter: 'te_verwerken', aantal: 2,
     }])
-    expect(attentieDoel(posten[0])).toEqual({ pagina: 'boekhouding', tab: 'inkoop' })
+    expect(attentieDoel(posten[0])).toEqual({ pagina: 'facturen', tab: 'inkoop', filter: 'te_verwerken' })
     expect(attentieTotalen(attentiePosten(bron)).administratie).toBe(2)
   })
 
