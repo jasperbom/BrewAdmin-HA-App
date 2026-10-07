@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useRef } from 'react'
 import ReactDOM from 'react-dom'
 import { t } from '../../i18n'
+import { useDialoogFocus } from './useDialoogFocus'
 
 interface ModalProps {
   title: string
@@ -11,64 +12,12 @@ interface ModalProps {
   hideClose?: boolean
 }
 
-// Elementen die focus kunnen ontvangen — gebruikt voor de eerste-focus en de
-// focus-trap hieronder.
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-
 const Modal: React.FC<ModalProps> = ({title, children, onClose, wide=false, ultrawide=false, hideClose=false}) => {
   const panelRef = useRef<HTMLDivElement | null>(null)
   const titleId = React.useId()
 
-  // Bij openen: onthoud wat er focus had, zet focus in het paneel; bij
-  // unmount: geef de focus weer terug.
-  useEffect(() => {
-    const prevActive = document.activeElement as HTMLElement | null
-    const panel = panelRef.current
-    const focusables = panel ? Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)) : []
-    if (focusables.length > 0) {
-      focusables[0].focus()
-    } else if (panel) {
-      panel.focus()
-    }
-    return () => {
-      if (prevActive && typeof prevActive.focus === 'function') prevActive.focus()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Escape sluit de modal, Tab/Shift+Tab blijft binnen het paneel (focus-trap).
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (!hideClose) onClose()
-        return
-      }
-      if (e.key === 'Tab') {
-        const panel = panelRef.current
-        const nodes = panel ? Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)) : []
-        if (nodes.length === 0) {
-          e.preventDefault()
-          return
-        }
-        const first = nodes[0]
-        const last = nodes[nodes.length - 1]
-        if (e.shiftKey) {
-          if (document.activeElement === first || !panel?.contains(document.activeElement)) {
-            e.preventDefault()
-            last.focus()
-          }
-        } else {
-          if (document.activeElement === last || !panel?.contains(document.activeElement)) {
-            e.preventDefault()
-            first.focus()
-          }
-        }
-      }
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose, hideClose])
+  // Focus naar het paneel en terug bij sluiten; Escape sluit, Tab blijft binnen.
+  useDialoogFocus(panelRef, hideClose ? null : onClose)
 
   return ReactDOM.createPortal(
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[200] p-4 overflow-y-auto">

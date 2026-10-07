@@ -1,238 +1,57 @@
-import React, { useState } from 'react'
-import Modal from './ui/Modal'
-import Btn from './ui/Btn'
-import Inp from './ui/Inp'
-import Sel from './ui/Sel'
+import React from 'react'
+import ReactDOM from 'react-dom'
 import { t } from '../i18n'
-import { MerchArtikel, merchLabel, volgtVoorraad } from '../utils/merch'
-import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, EENHEDEN, ONDERDEEL_TYPES, LOT_BREW_FIELDS_PER_TYPE, BREW_PROP_UNITS } from '../utils/constants'
-import { getEffectiveBrewProp, formatBrewValue } from '../utils/brewProps'
-import { ADDON_BASE, callClaudeProxy } from '../utils/api'
-import { tod } from '../utils/format'
-import { InkoopInboxItem, inboxAfzender } from '../utils/inkoopInbox'
-
-// PDF-tekstextractie is gedeeld met het waterprofiel-gereedschap.
-import { extractPdfText } from '../utils/pdfText'
+import Btn from './ui/Btn'
 import Icon from './ui/Icon'
+import { useDialoogFocus } from './ui/useDialoogFocus'
+import { useSmalScherm, isAanraakscherm } from './ui/useSmalScherm'
+import Segment from './inkoop/Segment'
+import FactuurDocument, { type DocumentBron, type Markering } from './inkoop/FactuurDocument'
+import RegelLijst from './inkoop/RegelLijst'
+import RegelEditor, { BronLabel, soortLabel, type RegelContext } from './inkoop/RegelEditor'
+import EtiketFotos, { type EtiketStatus } from './inkoop/EtiketFotos'
+import InkoopTotalen from './inkoop/InkoopTotalen'
+import Onderblad from './inkoop/Onderblad'
+import {
+  nieuweRegel, nieuwRegelId, wisselSoort, valideerRegel, isLeegRegel, naarOpslag, vanFactuur, telOpslag,
+  berekenTotalen, startRegelVoorIngredient, heeftMeerLots, type InkoopRegel, type RegelSoort,
+} from '../utils/inkoopRegels'
+import {
+  factuurSchema, bouwFactuurPrompt, inhoudVoorFactuur, normaliseerFactuurScan, parseFactuurTekstLokaal,
+  regelsUitScan, factuurScanModus, MAX_FACTUUR_FOTOS, type BtwSoort, type FactuurBestand, type FactuurScan,
+} from '../utils/factuurScan'
+import {
+  etiketSchema, bouwEtiketPrompt, inhoudVoorEtiket, normaliseerEtiketScan, productKlopt, pasEtiketToe,
+  etiketLotsWijkenAf, type EtiketScan,
+} from '../utils/etiketScan'
+import {
+  controleerTotaal, totaalOvernemen, zoekDubbeleFactuur, normLeverancier, effectieveTotalen, naarTotaalManual,
+  GEEN_HANDMATIG, type FactuurTotalen, type HandmatigeTotalen,
+} from '../utils/inkoopControle'
+import { koppelingenUitRegels, type ScanKoppeling } from '../utils/scanGeheugen'
+import { voerScanUit, ScanFout, scanFoutSleutel, bytesNaarBase64 } from '../utils/claudeScan'
+import {
+  naarJpeg, fotosNaarPdf, alsBestand, naamMetExtensie, AfbeeldingFout, afbeeldingFoutSleutel,
+  isPdfBestand, isFotoBestand, SCAN_MAX_PX, ARCHIEF_MAX_PX, FACTUUR_PAGINA_PX, type Jpeg,
+} from '../utils/afbeelding'
+import { extractPdfText } from '../utils/pdfText'
+import { uploadBijlage, uploadFoutSleutel, type Bijlage } from '../utils/bijlage'
+import { ADDON_BASE, callClaudeProxy } from '../utils/api'
+import { tod, fmt, fmtD } from '../utils/format'
+import { datumToPeriodeKey, periodeKeyLabel, type BtwPeriodeType } from '../utils/btw'
+import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, LOT_BREW_FIELDS_PER_TYPE } from '../utils/constants'
+import { type MerchArtikel, volgtVoorraad } from '../utils/merch'
+import { type InkoopInboxItem, inboxAfzender } from '../utils/inkoopInbox'
 
-function parseFactuurTekstLokaal(text: string) {
-  const result: any = { leverancier: null, factuurnummer: null, datum: null, regels: [], _source: 'lokaal' }
-  const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean)
-  for (const line of lines) {
-    const m = line.match(/\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\b/)
-    if (m) { result.datum = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; break }
-    const m2 = line.match(/\b(\d{4})[\/\-](\d{2})[\/\-](\d{2})\b/)
-    if (m2) { result.datum = `${m2[1]}-${m2[2]}-${m2[3]}`; break }
-  }
-  const fnm = text.match(/(?:factuur\s*(?:nr\.?|nummer|no\.?)\s*[:\s]+|invoice\s*(?:no\.?|nr\.?|#)\s*)([A-Z0-9][A-Z0-9\-\/\.]{2,20})/i)
-  if (fnm) result.factuurnummer = fnm[1].trim()
-  return result
-}
+// ── Wat de pagina krijgt ────────────────────────────────────────────────────
 
-// Naam-normalisatie voor het matchen van scanregels aan bestaande
-// ingrediënten/onderdelen: kleine letters, accenten en leestekens weg.
-const _normNaam = (s: any) => String(s || '').toLowerCase()
-  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  .replace(/[^a-z0-9]+/g, ' ').trim()
-
-// Zoek een bestaand item (ingredient of onderdeel) bij een scanregel.
-// Eerst de match die het model aanwees, daarna lokaal: naam gelijk aan de
-// omschrijving of als losse woordreeks erin (langste naam wint, zodat
-// "Pilsner Mout" boven "Mout" gaat).
-const vindBestaand = (regel: any, items: any[]) => {
-  if (regel.match_naam) {
-    const nm = _normNaam(regel.match_naam)
-    const m = items.find((i: any) => _normNaam(i.naam) === nm)
-    if (m) return m
-  }
-  const no = _normNaam(regel.omschrijving)
-  if (!no) return null
-  return items
-    .filter((i: any) => {
-      const ni = _normNaam(i.naam)
-      return ni.length >= 3 && (ni === no || ` ${no} `.includes(` ${ni} `))
-    })
-    .sort((a: any, b: any) => _normNaam(b.naam).length - _normNaam(a.naam).length)[0] || null
-}
-
-// Onthoud een handmatige herclassificatie (regel verplaatst naar een andere
-// categorie) zodat volgende scans dezelfde omschrijving meteen goed indelen.
-// De laatste correctie per (genormaliseerde) tekst wint; maximaal 300 bewaard.
-export const registreerScanCorrectie = (prev: any[], c: {tekst: string, soort: string}) => {
-  const nt = _normNaam(c.tekst)
-  if (!nt) return prev || []
-  return [...(prev || []).filter((x: any) => _normNaam(x?.tekst) !== nt), {tekst: c.tekst, soort: c.soort}].slice(-300)
-}
-
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((res, rej) => {
-    const reader = new FileReader()
-    reader.onload = (e: any) => res(e.target.result.split(',')[1])
-    reader.onerror = rej
-    reader.readAsDataURL(file)
-  })
-}
-
-// Geforceerde structured output via tool-use: de API valideert het antwoord
-// tegen dit schema, waardoor kapotte/ontbrekende JSON (de grootste bron van
-// mislukte scans) niet meer kan voorkomen.
-const FACTUUR_EXTRACTIE_TOOL = {
-  name: 'factuur_extractie',
-  description: 'Geef de uit de inkoopfactuur geëxtraheerde gegevens door.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      leverancier: {type: ['string', 'null'], description: 'Naam van de partij die de factuur verstuurt'},
-      factuurnummer: {type: ['string', 'null']},
-      datum: {type: ['string', 'null'], description: 'Factuurdatum als YYYY-MM-DD'},
-      btw_soort: {type: ['string', 'null'], enum: ['binnenlands', 'intracom_eu', 'import_niet_eu', null], description: '"intracom_eu" = leverancier in een ander EU-land en BTW verlegd (0% BTW, vermelding als "intracommunautaire levering", "BTW verlegd" of "reverse charge", buitenlands BTW-nummer); "import_niet_eu" = leverancier buiten de EU; anders "binnenlands"'},
-      regels: {
-        type: 'array',
-        description: 'Alle factuurregels',
-        items: {
-          type: 'object',
-          properties: {
-            omschrijving: {type: 'string'},
-            netto: {type: 'number', description: 'Regelbedrag exclusief BTW in euro (korting = negatief)'},
-            btw_pct: {type: 'number', description: 'BTW-percentage van deze regel: 0, 9 of 21'},
-            soort: {type: ['string', 'null'], enum: ['ingredient', 'verpakking', 'overig', null], description: 'Soort regel: "ingredient" = brouwgrondstof (mout, hop, gist, suiker, kruiden), "verpakking" = verpakkingsmateriaal/onderdeel (flessen, blikken, fusten, kroonkurken, deksels, etiketten, dozen), "overig" = al het andere (statiegeld, transport, kortingen, diensten)'},
-            hoeveelheid: {type: ['number', 'null'], description: 'Geleverde hoeveelheid of aantal op deze regel, in de opgegeven eenheid'},
-            eenheid: {type: ['string', 'null'], description: 'Eenheid van de hoeveelheid: kg, g, L, mL, pkg of stuks'},
-            match_naam: {type: ['string', 'null'], description: 'Exacte naam uit de lijst bekende ingrediënten of onderdelen wanneer deze regel daar (vrijwel zeker) bij hoort, anders null'},
-          },
-          required: ['omschrijving', 'netto'],
-        },
-      },
-      totalen: {
-        type: 'object',
-        description: 'Factuurtotalen zoals vermeld op de factuur',
-        properties: {
-          netto: {type: ['number', 'null']},
-          btw: {type: ['number', 'null']},
-          bruto: {type: ['number', 'null']},
-        },
-      },
-    },
-    required: ['leverancier', 'factuurnummer', 'datum'],
-  },
-}
-
-const bouwFactuurPrompt = (leveranciers: string[], breweryNaam?: string, ingNamen: string[] = [], onderdeelNamen: string[] = [], correcties: any[] = []) => {
-  let p = `Extraheer de gegevens uit deze inkoopfactuur voor een brouwerij en geef ze door via de tool.
-
-Regels:
-- "leverancier" is de partij die de factuur VERSTUURT (afzender: logo/briefhoofd, KvK, IBAN) — nooit de geadresseerde/klant.`
-  if (breweryNaam) p += `\n- De eigen brouwerij heet "${breweryNaam}"; die is de ontvanger en dus nooit de leverancier.`
-  if (leveranciers.length) p += `\n- Bekende leveranciers: ${leveranciers.slice(0, 50).join(', ')}. Komt de afzender (vrijwel) overeen met een naam uit deze lijst, gebruik dan exact die schrijfwijze.`
-  p += `
-- "factuurnummer" is het factuurnummer — NIET het klantnummer, debiteurennummer, ordernummer, offertenummer, pakbonnummer of BTW-nummer.
-- "datum" is de factuurdatum — NIET de vervaldatum, leverdatum of besteldatum.
-- "btw_soort": "intracom_eu" wanneer de leverancier in een ander EU-land is gevestigd en de BTW is verlegd (0% BTW met een vermelding zoals "intracommunautaire levering", "BTW verlegd", "reverse charge" of "VAT shifted"); "import_niet_eu" bij een leverancier buiten de EU; anders "binnenlands".
-- "regels": elke factuurregel met omschrijving, nettobedrag EXCLUSIEF BTW en BTW-percentage (0, 9 of 21). Kortingen als negatief bedrag. Statiegeld, transport- en administratiekosten zijn ook regels. Sla subtotalen en lege regels over.
-- Classificeer elke regel via "soort": "ingredient" (brouwgrondstoffen), "verpakking" (verpakkingsmateriaal en onderdelen) of "overig" (statiegeld, transport, administratie, kortingen, diensten).
-- Geef bij ingrediënt- en verpakkingsregels ook "hoeveelheid" en "eenheid" (kg, g, L, mL, pkg of stuks) zoals de regel vermeldt.`
-  if (ingNamen.length) p += `\n- Bekende ingrediënten: ${ingNamen.slice(0, 150).join(', ')}.`
-  if (onderdeelNamen.length) p += `\n- Bekende onderdelen/verpakkingen: ${onderdeelNamen.slice(0, 100).join(', ')}.`
-  if (ingNamen.length || onderdeelNamen.length) p += `\n- Hoort een regel duidelijk bij een bekend ingredient of onderdeel (ook bij kleine spellingverschillen of extra tekst zoals gewicht/merk), zet dan in "match_naam" exact de schrijfwijze uit de lijst; anders null.`
-  if (correcties.length) p += `\n- De gebruiker heeft eerdere scans zo gecorrigeerd — volg deze indeling altijd, ook bij vergelijkbare omschrijvingen: ${correcties.slice(-40).map((c: any) => `"${c.tekst}" = ${c.soort}`).join('; ')}.`
-  p += `
-- Nederlandse bedragnotatie: "1.234,56" betekent 1234.56.
-- Gebruik null voor gegevens die niet op de factuur staan. Verzin niets.`
-  return p
-}
-
-// Sonnet is aanzienlijk betrouwbaarder op gescande/gefotografeerde facturen;
-// bij een API-sleutel zonder toegang tot dat model vallen we terug op Haiku.
-const SCAN_MODEL = 'claude-sonnet-5'
-const SCAN_MODEL_FALLBACK = 'claude-haiku-4-5-20251001'
-
-// Normaliseer een eenheid uit de scan naar een waarde uit EENHEDEN.
-const _normEenheid = (v: any): string | null => {
-  const m: Record<string, string> = {
-    kg: 'kg', kilo: 'kg', kilogram: 'kg', g: 'g', gr: 'g', gram: 'g',
-    l: 'L', lt: 'L', ltr: 'L', liter: 'L', ml: 'mL',
-    pkg: 'pkg', pak: 'pkg', zak: 'pkg', doos: 'pkg',
-    st: 'stuks', stk: 'stuks', stuk: 'stuks', stuks: 'stuks', pcs: 'stuks', x: 'stuks',
-  }
-  return m[String(v || '').trim().toLowerCase()] || null
-}
-
-async function scanFactuurBestand(file: File, claudeApiKey?: string, ctx?: {leveranciers?: string[], breweryNaam?: string, ingNamen?: string[], onderdeelNamen?: string[], correcties?: any[]}): Promise<any> {
-  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-  const prompt = bouwFactuurPrompt(ctx?.leveranciers || [], ctx?.breweryNaam, ctx?.ingNamen || [], ctx?.onderdeelNamen || [], ctx?.correcties || [])
-  let messages: any[]
-  if (isPdf) {
-    const text = await extractPdfText(file)
-    if (text.length > 120) {
-      if (!claudeApiKey) {
-        const local = parseFactuurTekstLokaal(text)
-        return { leverancier: null, datum: local.datum, factuurnummer: local.factuurnummer, regels: [], _source: 'lokaal' }
-      }
-      messages = [{role: 'user', content: `${prompt}\n\nFactuurtekst:\n${text.slice(0, 12000)}`}]
-    } else {
-      if (!claudeApiKey) throw new Error(t('err_pdf_no_text'))
-      const b64 = await fileToBase64(file)
-      messages = [{role: 'user', content: [
-        {type: 'document', source: {type: 'base64', media_type: 'application/pdf', data: b64}},
-        {type: 'text', text: prompt},
-      ]}]
-    }
-  } else {
-    if (!claudeApiKey) throw new Error(t('err_no_claude_key'))
-    const b64 = await fileToBase64(file)
-    const mt = file.type || 'image/jpeg'
-    messages = [{role: 'user', content: [
-      {type: 'image', source: {type: 'base64', media_type: mt, data: b64}},
-      {type: 'text', text: prompt},
-    ]}]
-  }
-  // temperature 0: extractie moet deterministisch zijn, niet creatief.
-  const doCall = (model: string) => callClaudeProxy({
-    model, max_tokens: 4000, temperature: 0,
-    tools: [FACTUUR_EXTRACTIE_TOOL],
-    tool_choice: {type: 'tool', name: 'factuur_extractie'},
-    messages,
-  })
-  let result: any
-  try {
-    result = await doCall(SCAN_MODEL)
-  } catch (e: any) {
-    if (/not_found|model/i.test(e?.message || '')) result = await doCall(SCAN_MODEL_FALLBACK)
-    else throw e
-  }
-  const toolUse = (result.content || []).find((b: any) => b.type === 'tool_use')
-  let parsed: any = toolUse?.input && typeof toolUse.input === 'object' ? toolUse.input : null
-  if (!parsed) {
-    // Vangnet: sommige antwoorden bevatten alsnog tekst-JSON
-    const raw = (result.content || []).map((b: any) => b.text || '').join('')
-    const m = raw.match(/\{[\s\S]*\}/)
-    if (!m) throw new Error(t('err_no_json_in_claude_response'))
-    parsed = JSON.parse(m[0])
-  }
-  const datum = typeof parsed.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.datum) ? parsed.datum : null
-  const regels = (Array.isArray(parsed.regels) ? parsed.regels : [])
-    .map((r: any) => {
-      const hoeveelheid = Number(r?.hoeveelheid)
-      return {
-        omschrijving: String(r?.omschrijving || '').trim(),
-        netto: Number(r?.netto),
-        btw_pct: [0, 9, 21].includes(Number(r?.btw_pct)) ? Number(r?.btw_pct) : 21,
-        soort: ['ingredient', 'verpakking', 'overig'].includes(r?.soort) ? r.soort : null,
-        hoeveelheid: isFinite(hoeveelheid) && hoeveelheid > 0 ? hoeveelheid : null,
-        eenheid: _normEenheid(r?.eenheid),
-        match_naam: typeof r?.match_naam === 'string' && r.match_naam.trim() ? r.match_naam.trim() : null,
-      }
-    })
-    .filter((r: any) => r.omschrijving && isFinite(r.netto) && r.netto !== 0)
-  return {
-    leverancier: parsed.leverancier || null,
-    datum,
-    factuurnummer: parsed.factuurnummer || null,
-    btw_soort: ['binnenlands', 'intracom_eu', 'import_niet_eu'].includes(parsed.btw_soort) ? parsed.btw_soort : null,
-    regels,
-    totalen: parsed.totalen || null,
-    _source: 'claude',
-  }
+export interface InkoopOpslag {
+  factuurForm: { leverancier: string, factuur: string, datum: string, btw_soort: BtwSoort }
+  productLijst: any[]
+  verpakkingLijst: any[]
+  vrijeRegels: any[]
+  bijlage: Bijlage | null
+  totaalManual: { netto: number | null, btw: number | null, bruto: number | null } | null
 }
 
 interface InkoopFactuurModalProps {
@@ -240,1204 +59,1169 @@ interface InkoopFactuurModalProps {
   ing?: any[]
   lots?: any[]
   onderdelen?: any[]
-  onSave: (data: any) => void
+  /** Opslaan. `false` terug = niet gelukt (het formulier blijft open). */
+  onSave: (data: InkoopOpslag, opties?: { volgende?: boolean }) => boolean | void
   onClose: () => void
+  /** Soort van de eerste lege regel: 'ingredienten', 'verpakkingen' of 'vrije'. */
   initialTab?: string
+  /** "Lot toevoegen" bij een ingrediënt: de eerste regel staat al klaar. */
   initialIngId?: string
   claudeCreds?: any
-  // Naam van de eigen brouwerij — context voor de factuurscan zodat het model
-  // de geadresseerde nooit als leverancier aanwijst.
+  /** Naam van de eigen brouwerij: nooit de leverancier. */
   breweryNaam?: string
   ingTypes?: string[]
   ingTypeBtw?: Record<string, number>
+  /** Een bestaande factuur (met `id`: bewerken) of voorinvulling (boeking vanuit de bank). */
   initialData?: any
   kostenSoorten?: string[]
-  // Eerdere handmatige herclassificaties ({tekst, soort}) — sturen zowel de
-  // AI-scan als de lokale indeling van scanregels.
+  /** Het scangeheugen (data-sleutel `scan_correcties`). */
   scanCorrecties?: any[]
-  // Callback wanneer de gebruiker een regel naar een andere categorie
-  // verplaatst; de parent bewaart dit via registreerScanCorrectie.
-  onScanCorrectie?: (c: {tekst: string, soort: string}) => void
-  // Geeft op basis van een factuurdatum aan of de BTW naar een andere periode
-  // doorrolt (omdat de oorspronkelijke aangifte al ingediend/betaald is).
-  // null = geen rollover nodig.
-  getRolloverInfo?: (datum: string) => { rolloverNaar: string; vanafPeriode: string } | null
-  // Merch-artikelen met eigen voorraad: een vrije regel kan eraan gekoppeld
-  // worden zodat de inkoop meteen de merch-voorraad aanvult.
+  /** Een gescande regel kreeg een andere soort: meteen onthouden. */
+  onScanCorrectie?: (c: { tekst: string, soort: string }) => void
+  /** Na het opslaan: hoe elke gescande regel geboekt is (utils/scanGeheugen.ts). */
+  onLeer?: (koppelingen: ScanKoppeling[]) => void
+  getRolloverInfo?: (datum: string) => { rolloverNaar: string, vanafPeriode: string } | null
   merchArtikelen?: MerchArtikel[]
-  // Een factuur die per e-mail binnenkwam (tab Inkoop → Ontvangen per e-mail).
-  // De PDF staat al op de server: hij wordt geladen, in beeld gezet en
-  // gescand, en bij het opslaan hangt de factuur aan hetzelfde bestand — er
-  // wordt niets opnieuw geüpload.
+  /** Een factuur uit het postvak: de PDF staat al op de server. */
   inboxItem?: InkoopInboxItem | null
+  /** Hoeveel facturen er na deze nog in het postvak wachten ("Opslaan en volgende"). */
+  volgendeAantal?: number
+  /** Voor de waarschuwing "deze factuur is al geboekt". */
+  inkoopFacturen?: any[]
+  btwPeriodeType?: BtwPeriodeType
+  /** Boeking vanuit de bank: het afgeschreven bedrag, om het totaal tegen te houden. */
+  bankBedrag?: number | null
 }
 
+// ── Interne vormen ──────────────────────────────────────────────────────────
+
+interface Kop {
+  leverancier: string
+  factuurnummer: string
+  datum: string
+  btwSoort: BtwSoort
+}
+type KopVeld = keyof Kop
+
+interface Foto {
+  id: number
+  naam: string
+  scan: Jpeg
+  /** Kleiner: voor het bewaren (factuur-PDF of etiket bij het lot). */
+  archief: Jpeg
+  url: string
+}
+
+interface EtiketStaat {
+  fotos: Foto[]
+  status: EtiketStatus
+  fout: string | null
+  scan: EtiketScan | null
+  oordeel: 'ja' | 'nee' | 'onbekend' | null
+  nietToegepast: boolean
+  bewaren: boolean
+  versie: number
+}
+
+const nieuwEtiket = (): EtiketStaat => ({
+  fotos: [], status: 'leeg', fout: null, scan: null, oordeel: null, nietToegepast: false, bewaren: true, versie: 0,
+})
+
+interface ScanStaat {
+  status: 'idle' | 'bezig' | 'klaar' | 'fout' | 'geen_sleutel'
+  fout?: string
+  aantal?: number
+  nieuw?: number
+  lokaal?: boolean
+  totalen?: FactuurTotalen | null
+  /** Regels uit de scan die nog niet zijn overgenomen (er stond al invoer). */
+  wachtend?: InkoopRegel[] | null
+  verlegd?: boolean
+}
+
+const TAB_SOORT: Record<string, RegelSoort> = { ingredienten: 'ingredient', verpakkingen: 'verpakking', vrije: 'overig' }
+const MAX_ETIKET_FOTOS = 8
+
+const foutTekst = (e: unknown): string => {
+  if (e instanceof ScanFout) return t(scanFoutSleutel(e.code))
+  if (e instanceof AfbeeldingFout) return t(afbeeldingFoutSleutel(e.code))
+  const m = e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message || '') : ''
+  return m || t('scan_fout_leeg')
+}
+
+/** "lot, THT en kleur" — een opsomming in de taal van de app. */
+const opsomming = (delen: string[]): string => {
+  if (delen.length <= 1) return delen.join('')
+  return `${delen.slice(0, -1).join(', ')} ${t('lijst_en')} ${delen[delen.length - 1]}`
+}
+
+/**
+ * Inkoop boeken: één werkblad voor een inkoopfactuur, op een bureau naast de
+ * factuur, op een telefoon met een wissel tussen factuur en boeking. Alle
+ * regels staan in één lijst; soort, lot en THT zijn velden van de regel.
+ * De factuurscan vult de kop en de regels, foto's van het etiket vullen
+ * lotnummer(s), THT en de eigenschappen. Er wordt pas iets geboekt bij
+ * Opslaan — en nooit stil: wat er gebeurt staat eronder.
+ */
 function InkoopFactuurModal({
-  knownLeveranciers=[], ing=[], lots=[], onderdelen=[], onSave, onClose,
-  initialTab='ingredienten', initialIngId='', claudeCreds=null, breweryNaam='',
-  ingTypes=BUILTIN_ING_TYPES, ingTypeBtw={}, initialData=null,
-  kostenSoorten=BUILTIN_KOSTEN_SOORTEN, getRolloverInfo,
-  scanCorrecties=[], onScanCorrectie, merchArtikelen=[], inboxItem=null
+  knownLeveranciers = [], ing = [], lots = [], onderdelen = [], onSave, onClose,
+  initialTab = 'ingredienten', initialIngId = '', claudeCreds = null, breweryNaam = '',
+  ingTypes = BUILTIN_ING_TYPES, ingTypeBtw = {}, initialData = null,
+  kostenSoorten = BUILTIN_KOSTEN_SOORTEN, scanCorrecties = [], onScanCorrectie, onLeer,
+  getRolloverInfo, merchArtikelen = [], inboxItem = null, volgendeAantal = 0,
+  inkoopFacturen = [], btwPeriodeType = 'kwartaal', bankBedrag = null,
 }: InkoopFactuurModalProps) {
-  // Alleen merch met eigen voorraad is aan een inkoopregel te koppelen.
-  const merchMetVoorraad = (merchArtikelen || []).filter(volgtVoorraad)
+  const smal = useSmalScherm()
+  const bewerken = !!(initialData && initialData.id !== undefined && initialData.id !== null)
   const defaultType = ingTypes[0] || 'Mout'
+  const heeftSleutel = !!claudeCreds?.apiKey && claudeCreds?.enabled !== false
+  const merch = React.useMemo(() => (merchArtikelen || []).filter(volgtVoorraad), [merchArtikelen])
+  const ctx: RegelContext = { ing, lots, onderdelen, ingTypes, ingTypeBtw, kostenSoorten, merch, defaultType }
 
-  // Pre-fill defaults voor "+ lot" op een specifiek ingredient: leid type,
-  // eenheid, prijs, BTW en leverancier af uit het laatste lot.
-  const initialIng = initialIngId ? ing.find((i: any) => String(i.id) === String(initialIngId)) : null
-  const initialIngLots = initialIng ? lots.filter((l: any) => l.ingredient_id === initialIng.id) : []
-  const lastLot = [...initialIngLots].sort((a: any, b: any) =>
-    new Date(b.aankoop_datum || b.created_at || 0).getTime() -
-    new Date(a.aankoop_datum || a.created_at || 0).getTime()
-  )[0]
-  const eenhCount: Record<string, number> = {}
-  initialIngLots.forEach((l: any) => { if (l.eenheid) eenhCount[l.eenheid] = (eenhCount[l.eenheid]||0) + 1 })
-  const mostCommonEenh = Object.keys(eenhCount).sort((a, b) => eenhCount[b] - eenhCount[a])[0]
-
-  const initialType = initialIng?.type || defaultType
-  const initialEenh = mostCommonEenh || lastLot?.eenheid || 'kg'
-  const initialPrijs = lastLot?.prijs_per_eenheid != null ? String(lastLot.prijs_per_eenheid) : ''
-  const initialBtw = lastLot?.btw_tarief != null
-    ? String(lastLot.btw_tarief)
-    : (ingTypeBtw[initialType] != null ? String(ingTypeBtw[initialType]) : '9')
-
-  const emptyProduct = {ing_id:initialIngId,nieuw:'',type:initialType,fabrikant:'',lotnr:'',qty:'',eenh:initialEenh,tht:'',prijs:initialPrijs,totaalprijs:'',btw_tarief:initialBtw,bf_props:{} as Record<string, any>}
-  const emptyVO = {od_id:'',naam:'',type:'',lotnr:'',aantal:'',prijs_per_stuk:'',totaalprijs:'',btw_tarief:'21'}
-
-  const [leverancierSel, setLeverancierSel] = useState<string>(() => {
-    if (initialData?.leverancier) return knownLeveranciers.includes(initialData.leverancier) ? initialData.leverancier : '__nieuw__'
-    if (lastLot?.leverancier && knownLeveranciers.includes(lastLot.leverancier)) return lastLot.leverancier
-    if (lastLot?.leverancier) return '__nieuw__'
-    return knownLeveranciers.length ? '' : '__nieuw__'
-  })
-  const [leverancierNieuw, setLeverancierNieuw] = useState<string>(() => {
-    if (initialData?.leverancier && !knownLeveranciers.includes(initialData.leverancier)) return initialData.leverancier
-    if (lastLot?.leverancier && !knownLeveranciers.includes(lastLot.leverancier)) return lastLot.leverancier
-    return ''
-  })
-  const [factuurNr, setFactuurNr] = useState(initialData?.factuurnummer || '')
-  const [datum, setDatum] = useState(initialData?.datum || tod())
-  // BTW-soort voor de factuur. Leid de initiële waarde af uit bestaande regels:
-  // wanneer een factuur al een verlegde regel bevat, voorselecteren we die soort.
-  const [btwSoort, setBtwSoort] = useState<'binnenlands' | 'intracom_eu' | 'import_niet_eu'>(() => {
-    const eersteRegel = initialData?.regels?.find((r: any) => r.btw_soort && r.btw_soort !== 'binnenlands')
-    return (eersteRegel?.btw_soort as any) || 'binnenlands'
-  })
-  const [existingBijlage, setExistingBijlage] = useState(initialData?.bijlage || inboxItem?.bijlage || null)
-  const [bijlageFile, setBijlageFile] = useState<File|null>(null)
-  // De PDF uit het postvak, geladen om te scannen en te bekijken (zie inboxItem).
-  const [serverFile, setServerFile] = useState<File|null>(null)
-  const [serverFileStatus, setServerFileStatus] = useState<'laden'|'klaar'|'fout'|null>(inboxItem ? 'laden' : null)
-  // Het bestand dat gescand en getoond wordt: een zelf gekozen bestand gaat voor.
-  const scanFile = bijlageFile || serverFile
-  const [uploading, setUploading] = useState(false)
-  const [tab, setTab] = useState(initialTab)
-  const [showPdfViewer, setShowPdfViewer] = useState(false)
-
-  // De weergave-URL volgt het bestand dat gescand wordt. Hij wordt tijdens het renderen
-  // gemaakt (niet in een effect): zo is er nooit een render die de al vrijgegeven URL van het
-  // vorige bestand nog toont. Bij een wissel of het sluiten van de modal geeft het effect hem vrij.
-  const pdfBlobUrl = React.useMemo<string|null>(() => scanFile ? URL.createObjectURL(scanFile) : null, [scanFile])
-  React.useEffect(() => () => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl) }, [pdfBlobUrl])
-  const toonViewer = showPdfViewer && !!scanFile && !!pdfBlobUrl
-
-  const [productForm, setProductForm] = useState(emptyProduct)
-  const [brewPropsOpen, setBrewPropsOpen] = useState(false)
-  const [productLijst, setProductLijst] = useState<any[]>(() => {
-    if (!initialData?.regels) return []
-    return initialData.regels.filter((r: any) => r.type==='ingredient').map((r: any, i: number) => {
-      const ingItem = ing.find((x: any) => x.naam===r.naam)
-      return {
-        ing_id: ingItem ? String(ingItem.id) : '', nieuw: ingItem ? '' : r.naam,
-        type: ingItem?.type || defaultType, fabrikant: '', lotnr: '',
-        qty: String(r.hoeveelheid||''), eenh: r.eenheid||'kg', tht: '',
-        prijs: String(r.prijs_per_eenheid||''), totaalprijs: String(r.netto||''),
-        btw_tarief: String(r.btw_tarief??0), _naam: r.naam, _id: Date.now()+i,
-      }
-    })
-  })
-
-  const [vOntvForm, setVOntvForm] = useState(emptyVO)
-  const [verpakkingLijst, setVerpakkingLijst] = useState<any[]>(() => {
-    if (!initialData?.regels) return []
-    return initialData.regels.filter((r: any) => r.type==='verpakking').map((r: any, i: number) => {
-      const od = onderdelen.find((x: any) => x.naam===r.naam)
-      return {
-        od_id: od ? String(od.id) : '', naam: r.naam, type: od?.type||'', lotnr: '',
-        aantal: String(r.aantal||''), prijs_per_stuk: String(r.prijs_per_stuk||''),
-        totaalprijs: String(r.netto||''), btw_tarief: String(r.btw_tarief??21),
-        _naam: r.naam, _id: Date.now()+i+1000,
-      }
-    })
-  })
-
-  const emptyVrije = {naam:'', netto: '' as string | number, btw_tarief: 21, kostensoort: 'Overig',
-    merch_id: '' as string | number, merch_aantal: ''}
-  const [vrijeForm, setVrijeForm] = useState<any>(emptyVrije)
-  const [vrijeList, setVrijeList] = useState<any[]>(() => {
-    if (!initialData?.regels) return []
-    return initialData.regels.filter((r: any) => r.type==='overig').map((r: any, i: number) => ({
-      naam: r.naam, netto: String(r.netto||''), btw_tarief: Number(r.btw_tarief??21), kostensoort: r.kostensoort || 'Overig', _id: Date.now()+i+2000,
-      // Correctieregel (handmatige factuurtotalen): het opgeslagen BTW-bedrag
-      // is leidend, niet netto × tarief — anders verandert bewerken de BTW.
-      ...(r.correctie ? {correctie: true, btw_bedrag: Number(r.btw_bedrag) || 0} : {}),
-    }))
-  })
-  // BTW van een vrije regel: netto × tarief, behalve bij de correctieregel.
-  const vrijeRegelBtw = (r: any): number => r?.correctie
-    ? (Number(r.btw_bedrag) || 0)
-    : (parseFloat(r?.netto) || 0) * (Number(r?.btw_tarief) || 0) / 100
-
-  const [productTotInclBtw, setProductTotInclBtw] = useState(false)
-  const [productBrutoStr, setProductBrutoStr] = useState('')
-  const [verpakTotInclBtw, setVerpakTotInclBtw] = useState(false)
-  const [verpakBrutoStr, setVerpakBrutoStr] = useState('')
-  const [vrijeTotInclBtw, setVrijeTotInclBtw] = useState(false)
-  const [vrijeBrutoStr, setVrijeBrutoStr] = useState('')
-
-  const [manualNetto, setManualNetto] = useState<string|null>(null)
-  const [manualBtw, setManualBtw] = useState<string|null>(null)
-  const [manualBruto, setManualBruto] = useState<string|null>(null)
-
-  const [editingProductIdx, setEditingProductIdx] = useState<number|null>(null)
-  const [editingVerpakkingIdx, setEditingVerpakkingIdx] = useState<number|null>(null)
-  const [editingVrijeIdx, setEditingVrijeIdx] = useState<number|null>(null)
-
-  const [isScanning, setIsScanning] = useState(false)
-  const [scanFout, setScanFout] = useState<string|null>(null)
-  const [scanInfo, setScanInfo] = useState<string|null>(null)
-
-  React.useEffect(() => { setManualNetto(null); setManualBtw(null); setManualBruto(null) },
-    [productLijst.length, verpakkingLijst.length, vrijeList.length])
-
-  const leverancier = leverancierSel === '__nieuw__' ? leverancierNieuw.trim() : leverancierSel
-  const factuurForm = {leverancier, factuur: factuurNr, datum, btw_soort: btwSoort}
-
-  const voegProductToe = () => {
-    if (!productForm.ing_id && !productForm.nieuw.trim()) { alert(t('err_select_ingredient')); return }
-    if (!productForm.qty) { alert(t('err_qty_required')); return }
-    const naam = productForm.ing_id ? (ing.find((i: any) => i.id===Number(productForm.ing_id))?.naam||'') : productForm.nieuw.trim()
-    if (editingProductIdx !== null) {
-      setProductLijst(prev => prev.map((p: any, i: number) => i===editingProductIdx ? {...productForm, _naam:naam, _id:p._id} : p))
-      setEditingProductIdx(null)
-    } else {
-      setProductLijst(prev => [...prev, {...productForm, _naam:naam, _id:Date.now()}])
+  // ── Startwaarden ──────────────────────────────────────────────────────────
+  const start = React.useMemo(() => {
+    const regels: InkoopRegel[] = initialData ? vanFactuur(initialData, ing, onderdelen, defaultType) : []
+    let leverancier = String(initialData?.leverancier || '')
+    if (!initialData && initialIngId) {
+      const s = startRegelVoorIngredient(ing, lots, initialIngId, { ingTypeBtw, defaultType })
+      if (s) { regels.push(s.regel); leverancier = leverancier || s.leverancier }
     }
-    setProductForm(emptyProduct); setProductTotInclBtw(false); setProductBrutoStr('')
-  }
-
-  const voegVerpakkingToe = () => {
-    if (!vOntvForm.od_id && !vOntvForm.naam.trim()) { alert(t('err_name_required')); return }
-    if (!vOntvForm.aantal) { alert(t('err_count_required')); return }
-    const naam = vOntvForm.od_id
-      ? (onderdelen.find((o: any) => o.id===Number(vOntvForm.od_id))?.naam||vOntvForm.naam)
-      : vOntvForm.naam.trim()
-    if (editingVerpakkingIdx !== null) {
-      setVerpakkingLijst(prev => prev.map((v: any, i: number) => i===editingVerpakkingIdx ? {...vOntvForm, _naam:naam, _id:v._id} : v))
-      setEditingVerpakkingIdx(null)
-    } else {
-      setVerpakkingLijst(prev => [...prev, {...vOntvForm, _naam:naam, _id:Date.now()}])
+    // Een nieuw, leeg formulier begint met één lege regel van de gevraagde soort.
+    if (!regels.length && !inboxItem) {
+      const soort = TAB_SOORT[initialTab] || 'ingredient'
+      regels.push(nieuweRegel(soort, soort === 'ingredient'
+        ? { type: defaultType, btw: ingTypeBtw[defaultType] !== undefined ? String(ingTypeBtw[defaultType]) : '9' }
+        : {}))
     }
-    setVOntvForm(emptyVO); setVerpakTotInclBtw(false); setVerpakBrutoStr('')
-  }
-
-  const voegVrijeToe = () => {
-    if (!vrijeForm.naam.trim()) { alert(t('err_fill_description')); return }
-    if (!parseFloat(vrijeForm.netto)) { alert(t('err_fill_amount')); return }
-    // Een merch-koppeling zonder aantal zou stilzwijgend niets bijboeken.
-    if (vrijeForm.merch_id && !(Number(vrijeForm.merch_aantal) > 0)) { alert(t('err_merch_inkoop_aantal')); return }
-    if (editingVrijeIdx !== null) {
-      setVrijeList(prev => prev.map((r: any, i: number) => i===editingVrijeIdx ? {...vrijeForm, _id:r._id} : r))
-      setEditingVrijeIdx(null)
-    } else {
-      setVrijeList(prev => [...prev, {...vrijeForm, _id:Date.now()}])
+    const verlegdeRegel = (initialData?.regels || []).find((r: any) => r?.btw_soort && r.btw_soort !== 'binnenlands')
+    const kop: Kop = {
+      leverancier,
+      factuurnummer: String(initialData?.factuurnummer || ''),
+      datum: String(initialData?.datum || tod()),
+      btwSoort: (verlegdeRegel?.btw_soort as BtwSoort) || 'binnenlands',
     }
-    setVrijeForm(emptyVrije); setVrijeTotInclBtw(false); setVrijeBrutoStr('')
-  }
-
-  // ── Regels verplaatsen tussen categorieën ──────────────────────────────
-  // Elke verplaatsing wordt als correctie doorgegeven zodat volgende scans
-  // dezelfde omschrijving meteen in de juiste categorie zetten.
-  const meldCorrectie = (tekst: string, soort: string) => {
-    if (tekst && onScanCorrectie) onScanCorrectie({tekst: tekst.trim(), soort})
-  }
-
-  // Houd een editing-index kloppend wanneer regel i uit de lijst verdwijnt.
-  const schuifEditIdx = (setIdx: (fn: any) => void, i: number) =>
-    setIdx((prev: number|null) => prev === null ? null : prev === i ? null : prev > i ? prev - 1 : prev)
-
-  const verplaatsProduct = (i: number, naar: 'verpakking' | 'overig') => {
-    const p = productLijst[i]
-    if (!p) return
-    const naam = p._naam || p.nieuw || ''
-    setProductLijst(prev => prev.filter((_: any, j: number) => j !== i))
-    schuifEditIdx(setEditingProductIdx, i)
-    meldCorrectie(naam, naar)
-    const netto = p.totaalprijs || (p.prijs && p.qty ? (Number(p.prijs) * Number(p.qty)).toFixed(2) : '')
-    if (naar === 'verpakking') {
-      const od = vindBestaand({omschrijving: naam}, onderdelen)
-      setVerpakkingLijst(prev => [...prev, {
-        od_id: od ? String(od.id) : '', naam: od?.naam || naam, type: od?.type || '',
-        lotnr: p.lotnr || '', aantal: p.qty, prijs_per_stuk: p.prijs,
-        totaalprijs: p.totaalprijs, btw_tarief: p.btw_tarief,
-        _naam: od?.naam || naam, _id: p._id,
-      }])
-    } else {
-      setVrijeList(prev => [...prev, {naam, netto: String(netto), btw_tarief: Number(p.btw_tarief) || 0, kostensoort: 'Overig', _id: p._id}])
-    }
-  }
-
-  const verplaatsVerpakking = (i: number, naar: 'ingredient' | 'overig') => {
-    const v = verpakkingLijst[i]
-    if (!v) return
-    const naam = v._naam || v.naam || ''
-    setVerpakkingLijst(prev => prev.filter((_: any, j: number) => j !== i))
-    schuifEditIdx(setEditingVerpakkingIdx, i)
-    meldCorrectie(naam, naar)
-    if (naar === 'ingredient') {
-      const m = vindBestaand({omschrijving: naam}, ing)
-      setProductLijst(prev => [...prev, {
-        ing_id: m ? String(m.id) : '', nieuw: m ? '' : naam, type: m?.type || defaultType,
-        fabrikant: '', lotnr: v.lotnr || '', qty: v.aantal, eenh: 'stuks', tht: '',
-        prijs: v.prijs_per_stuk, totaalprijs: v.totaalprijs, btw_tarief: v.btw_tarief,
-        bf_props: {}, _naam: m?.naam || naam, _id: v._id,
-      }])
-    } else {
-      const netto = v.totaalprijs || (v.prijs_per_stuk && v.aantal ? (Number(v.prijs_per_stuk) * Number(v.aantal)).toFixed(2) : '')
-      setVrijeList(prev => [...prev, {naam, netto: String(netto), btw_tarief: Number(v.btw_tarief) || 0, kostensoort: 'Overig', _id: v._id}])
-    }
-  }
-
-  const verplaatsVrije = (i: number, naar: 'ingredient' | 'verpakking') => {
-    const r = vrijeList[i]
-    if (!r) return
-    setVrijeList(prev => prev.filter((_: any, j: number) => j !== i))
-    schuifEditIdx(setEditingVrijeIdx, i)
-    meldCorrectie(r.naam, naar)
-    // Vrije regels hebben geen hoeveelheid; zet de gegevens in het formulier
-    // zodat de gebruiker die aanvult en de regel daarna toevoegt.
-    setScanFout(null)
-    setScanInfo(t('msg_regel_verplaatst_aanvullen'))
-    const qty = r._hoeveelheid ? String(r._hoeveelheid) : ''
-    const netto = parseFloat(r.netto) || 0
-    const perStuk = qty && netto ? String((netto / Number(qty)).toFixed(4)) : ''
-    if (naar === 'ingredient') {
-      const m = vindBestaand({omschrijving: r.naam}, ing)
-      setProductForm({
-        ing_id: m ? String(m.id) : '', nieuw: m ? '' : r.naam, type: m?.type || defaultType,
-        fabrikant: '', lotnr: '', qty, eenh: r._eenheid || initialEenh, tht: '',
-        prijs: perStuk, totaalprijs: netto ? netto.toFixed(2) : '', btw_tarief: String(r.btw_tarief ?? 21), bf_props: {},
-      })
-      setProductTotInclBtw(false); setProductBrutoStr(''); setEditingProductIdx(null)
-      setTab('ingredienten')
-    } else {
-      const od = vindBestaand({omschrijving: r.naam}, onderdelen)
-      setVOntvForm({
-        od_id: od ? String(od.id) : '', naam: od?.naam || r.naam, type: od?.type || '',
-        lotnr: '', aantal: qty, prijs_per_stuk: perStuk, totaalprijs: netto ? netto.toFixed(2) : '',
-        btw_tarief: String(r.btw_tarief ?? 21),
-      })
-      setVerpakTotInclBtw(false); setVerpakBrutoStr(''); setEditingVerpakkingIdx(null)
-      setTab('verpakkingen')
-    }
-  }
-
-  // Een scan duurt een paar seconden en leest zijn gegevens pas als hij klaar is: wat de
-  // gebruiker ondertussen zelf invulde mag hij nooit overschrijven. Sinds een factuur uit
-  // het postvak meteen bij het openen wordt gescand is dat geen uitzondering meer, dus
-  // leest `verwerkScanData` de stand via deze ref (de laatste render) en niet via de
-  // closure van het moment waarop de scan begon.
-  const scanStand = React.useRef({leverancierSel, leverancierNieuw, factuurNr, datum, btwSoort, productLijst, verpakkingLijst, vrijeList})
-  scanStand.current = {leverancierSel, leverancierNieuw, factuurNr, datum, btwSoort, productLijst, verpakkingLijst, vrijeList}
-
-  const verwerkScanData = (data: any): {nIng: number, nVerpak: number, nVrij: number} => {
-    const st = scanStand.current
-    if (data.leverancier && !st.leverancierNieuw && st.leverancierSel === (knownLeveranciers.length ? '' : '__nieuw__')) {
-      const known = knownLeveranciers.find((l: string) => l.toLowerCase() === data.leverancier.toLowerCase())
-      if (known) setLeverancierSel(known)
-      else { setLeverancierSel('__nieuw__'); setLeverancierNieuw(data.leverancier) }
-    }
-    if (data.factuurnummer && !st.factuurNr) setFactuurNr(data.factuurnummer)
-    if (data.datum && st.datum === tod()) setDatum(data.datum)
-    // Herkende verlegde BTW (intracom-EU / import-niet-EU) overnemen; een
-    // handmatige keuze van de gebruiker wordt nooit teruggezet.
-    const scanSoort = ['intracom_eu', 'import_niet_eu'].includes(data.btw_soort) ? data.btw_soort : null
-    if (scanSoort && st.btwSoort === 'binnenlands') setBtwSoort(scanSoort)
-    // Bij verlegde BTW staat 0% op de factuur, maar voor de aangifte
-    // (rubriek 4a/4b) geldt het Nederlandse tarief dat op de goederen van
-    // toepassing is: per ingrediënttype uit ingTypeBtw (anders 9%), 21% voor
-    // onderdelen en overige regels.
-    const verlegd = !!scanSoort || st.btwSoort !== 'binnenlands'
-    const nlTarief = (rijSoort: string, ingType?: string) =>
-      rijSoort === 'ingredient' ? Number(ingTypeBtw[ingType || ''] ?? 9) : 21
-    // Herkende factuurregels overnemen, maar alleen wanneer er nog niets is
-    // ingevoerd — een scan mag handwerk nooit overschrijven. Regels worden
-    // per soort verdeeld: ingrediënten gekoppeld aan bestaande ingrediënten,
-    // verpakkingen/onderdelen aan bestaande onderdelen, de rest vrije regels.
-    if (Array.isArray(data.regels) && data.regels.length
-        && st.productLijst.length === 0 && st.verpakkingLijst.length === 0 && st.vrijeList.length === 0) {
-      const prod: any[] = [], verpak: any[] = [], vrij: any[] = []
-      data.regels.forEach((r: any, i: number) => {
-        const id = Date.now() + i
-        // Een eerdere handmatige correctie van de gebruiker overrulet altijd
-        // de classificatie van het model.
-        const correctie = (scanCorrecties || []).find((c: any) => _normNaam(c?.tekst) === _normNaam(r.omschrijving))
-        const soort = correctie?.soort || r.soort
-        // Onderdelen-classificatie weegt zwaarder dan een toevallige
-        // ingredient-naammatch en andersom; bij een correctie wordt alleen
-        // nog in de gecorrigeerde categorie gematcht.
-        const matchIng = soort !== 'verpakking' && (!correctie || soort === 'ingredient') ? vindBestaand(r, ing) : null
-        const matchOd = !matchIng && (!correctie || soort === 'verpakking') ? vindBestaand(r, onderdelen) : null
-        // Kortingen/negatieve bedragen en regels zonder hoeveelheid blijven
-        // vrije regels: daar valt geen betrouwbare voorraadmutatie van te maken.
-        if (r.netto > 0 && r.hoeveelheid) {
-          if (matchIng || (!matchOd && soort === 'ingredient')) {
-            const ingLots = matchIng ? lots.filter((l: any) => l.ingredient_id === matchIng.id) : []
-            const eenhTelling: Record<string, number> = {}
-            ingLots.forEach((l: any) => { if (l.eenheid) eenhTelling[l.eenheid] = (eenhTelling[l.eenheid] || 0) + 1 })
-            const lotEenh = Object.keys(eenhTelling).sort((a, b) => eenhTelling[b] - eenhTelling[a])[0]
-            const ingType = matchIng?.type || defaultType
-            prod.push({
-              ing_id: matchIng ? String(matchIng.id) : '', nieuw: matchIng ? '' : r.omschrijving,
-              type: ingType, fabrikant: '', lotnr: '',
-              qty: String(r.hoeveelheid), eenh: r.eenheid || lotEenh || 'kg', tht: '',
-              prijs: String((r.netto / r.hoeveelheid).toFixed(4)), totaalprijs: String(r.netto.toFixed(2)),
-              btw_tarief: String(verlegd ? nlTarief('ingredient', ingType) : r.btw_pct), bf_props: {},
-              _naam: matchIng?.naam || r.omschrijving, _id: id,
-            })
-            return
-          }
-          if (matchOd || soort === 'verpakking') {
-            verpak.push({
-              od_id: matchOd ? String(matchOd.id) : '', naam: matchOd?.naam || r.omschrijving,
-              type: matchOd?.type || '', lotnr: '',
-              aantal: String(r.hoeveelheid), prijs_per_stuk: String((r.netto / r.hoeveelheid).toFixed(4)),
-              totaalprijs: String(r.netto.toFixed(2)), btw_tarief: String(verlegd ? nlTarief('verpakking') : r.btw_pct),
-              _naam: matchOd?.naam || r.omschrijving, _id: id,
-            })
-            return
-          }
-        }
-        const ks = soort === 'ingredient' ? 'Grondstoffen' : soort === 'verpakking' ? 'Verpakkingsmateriaal' : 'Overig'
-        // _hoeveelheid/_eenheid bewaren zodat de regel later alsnog compleet
-        // naar ingredient/onderdeel verplaatst kan worden.
-        vrij.push({
-          naam: r.omschrijving, netto: String(r.netto),
-          btw_tarief: verlegd ? nlTarief(soort || 'overig', matchIng?.type) : r.btw_pct,
-          kostensoort: kostenSoorten.includes(ks) ? ks : 'Overig',
-          _hoeveelheid: r.hoeveelheid || null, _eenheid: r.eenheid || null, _id: id,
-        })
-      })
-      setProductLijst(prod); setVerpakkingLijst(verpak); setVrijeList(vrij)
-      return {nIng: prod.length, nVerpak: verpak.length, nVrij: vrij.length}
-    }
-    return {nIng: 0, nVerpak: 0, nVrij: 0}
-  }
-
-  const doScanFactuur = async (bron: File | null = scanFile) => {
-    if (!bron) return
-    setIsScanning(true); setScanFout(null); setScanInfo(null)
-    try {
-      const data = await scanFactuurBestand(bron, claudeCreds?.apiKey, {
-        leveranciers: knownLeveranciers, breweryNaam,
-        ingNamen: ing.map((i: any) => i.naam).filter(Boolean),
-        onderdeelNamen: onderdelen.map((o: any) => o.naam).filter(Boolean),
-        correcties: scanCorrecties,
-      })
-      const {nIng, nVerpak, nVrij} = verwerkScanData(data)
-      const verlegdNote = ['intracom_eu', 'import_niet_eu'].includes(data.btw_soort)
-        ? ' · ' + t('msg_scan_verlegd') : ''
-      if (nIng + nVerpak + nVrij > 0) {
-        setScanInfo(t('msg_scan_regels_verdeeld')
-          .replace('{i}', String(nIng)).replace('{v}', String(nVerpak)).replace('{o}', String(nVrij)) + verlegdNote)
-        setTab(nIng ? 'ingredienten' : nVerpak ? 'verpakkingen' : 'vrije')
-      } else if (data._source === 'claude') {
-        setScanInfo(t('msg_scan_klaar') + verlegdNote)
-      }
-    } catch(e: any) {
-      setScanFout(e.message || 'Scan mislukt')
-    } finally {
-      setIsScanning(false)
-    }
-  }
-
-  // Factuur uit het postvak: PDF ophalen, naast het formulier zetten en meteen
-  // scannen — dat is wat de gebruiker met "Verwerk" vroeg. Slaat het laden
-  // mis, dan blijft de link naar het bestand staan en kan alles met de hand.
-  React.useEffect(() => {
-    if (!inboxItem) return
-    let actueel = true
-    ;(async () => {
-      try {
-        const r = await fetch(`${ADDON_BASE}api/file/${inboxItem.bijlage.bestand}`)
-        if (!r.ok) throw new Error(String(r.status))
-        const blob = await r.blob()
-        if (!actueel) return
-        const file = new File([blob], inboxItem.bijlage.naam || 'factuur.pdf', {type: 'application/pdf'})
-        setServerFile(file)
-        setServerFileStatus('klaar')
-        setShowPdfViewer(true)
-        void doScanFactuur(file)
-      } catch {
-        if (actueel) setServerFileStatus('fout')
-      }
-    })()
-    return () => { actueel = false }
-    // Eenmalig bij het openen; het item verandert niet zolang de modal openstaat.
+    const open = !inboxItem && !bewerken && regels.length === 1 ? regels[0]._id : null
+    return { regels, kop, open }
+    // Eenmalig bij het openen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleSave = async () => {
-    if (productLijst.length===0 && verpakkingLijst.length===0 && vrijeList.length===0) {
-      alert(t('err_min_one_product')); return
-    }
-    // Een factuur uit het postvak moet een inkoopfactuur worden; zonder leverancier én
-    // factuurnummer maakt de pagina er geen en zou alleen de voorraad geboekt worden.
-    if (inboxItem && !factuurForm.leverancier?.trim() && !factuurForm.factuur?.trim()) {
-      alert(t('inbox_vul_factuurgegevens')); return
-    }
-    let bijlage = existingBijlage
-    if (bijlageFile) {
-      setUploading(true)
-      try {
-        const ext = (bijlageFile.name.split('.').pop()||'').toLowerCase().replace(/[^a-z0-9]/g,'')
-        const filename = `ontvangst_${Date.now()}.${ext||'bin'}`
-        const b64 = await new Promise<string>((res, rej) => {
-          const reader = new FileReader()
-          reader.onload = () => res((reader.result as string).split(',')[1])
-          reader.onerror = rej
-          reader.readAsDataURL(bijlageFile)
-        })
-        const resp = await fetch(`${ADDON_BASE}api/upload/${filename}`, {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({data: b64}),
-        })
-        if (resp.ok) {
-          // De server kan uitwijken naar een vrije naam wanneer die van ons
-          // al bezet is; dan is zíjn naam leidend, anders wijst de factuur
-          // naar het bestand van een andere boeking.
-          const gekozen = await resp.json().catch(() => ({}))
-          bijlage = {naam: bijlageFile.name, bestand: gekozen?.bestand || filename}
-        }
-      } catch(e) { /* upload failed silently */ }
-      setUploading(false)
-    }
-    // Alleen de velden die de gebruiker zelf aanpaste gaan mee; een leeg veld
-    // (null) valt bij het opslaan terug op de som van de regels, zodat een
-    // niet-aangeraakt totaal nooit een spookcorrectie van een cent oplevert
-    // (zie inkoopRegelsMetCorrectie in utils/centen.ts).
-    onSave({
-      factuurForm, productLijst, verpakkingLijst, vrijeRegels: vrijeList, bijlage,
-      totaalManual: (manualNetto !== null || manualBtw !== null || manualBruto !== null)
-        ? { netto: manualNetto !== null ? parseFloat(manualNetto) : null,
-            btw: manualBtw !== null ? parseFloat(manualBtw) : null,
-            bruto: manualBruto !== null ? parseFloat(manualBruto) : null }
-        : null,
-    })
+  const [kop, setKop] = React.useState<Kop>(start.kop)
+  const [kopUitScan, setKopUitScan] = React.useState<KopVeld[]>([])
+  const kopAangeraakt = React.useRef<Set<KopVeld>>(new Set())
+  const [regels, setRegelsState] = React.useState<InkoopRegel[]>(start.regels)
+  const [openId, setOpenId] = React.useState<number | null>(smal ? null : start.open)
+  const [incl, setIncl] = React.useState(false)
+  const [handmatig, setHandmatig] = React.useState<HandmatigeTotalen>(GEEN_HANDMATIG)
+  const [toonFouten, setToonFouten] = React.useState(false)
+  const [melding, setMelding] = React.useState<{ tekst: string, actie?: { label: string, doe: () => void } } | null>(null)
+
+  // Document: een PDF (gekozen, uit het postvak of de bestaande bijlage) of foto's.
+  const [pdf, setPdf] = React.useState<File | null>(null)
+  const [pdfNieuw, setPdfNieuw] = React.useState(false)
+  const [factuurFotos, setFactuurFotos] = React.useState<Foto[]>([])
+  const [bijlage, setBijlage] = React.useState<Bijlage | null>(initialData?.bijlage || inboxItem?.bijlage || null)
+  const [bestaandeAfbeelding, setBestaandeAfbeelding] = React.useState<string | null>(null)
+  const [docStatus, setDocStatus] = React.useState<'geen' | 'laden' | 'klaar' | 'fout'>(
+    inboxItem || initialData?.bijlage?.bestand ? 'laden' : 'geen')
+  const [docZichtbaar, setDocZichtbaar] = React.useState(true)
+  const [mobielTab, setMobielTab] = React.useState<'factuur' | 'boeking'>('boeking')
+  const [fotoBezig, setFotoBezig] = React.useState(false)
+
+  const [scan, setScan] = React.useState<ScanStaat>({ status: 'idle' })
+  const scanVersie = React.useRef(0)
+  /** De regels komen van de scan en zijn sindsdien niet aangeraakt: een nieuwe scan mag ze vervangen. */
+  const scanRegelsOngemoeid = React.useRef(false)
+
+  const [etiketten, setEtiketten] = React.useState<Record<number, EtiketStaat>>({})
+  const etiketTimers = React.useRef<Record<number, ReturnType<typeof setTimeout>>>({})
+
+  /** Paneel op een telefoon. `kopie` = de regel bij openen (Annuleren zet hem terug); null = nieuwe regel. */
+  const [sheet, setSheet] = React.useState<{ soort: 'regel' | 'soort', id: number, kopie: InkoopRegel | null } | null>(null)
+  const [verwijderd, setVerwijderd] = React.useState<{ regel: InkoopRegel, index: number, etiket?: EtiketStaat } | null>(null)
+  const [bezig, setBezig] = React.useState(false)
+  const [dubbelOk, setDubbelOk] = React.useState(false)
+  const [sluitVraag, setSluitVraag] = React.useState(false)
+  const geupload = React.useRef<{ bijlage?: Bijlage, fotos: Record<number, Bijlage> }>({ fotos: {} })
+
+  // De laatste stand voor wat asynchroon terugkomt (scan, etiket): nooit
+  // overschrijven wat de gebruiker ondertussen zelf invulde.
+  const stand = React.useRef({ kop, kopUitScan, regels, etiketten })
+  stand.current = { kop, kopUitScan, regels, etiketten }
+
+  // Object-URL's van foto's opruimen bij het sluiten.
+  const urls = React.useRef<Set<string>>(new Set())
+  const maakUrl = (b: Blob): string => { const u = URL.createObjectURL(b); urls.current.add(u); return u }
+  const geefVrij = (u: string) => { if (urls.current.delete(u)) URL.revokeObjectURL(u) }
+  React.useEffect(() => () => {
+    urls.current.forEach(u => URL.revokeObjectURL(u))
+    Object.values(etiketTimers.current).forEach(clearTimeout)
+  }, [])
+
+  // ── Regels wijzigen ───────────────────────────────────────────────────────
+  const setRegels = (f: (prev: InkoopRegel[]) => InkoopRegel[], doorGebruiker = true) => {
+    if (doorGebruiker) scanRegelsOngemoeid.current = false
+    setRegelsState(f)
+  }
+  const wijzigRegel = (r: InkoopRegel) => setRegels(prev => prev.map(x => x._id === r._id ? r : x))
+  const kiesSoort = (id: number, soort: RegelSoort) => {
+    const r = stand.current.regels.find(x => x._id === id)
+    if (!r || r.soort === soort) return
+    // Het BTW-tarief blijft: dat is wat de leverancier rekende.
+    wijzigRegel(wisselSoort(r, soort, { ing, onderdelen, defaultType }))
+    if (r.bron?.tekst && onScanCorrectie) onScanCorrectie({ tekst: r.bron.tekst, soort })
+  }
+  const voegRegelToe = (soort: RegelSoort = 'ingredient') => {
+    const r = nieuweRegel(soort, soort === 'ingredient'
+      ? { type: defaultType, btw: ingTypeBtw[defaultType] !== undefined ? String(ingTypeBtw[defaultType]) : '9' }
+      : {})
+    setRegels(prev => [...prev, r])
+    if (smal) setSheet({ soort: 'regel', id: r._id, kopie: null })
+    else setOpenId(r._id)
+    return r
+  }
+  const verwijderRegel = (id: number) => {
+    const huidig = stand.current.regels
+    const index = huidig.findIndex(x => x._id === id)
+    if (index < 0) return
+    setVerwijderd({ regel: huidig[index], index, etiket: stand.current.etiketten[id] })
+    setRegels(prev => prev.filter(x => x._id !== id))
+    if (openId === id) setOpenId(null)
+    if (sheet?.id === id) setSheet(null)
+  }
+  // Vijf seconden om het terug te draaien; daarna is de regel weg (en zijn foto's ook).
+  React.useEffect(() => {
+    if (!verwijderd) return
+    const timer = setTimeout(() => {
+      verwijderd.etiket?.fotos.forEach(f => geefVrij(f.url))
+      setEtiketten(prev => { const { [verwijderd.regel._id]: _weg, ...rest } = prev; return rest })
+      setVerwijderd(null)
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [verwijderd])
+  const herstelRegel = () => {
+    if (!verwijderd) return
+    const { regel, index } = verwijderd
+    setRegels(prev => [...prev.slice(0, index), regel, ...prev.slice(index)])
+    setVerwijderd(null)
+    if (!smal) setOpenId(regel._id)
   }
 
-  // Bij intracom-EU of import-niet-EU is de BTW verlegd: leverancier factureert
-  // €0 BTW. De zelfberekende verschuldigde BTW wordt apart in de aangifte
-  // (rubriek 4a/4b) verwerkt, niet in de factuurtotalen.
-  const isVerlegd = btwSoort !== 'binnenlands'
-  const totaalNetto = productLijst.reduce((s: number, p: any) => s+(parseFloat(p.totaalprijs)||0), 0)
-    + verpakkingLijst.reduce((s: number, v: any) => s+(parseFloat(v.totaalprijs)||0), 0)
-    + vrijeList.reduce((s: number, r: any) => s+(parseFloat(r.netto)||0), 0)
-  const totaalBtw = isVerlegd ? 0 : (
-    productLijst.reduce((s: number, p: any) => s+(parseFloat(p.totaalprijs)||0)*(Number(p.btw_tarief)||0)/100, 0)
-    + verpakkingLijst.reduce((s: number, v: any) => s+(parseFloat(v.totaalprijs)||0)*(Number(v.btw_tarief)||0)/100, 0)
-    + vrijeList.reduce((s: number, r: any) => s+vrijeRegelBtw(r), 0)
+  const zetKop = (veld: KopVeld, waarde: string) => {
+    kopAangeraakt.current.add(veld)
+    setKopUitScan(prev => prev.filter(v => v !== veld))
+    setKop(k => ({ ...k, [veld]: waarde }))
+  }
+
+  // ── Afgeleid ──────────────────────────────────────────────────────────────
+  const verlegd = kop.btwSoort !== 'binnenlands'
+  const inclEff = incl && !verlegd
+  const teBoeken = regels.filter(r => !isLeegRegel(r))
+  const som = React.useMemo(() => berekenTotalen(teBoeken, verlegd), [regels, verlegd]) // eslint-disable-line react-hooks/exhaustive-deps
+  const eff = effectieveTotalen(som, handmatig, verlegd)
+  const vergelijkMet: FactuurTotalen | null = scan.totalen
+    || (bankBedrag !== null && bankBedrag !== undefined && bankBedrag > 0 ? { netto: null, btw: null, bruto: bankBedrag } : null)
+  const controle = controleerTotaal(eff, vergelijkMet, verlegd)
+  const heeftFactuurData = !!(kop.leverancier.trim() || kop.factuurnummer.trim())
+  const dubbel = React.useMemo(
+    () => zoekDubbeleFactuur(inkoopFacturen, { leverancier: kop.leverancier, factuurnummer: kop.factuurnummer }, initialData?.id),
+    [inkoopFacturen, kop.leverancier, kop.factuurnummer, initialData?.id],
   )
+  React.useEffect(() => { setDubbelOk(false) }, [dubbel?.id])
+  const rollover = getRolloverInfo ? getRolloverInfo(kop.datum) : null
+  const nieuweLeverancier = !!kop.leverancier.trim()
+    && !knownLeveranciers.some(l => normLeverancier(l) === normLeverancier(kop.leverancier))
+  const telling = telOpslag(teBoeken)
+  const etiketFotosTeBewaren = bewerken ? 0 : teBoeken.reduce((n, r) => {
+    const e = etiketten[r._id]
+    return n + (r.soort === 'ingredient' && e?.bewaren ? e.fotos.length : 0)
+  }, 0)
+  const heeftDocument = !!pdf || factuurFotos.length > 0 || !!bestaandeAfbeelding
+  // Is er iets dat verloren gaat bij sluiten? Dan eerst vragen.
+  const heeftInvoer = pdfNieuw || factuurFotos.length > 0 || Object.values(etiketten).some(e => e.fotos.length > 0)
+    || regels.length !== start.regels.length || regels.some(r => !isLeegRegel(r) && !start.regels.includes(r))
+    || kop.leverancier !== start.kop.leverancier || kop.factuurnummer !== start.kop.factuurnummer
+    || kop.datum !== start.kop.datum || kop.btwSoort !== start.kop.btwSoort
 
-  const btwTarieven = (() => {
-    if (isVerlegd) return [] as [string, number][]
-    const map: Record<string,number> = {}
-    ;[...productLijst,...verpakkingLijst].forEach((p: any) => {
-      const k = Number(p.btw_tarief||0); if (!map[k]) map[k] = 0
-      map[k] += (parseFloat(p.totaalprijs)||0) * k / 100
-    })
-    vrijeList.forEach((r: any) => {
-      const k = Number(r.btw_tarief||0); if (!map[k]) map[k] = 0
-      map[k] += vrijeRegelBtw(r)
-    })
-    return Object.entries(map).filter(([,v]) => v>0).sort(([a],[b]) => Number(a)-Number(b))
-  })()
+  // ── Document laden: postvak of bestaande bijlage ─────────────────────────
+  React.useEffect(() => {
+    const bestand = inboxItem?.bijlage?.bestand || initialData?.bijlage?.bestand
+    if (!bestand) return
+    const naam = inboxItem?.bijlage?.naam || initialData?.bijlage?.naam || bestand
+    // Een foto als bijlage: meteen tonen vanaf de server.
+    if (!inboxItem && isFotoBestand({ name: bestand })) {
+      setBestaandeAfbeelding(`${ADDON_BASE}api/file/${bestand}`)
+      setDocStatus('klaar')
+      return
+    }
+    let actueel = true
+    ;(async () => {
+      try {
+        const r = await fetch(`${ADDON_BASE}api/file/${bestand}`)
+        if (!r.ok) throw new Error(String(r.status))
+        const blob = await r.blob()
+        if (!actueel) return
+        const file = new File([blob], naam, { type: 'application/pdf' })
+        setPdf(file)
+        setDocStatus('klaar')
+        // Uit het postvak meteen scannen: dat is wat "Verwerk" vroeg.
+        if (inboxItem) void scanFactuur({ pdf: file, fotos: [] })
+      } catch {
+        if (actueel) setDocStatus('fout')
+      }
+    })()
+    return () => { actueel = false }
+    // Eenmalig bij het openen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  // Zelf aan te geven BTW bij verlegde facturen (rubriek 4a/4b): berekend
-  // over de regel-tarieven, los van de factuurtotalen (die blijven €0 BTW).
-  const verlegdBtwPerTarief = (() => {
-    if (!isVerlegd) return [] as [string, number][]
-    const map: Record<string, number> = {}
-    ;[...productLijst, ...verpakkingLijst].forEach((p: any) => {
-      const k = Number(p.btw_tarief || 0); if (!map[k]) map[k] = 0
-      map[k] += (parseFloat(p.totaalprijs) || 0) * k / 100
-    })
-    vrijeList.forEach((r: any) => {
-      const k = Number(r.btw_tarief || 0); if (!map[k]) map[k] = 0
-      map[k] += (parseFloat(r.netto) || 0) * k / 100
-    })
-    return Object.entries(map).filter(([, v]) => v > 0).sort(([a], [b]) => Number(a) - Number(b))
-  })()
-  const verlegdBtwTotaal = verlegdBtwPerTarief.reduce((s, [, v]) => s + (v as number), 0)
-  // Netto van verlegde regels die (nog) op 0% staan: daarover wordt in
-  // rubriek 4a/4b geen BTW berekend — dat is vrijwel altijd een omissie.
-  const verlegdNulNetto = !isVerlegd ? 0
-    : productLijst.reduce((s: number, p: any) => s + (!Number(p.btw_tarief) ? (parseFloat(p.totaalprijs) || 0) : 0), 0)
-    + verpakkingLijst.reduce((s: number, v: any) => s + (!Number(v.btw_tarief) ? (parseFloat(v.totaalprijs) || 0) : 0), 0)
-    + vrijeList.reduce((s: number, r: any) => s + (!Number(r.btw_tarief) ? (parseFloat(r.netto) || 0) : 0), 0)
+  // ── Factuurscan ───────────────────────────────────────────────────────────
+  const pasScanToe = (s: FactuurScan) => {
+    const st = stand.current
+    const uit = new Set<KopVeld>(st.kopUitScan)
+    const k: Kop = { ...st.kop }
+    const mag = (veld: KopVeld, leeg: boolean) => leeg || uit.has(veld) || (!bewerken && !kopAangeraakt.current.has(veld))
+    if (s.leverancier && mag('leverancier', !k.leverancier.trim())) {
+      const bekend = knownLeveranciers.find(l => normLeverancier(l) === normLeverancier(s.leverancier))
+      k.leverancier = bekend || s.leverancier
+      uit.add('leverancier')
+    }
+    if (s.factuurnummer && mag('factuurnummer', !k.factuurnummer.trim())) { k.factuurnummer = s.factuurnummer; uit.add('factuurnummer') }
+    if (s.datum && mag('datum', !k.datum)) { k.datum = s.datum; uit.add('datum') }
+    if (s.btwSoort !== 'binnenlands' && mag('btwSoort', k.btwSoort === 'binnenlands')) { k.btwSoort = s.btwSoort; uit.add('btwSoort') }
+    setKop(k)
+    setKopUitScan([...uit])
 
-  // Vul regels op 0% met het Nederlandse standaardtarief (ingrediënten per
-  // type via ingTypeBtw, anders 9%; onderdelen en vrije regels 21%).
-  const vulVerlegdeTarieven = () => {
-    setProductLijst(prev => prev.map((p: any) => Number(p.btw_tarief) ? p : {...p, btw_tarief: String(ingTypeBtw[p.type] ?? 9)}))
-    setVerpakkingLijst(prev => prev.map((vp: any) => Number(vp.btw_tarief) ? vp : {...vp, btw_tarief: '21'}))
-    setVrijeList(prev => prev.map((r: any) => Number(r.btw_tarief) ? r : {...r, btw_tarief: 21}))
+    const verdeeld = s.bron === 'claude' ? regelsUitScan(s, {
+      ing, onderdelen, lots, ingTypeBtw, kostenSoorten, geheugen: scanCorrecties, defaultType,
+    }, k.btwSoort) : []
+    const leeg = st.regels.every(isLeegRegel)
+    let wachtend: InkoopRegel[] | null = null
+    if (verdeeld.length && (leeg || scanRegelsOngemoeid.current)) {
+      setRegelsState(verdeeld)
+      scanRegelsOngemoeid.current = true
+      setOpenId(null)
+      setHandmatig(GEEN_HANDMATIG)
+    } else if (verdeeld.length) {
+      wachtend = verdeeld
+    }
+    setScan({
+      status: 'klaar', aantal: verdeeld.length,
+      nieuw: verdeeld.filter(r => r.soort !== 'overig' && !r.koppelId).length,
+      lokaal: s.bron === 'lokaal', totalen: s.totalen, wachtend, verlegd: s.btwSoort !== 'binnenlands',
+    })
   }
 
-  return (
-    <Modal title={initialData ? t('modal_title_edit_invoice') : t('modal_title_receipt')} onClose={onClose} wide={!toonViewer} ultrawide={toonViewer}>
-      <div className={toonViewer ? 'grid grid-cols-2 gap-4' : ''}>
-      {toonViewer && scanFile && (
-        <div className="order-2">
-          {(scanFile.type === 'application/pdf' || scanFile.name.toLowerCase().endsWith('.pdf'))
-            ? <iframe src={pdfBlobUrl!} className="w-full rounded-lg border border-gray-200" style={{height:'80vh'}} title="Factuur" />
-            : <img src={pdfBlobUrl!} alt="Factuur" className="w-full rounded-lg border border-gray-200 object-contain" style={{maxHeight:'80vh'}} />
-          }
+  const scanFactuur = async (bron?: { pdf: File | null, fotos: Foto[] }) => {
+    const p = bron ? bron.pdf : pdf
+    const fotos = bron ? bron.fotos : factuurFotos
+    if (!p && !fotos.length) return
+    const versie = ++scanVersie.current
+    setScan({ status: 'bezig' })
+    try {
+      let bestanden: FactuurBestand[]
+      if (p) {
+        const buf = await p.arrayBuffer()
+        const tekst = await extractPdfText(p)
+        const modus = factuurScanModus({ soort: 'pdf', bytes: buf.byteLength, tekstLengte: tekst.length, sleutel: heeftSleutel })
+        if (modus === 'lokaal') {
+          if (versie === scanVersie.current) pasScanToe(parseFactuurTekstLokaal(tekst))
+          return
+        }
+        if (modus === 'geen') {
+          if (versie === scanVersie.current) setScan(heeftSleutel ? { status: 'fout', fout: t('err_pdf_te_groot') } : { status: 'geen_sleutel' })
+          return
+        }
+        bestanden = modus === 'document' ? [{ soort: 'pdf', base64: bytesNaarBase64(buf) }] : [{ soort: 'tekst', tekst: tekst.slice(0, 30000) }]
+      } else {
+        if (factuurScanModus({ soort: 'fotos', bytes: 0, tekstLengte: 0, sleutel: heeftSleutel }) === 'geen') {
+          setScan({ status: 'geen_sleutel' })
+          return
+        }
+        bestanden = fotos.slice(0, MAX_FACTUUR_FOTOS).map(f => ({ soort: 'afbeelding' as const, base64: f.scan.base64, mediaType: 'image/jpeg' }))
+      }
+      const prompt = bouwFactuurPrompt({
+        leveranciers: knownLeveranciers, breweryNaam,
+        ingNamen: ing.map((i: any) => i.naam).filter(Boolean),
+        onderdeelNamen: onderdelen.map((o: any) => o.naam).filter(Boolean),
+        ingTypes, kostenSoorten, geheugen: scanCorrecties,
+      })
+      const { data } = await voerScanUit(callClaudeProxy, {
+        inhoud: inhoudVoorFactuur(bestanden, prompt),
+        schema: factuurSchema(kostenSoorten, ingTypes),
+        maxTokens: 16000, effort: 'medium',
+      })
+      if (versie !== scanVersie.current) return
+      pasScanToe(normaliseerFactuurScan(data, { kostenSoorten, ingTypes }))
+    } catch (e) {
+      if (versie === scanVersie.current) setScan({ status: 'fout', fout: foutTekst(e) })
+    }
+  }
+
+  const neemWachtendeRegelsOver = () => {
+    if (!scan.wachtend) return
+    setRegelsState(scan.wachtend)
+    scanRegelsOngemoeid.current = true
+    setHandmatig(GEEN_HANDMATIG)
+    setOpenId(null)
+    setScan(s => ({ ...s, wachtend: null }))
+  }
+
+  // ── Document kiezen ───────────────────────────────────────────────────────
+  const kiesDocument = async (files: File[]) => {
+    if (!files.length || inboxItem) return
+    setMelding(null)
+    const eerstePdf = files.find(f => isPdfBestand(f))
+    if (eerstePdf) {
+      factuurFotos.forEach(f => geefVrij(f.url))
+      setFactuurFotos([])
+      setBestaandeAfbeelding(null)
+      setPdf(eerstePdf)
+      setPdfNieuw(true)
+      setDocStatus('klaar')
+      geupload.current.bijlage = undefined
+      void scanFactuur({ pdf: eerstePdf, fotos: [] })
+      return
+    }
+    const fotoBestanden = files.filter(f => isFotoBestand(f))
+    if (!fotoBestanden.length) { setMelding({ tekst: t('err_upload_type').replace('{naam}', files[0].name) }); return }
+    setFotoBezig(true)
+    const nieuw: Foto[] = []
+    let fout: string | null = null
+    for (const f of fotoBestanden.slice(0, MAX_FACTUUR_FOTOS - factuurFotos.length)) {
+      try {
+        const scanJpeg = await naarJpeg(f, SCAN_MAX_PX)
+        const archief = await naarJpeg(f, FACTUUR_PAGINA_PX, 0.8)
+        nieuw.push({ id: nieuwRegelId(), naam: f.name, scan: scanJpeg, archief, url: maakUrl(scanJpeg.blob) })
+      } catch (e) { fout = foutTekst(e) }
+    }
+    setFotoBezig(false)
+    if (fout) setMelding({ tekst: fout })
+    if (!nieuw.length) return
+    const alle = pdf ? nieuw : [...factuurFotos, ...nieuw]
+    if (pdf) { setPdf(null); setPdfNieuw(false) }
+    setBestaandeAfbeelding(null)
+    setFactuurFotos(alle)
+    setDocStatus('klaar')
+    geupload.current.bijlage = undefined
+    // De eerste foto('s) meteen lezen; een extra pagina leest opnieuw zolang de regels van de scan komen.
+    if (alle.length === nieuw.length || scanRegelsOngemoeid.current || stand.current.regels.every(isLeegRegel)) {
+      void scanFactuur({ pdf: null, fotos: alle })
+    }
+  }
+  const verwijderFactuurFoto = (id: number) => {
+    const f = factuurFotos.find(x => x.id === id)
+    if (f) geefVrij(f.url)
+    setFactuurFotos(prev => prev.filter(x => x.id !== id))
+    geupload.current.bijlage = undefined
+  }
+  const docInvoer = React.useRef<HTMLInputElement | null>(null)
+  const docCamera = React.useRef<HTMLInputElement | null>(null)
+  const kiesBestanden = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    void kiesDocument(files)
+  }
+  const [sleept, setSleept] = React.useState(false)
+
+  // ── Etiketfoto's ──────────────────────────────────────────────────────────
+  const zetEtiket = (id: number, w: Partial<EtiketStaat> | ((e: EtiketStaat) => Partial<EtiketStaat>)) =>
+    setEtiketten(prev => {
+      const huidig = prev[id] || nieuwEtiket()
+      return { ...prev, [id]: { ...huidig, ...(typeof w === 'function' ? w(huidig) : w) } }
+    })
+
+  const leesEtiket = async (id: number) => {
+    const e = stand.current.etiketten[id]
+    const r = stand.current.regels.find(x => x._id === id)
+    if (!e || !e.fotos.length || !r) return
+    const versie = e.versie + 1
+    zetEtiket(id, { status: 'bezig', fout: null, versie })
+    try {
+      const prompt = bouwEtiketPrompt({
+        aantalFotos: e.fotos.length, naam: r.naam, type: r.type, fabrikant: r.fabrikant, qty: r.qty, eenh: r.eenh,
+        ingTypes, ingNamen: ing.map((i: any) => i.naam).filter(Boolean),
+      })
+      const { data } = await voerScanUit(callClaudeProxy, {
+        inhoud: inhoudVoorEtiket(e.fotos.map(f => f.scan.base64), prompt),
+        schema: etiketSchema(ingTypes), maxTokens: 8000, effort: 'medium',
+      })
+      if (stand.current.etiketten[id]?.versie !== versie) return
+      const s = normaliseerEtiketScan(data, { ingTypes })
+      const nu = stand.current.regels.find(x => x._id === id)
+      if (!nu) return
+      const oordeel = nu.naam.trim() ? productKlopt(s, nu.naam) : 'onbekend'
+      if (!s.leesbaar || oordeel === 'nee') {
+        zetEtiket(id, { status: 'klaar', scan: s, oordeel, nietToegepast: s.leesbaar && oordeel === 'nee' })
+        return
+      }
+      setRegels(prev => prev.map(x => x._id === id ? pasEtiketToe(x, s, { ingTypes, ing, defaultType }) : x))
+      zetEtiket(id, { status: 'klaar', scan: s, oordeel, nietToegepast: false })
+    } catch (err) {
+      if (stand.current.etiketten[id]?.versie === versie) zetEtiket(id, { status: 'fout', fout: foutTekst(err) })
+    }
+  }
+  const planEtiket = (id: number) => {
+    clearTimeout(etiketTimers.current[id])
+    etiketTimers.current[id] = setTimeout(() => { void leesEtiket(id) }, 450)
+  }
+  const voegEtiketFotosToe = async (id: number, files: File[]) => {
+    const al = stand.current.etiketten[id]?.fotos.length || 0
+    const ruimte = Math.max(0, MAX_ETIKET_FOTOS - al)
+    zetEtiket(id, { status: 'bezig', fout: null })
+    const nieuw: Foto[] = []
+    let fout: string | null = null
+    for (const f of files.slice(0, ruimte)) {
+      try {
+        const scanJpeg = await naarJpeg(f, SCAN_MAX_PX)
+        const archief = await naarJpeg(f, ARCHIEF_MAX_PX, 0.82)
+        nieuw.push({ id: nieuwRegelId(), naam: naamMetExtensie(f.name, 'jpg'), scan: scanJpeg, archief, url: maakUrl(scanJpeg.blob) })
+      } catch (e) { fout = foutTekst(e) }
+    }
+    if (!nieuw.length) {
+      zetEtiket(id, e => ({ status: e.fotos.length ? (e.scan ? 'klaar' : 'leeg') : 'leeg', fout }))
+      if (fout) setMelding({ tekst: fout })
+      return
+    }
+    zetEtiket(id, e => ({ fotos: [...e.fotos, ...nieuw], fout: null }))
+    planEtiket(id)
+  }
+  const verwijderEtiketFoto = (id: number, fotoId: number) => {
+    const e = stand.current.etiketten[id]
+    const f = e?.fotos.find(x => x.id === fotoId)
+    if (f) geefVrij(f.url)
+    const rest = (e?.fotos || []).filter(x => x.id !== fotoId)
+    zetEtiket(id, x => ({ fotos: x.fotos.filter(y => y.id !== fotoId), ...(rest.length ? {} : { status: 'leeg' as EtiketStatus, scan: null, oordeel: null, nietToegepast: false, versie: x.versie + 1 }) }))
+    if (rest.length) planEtiket(id)
+  }
+  const tochToepassen = (id: number) => {
+    const e = stand.current.etiketten[id]
+    if (!e?.scan) return
+    const s = e.scan
+    setRegels(prev => prev.map(x => x._id === id ? pasEtiketToe(x, s, { ingTypes, ing, defaultType }) : x))
+    zetEtiket(id, { nietToegepast: false })
+  }
+
+  /** "Geen factuur bij de levering": een regel maken van een etiketfoto. */
+  const etiketZonderFactuur = (files: File[]) => {
+    if (!files.length) return
+    const leegRegel = stand.current.regels.find(r => r.soort === 'ingredient' && isLeegRegel(r))
+    const r = leegRegel || voegRegelToe('ingredient')
+    if (leegRegel) { if (smal) setSheet({ soort: 'regel', id: r._id, kopie: { ...r } }); else setOpenId(r._id) }
+    void voegEtiketFotosToe(r._id, files)
+  }
+  const etiketZonderFactuurRef = React.useRef<HTMLInputElement | null>(null)
+
+  /** "Ingevuld: lotnummer, THT en 2 eigenschappen" — wat het etiket op de regel zette. */
+  const ingevuldTekst = (r: InkoopRegel): string | null => {
+    const v = new Set(r.uitEtiket || [])
+    if (!v.size) return null
+    const delen: string[] = []
+    if (v.has('naam')) delen.push(t('inkoop_ingevuld_product'))
+    if (v.has('qty')) delen.push(t('inkoop_ingevuld_hoeveelheid'))
+    if (v.has('lots') && heeftMeerLots(r)) delen.push(t('inkoop_ingevuld_lots').replace('{n}', String(r.lots.length)))
+    else if (v.has('lotnr')) delen.push(t('inkoop_ingevuld_lot'))
+    if (v.has('tht')) delen.push(t('inkoop_ingevuld_tht'))
+    const velden = LOT_BREW_FIELDS_PER_TYPE[r.type || ''] || []
+    const props = [...v].filter(x => x.startsWith('bf:') && velden.some(f => f.key === x.slice(3))).length
+    if (props) delen.push(props === 1 ? t('inkoop_ingevuld_eigenschap') : t('inkoop_ingevuld_eigenschappen').replace('{n}', String(props)))
+    return delen.length ? t('etiket_ingevuld').replace('{velden}', opsomming(delen)) : null
+  }
+
+  const etiketVoor = (r: InkoopRegel): React.ReactNode => {
+    if (r.soort !== 'ingredient' || bewerken) return null
+    const e = etiketten[r._id] || nieuwEtiket()
+    return (
+      <EtiketFotos fotos={e.fotos} status={e.status} fout={e.fout} scan={e.scan} oordeel={e.oordeel}
+        nietToegepast={e.nietToegepast} ingevuld={ingevuldTekst(r)}
+        lotWijktAf={!!e.scan && etiketLotsWijkenAf(r, e.scan)}
+        heeftSleutel={heeftSleutel} bewaren={e.bewaren}
+        onBewaren={aan => zetEtiket(r._id, { bewaren: aan })}
+        onVoegToe={files => { void voegEtiketFotosToe(r._id, files) }}
+        onVerwijder={fotoId => verwijderEtiketFoto(r._id, fotoId)}
+        onOpnieuw={() => { void leesEtiket(r._id) }}
+        onTochToepassen={() => tochToepassen(r._id)} />
+    )
+  }
+
+  // ── Regelfouten ───────────────────────────────────────────────────────────
+  const foutenVan = (r: InkoopRegel) => (toonFouten ? valideerRegel(r) : [])
+  const editorVoor = (r: InkoopRegel, inSheet = false): React.ReactNode => (
+    <div className={inSheet ? '' : 'rounded-xl border border-gray-200 bg-white p-3'}>
+      <RegelEditor regel={r} onWijzig={wijzigRegel} onSoort={s => kiesSoort(r._id, s)} incl={inclEff} verlegd={verlegd}
+        ctx={ctx} fouten={foutenVan(r)} smal={smal} etiket={etiketVoor(r)} bewerken={bewerken}
+        onKiesSoort={() => setSheet(sh => sh ? { ...sh, soort: 'soort' } : sh)} />
+      {!inSheet && (
+        <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-gray-100">
+          <Btn v="ghost" s="sm" onClick={() => verwijderRegel(r._id)}><span className="text-red-600 inline-flex items-center gap-1"><Icon n="trash" /> {t('inkoop_regel_verwijderen')}</span></Btn>
+          <Btn v="secondary" s="sm" onClick={() => setOpenId(null)}>{t('inkoop_klaar')}</Btn>
         </div>
       )}
-      <div className={`space-y-4 ${toonViewer ? 'order-1 overflow-y-auto' : ''}`} style={toonViewer ? {maxHeight:'85vh'} : {}}>
-        {inboxItem && (
-          <div className="flex items-start gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-            <span className="mt-0.5 flex-shrink-0"><Icon n="info" /></span>
-            <span className="min-w-0">
-              {t('inbox_modal_bron')
-                .replace('{afzender}', inboxAfzender(inboxItem) || t('lbl_onbekend'))
-                .replace('{onderwerp}', inboxItem.onderwerp || inboxItem.bijlage.naam)}
-              {serverFileStatus === 'laden' && <span className="block t-accent-text">{t('inbox_laden')}</span>}
-              {serverFileStatus === 'fout' && <span className="block text-red-600">⚠ {t('inbox_pdf_laden_fout')}</span>}
-            </span>
-          </div>
-        )}
-        {initialData && (
-          <div className="flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-800">
-            <span className="mt-0.5 flex-shrink-0">⚠</span>
-            <span>{t('modal_edit_warning')}</span>
-          </div>
-        )}
-        {initialData?.betaald_datum && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
-            <span className="flex-shrink-0">✓</span>
-            <span className="font-medium">{t('lbl_paid_on')}: {initialData.betaald_datum}</span>
-          </div>
-        )}
+      {inSheet && (
+        <div className="pt-4 mt-4 border-t border-gray-100">
+          <button type="button" onClick={() => verwijderRegel(r._id)}
+            className="w-full min-h-tap rounded-lg text-sm font-medium text-red-600 border border-red-200 bg-red-50 inline-flex items-center justify-center gap-1.5">
+            <Icon n="trash" /> {t('inkoop_regel_verwijderen')}
+          </button>
+        </div>
+      )}
+    </div>
+  )
 
-        {/* Factuurgegevens */}
-        <div className="t-panel border rounded-lg p-3">
-          <p className="text-xs font-semibold t-accent-text mb-2">{t('modal_invoice_details')}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_supplier')}</label>
-              {knownLeveranciers.length > 0 ? (<>
-                <select value={leverancierSel} onChange={e => setLeverancierSel(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm">
-                  <option value="">— {t('ph_choose')} —</option>
-                  {knownLeveranciers.map((l: string) => <option key={l} value={l}>{l}</option>)}
-                  <option value="__nieuw__">{t('lbl_new_supplier')}</option>
-                </select>
-                {leverancierSel === '__nieuw__' && (
-                  <input type="text" value={leverancierNieuw} onChange={e => setLeverancierNieuw(e.target.value)}
-                    placeholder={t('ph_brewery_name')}
-                    className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
-                )}
-              </>) : (
-                <input type="text" value={leverancierNieuw} onChange={e => setLeverancierNieuw(e.target.value)}
-                  placeholder={t('ph_brewery_name')}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
+  // ── Opslaan ───────────────────────────────────────────────────────────────
+  const opslaan = async (volgende = false) => {
+    if (bezig) return
+    setMelding(null)
+    const lijst = stand.current.regels.filter(r => !isLeegRegel(r))
+    if (!lijst.length) { setMelding({ tekst: t('err_min_one_product') }); return }
+    const fout = lijst.find(r => valideerRegel(r).length)
+    if (fout) {
+      setToonFouten(true)
+      if (smal) setSheet({ soort: 'regel', id: fout._id, kopie: { ...fout } })
+      else setOpenId(fout._id)
+      setMelding({ tekst: t('inkoop_vul_regels_aan') })
+      return
+    }
+    if (inboxItem && !heeftFactuurData) { setToonFouten(true); setMelding({ tekst: t('inbox_vul_factuurgegevens') }); return }
+    if (dubbel && !dubbelOk) {
+      setMelding({
+        tekst: t('inkoop_dubbel_vraag'),
+        actie: { label: t('inkoop_toch_opslaan'), doe: () => { setDubbelOk(true); setMelding(null) } },
+      })
+      return
+    }
+    setBezig(true)
+    try {
+      // 1. De bijlage: een nieuwe PDF, de foto's als één PDF, of wat er al was.
+      let opTeSlaan: Bijlage | null = bijlage
+      if (pdf && pdfNieuw) {
+        if (!geupload.current.bijlage) {
+          const u = await uploadBijlage(pdf, 'inkoop')
+          if (!u.ok || !u.bijlage) { setMelding({ tekst: t(uploadFoutSleutel(u.status)).replace('{naam}', u.naam) }); return }
+          geupload.current.bijlage = u.bijlage
+        }
+        opTeSlaan = geupload.current.bijlage
+      } else if (factuurFotos.length) {
+        if (!geupload.current.bijlage) {
+          const naam = factuurFotos.length > 1 ? t('inkoop_fotos_pdf_naam').replace('{n}', String(factuurFotos.length)) + '.pdf' : naamMetExtensie(factuurFotos[0].naam, 'pdf')
+          const u = await uploadBijlage(alsBestand(fotosNaarPdf(factuurFotos.map(f => f.archief)), naam), 'inkoop')
+          if (!u.ok || !u.bijlage) { setMelding({ tekst: t(uploadFoutSleutel(u.status)).replace('{naam}', u.naam) }); return }
+          geupload.current.bijlage = u.bijlage
+        }
+        opTeSlaan = geupload.current.bijlage
+      }
+      // 2. Etiketfoto's die bij het lot bewaard worden.
+      const fotosPerRegel: Record<number, Bijlage[]> = {}
+      if (!bewerken) {
+        for (const r of lijst) {
+          const e = stand.current.etiketten[r._id]
+          if (r.soort !== 'ingredient' || !e?.bewaren || !e.fotos.length) continue
+          const uit: Bijlage[] = []
+          for (const f of e.fotos) {
+            let b = geupload.current.fotos[f.id]
+            if (!b) {
+              const u = await uploadBijlage(alsBestand(f.archief.blob, f.naam), 'etiket')
+              if (!u.ok || !u.bijlage) {
+                setMelding({
+                  tekst: t(uploadFoutSleutel(u.status)).replace('{naam}', u.naam),
+                  actie: { label: t('inkoop_zonder_etiketfotos'), doe: () => { zetAlleEtiketBewaren(false); setMelding(null) } },
+                })
+                return
+              }
+              b = u.bijlage
+              geupload.current.fotos[f.id] = b
+            }
+            uit.push(b)
+          }
+          fotosPerRegel[r._id] = uit
+        }
+      }
+      // 3. Naar de pagina, in de vorm die de pagina's al kennen.
+      const lijsten = naarOpslag(lijst, ing, onderdelen)
+      const productLijst = lijsten.productLijst.map(p => fotosPerRegel[p._id]?.length ? { ...p, etiket_fotos: fotosPerRegel[p._id] } : p)
+      const data: InkoopOpslag = {
+        factuurForm: { leverancier: kop.leverancier.trim(), factuur: kop.factuurnummer.trim(), datum: kop.datum, btw_soort: kop.btwSoort },
+        productLijst, verpakkingLijst: lijsten.verpakkingLijst, vrijeRegels: lijsten.vrijeRegels,
+        bijlage: opTeSlaan,
+        totaalManual: naarTotaalManual(handmatig),
+      }
+      const gelukt = onSave(data, volgende ? { volgende: true } : undefined)
+      if (gelukt === false) return
+      if (onLeer) {
+        const k = koppelingenUitRegels(lijst, kop.leverancier.trim(), ing, onderdelen)
+        if (k.length) onLeer(k)
+      }
+    } finally {
+      setBezig(false)
+    }
+  }
+  const zetAlleEtiketBewaren = (aan: boolean) =>
+    setEtiketten(prev => Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, { ...v, bewaren: aan }])))
+
+  // ── Sluiten ───────────────────────────────────────────────────────────────
+  const probeerSluiten = () => {
+    if (sheet) { setSheet(null); return }
+    if (heeftInvoer && !sluitVraag) { setSluitVraag(true); return }
+    onClose()
+  }
+  const panelRef = React.useRef<HTMLDivElement | null>(null)
+  useDialoogFocus(panelRef, probeerSluiten, { eersteFocus: !smal })
+  React.useEffect(() => {
+    if (!sluitVraag) return
+    const timer = setTimeout(() => setSluitVraag(false), 6000)
+    return () => clearTimeout(timer)
+  }, [sluitVraag])
+
+  // ── Markering in de factuur: de open regel ───────────────────────────────
+  const openRegel = regels.find(r => r._id === (sheet?.id ?? openId)) || null
+  const markering: Markering | null = openRegel?.bron?.tekst
+    ? { tekst: openRegel.bron.tekst, bedrag: openRegel.bron.netto ?? null }
+    : null
+
+  // ── Weergave ──────────────────────────────────────────────────────────────
+  const titel = bewerken ? t('modal_title_edit_invoice') : t('modal_title_receipt')
+  const ondertitel = inboxItem
+    ? t('inkoop_uit_postvak').replace('{afzender}', inboxAfzender(inboxItem) || t('lbl_onbekend')).replace('{onderwerp}', inboxItem.onderwerp || inboxItem.bijlage.naam)
+    : bankBedrag ? t('inkoop_uit_bank').replace('{bedrag}', fmt(bankBedrag)) : null
+
+  const documentBron: DocumentBron | null = pdf
+    ? { soort: 'pdf', file: pdf }
+    : factuurFotos.length ? { soort: 'fotos', fotos: factuurFotos.map(f => ({ url: f.url, naam: f.naam })) }
+      : bestaandeAfbeelding ? { soort: 'fotos', fotos: [{ url: bestaandeAfbeelding, naam: bijlage?.naam || '' }] } : null
+  const documentNaam = pdf?.name || (factuurFotos.length ? t('inkoop_fotos_n').replace('{n}', String(factuurFotos.length)) : bijlage?.naam || '')
+  const origineelUrl = bijlage?.bestand && !pdfNieuw && !factuurFotos.length ? `${ADDON_BASE}api/file/${bijlage.bestand}` : null
+
+  const documentInvoer = (
+    <>
+      <input ref={docInvoer} type="file" accept=".pdf,image/*,.heic,.heif" multiple className="hidden" onChange={kiesBestanden} />
+      <input ref={docCamera} type="file" accept="image/*" capture="environment" className="hidden" onChange={kiesBestanden} />
+      <input ref={etiketZonderFactuurRef} type="file" accept="image/*,.heic,.heif" multiple className="hidden"
+        {...(isAanraakscherm() ? { capture: 'environment' } : {})}
+        onChange={e => { const f = Array.from(e.target.files || []); e.target.value = ''; etiketZonderFactuur(f) }} />
+    </>
+  )
+
+  const statusStrook = (
+    <div className="space-y-2" aria-live="polite">
+      {docStatus === 'laden' && (
+        <Strook toon="info"><span className="inline-flex items-center gap-2"><Draaier />{inboxItem ? t('inbox_laden') : t('inkoop_doc_laden')}</span></Strook>
+      )}
+      {docStatus === 'fout' && <Strook toon="fout">⚠ {t('inbox_pdf_laden_fout')}</Strook>}
+      {fotoBezig && <Strook toon="info"><span className="inline-flex items-center gap-2"><Draaier />{t('inkoop_fotos_verwerken')}</span></Strook>}
+      {scan.status === 'bezig' && (
+        <Strook toon="info"><span className="inline-flex items-center gap-2"><Draaier />{t('msg_scanning')}</span></Strook>
+      )}
+      {scan.status === 'fout' && (
+        <Strook toon="fout" actie={heeftDocument ? { label: t('inkoop_opnieuw_scannen'), doe: () => { void scanFactuur() } } : undefined}>
+          ⚠ {t('inkoop_scan_mislukt')}: {scan.fout}
+        </Strook>
+      )}
+      {scan.status === 'geen_sleutel' && <Strook toon="info">{t('inkoop_scan_geen_sleutel')}</Strook>}
+      {scan.status === 'klaar' && (
+        <Strook toon="ok" actie={heeftDocument ? { label: t('inkoop_opnieuw_scannen'), doe: () => { void scanFactuur() } } : undefined}>
+          {scan.lokaal
+            ? t('inkoop_scan_lokaal')
+            : scan.aantal
+              ? <>✓ {(scan.nieuw ? t('inkoop_scan_klaar_nieuw') : t('inkoop_scan_klaar')).replace('{n}', String(scan.aantal)).replace('{m}', String(scan.nieuw || 0))}
+                {scan.verlegd && <> · {t('msg_scan_verlegd')}</>}</>
+              : <>✓ {t('msg_scan_klaar')}</>}
+        </Strook>
+      )}
+      {scan.wachtend && scan.wachtend.length > 0 && (
+        <Strook toon="info" actie={{ label: t('inkoop_scan_vervang'), doe: neemWachtendeRegelsOver }}>
+          {t('inkoop_scan_wachtend').replace('{n}', String(scan.wachtend.length))}
+        </Strook>
+      )}
+      {bewerken && <Strook toon="waarschuwing">⚠ {t('modal_edit_warning')}</Strook>}
+      {initialData?.betaald_datum && <Strook toon="ok">✓ {t('lbl_paid_on')}: {fmtD(initialData.betaald_datum)}</Strook>}
+    </div>
+  )
+
+  const documentKiezer = !heeftDocument && docStatus !== 'laden' && !inboxItem ? (
+    <div className={`grid gap-3 ${bewerken ? '' : 'sm:grid-cols-[1.4fr_1fr]'}`}>
+      <div onDragOver={e => { e.preventDefault(); setSleept(true) }} onDragLeave={() => setSleept(false)}
+        onDrop={e => { e.preventDefault(); setSleept(false); void kiesDocument(Array.from(e.dataTransfer.files || [])) }}
+        className={`rounded-xl border-2 border-dashed p-4 flex flex-col gap-3 ${sleept ? 'border-[var(--t-accent)] t-panel' : 'border-gray-300 bg-gray-50'}`}>
+        <div className="flex items-start gap-3">
+          <span className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 flex-shrink-0"><Icon n="upload" cls="text-lg" /></span>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-gray-800">{smal ? t('inkoop_factuur_toevoegen') : t('inkoop_sleep_factuur')}</div>
+            <div className="text-xs text-gray-500">{heeftSleutel ? t('inkoop_sleep_uitleg') : t('inkoop_sleep_uitleg_zonder')}</div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {smal && <Btn s="sm" onClick={() => docCamera.current?.click()}><span className="inline-flex items-center gap-1"><Icon n="camera" />{t('inkoop_foto_factuur')}</span></Btn>}
+          <Btn s="sm" v={smal ? 'secondary' : 'primary'} onClick={() => docInvoer.current?.click()}>{t('inkoop_bestand_kiezen')}</Btn>
+        </div>
+      </div>
+      {!bewerken && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 flex flex-col gap-3">
+          <div className="flex items-start gap-3">
+            <span className="w-10 h-10 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-500 flex-shrink-0"><Icon n="camera" cls="text-lg" /></span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-gray-800">{t('inkoop_geen_factuur')}</div>
+              <div className="text-xs text-gray-500">{heeftSleutel ? t('inkoop_geen_factuur_uitleg') : t('etiket_geen_sleutel')}</div>
+            </div>
+          </div>
+          {heeftSleutel && (
+            <div><Btn s="sm" v="secondary" onClick={() => etiketZonderFactuurRef.current?.click()}>{t('inkoop_foto_etiket')}</Btn></div>
+          )}
+        </div>
+      )}
+    </div>
+  ) : null
+
+  const kopVelden = (
+    <section className="rounded-xl border border-gray-200 bg-white p-3 space-y-3" aria-label={t('modal_invoice_details')}>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <label htmlFor="ink-lev" className="text-sm font-medium text-gray-700">{t('lbl_supplier')}</label>
+            <BronLabel bron={kopUitScan.includes('leverancier') ? 'scan' : null} />
+          </div>
+          <div className="relative">
+            <input id="ink-lev" list="ink-lev-lijst" type="text" value={kop.leverancier} autoComplete="off"
+              onChange={e => zetKop('leverancier', e.target.value)} placeholder={t('ph_brewery_name')}
+              aria-invalid={toonFouten && inboxItem && !heeftFactuurData ? true : undefined}
+              className={`w-full border rounded-lg pl-3 ${nieuweLeverancier ? 'pr-14' : 'pr-3'} py-2 text-sm min-h-tap sm:min-h-0 bg-white t-input outline-none shadow-sm ${toonFouten && inboxItem && !heeftFactuurData ? 'border-red-400' : 'border-gray-200'}`} />
+            {nieuweLeverancier && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">{t('inkoop_nieuw')}</span>
+            )}
+            <datalist id="ink-lev-lijst">{knownLeveranciers.map(l => <option key={l} value={l} />)}</datalist>
+          </div>
+        </div>
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <label htmlFor="ink-nr" className="text-sm font-medium text-gray-700">{t('lbl_invoice')}</label>
+            <BronLabel bron={kopUitScan.includes('factuurnummer') ? 'scan' : null} />
+          </div>
+          <input id="ink-nr" type="text" value={kop.factuurnummer} autoComplete="off" onChange={e => zetKop('factuurnummer', e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-tap sm:min-h-0 bg-white t-input outline-none shadow-sm" />
+        </div>
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <label htmlFor="ink-datum" className="text-sm font-medium text-gray-700">{t('lbl_invoice_date')}</label>
+            <BronLabel bron={kopUitScan.includes('datum') ? 'scan' : null} />
+          </div>
+          <input id="ink-datum" type="date" value={kop.datum} onChange={e => zetKop('datum', e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-tap sm:min-h-0 bg-white t-input outline-none shadow-sm" />
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-gray-700">{t('lbl_btw')}</span>
+          <BronLabel bron={kopUitScan.includes('btwSoort') ? 'scan' : null} />
+        </div>
+        <Segment<BtwSoort> label={t('lbl_btw_soort')} waarde={kop.btwSoort} cls="w-full sm:w-auto"
+          onKies={v => zetKop('btwSoort', v)}
+          opties={[
+            { v: 'binnenlands', l: t('inkoop_btw_nl') },
+            { v: 'intracom_eu', l: t('inkoop_btw_eu') },
+            { v: 'import_niet_eu', l: t('inkoop_btw_buiten_eu') },
+          ]} />
+        <p className="text-xs text-gray-500">
+          {kop.btwSoort === 'binnenlands' ? t('inkoop_btw_nl_uitleg') : kop.btwSoort === 'intracom_eu' ? t('hint_btw_verlegd_intracom') : t('hint_btw_verlegd_import')}
+        </p>
+      </div>
+      {rollover && (
+        <p className="text-xs text-orange-800 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+          {t('msg_btw_rollover').replace('{from}', periodeKeyLabel(rollover.vanafPeriode)).replace('{to}', periodeKeyLabel(rollover.rolloverNaar))}
+        </p>
+      )}
+      {dubbel && (
+        <p className="text-xs text-orange-900 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+          ⚠ {t('inkoop_dubbel').replace('{nummer}', String(dubbel.factuurnummer || '')).replace('{leverancier}', String(dubbel.leverancier || '')).replace('{datum}', fmtD(dubbel.datum))}
+        </p>
+      )}
+    </section>
+  )
+
+  const regelLijst = (
+    <RegelLijst regels={regels} openId={smal ? null : openId}
+      onOpen={id => {
+        if (smal && id !== null) {
+          const r = regels.find(x => x._id === id)
+          setSheet({ soort: 'regel', id, kopie: r ? { ...r } : null })
+        } else setOpenId(id)
+      }}
+      incl={inclEff} onIncl={setIncl} toonIncl={!verlegd} verlegd={verlegd} toonFouten={toonFouten} smal={smal} bewerken={bewerken}
+      editor={r => editorVoor(r)} onNieuw={() => voegRegelToe('ingredient')}
+      fotosVan={id => etiketten[id]?.fotos.length || 0}
+      leestEtiket={id => etiketten[id]?.status === 'bezig'} />
+  )
+
+  const vulVerlegdeTarieven = () => setRegels(prev => prev.map(r => Number(r.btw) ? r
+    : { ...r, btw: r.soort === 'ingredient' ? String(ingTypeBtw[r.type] ?? 9) : '21' }))
+
+  const totalen = teBoeken.length > 0 ? (
+    <InkoopTotalen som={som} handmatig={handmatig} onHandmatig={setHandmatig} controle={controle}
+      bron={scan.totalen ? 'factuur' : 'bank'} magOvernemen={!!scan.totalen}
+      onNeemOver={() => { if (vergelijkMet) setHandmatig(totaalOvernemen(som, vergelijkMet, verlegd)) }}
+      verlegd={verlegd} btwSoort={kop.btwSoort} onVulTarieven={vulVerlegdeTarieven} />
+  ) : null
+
+  // "Bij opslaan": wat er precies gebeurt.
+  const periode = periodeKeyLabel(rollover ? rollover.rolloverNaar : datumToPeriodeKey(kop.datum, btwPeriodeType))
+  const samenvatting: string[] = []
+  if (bewerken) samenvatting.push(t('inkoop_opslaan_bewerken'))
+  else if (heeftFactuurData) samenvatting.push(t('inkoop_opslaan_factuur').replace('{periode}', periode))
+  else samenvatting.push(t('inkoop_opslaan_correctie'))
+  if (!bewerken) {
+    if (telling.lots) samenvatting.push(t(telling.lots === 1 ? 'inkoop_opslaan_lot' : 'inkoop_opslaan_lots').replace('{n}', String(telling.lots))
+      + (telling.nieuweIngredienten ? ', ' + t('inkoop_opslaan_nieuwe_ing').replace('{n}', String(telling.nieuweIngredienten)) : ''))
+    if (telling.verpakkingRegels) samenvatting.push(t('inkoop_opslaan_materiaal').replace('{n}', String(telling.verpakkingRegels))
+      + (telling.nieuwMateriaal ? ', ' + t('inkoop_opslaan_nieuw_materiaal').replace('{n}', String(telling.nieuwMateriaal)) : ''))
+    if (telling.merch) samenvatting.push(t('inkoop_opslaan_merch').replace('{n}', String(telling.merch)))
+    if (etiketFotosTeBewaren) samenvatting.push(t('inkoop_opslaan_etiketfotos').replace('{n}', String(etiketFotosTeBewaren)))
+  }
+  if (heeftFactuurData && nieuweLeverancier) samenvatting.push(t('inkoop_opslaan_nieuwe_leverancier').replace('{naam}', kop.leverancier.trim()))
+  if (inboxItem) samenvatting.push(t('inkoop_opslaan_pdf_gekoppeld').replace('{naam}', inboxItem.bijlage.naam))
+  else if (pdfNieuw && pdf) samenvatting.push(t('inkoop_opslaan_bijlage').replace('{naam}', pdf.name))
+  else if (factuurFotos.length) samenvatting.push(t('inkoop_opslaan_fotos_pdf'))
+
+  const controleKort = controle.status === 'klopt' ? t(scan.totalen ? 'inkoop_klopt_kort_factuur' : 'inkoop_klopt_kort_bank')
+    : controle.status === 'verschil' ? t('inkoop_verschil_kort').replace('{bedrag}', fmt(Math.abs(controle.verschil))) : null
+
+  const knoppen = (
+    <>
+      {inboxItem && volgendeAantal > 0 && (
+        <Btn v="secondary" onClick={() => { void opslaan(true) }} disabled={bezig}>{t('inkoop_opslaan_volgende').replace('{n}', String(volgendeAantal))}</Btn>
+      )}
+      <Btn onClick={() => { void opslaan(false) }} disabled={bezig} s={smal ? 'lg' : 'md'} cls={smal ? 'flex-1' : ''}>
+        {bezig ? t('btn_uploading') : bewerken ? t('btn_save_changes') : t('btn_save')}
+      </Btn>
+    </>
+  )
+
+  const meldingBalk = melding && (
+    <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
+      <span className="flex-1 min-w-0">⚠ {melding.tekst}</span>
+      {melding.actie && <button type="button" onClick={melding.actie.doe} className="font-semibold underline whitespace-nowrap">{melding.actie.label}</button>}
+    </div>
+  )
+
+  const sluitKnop = sluitVraag ? (
+    <span className="inline-flex items-center gap-1.5 text-sm" role="group" aria-label={t('inkoop_sluiten_vraag')}>
+      <span className="text-gray-700 hidden sm:inline">{t('inkoop_sluiten_vraag')}</span>
+      <button type="button" onClick={onClose} autoFocus className="px-3 min-h-[36px] rounded-lg bg-red-600 text-white font-semibold">{t('inkoop_weggooien')}</button>
+      <button type="button" onClick={() => setSluitVraag(false)} className="px-3 min-h-[36px] rounded-lg border border-gray-300 text-gray-700">{t('btn_cancel')}</button>
+    </span>
+  ) : (
+    <button type="button" onClick={probeerSluiten} aria-label={t('btn_sluiten')}
+      className="w-11 h-11 sm:w-9 sm:h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+      <Icon n="close" cls="text-xl" />
+    </button>
+  )
+
+  const ongedaanBalk = verwijderd && (
+    <div role="status" className="fixed left-1/2 -translate-x-1/2 z-[220] max-w-[calc(100vw-2rem)] w-[26rem] flex items-center gap-3 bg-gray-900 text-white rounded-full pl-4 pr-1.5 py-1.5 shadow-xl"
+      style={{ bottom: smal ? 'calc(var(--safe-bottom, 0px) + 88px)' : '96px' }}>
+      <span className="flex-1 min-w-0 truncate text-sm">{t('inkoop_regel_verwijderd')}</span>
+      <button type="button" onClick={herstelRegel} className="flex-shrink-0 min-h-[40px] px-3.5 rounded-full text-sm font-semibold bg-white/15 hover:bg-white/25">{t('undo_ongedaan')}</button>
+    </div>
+  )
+
+  const boeking = (
+    <div className="space-y-4">
+      {statusStrook}
+      {documentKiezer}
+      {kopVelden}
+      {regelLijst}
+      {totalen}
+    </div>
+  )
+
+  // ── Telefoon ──────────────────────────────────────────────────────────────
+  if (smal) {
+    const sheetRegel = sheet ? regels.find(r => r._id === sheet.id) || null : null
+    return ReactDOM.createPortal(
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label={titel} tabIndex={-1}
+        className="fixed inset-0 z-[200] bg-gray-50 flex flex-col outline-none">
+        <header className="bg-white border-b border-gray-200 px-2 flex items-center gap-1" style={{ paddingTop: 'var(--safe-top, 0px)' }}>
+          <div className="min-h-[56px] flex items-center gap-1 w-full">
+            {!sluitVraag && sluitKnop}
+            <div className="flex-1 min-w-0 px-1">
+              <div className="text-base font-semibold text-gray-900 truncate">{titel}</div>
+              {ondertitel && <div className="text-xs text-gray-500 truncate">{ondertitel}</div>}
+            </div>
+            {sluitVraag && sluitKnop}
+          </div>
+        </header>
+        {heeftDocument && (
+          <div className="bg-white px-3 pb-2 border-b border-gray-200">
+            <Segment<'factuur' | 'boeking'> label={t('inkoop_weergave')} waarde={mobielTab} onKies={setMobielTab} cls="w-full"
+              opties={[{ v: 'factuur', l: t('inkoop_tab_factuur') }, { v: 'boeking', l: t('inkoop_tab_boeking') }]} />
+          </div>
+        )}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" {...(sheet ? { 'aria-hidden': true } : {})}>
+          {mobielTab === 'factuur' && documentBron ? (
+            <div className="h-full flex flex-col">
+              <div className="flex-1 min-h-0">
+                <FactuurDocument bron={documentBron} naam={documentNaam} markering={markering} smal origineelUrl={origineelUrl} />
+              </div>
+              {!inboxItem && !bewerken && (
+                <div className="flex gap-2 p-3 bg-white border-t border-gray-200">
+                  {factuurFotos.length > 0 && factuurFotos.length < MAX_FACTUUR_FOTOS && (
+                    <Btn s="sm" v="secondary" cls="flex-1" onClick={() => docCamera.current?.click()}>+ {t('inkoop_pagina_toevoegen')}</Btn>
+                  )}
+                  <Btn s="sm" v="secondary" cls="flex-1" onClick={() => docInvoer.current?.click()}>{t('inkoop_doc_vervang')}</Btn>
+                </div>
               )}
             </div>
-            <Inp label={t('lbl_invoice')} value={factuurNr} onChange={setFactuurNr} placeholder="F-2025-001" />
-            <Inp label={t('lbl_invoice_date')} type="date" value={datum} onChange={setDatum} />
-          </div>
-          <div className="mt-3">
-            <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_btw_soort')}</label>
-            <select value={btwSoort} onChange={e => {
-                const v = e.target.value as any
-                setBtwSoort(v)
-                // Wissel naar verlegd terwijl regels op 0% staan: bied aan om
-                // het Nederlandse tarief in te vullen (nodig voor rubriek
-                // 4a/4b — op de factuur zelf staat immers 0%).
-                if (v !== 'binnenlands') {
-                  const heeftNul = productLijst.some((p: any) => !Number(p.btw_tarief))
-                    || verpakkingLijst.some((vp: any) => !Number(vp.btw_tarief))
-                    || vrijeList.some((r: any) => !Number(r.btw_tarief))
-                  if (heeftNul && confirm(t('confirm_verlegd_tarieven'))) vulVerlegdeTarieven()
-                }
-              }}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm">
-              <option value="binnenlands">{t('lbl_btw_soort_binnenlands')}</option>
-              <option value="intracom_eu">{t('lbl_btw_soort_intracom_eu')}</option>
-              <option value="import_niet_eu">{t('lbl_btw_soort_import_niet_eu')}</option>
-            </select>
-            {isVerlegd && (
-              <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-800">
-                <span className="mt-0.5 flex-shrink-0">⇄</span>
-                <span>{btwSoort === 'intracom_eu' ? t('hint_btw_verlegd_intracom') : t('hint_btw_verlegd_import')}</span>
-              </div>
-            )}
-          </div>
-          {(() => {
-            const ri = getRolloverInfo ? getRolloverInfo(datum) : null
-            if (!ri) return null
-            return (
-              <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-800">
-                <span className="mt-0.5 flex-shrink-0">↪</span>
-                <span>
-                  {t('msg_btw_rollover')
-                    .replace('{from}', ri.vanafPeriode)
-                    .replace('{to}', ri.rolloverNaar)}
-                </span>
-              </div>
-            )
-          })()}
-          {!leverancier && !factuurNr.trim() && (
-            <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-              <span className="mt-0.5 flex-shrink-0">ℹ</span>
-              <span>{t('hint_correctie_geen_factuur')}</span>
+          ) : (
+            <div className="p-3 space-y-4 pb-6">
+              {boeking}
+              <section className="rounded-xl border border-gray-200 bg-white p-3">
+                <h3 className="text-sm font-semibold text-gray-800 mb-1.5">{t('inkoop_bij_opslaan')}</h3>
+                <ul className="space-y-1 text-sm text-gray-700">{samenvatting.map((s, i) => <li key={i} className="flex gap-2"><span className="text-gray-400">•</span><span>{s}</span></li>)}</ul>
+              </section>
             </div>
           )}
-          {/* Bijlage */}
-          <div className="mt-2">
-            <label className="block text-xs font-medium text-gray-500 mb-1">{t('lbl_bijlage')}</label>
-            <div className="flex items-center gap-2 flex-wrap">
-              <label className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 cursor-pointer">
-                <span><Icon n="paperclip" /></span>
-                <span>{bijlageFile ? bijlageFile.name : existingBijlage ? t('lbl_replace_file') : t('lbl_choose_file')}</span>
-                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.tiff,.bmp,.heic,.heif"
-                  className="hidden" onChange={e => setBijlageFile(e.target.files?.[0] || null)} />
-              </label>
-              {!bijlageFile && existingBijlage?.bestand && (
-                <a href={`${ADDON_BASE}api/file/${existingBijlage.bestand}`} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Icon n="paperclip" /> {existingBijlage.naam}</a>
-              )}
-              {!bijlageFile && existingBijlage && (
-                <button onClick={() => { setExistingBijlage(null); setServerFile(null) }} className="text-gray-400 hover:text-red-500 text-xs" title={t('btn_remove_bijlage')}>✕</button>
-              )}
-              {bijlageFile && <button onClick={() => { setBijlageFile(null); setShowPdfViewer(false) }} className="text-gray-400 hover:text-red-500 text-xs">✕</button>}
-              {scanFile && !isScanning && (() => {
-                const isPdf = scanFile.type === 'application/pdf' || scanFile.name.toLowerCase().endsWith('.pdf')
-                const hasClaude = claudeCreds?.enabled && claudeCreds?.apiKey
-                if (isPdf || hasClaude) return (
-                  <button onClick={() => doScanFactuur()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 tbtn rounded-lg text-xs font-medium"
-                    title={t('title_scan_factuur')}>
-                    <Icon n={isPdf ? 'file' : 'scan'} /> {t('btn_scan_factuur')}
-                  </button>
-                )
-                return null
-              })()}
-              {scanFile && pdfBlobUrl && (
-                <button onClick={() => setShowPdfViewer(v => !v)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-xs font-medium text-gray-700">
-                  {toonViewer ? t('btn_close_viewer') : t('btn_view_file')}
+        </div>
+        <footer data-werkblad-voet className="bg-white border-t border-gray-200 px-3 pt-2 space-y-2" style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 8px)' }}>
+          {meldingBalk}
+          <div className="flex items-center gap-3">
+            <div className="min-w-0">
+              <div className="text-xs text-gray-500">{verlegd ? t('inkoop_totaal') : t('lbl_totaal_incl_btw')}</div>
+              <div className="text-base font-bold text-gray-900 tabular-nums">{fmt(eff.bruto)}</div>
+              {controleKort && <div className={`text-[11px] ${controle.status === 'klopt' ? 'text-green-700' : 'text-orange-700'}`}>{controleKort}</div>}
+            </div>
+            <div className="flex-1 flex justify-end gap-2">{knoppen}</div>
+          </div>
+        </footer>
+        {sheet && sheetRegel && sheet.soort === 'regel' && (
+          <Onderblad titel={t('inkoop_regel_bewerken')}
+            onAnnuleer={() => {
+              // Terug naar hoe de regel was; een net toegevoegde regel verdwijnt weer.
+              const k = sheet.kopie
+              if (k) setRegels(prev => prev.map(x => x._id === k._id ? k : x))
+              else setRegels(prev => prev.filter(x => x._id !== sheetRegel._id))
+              setSheet(null)
+            }}
+            onKlaar={() => setSheet(null)}>
+            {editorVoor(sheetRegel, true)}
+          </Onderblad>
+        )}
+        {sheet && sheetRegel && sheet.soort === 'soort' && (
+          <Onderblad titel={t('inkoop_soort_kiezen')} laag onKlaar={() => setSheet({ ...sheet, soort: 'regel' })} klaarLabel={t('inkoop_klaar')}>
+            <div className="space-y-2" role="radiogroup" aria-label={t('inkoop_soort')}>
+              {(['ingredient', 'verpakking', 'overig'] as RegelSoort[]).map(s => (
+                <button key={s} type="button" role="radio" aria-checked={sheetRegel.soort === s}
+                  onClick={() => { kiesSoort(sheetRegel._id, s); setSheet({ ...sheet, soort: 'regel' }) }}
+                  className={`w-full text-left rounded-xl border p-3 ${sheetRegel.soort === s ? 'border-[var(--t-accent)] t-panel' : 'border-gray-200 bg-white'}`}>
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-gray-900">{soortLabel(s)}</span>
+                    {sheetRegel.soort === s && <span className="t-accent-text">✓</span>}
+                  </span>
+                  <span className="block text-xs text-gray-600 mt-0.5">{t(`inkoop_soort_${s}_uitleg`)}</span>
                 </button>
-              )}
+              ))}
+              {sheetRegel.bron?.tekst && <p className="text-xs text-gray-500 pt-1">{t('inkoop_soort_onthouden')}</p>}
             </div>
-            {isScanning && (
-              <div className="mt-2 flex items-center gap-2 text-sm t-accent-text">
-                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                </svg>
-                {t('msg_scanning')}
-              </div>
-            )}
-            {scanFout && <p className="mt-2 text-xs text-red-600">⚠ {scanFout}</p>}
-            {scanInfo && !scanFout && <p className="mt-2 text-xs text-green-700">✓ {scanInfo}</p>}
-          </div>
-        </div>
+          </Onderblad>
+        )}
+        {ongedaanBalk}
+        {documentInvoer}
+      </div>,
+      document.body,
+    )
+  }
 
-        {/* Tabs */}
-        <div className="flex border-b border-gray-200">
-          {[
-            {id:'ingredienten', label:t('ing_tab_ingredients')},
-            {id:'verpakkingen', label:t('tab_onderdelen')},
-            {id:'vrije', label:t('tab_vrije_regels')},
-          ].map(tb => (
-            <button key={tb.id} onClick={() => setTab(tb.id)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab===tb.id?'t-tab font-semibold':'border-transparent text-gray-500 hover:text-gray-700'}`}>
-              {tb.label}
+  // ── Bureau ────────────────────────────────────────────────────────────────
+  const toonDocument = heeftDocument && docZichtbaar
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-stretch justify-center p-3 lg:p-5">
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label={titel} tabIndex={-1}
+        className={`bg-gray-50 rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden outline-none ${toonDocument ? 'max-w-[1560px]' : 'max-w-4xl'}`}>
+        <header className="flex items-center gap-3 px-5 py-3 bg-white border-b border-gray-200">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-semibold text-gray-900">{titel}</h2>
+            {ondertitel && <p className="text-xs text-gray-500 truncate">{ondertitel}</p>}
+          </div>
+          {heeftDocument && (
+            <button type="button" onClick={() => setDocZichtbaar(v => !v)}
+              className="px-3 h-9 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 inline-flex items-center gap-1.5">
+              <Icon n="file" /> {docZichtbaar ? t('inkoop_factuur_verbergen') : t('inkoop_factuur_tonen')}
             </button>
-          ))}
-        </div>
-
-        {/* Ingrediënten tab */}
-        {tab==='ingredienten' && (
-          <div className="border border-gray-200 rounded-lg p-3">
-            <p className="text-xs font-semibold text-gray-500 mb-2">{t('modal_add_product')}</p>
-            <div className="space-y-2">
-              <Sel label={t('lbl_ingredient_type')} value={productForm.type}
-                onChange={v => setProductForm((f: any) => ({...f,type:v,ing_id:'',nieuw:'',btw_tarief:ingTypeBtw[v]!=null?String(ingTypeBtw[v]):f.btw_tarief}))}
-                opts={ingTypes.map((ty: string) => ({v:ty, l:BUILTIN_ING_TYPES.includes(ty)?t('ing_type_'+ty.toLowerCase()):ty}))} />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('modal_existing_ingredient')}</label>
-                  <select className="w-full border rounded px-2 py-1.5 text-sm"
-                    value={productForm.ing_id}
-                    onChange={e => setProductForm((f: any) => ({...f,ing_id:e.target.value,nieuw:''}))}>
-                    <option value="">{t('modal_select_option')}</option>
-                    {[...ing].filter((i: any) => i.type===productForm.type)
-                      .sort((a: any, b: any) => a.naam.localeCompare(b.naam,'nl'))
-                      .map((i: any) => <option key={i.id} value={String(i.id)}>{i.naam}{i.fabrikant?` (${i.fabrikant})`:''}</option>)}
-                  </select>
-                </div>
-                <Inp label={t('lbl_or_new_ingredient')} value={productForm.nieuw} onChange={v => setProductForm((f: any) => ({...f,nieuw:v,ing_id:''}))} placeholder={t('ph_new_name')} />
-              </div>
-              {!productForm.ing_id && (
-                <Inp label={t('ing_manufacturer')} value={productForm.fabrikant} onChange={v => setProductForm((f: any) => ({...f,fabrikant:v}))} placeholder={t('ph_manufacturer')} />
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">{t('modal_qty_required')} *</label>
-                  <div className="flex gap-1">
-                    <input type="number" value={productForm.qty}
-                      onChange={e => { const v=e.target.value; setProductForm((f: any) => { const p=f.prijs,tot=f.totaalprijs; if(p&&v)return{...f,qty:v,totaalprijs:String((Number(p)*Number(v)).toFixed(2))}; if(!p&&tot&&v)return{...f,qty:v,prijs:String((Number(tot)/Number(v)).toFixed(4))}; return{...f,qty:v}; }); }}
-                      placeholder="0"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
-                    <select value={productForm.eenh} onChange={e => setProductForm((f: any) => ({...f,eenh:e.target.value}))}
-                      className="border border-gray-200 rounded-lg px-2 py-2 text-sm bg-white t-input outline-none shadow-sm">
-                      {EENHEDEN.map(e => <option key={e} value={e}>{t('unit_'+e.toLowerCase())}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <Inp label={t('ing_lot_number')} value={productForm.lotnr} onChange={v => setProductForm((f: any) => ({...f,lotnr:v}))} placeholder="L-2025-001" />
-                <Inp label={t('batch_filling_tht')} type="date" value={productForm.tht} onChange={v => setProductForm((f: any) => ({...f,tht:v}))} />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Inp label={t('modal_price_per_unit')} type="number" value={productForm.prijs}
-                  onChange={v => setProductForm((f: any) => ({...f,prijs:v,totaalprijs:v&&f.qty?String((Number(v)*Number(f.qty)).toFixed(2)):f.totaalprijs}))}
-                  placeholder="0.00" />
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-medium text-gray-600">{t('lbl_totaalprijs')}</label>
-                    <button type="button"
-                      onClick={() => { const ni=!productTotInclBtw; setProductTotInclBtw(ni); if(ni){const n=parseFloat(String(productForm.totaalprijs||'0')); const b=Number(productForm.btw_tarief||0); setProductBrutoStr(n?(n*(1+b/100)).toFixed(2):'')} }}
-                      className="text-xs px-1.5 py-0.5 rounded border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600">
-                      {productTotInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
-                    </button>
-                  </div>
-                  <input type="number"
-                    value={productTotInclBtw ? productBrutoStr : productForm.totaalprijs}
-                    onChange={e => { const v=e.target.value; if(productTotInclBtw){setProductBrutoStr(v);const b=Number(productForm.btw_tarief||0);const n=v?String((Number(v)/(1+b/100)).toFixed(2)):'';setProductForm((f: any)=>({...f,totaalprijs:n,prijs:n&&f.qty?String((Number(n)/Number(f.qty)).toFixed(4)):f.prijs}));}else{setProductForm((f: any)=>({...f,totaalprijs:v,prijs:v&&f.qty?String((Number(v)/Number(f.qty)).toFixed(4)):f.prijs}));} }}
-                    placeholder="0.00"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">{t('lbl_btw_pct')}</label>
-                  <select value={productForm.btw_tarief}
-                    onChange={e => { const nb=e.target.value; setProductForm((f: any) => { if(productTotInclBtw&&productBrutoStr){const n=String((Number(productBrutoStr)/(1+Number(nb)/100)).toFixed(2));return{...f,btw_tarief:nb,totaalprijs:n,prijs:n&&f.qty?String((Number(n)/Number(f.qty)).toFixed(4)):f.prijs};}return{...f,btw_tarief:nb}; }); }}
-                    className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full">
-                    <option value="0">0%</option>
-                    <option value="9">9%</option>
-                    <option value="21">21%</option>
-                  </select>
-                </div>
-              </div>
-              {(LOT_BREW_FIELDS_PER_TYPE[productForm.type] || []).length > 0 && (
-                <div className="border-t border-gray-100 pt-2">
-                  <div className="flex items-center justify-between">
-                    <button type="button"
-                      onClick={() => setBrewPropsOpen(o => !o)}
-                      className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700">
-                      <span className="text-gray-400">{brewPropsOpen ? '▼' : '▶'}</span>
-                      <span>{t('brew_props_section')}</span>
-                    </button>
-                    {brewPropsOpen && lastLot?.bf_props && Object.keys(lastLot.bf_props).length > 0 && (
-                      <Btn s="sm" v="secondary"
-                        onClick={() => setProductForm((f: any) => ({...f, bf_props: {...lastLot.bf_props}}))}>
-                        {t('btn_copy_from_last_lot')}
-                      </Btn>
-                    )}
-                  </div>
-                  {brewPropsOpen && (() => {
-                    const selectedIng = productForm.ing_id ? ing.find((i: any) => i.id === Number(productForm.ing_id)) : null
-                    return (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
-                        {(LOT_BREW_FIELDS_PER_TYPE[productForm.type] || []).map((fld: any) => {
-                          const label = t('bf_' + fld.key) !== 'bf_' + fld.key ? t('bf_' + fld.key) : fld.key
-                          const unit = BREW_PROP_UNITS[fld.key]
-                          const labelWithUnit = unit ? `${label} (${unit})` : label
-                          const val = productForm.bf_props?.[fld.key] ?? ''
-                          const set = (v: any) => setProductForm((f: any) => ({...f, bf_props: {...(f.bf_props||{}), [fld.key]: v}}))
-                          const ingFallback = !val && selectedIng ? getEffectiveBrewProp(null, selectedIng, fld.key) : undefined
-                          const hint = ingFallback !== undefined
-                            ? t('brew_props_fallback_hint').replace('{value}', formatBrewValue(ingFallback))
-                            : null
-                          if (fld.kind === 'select') {
-                            return (
-                              <div key={fld.key}>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">{labelWithUnit}</label>
-                                <select value={val} onChange={e => set(e.target.value)}
-                                  className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none">
-                                  <option value="">—</option>
-                                  {(fld.options || []).map((o: string) => <option key={o} value={o}>{o}</option>)}
-                                </select>
-                                {hint && (
-                                  <button type="button"
-                                    onClick={() => set(formatBrewValue(ingFallback))}
-                                    title={t('btn_use_bf_value')}
-                                    className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
-                                    {hint}
-                                  </button>
-                                )}
-                              </div>
-                            )
-                          }
-                          return (
-                            <div key={fld.key}>
-                              <Inp label={labelWithUnit}
-                                type={fld.kind === 'number' ? 'number' : 'text'}
-                                value={String(val)}
-                                onChange={(v: string) => set(v)}
-                                placeholder="" />
-                              {hint && (
-                                <button type="button"
-                                  onClick={() => {
-                                    const fmtVal = formatBrewValue(ingFallback)
-                                    set(fld.kind === 'number' ? Number(fmtVal) : fmtVal)
-                                  }}
-                                  title={t('btn_use_bf_value')}
-                                  className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
-                                  {hint}
-                                </button>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )
-                  })()}
-                </div>
-              )}
-              <div className="flex justify-end gap-2">
-                {editingProductIdx !== null && (
-                  <Btn v="secondary" onClick={() => {setEditingProductIdx(null);setProductForm(emptyProduct);setProductTotInclBtw(false);setProductBrutoStr('')}}>{t('btn_cancel')}</Btn>
-                )}
-                <Btn onClick={voegProductToe}>{editingProductIdx !== null ? t('btn_update') : t('modal_add_to_list')}</Btn>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Verpakkingen tab */}
-        {tab==='verpakkingen' && (
-          <div className="border border-gray-200 rounded-lg p-3">
-            <p className="text-xs font-semibold text-gray-500 mb-2">{t('onderdeel_add_btn')}</p>
-            <div className="space-y-2">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_bestaand_onderdeel')}</label>
-                  <select className="w-full border rounded px-2 py-1.5 text-sm"
-                    value={vOntvForm.od_id}
-                    onChange={e => { const od=onderdelen.find((o: any)=>o.id===Number(e.target.value)); od?setVOntvForm((f: any)=>({...f,od_id:String(od.id),naam:od.naam,type:od.type||''})):setVOntvForm((f: any)=>({...f,od_id:'',naam:'',type:''})); }}>
-                    <option value="">— {t('lbl_or_new_ingredient')} —</option>
-                    {[...onderdelen].sort((a: any,b: any)=>a.naam.localeCompare(b.naam,'nl')).map((o: any)=><option key={o.id} value={String(o.id)}>{o.naam}</option>)}
-                  </select>
-                </div>
-                {!vOntvForm.od_id && (
-                  <Inp label={t('lbl_or_new_ingredient')+' *'} value={vOntvForm.naam} onChange={v => setVOntvForm((f: any)=>({...f,naam:v,od_id:''}))} placeholder="Fles 33cL" />
-                )}
-              </div>
-              {!vOntvForm.od_id && (
-                <Sel label={t('onderdeel_type')} value={vOntvForm.type} onChange={v => setVOntvForm((f: any)=>({...f,type:v}))}
-                  opts={ONDERDEEL_TYPES.map(ot => ({v:ot.type,l:t(ot.label)}))} ph={t('packaging_choose_type')} />
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <Inp label={t('lbl_qty_received')+' *'} type="number" value={vOntvForm.aantal}
-                  onChange={v => setVOntvForm((f: any) => { const ps=f.prijs_per_stuk,tot=f.totaalprijs; if(ps&&v)return{...f,aantal:v,totaalprijs:String((Number(ps)*Number(v)).toFixed(2))}; if(!ps&&tot&&v)return{...f,aantal:v,prijs_per_stuk:String((Number(tot)/Number(v)).toFixed(4))}; return{...f,aantal:v}; })}
-                  placeholder="24" />
-                <Inp label={t('modal_price_per_unit')} type="number" value={vOntvForm.prijs_per_stuk}
-                  onChange={v => setVOntvForm((f: any)=>({...f,prijs_per_stuk:v,totaalprijs:v&&f.aantal?String((Number(v)*Number(f.aantal)).toFixed(2)):f.totaalprijs}))}
-                  placeholder="0.00" />
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-medium text-gray-600">{t('lbl_totaalprijs')}</label>
-                    <button type="button"
-                      onClick={() => { const ni=!verpakTotInclBtw; setVerpakTotInclBtw(ni); if(ni){const n=parseFloat(String(vOntvForm.totaalprijs||'0')); const b=Number(vOntvForm.btw_tarief||0); setVerpakBrutoStr(n?(n*(1+b/100)).toFixed(2):'')} }}
-                      className="text-xs px-1.5 py-0.5 rounded border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600">
-                      {verpakTotInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
-                    </button>
-                  </div>
-                  <input type="number"
-                    value={verpakTotInclBtw ? verpakBrutoStr : vOntvForm.totaalprijs}
-                    onChange={e => { const v=e.target.value; if(verpakTotInclBtw){setVerpakBrutoStr(v);const b=Number(vOntvForm.btw_tarief||0);const n=v?String((Number(v)/(1+b/100)).toFixed(2)):'';setVOntvForm((f: any)=>({...f,totaalprijs:n,prijs_per_stuk:n&&f.aantal?String((Number(n)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk}));}else{setVOntvForm((f: any)=>({...f,totaalprijs:v,prijs_per_stuk:v&&f.aantal?String((Number(v)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk}));} }}
-                    placeholder="0.00"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">{t('lbl_btw_pct')}</label>
-                  <select value={vOntvForm.btw_tarief}
-                    onChange={e => { const nb=e.target.value; setVOntvForm((f: any) => { if(verpakTotInclBtw&&verpakBrutoStr){const n=String((Number(verpakBrutoStr)/(1+Number(nb)/100)).toFixed(2));return{...f,btw_tarief:nb,totaalprijs:n,prijs_per_stuk:n&&f.aantal?String((Number(n)/Number(f.aantal)).toFixed(4)):f.prijs_per_stuk};}return{...f,btw_tarief:nb}; }); }}
-                    className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full">
-                    <option value="0">0%</option>
-                    <option value="9">9%</option>
-                    <option value="21">21%</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                {editingVerpakkingIdx !== null && (
-                  <Btn v="secondary" onClick={() => {setEditingVerpakkingIdx(null);setVOntvForm(emptyVO);setVerpakTotInclBtw(false);setVerpakBrutoStr('')}}>{t('btn_cancel')}</Btn>
-                )}
-                <Btn onClick={voegVerpakkingToe}>{editingVerpakkingIdx !== null ? t('btn_update') : t('modal_add_to_list')}</Btn>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Vrije regels tab */}
-        {tab==='vrije' && (
-          <div className="border border-gray-200 rounded-lg p-3">
-            <p className="text-xs font-semibold text-gray-500 mb-2">{t('lbl_vrije_regel_toevoegen')}</p>
-            <div className="space-y-2">
-              <Inp label={t('lbl_omschrijving')} value={String(vrijeForm.naam)} onChange={v => setVrijeForm((f: any)=>({...f,naam:v}))} placeholder={t('ph_vrije_regel')} />
-              <Sel label={t('lbl_kostensoort')} value={vrijeForm.kostensoort || 'Overig'}
-                onChange={v => setVrijeForm((f: any)=>({...f,kostensoort:v}))}
-                opts={kostenSoorten.map((ks: string) => ({v:ks, l:BUILTIN_KOSTEN_SOORTEN.includes(ks) ? t('ks_'+ks.toLowerCase()) : ks}))}
-                ph={t('ph_kostensoort')} />
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-medium text-gray-600">{t('lbl_bedrag')}</label>
-                    <button type="button"
-                      onClick={() => { const ni=!vrijeTotInclBtw; setVrijeTotInclBtw(ni); if(!ni){setVrijeBrutoStr('');}else if(vrijeForm.netto){const b=Number(vrijeForm.btw_tarief||0);setVrijeBrutoStr(String((Number(vrijeForm.netto)*(1+b/100)).toFixed(2)));} }}
-                      className="text-xs px-1.5 py-0.5 rounded border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600">
-                      {vrijeTotInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
-                    </button>
-                  </div>
-                  <input type="number"
-                    value={vrijeTotInclBtw ? vrijeBrutoStr : String(vrijeForm.netto)}
-                    onChange={e => { const v=e.target.value; if(vrijeTotInclBtw){setVrijeBrutoStr(v);const b=Number(vrijeForm.btw_tarief||0);const n=v?String((Number(v)/(1+b/100)).toFixed(2)):'';setVrijeForm((f: any)=>({...f,netto:n}));}else{setVrijeForm((f: any)=>({...f,netto:v}));} }}
-                    placeholder="0.00" min={0} step="0.01"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all duration-150 shadow-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">{t('lbl_btw_pct')}</label>
-                  <select value={vrijeForm.btw_tarief}
-                    onChange={e => { const nb=e.target.value; setVrijeForm((f: any) => { if(vrijeTotInclBtw&&vrijeBrutoStr){const n=String((Number(vrijeBrutoStr)/(1+Number(nb)/100)).toFixed(2));return{...f,btw_tarief:Number(nb),netto:n};}return{...f,btw_tarief:Number(nb)}; }); }}
-                    className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full">
-                    <option value={0}>0%</option>
-                    <option value={9}>9%</option>
-                    <option value={21}>21%</option>
-                  </select>
-                </div>
-              </div>
-              {/* Merch-inkoop: koppel de regel aan een merch-artikel zodat de
-                  voorraad meegroeit en de inkoopprijs bijgewerkt wordt. */}
-              {merchMetVoorraad.length > 0 && (
-                <div className="rounded-lg border border-purple-200 bg-purple-50 p-3 space-y-2">
-                  <div className="text-xs font-semibold text-purple-800">{t('merch_inkoop_koppel')}</div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">{t('merch_titel_kort')}</label>
-                      <select value={String(vrijeForm.merch_id ?? '')}
-                        onChange={e => setVrijeForm((f: any) => ({...f, merch_id: e.target.value}))}
-                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm t-input focus:outline-none w-full bg-white">
-                        <option value="">{t('merch_inkoop_geen')}</option>
-                        {merchMetVoorraad.map((m: MerchArtikel) => (
-                          <option key={m.id} value={m.id}>{m.naam || m.sku}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">{t('manual_order_qty')}</label>
-                      <input type="number" value={String(vrijeForm.merch_aantal ?? '')} min={0} step="1"
-                        disabled={!vrijeForm.merch_id}
-                        onChange={e => setVrijeForm((f: any) => ({...f, merch_aantal: e.target.value}))}
-                        placeholder="0"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white t-input outline-none disabled:opacity-40" />
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-purple-700">{t('merch_inkoop_hint')}</p>
-                </div>
-              )}
-              <div className="flex justify-end gap-2">
-                {editingVrijeIdx !== null && (
-                  <Btn v="secondary" onClick={() => {setEditingVrijeIdx(null);setVrijeForm(emptyVrije)}}>{t('btn_cancel')}</Btn>
-                )}
-                <Btn onClick={voegVrijeToe}>{editingVrijeIdx !== null ? t('btn_update') : t('btn_add_rule')}</Btn>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Gecombineerde productenlijst */}
-        {(productLijst.length > 0 || verpakkingLijst.length > 0 || vrijeList.length > 0) && (
-          <div>
-            <p className="text-xs font-semibold text-gray-500 mb-2">{t('modal_added_products')} ({productLijst.length + verpakkingLijst.length + vrijeList.length})</p>
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">{t('log_ingredient')}</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">{t('lbl_quantity')}</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">{t('lbl_lot')}</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">{t('lbl_price_per_unit')}</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">{t('lbl_totaal_ex_btw')}</th>
-                    <th className="px-2 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {productLijst.map((p: any, i: number) => (
-                    <tr key={p._id} title={t('title_click_edit')} className={`cursor-pointer transition-colors ${editingProductIdx===i ? 't-panel ring-1 t-border' : 'bg-white hover:bg-gray-50'}`}
-                      onClick={() => {setProductForm({...p});setProductTotInclBtw(false);setProductBrutoStr('');setTab('ingredienten');setEditingProductIdx(i);}}>
-                      <td className="px-3 py-2 font-medium">{p._naam}</td>
-                      <td className="px-3 py-2">{p.qty} {p.eenh}</td>
-                      <td className="px-3 py-2 text-gray-500">{p.lotnr||'—'}</td>
-                      <td className="px-3 py-2 text-gray-500">{p.prijs?`€${p.prijs}`:'—'}</td>
-                      <td className="px-3 py-2 text-gray-500">{p.totaalprijs?`€${p.totaalprijs}`:'—'}</td>
-                      <td className="px-2 py-2 text-right whitespace-nowrap">
-                        <select value="" title={t('lbl_move_to')}
-                          onClick={e => e.stopPropagation()}
-                          onChange={e => {e.stopPropagation(); const v=e.target.value; if(v) verplaatsProduct(i, v as any)}}
-                          className="text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white mr-1 cursor-pointer">
-                          <option value="">⇄</option>
-                          <option value="verpakking">→ {t('tab_onderdelen')}</option>
-                          <option value="overig">→ {t('tab_vrije_regels')}</option>
-                        </select>
-                        <button onClick={e => {e.stopPropagation();setProductLijst((prev: any) => prev.filter((_: any,j: number)=>j!==i));schuifEditIdx(setEditingProductIdx, i);}}
-                          className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
-                      </td>
-                    </tr>
-                  ))}
-                  {verpakkingLijst.map((v: any, i: number) => (
-                    <tr key={v._id} title={t('title_click_edit')} className={`cursor-pointer transition-colors ${editingVerpakkingIdx===i ? 't-panel ring-1 t-border' : 'bg-blue-50 hover:bg-blue-100'}`}
-                      onClick={() => {setVOntvForm({...v});setVerpakTotInclBtw(false);setVerpakBrutoStr('');setTab('verpakkingen');setEditingVerpakkingIdx(i);}}>
-                      <td className="px-3 py-2 font-medium">{v._naam} <span className="text-xs text-blue-400">{t('lbl_tag_verpakking')}</span></td>
-                      <td className="px-3 py-2">{v.aantal} {t('unit_stuks')}</td>
-                      <td className="px-3 py-2 text-gray-500">{v.lotnr||'—'}</td>
-                      <td className="px-3 py-2 text-gray-500">{v.prijs_per_stuk?`€${v.prijs_per_stuk}`:'—'}</td>
-                      <td className="px-3 py-2 text-gray-500">{v.totaalprijs?`€${v.totaalprijs}`:'—'}</td>
-                      <td className="px-2 py-2 text-right whitespace-nowrap">
-                        <select value="" title={t('lbl_move_to')}
-                          onClick={e => e.stopPropagation()}
-                          onChange={e => {e.stopPropagation(); const nv=e.target.value; if(nv) verplaatsVerpakking(i, nv as any)}}
-                          className="text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white mr-1 cursor-pointer">
-                          <option value="">⇄</option>
-                          <option value="ingredient">→ {t('ing_tab_ingredients')}</option>
-                          <option value="overig">→ {t('tab_vrije_regels')}</option>
-                        </select>
-                        <button onClick={e => {e.stopPropagation();setVerpakkingLijst((prev: any) => prev.filter((_: any,j: number)=>j!==i));schuifEditIdx(setEditingVerpakkingIdx, i);}}
-                          className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
-                      </td>
-                    </tr>
-                  ))}
-                  {vrijeList.map((r: any, i: number) => (
-                    <tr key={r._id} title={t('title_click_edit')} className={`cursor-pointer transition-colors ${editingVrijeIdx===i ? 't-panel ring-1 t-border' : 'bg-yellow-50 hover:bg-yellow-100'}`}
-                      onClick={() => {setVrijeForm({naam:r.naam,netto:r.netto,btw_tarief:r.btw_tarief,kostensoort:r.kostensoort||'Overig'});setTab('vrije');setEditingVrijeIdx(i);}}>
-                      <td className="px-3 py-2 font-medium">{r.naam} <span className="text-xs text-yellow-600">{t('lbl_tag_vrij')}</span>{r.kostensoort && r.kostensoort !== 'Overig' && <span className="ml-1 text-xs text-gray-400">{BUILTIN_KOSTEN_SOORTEN.includes(r.kostensoort) ? t('ks_'+r.kostensoort.toLowerCase()) : r.kostensoort}</span>}</td>
-                      <td className="px-3 py-2 text-gray-400">—</td>
-                      <td className="px-3 py-2 text-gray-400">—</td>
-                      <td className="px-3 py-2 text-gray-400">—</td>
-                      <td className="px-3 py-2 text-gray-500">€{parseFloat(r.netto).toFixed(2)}</td>
-                      <td className="px-2 py-2 text-right whitespace-nowrap">
-                        <select value="" title={t('lbl_move_to')}
-                          onClick={e => e.stopPropagation()}
-                          onChange={e => {e.stopPropagation(); const nv=e.target.value; if(nv) verplaatsVrije(i, nv as any)}}
-                          className="text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-500 bg-white mr-1 cursor-pointer">
-                          <option value="">⇄</option>
-                          <option value="ingredient">→ {t('ing_tab_ingredients')}</option>
-                          <option value="verpakking">→ {t('tab_onderdelen')}</option>
-                        </select>
-                        <button onClick={e => {e.stopPropagation();setVrijeList((prev: any) => prev.filter((_: any,j: number)=>j!==i));schuifEditIdx(setEditingVrijeIdx, i);}}
-                          className="text-red-400 hover:text-red-600 text-xs font-medium">✕</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Totalen */}
-        {(productLijst.length > 0 || verpakkingLijst.length > 0 || vrijeList.length > 0) && (
-          <div className="bg-gray-50 rounded-xl p-3 text-sm">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500 whitespace-nowrap">{t('lbl_netto_excl_btw')}</span>
-                <input type="number" step="0.01"
-                  value={manualNetto !== null ? manualNetto : totaalNetto.toFixed(2)}
-                  onChange={e => setManualNetto(e.target.value)}
-                  className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-semibold text-gray-800 bg-white t-input" />
-              </div>
-              <div className="flex items-center gap-2">
-                <div>
-                  <span className="text-gray-500 whitespace-nowrap">{t('lbl_btw')}</span>
-                  {btwTarieven.length > 0 && (
-                    <div className="text-xs text-gray-400 mt-0.5">
-                      {btwTarieven.map(([k,v]) => <span key={k} className="mr-2">{k}%: €{(v as number).toFixed(2)}</span>)}
-                    </div>
-                  )}
-                </div>
-                <input type="number" step="0.01"
-                  value={manualBtw !== null ? manualBtw : totaalBtw.toFixed(2)}
-                  onChange={e => setManualBtw(e.target.value)}
-                  className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-semibold text-blue-700 bg-white t-input" />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500 whitespace-nowrap">{t('lbl_totaal_incl_btw')}</span>
-                <input type="number" step="0.01"
-                  value={manualBruto !== null ? manualBruto : (totaalNetto+totaalBtw).toFixed(2)}
-                  onChange={e => setManualBruto(e.target.value)}
-                  className="w-28 text-right border border-gray-200 rounded px-2 py-0.5 text-sm font-bold text-gray-900 bg-white t-input" />
-                {(manualNetto!==null||manualBtw!==null||manualBruto!==null) && (
-                  <button type="button" title={t('title_herbereken')}
-                    onClick={() => {setManualNetto(null);setManualBtw(null);setManualBruto(null);}}
-                    className="text-sm text-gray-400 t-accent-text-h transition-colors">↺</button>
-                )}
-              </div>
-            </div>
-            {(manualNetto!==null||manualBtw!==null||manualBruto!==null) && (
-              <p className="text-xs t-accent-text mt-1.5">{t('msg_manual_adjusted')}</p>
-            )}
-            {isVerlegd && (
-              <div className="mt-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg text-xs text-purple-800">
-                <div>
-                  <span className="font-semibold">{t('lbl_verlegd_btw_zelf')}: €{verlegdBtwTotaal.toFixed(2)}</span>
-                  {verlegdBtwPerTarief.length > 0 && (
-                    <span className="ml-1 text-purple-600">
-                      ({verlegdBtwPerTarief.map(([k, v]) => `${k}%: €${(v as number).toFixed(2)}`).join(' · ')})
+          )}
+          {sluitKnop}
+        </header>
+        <div className="flex-1 min-h-0 flex">
+          {toonDocument && documentBron && (
+            <aside className="w-[46%] min-w-[380px] border-r border-gray-200 min-h-0 flex flex-col"
+              onDragOver={e => { if (!inboxItem) e.preventDefault() }}
+              onDrop={e => { if (inboxItem) return; e.preventDefault(); void kiesDocument(Array.from(e.dataTransfer.files || [])) }}>
+              <FactuurDocument bron={documentBron} naam={documentNaam} markering={markering} origineelUrl={origineelUrl}
+                onVervang={inboxItem ? undefined : () => docInvoer.current?.click()} />
+              {factuurFotos.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-white border-t border-gray-200">
+                  {factuurFotos.map((f, i) => (
+                    <span key={f.id} className="inline-flex items-center gap-1 text-xs text-gray-600 bg-gray-100 rounded-full pl-2 pr-1 py-0.5">
+                      {t('inkoop_doc_pagina_n').replace('{n}', String(i + 1))}
+                      <button type="button" onClick={() => verwijderFactuurFoto(f.id)} aria-label={t('inkoop_pagina_weg').replace('{n}', String(i + 1))}
+                        className="w-5 h-5 rounded-full hover:bg-gray-200">✕</button>
                     </span>
+                  ))}
+                  {factuurFotos.length < MAX_FACTUUR_FOTOS && (
+                    <button type="button" onClick={() => docInvoer.current?.click()} className="text-xs font-medium t-accent-text">+ {t('inkoop_pagina_toevoegen')}</button>
                   )}
+                  <span className="flex-1" />
+                  <button type="button" onClick={() => { void scanFactuur() }} className="text-xs font-medium t-accent-text">{t('inkoop_opnieuw_scannen')}</button>
                 </div>
-                <div className="mt-0.5 text-purple-600">{t('hint_verlegd_btw_zelf')}</div>
-                {verlegdNulNetto > 0 && (
-                  <div className="mt-1.5 flex items-center gap-2 flex-wrap text-orange-700">
-                    <span>⚠ {t('warn_verlegd_nul_tarief').replace('{bedrag}', verlegdNulNetto.toFixed(2))}</span>
-                    <button type="button" onClick={vulVerlegdeTarieven}
-                      className="px-2 py-0.5 rounded border border-orange-300 text-orange-700 hover:bg-orange-100 font-medium">
-                      {t('btn_vul_standaardtarieven')}
-                    </button>
-                  </div>
-                )}
+              )}
+            </aside>
+          )}
+          <main className="flex-1 min-w-0 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+              <div className={toonDocument ? '' : 'max-w-3xl mx-auto'}>{boeking}</div>
+            </div>
+            <footer className="bg-white border-t border-gray-200 px-5 py-3 space-y-2">
+              {meldingBalk}
+              <div className="flex items-end gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-gray-700 mb-0.5">{t('inkoop_bij_opslaan')}</div>
+                  <ul className="text-xs text-gray-600 grid grid-cols-1 xl:grid-cols-2 gap-x-4 gap-y-0.5">
+                    {samenvatting.map((s, i) => <li key={i} className={`truncate ${i === 0 ? 'xl:col-span-2' : ''}`} title={s}>{s}</li>)}
+                  </ul>
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-bold text-gray-900 tabular-nums">{fmt(eff.bruto)}</div>
+                  {controleKort && <div className={`text-xs ${controle.status === 'klopt' ? 'text-green-700' : 'text-orange-700'}`}>{controleKort}</div>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Btn v="secondary" onClick={probeerSluiten}>{t('btn_cancel')}</Btn>
+                  {knoppen}
+                </div>
               </div>
-            )}
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="flex justify-between items-center pt-1">
-          <span className="text-sm text-gray-500">{t('modal_products_ready').replace('{n}', String(productLijst.length + verpakkingLijst.length))}</span>
-          <div className="flex gap-2">
-            <Btn v="secondary" onClick={onClose}>{t('btn_cancel')}</Btn>
-            <Btn onClick={handleSave} disabled={uploading}>{uploading ? t('btn_uploading') : initialData ? t('btn_save_changes') : t('btn_save')}</Btn>
-          </div>
+            </footer>
+          </main>
         </div>
+        {ongedaanBalk}
+        {documentInvoer}
       </div>
-      </div>
-    </Modal>
+    </div>,
+    document.body,
   )
 }
+
+// ── Kleine bouwstenen ───────────────────────────────────────────────────────
+
+const Draaier: React.FC = () => (
+  <span className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-[var(--t-accent)] animate-spin flex-shrink-0" aria-hidden="true" />
+)
+
+const STROOK_KLEUR: Record<string, string> = {
+  info: 'bg-blue-50 border-blue-200 text-blue-900',
+  ok: 'bg-green-50 border-green-200 text-green-900',
+  waarschuwing: 'bg-orange-50 border-orange-200 text-orange-900',
+  fout: 'bg-red-50 border-red-200 text-red-800',
+}
+
+const Strook: React.FC<{ toon: 'info' | 'ok' | 'waarschuwing' | 'fout', actie?: { label: string, doe: () => void }, children: React.ReactNode }> = ({ toon, actie, children }) => (
+  <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-sm ${STROOK_KLEUR[toon]}`}>
+    <span className="flex-1 min-w-0">{children}</span>
+    {actie && <button type="button" onClick={actie.doe} className="font-semibold underline whitespace-nowrap text-sm">{actie.label}</button>}
+  </div>
+)
 
 export default InkoopFactuurModal

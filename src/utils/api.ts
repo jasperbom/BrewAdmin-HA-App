@@ -1246,7 +1246,13 @@ export const callClaudeProxy = async (body: any) => {
     const e = err.error
     const msg = typeof e === 'string' ? e
       : (e?.message ? `${e.type ? e.type + ': ' : ''}${e.message}` : `HTTP ${r.status}`)
-    throw new Error(msg)
+    // Status en fouttype gaan mee op de fout: de scan (utils/claudeScan.ts)
+    // valt alleen terug op een ander model als dit model niet beschikbaar is,
+    // en mag dat niet raden aan de hand van de tekst.
+    throw Object.assign(new Error(msg), {
+      status: r.status,
+      type: typeof e === 'object' && e && typeof e.type === 'string' ? e.type : undefined,
+    })
   }
   return r.json()
 }

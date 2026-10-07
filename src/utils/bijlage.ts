@@ -26,6 +26,12 @@ export const UPLOAD_EXTENSIES = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp']
 // Status van een upload die niet eens verstuurd is: bestandstype niet toegestaan.
 export const UPLOAD_TYPE_ONBEKEND = 415
 
+// Grootste bestand dat de server aanneemt: een upload gaat als base64 in een
+// JSON-body van hooguit 10 MB (MAX_CONTENT_LENGTH in server.py), dat is ruim
+// 7 MB aan bestand. Groter = meteen zeggen, niet pas na het versturen.
+export const UPLOAD_MAX_BYTES = 7 * 1024 * 1024
+export const UPLOAD_TE_GROOT = 413
+
 export const bijlageExtensie = (bestandsnaam: string): string =>
   (bestandsnaam.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
@@ -43,6 +49,7 @@ const naarBase64 = (buf: ArrayBuffer): string => {
 export const uploadBijlage = async (file: File, prefix: string): Promise<UploadUitkomst> => {
   const ext = bijlageExtensie(file.name)
   if (!UPLOAD_EXTENSIES.includes(ext)) return { ok: false, status: UPLOAD_TYPE_ONBEKEND, naam: file.name }
+  if (file.size > UPLOAD_MAX_BYTES) return { ok: false, status: UPLOAD_TE_GROOT, naam: file.name }
   const filename = `${prefix}_${Date.now()}_${Math.floor(Math.random() * 9999)}.${ext}`
   try {
     const data = naarBase64(await file.arrayBuffer())
@@ -64,4 +71,5 @@ export const uploadBijlage = async (file: File, prefix: string): Promise<UploadU
 export const uploadFoutSleutel = (status: number): string =>
   status === 403 ? 'err_upload_geweigerd_rol'
     : status === UPLOAD_TYPE_ONBEKEND ? 'err_upload_type'
-      : 'err_upload_mislukt'
+      : status === UPLOAD_TE_GROOT ? 'err_upload_te_groot'
+        : 'err_upload_mislukt'
