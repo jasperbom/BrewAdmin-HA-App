@@ -982,10 +982,13 @@ function InkoopFactuurModal({
   const controleKort = controle.status === 'klopt' ? t(scan.totalen ? 'inkoop_klopt_kort_factuur' : 'inkoop_klopt_kort_bank')
     : controle.status === 'verschil' ? t('inkoop_verschil_kort').replace('{bedrag}', fmt(Math.abs(controle.verschil))) : null
 
+  const metVolgende = !!inboxItem && volgendeAantal > 0
   const knoppen = (
     <>
-      {inboxItem && volgendeAantal > 0 && (
-        <Btn v="secondary" onClick={() => { void opslaan(true) }} disabled={bezig}>{t('inkoop_opslaan_volgende').replace('{n}', String(volgendeAantal))}</Btn>
+      {metVolgende && (
+        <Btn v="secondary" onClick={() => { void opslaan(true) }} disabled={bezig} s={smal ? 'lg' : 'md'} cls={smal ? 'flex-1' : ''}>
+          {t('inkoop_opslaan_volgende').replace('{n}', String(volgendeAantal))}
+        </Btn>
       )}
       <Btn onClick={() => { void opslaan(false) }} disabled={bezig} s={smal ? 'lg' : 'md'} cls={smal ? 'flex-1' : ''}>
         {bezig ? t('btn_uploading') : bewerken ? t('btn_save_changes') : t('btn_save')}
@@ -1053,7 +1056,8 @@ function InkoopFactuurModal({
               opties={[{ v: 'factuur', l: t('inkoop_tab_factuur') }, { v: 'boeking', l: t('inkoop_tab_boeking') }]} />
           </div>
         )}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" {...(sheet ? { 'aria-hidden': true } : {})}>
+        {/* Verticaal scrollen; zijwaarts nooit, ook niet als een veld op een toestel breder uitvalt. */}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain" {...(sheet ? { 'aria-hidden': true } : {})}>
           {mobielTab === 'factuur' && documentBron ? (
             <div className="h-full flex flex-col">
               <div className="flex-1 min-h-0">
@@ -1073,18 +1077,23 @@ function InkoopFactuurModal({
               {boeking}
               <section className="rounded-xl border border-gray-200 bg-white p-3">
                 <h3 className="text-sm font-semibold text-gray-800 mb-1.5">{t('inkoop_bij_opslaan')}</h3>
-                <ul className="space-y-1 text-sm text-gray-700">{samenvatting.map((s, i) => <li key={i} className="flex gap-2"><span className="text-gray-400">•</span><span>{s}</span></li>)}</ul>
+                <ul className="space-y-1 text-sm text-gray-700">{samenvatting.map((s, i) => <li key={i} className="flex gap-2"><span className="text-gray-400">•</span><span className="min-w-0 break-words">{s}</span></li>)}</ul>
               </section>
             </div>
           )}
         </div>
         <footer data-werkblad-voet className="bg-white border-t border-gray-200 px-3 pt-2 space-y-2" style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 8px)' }}>
           {meldingBalk}
-          <div className="flex items-center gap-3">
-            <div className="min-w-0">
-              <div className="text-xs text-gray-500">{verlegd ? t('inkoop_totaal') : t('lbl_totaal_incl_btw')}</div>
+          {/* Met "Opslaan en volgende" erbij krijgen de twee knoppen een eigen rij:
+              naast het totaal werd de tweede knop vier regels hoog. */}
+          <div className={metVolgende ? 'space-y-2' : 'flex items-center gap-3'}>
+            <div className={metVolgende ? 'flex items-baseline justify-between gap-3' : 'min-w-0'}>
+              <div className="min-w-0">
+                <div className="text-xs text-gray-500">{verlegd ? t('inkoop_totaal') : t('lbl_totaal_incl_btw')}</div>
+                {controleKort && metVolgende && <div className={`text-[11px] ${controle.status === 'klopt' ? 'text-green-700' : 'text-orange-700'}`}>{controleKort}</div>}
+              </div>
               <div className="text-base font-bold text-gray-900 tabular-nums">{fmt(eff.bruto)}</div>
-              {controleKort && <div className={`text-[11px] ${controle.status === 'klopt' ? 'text-green-700' : 'text-orange-700'}`}>{controleKort}</div>}
+              {controleKort && !metVolgende && <div className={`text-[11px] ${controle.status === 'klopt' ? 'text-green-700' : 'text-orange-700'}`}>{controleKort}</div>}
             </div>
             <div className="flex-1 flex justify-end gap-2">{knoppen}</div>
           </div>
@@ -1146,9 +1155,11 @@ function InkoopFactuurModal({
           )}
           {sluitKnop}
         </header>
-        <div className="flex-1 min-h-0 flex">
+        {/* De factuur naast de boeking vraagt ruim 1000 px; smaller (een iPad staand) komt hij
+            erboven, anders past de regeltabel niet meer en schuift de boeking zijwaarts. */}
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
           {toonDocument && documentBron && (
-            <aside className="w-[46%] min-w-[380px] border-r border-gray-200 min-h-0 flex flex-col"
+            <aside className="h-[40vh] lg:h-auto lg:w-[46%] lg:min-w-[380px] flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-200 min-h-0 flex flex-col"
               onDragOver={e => { if (!inboxItem) e.preventDefault() }}
               onDrop={e => { if (inboxItem) return; e.preventDefault(); void kiesDocument(Array.from(e.dataTransfer.files || [])) }}>
               <FactuurDocument bron={documentBron} naam={documentNaam} markering={markering} origineelUrl={origineelUrl}

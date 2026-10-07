@@ -79,35 +79,44 @@ const LotVelden: React.FC<LotVeldenProps> = ({ regel: r, onWijzig, fout }) => {
         <Bron aan={etiket.has('lots')} />
       </div>
       <ul className="space-y-2">
-        {r.lots.map((l, i) => (
-          <li key={i} className="rounded-lg border border-gray-200 p-2">
-            {/* Telefoon: lotnummer en ✕ op de eerste rij, THT en hoeveelheid eronder. Bureau: één rij. */}
-            <div className="grid grid-cols-[1fr_1fr_auto] sm:grid-cols-[1.4fr_1fr_0.9fr_auto] gap-2 items-end">
-              <div className="col-span-2 sm:col-span-1 order-1 min-w-0">
-                <label htmlFor={`${id}-l${i}`} className="block text-xs font-medium text-gray-600 mb-0.5">{t('ing_lot_number')}</label>
-                <input id={`${id}-l${i}`} type="text" value={l.lotnr} autoComplete="off"
-                  onChange={e => onWijzig(zetLot(r, i, { lotnr: e.target.value }), LOT_VELDEN)}
-                  className={`w-full border rounded-lg px-2.5 py-1.5 text-sm min-h-tap sm:min-h-0 bg-white t-input outline-none ${l.onzeker ? 'border-orange-400' : 'border-gray-200'}`} />
+        {r.lots.map((l, i) => {
+          const weg = (cls: string) => (
+            <button type="button" onClick={() => onWijzig(verwijderLot(r, i), LOT_VELDEN)}
+              aria-label={t('inkoop_lot_weg').replace('{lot}', l.lotnr || String(i + 1))}
+              className={`${cls} flex-shrink-0 w-10 h-10 sm:w-8 sm:h-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 items-center justify-center`}>✕</button>
+          )
+          return (
+            <li key={i} className="rounded-lg border border-gray-200 p-2">
+              {/* Telefoon: lotnummer met ✕ op de eerste rij, THT en hoeveelheid eronder over de
+                  volle breedte (een datum in een smallere cel valt op 320 px weg). Bureau: één rij. */}
+              <div className="grid grid-cols-2 sm:grid-cols-[1.4fr_1fr_0.9fr_auto] gap-2 items-end">
+                <div className="col-span-2 sm:col-span-1 min-w-0 flex items-end gap-2">
+                  <div className="flex-1 min-w-0">
+                    <label htmlFor={`${id}-l${i}`} className="block text-xs font-medium text-gray-600 mb-0.5">{t('ing_lot_number')}</label>
+                    <input id={`${id}-l${i}`} type="text" value={l.lotnr} autoComplete="off"
+                      onChange={e => onWijzig(zetLot(r, i, { lotnr: e.target.value }), LOT_VELDEN)}
+                      className={`w-full border rounded-lg px-2.5 py-1.5 text-sm min-h-tap sm:min-h-0 bg-white t-input outline-none ${l.onzeker ? 'border-orange-400' : 'border-gray-200'}`} />
+                  </div>
+                  {weg('flex sm:hidden')}
+                </div>
+                <div className="min-w-0">
+                  <label htmlFor={`${id}-t${i}`} className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_tht')}</label>
+                  <input id={`${id}-t${i}`} type="date" value={l.tht}
+                    onChange={e => onWijzig(zetLot(r, i, { tht: e.target.value }), LOT_VELDEN)}
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm min-h-tap sm:min-h-0 bg-white t-input outline-none" />
+                </div>
+                <div className="min-w-0">
+                  <label htmlFor={`${id}-q${i}`} className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_quantity')} ({eenheid})</label>
+                  <input id={`${id}-q${i}`} type="number" inputMode="decimal" value={l.qty} min={0}
+                    onChange={e => onWijzig(zetLot(r, i, { qty: e.target.value }), LOT_VELDEN)}
+                    className={`w-full border rounded-lg px-2.5 py-1.5 text-sm min-h-tap sm:min-h-0 bg-white t-input outline-none ${!(getal(l.qty) > 0) && fout ? 'border-red-400' : 'border-gray-200'}`} />
+                </div>
+                {weg('hidden sm:flex')}
               </div>
-              <button type="button" onClick={() => onWijzig(verwijderLot(r, i), LOT_VELDEN)}
-                aria-label={t('inkoop_lot_weg').replace('{lot}', l.lotnr || String(i + 1))}
-                className="order-2 sm:order-4 w-10 h-10 sm:w-8 sm:h-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center">✕</button>
-              <div className="order-3 sm:order-2 min-w-0">
-                <label htmlFor={`${id}-t${i}`} className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_tht')}</label>
-                <input id={`${id}-t${i}`} type="date" value={l.tht}
-                  onChange={e => onWijzig(zetLot(r, i, { tht: e.target.value }), LOT_VELDEN)}
-                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm min-h-tap sm:min-h-0 bg-white t-input outline-none" />
-              </div>
-              <div className="order-4 sm:order-3 min-w-0">
-                <label htmlFor={`${id}-q${i}`} className="block text-xs font-medium text-gray-600 mb-0.5">{t('lbl_quantity')} ({eenheid})</label>
-                <input id={`${id}-q${i}`} type="number" inputMode="decimal" value={l.qty} min={0}
-                  onChange={e => onWijzig(zetLot(r, i, { qty: e.target.value }), LOT_VELDEN)}
-                  className={`w-full border rounded-lg px-2.5 py-1.5 text-sm min-h-tap sm:min-h-0 bg-white t-input outline-none ${!(getal(l.qty) > 0) && fout ? 'border-red-400' : 'border-gray-200'}`} />
-              </div>
-            </div>
-            {l.onzeker && <p className="mt-1 text-xs text-orange-700">⚠ {t('etiket_controleer').replace('{uitleg}', l.onzeker)}</p>}
-          </li>
-        ))}
+              {l.onzeker && <p className="mt-1 text-xs text-orange-700">⚠ {t('etiket_controleer').replace('{uitleg}', l.onzeker)}</p>}
+            </li>
+          )
+        })}
       </ul>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
         <span className={klopt ? 'text-green-700' : 'text-orange-700'}>

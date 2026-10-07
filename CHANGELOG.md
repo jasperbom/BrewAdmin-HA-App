@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.87] — 2026-10-07
+
+### Inkoop boeken: niet meer zijwaarts scrollen op de telefoon
+
+- **Datumvelden op een iPhone.** iOS tekent een datumveld als keuzelijst en
+  geeft het als minimumbreedte de breedste datum in de taal van de telefoon;
+  `width: 100%` telt dan niet en het veld steekt buiten zijn kolom (de THT per
+  lot, de factuurdatum in een smalle kolom). Op iOS/iPadOS heeft een datumveld
+  dat zijn kolom volgt (`w-full`, `flex-1`, `min-w-0`) nu geen eigen weergave
+  meer, zodat breedte en padding gelden zoals geschreven; de datumkiezer opent
+  gewoon. Geldt in de hele app.
+- **Geen inzoomen meer bij het aantikken van een veld.** De 16px-regel tegen de
+  iOS-autozoom (sinds 1.12.44) verloor van `text-sm`/`text-xs` op de velden zelf,
+  dus vrijwel elk veld bleef 14px: iOS zoomde in en liet het scherm ingezoomd en
+  zijwaarts verschuifbaar achter. De regel wint nu: in de telefoonlayout op elk
+  toestel, en op iOS/iPadOS op elke breedte (een iPhone dwars, een iPad zoomt
+  ook in). Geldt in de hele app.
+- **Werkblad zelf.** Een lange keuze breekt af op een spatie in plaats van de
+  groep breder te maken dan het scherm ("EU (Reverse Charge)", Frans en Duits
+  op een klein scherm); een bestandsnaam zonder spaties breekt af onder *Bij
+  opslaan*; etiketfoto's lopen door op een volgende rij in plaats van een strook
+  die zijwaarts schuift; bij meer lots staan THT en hoeveelheid over de volle
+  breedte (het ✕ staat naast het lotnummer); met *Opslaan en volgende* erbij
+  krijgen de twee knoppen een eigen rij. Het boekingsdeel en het paneel van
+  onderen scrollen alleen nog verticaal.
+- **iPad staand.** Smaller dan 1024 px staat de factuur bóven de boeking in
+  plaats van ernaast: ernaast bleef er te weinig breedte over voor de
+  regeltabel.
+
+---
+
 ## [1.12.86] — 2026-10-07
 
 ### Inkoop boeken: nieuw scherm, betere scan en etiketfoto's

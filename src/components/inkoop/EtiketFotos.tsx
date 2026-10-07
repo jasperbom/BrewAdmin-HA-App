@@ -130,7 +130,8 @@ const EtiketFotos: React.FC<EtiketFotosProps> = ({
     <div className="rounded-lg border border-gray-200 bg-white"
       onDragOver={e => { e.preventDefault(); setSleept(true) }} onDragLeave={() => setSleept(false)} onDrop={drop}>
       {invoer}
-      <div className={`flex items-center gap-2 p-2 overflow-x-auto ${sleept ? 't-panel' : ''}`}>
+      {/* Meer foto's lopen door op een volgende rij: zijwaarts scrollen is op een telefoon lastig. */}
+      <div className={`flex flex-wrap items-center gap-2 p-2 ${sleept ? 't-panel' : ''}`}>
         {fotos.map(f => (
           <div key={f.id} className="relative flex-shrink-0">
             <button type="button" onClick={() => setGroot(f)} aria-label={t('etiket_foto_bekijken').replace('{naam}', f.naam)}

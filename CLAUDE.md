@@ -555,6 +555,9 @@ Houd de UI consistent door altijd dezelfde patronen te gebruiken:
 | Destructieve of statuswijzigende actie | Geen `confirm()`: `const undo = useUndo(); undo.plan(id, label, uitvoeren)` (`UndoBar.tsx`, vijf seconden terugweg) of `<BevestigKnop vraag=…>` (bevestiging ín de knop) |
 | Lege lijst / mislukte lading | `<LegeStaat titel tekst icoon>` met de knop als kind; `<FoutKaart onOpnieuw>` — nooit een lege tabel die "geen …" zegt terwijl het bereik weg is |
 | Tapdoel op een telefoon | `min-h-tap` (44 px) / `min-h-tapLg` (48 px), `sm:min-h-0` op een bureau — zit al in `Btn`/`Inp`/`Sel`/`SearchInput` |
+| Tekstgrootte van een invoerveld | `text-sm`/`text-xs` (zit al in `Inp`/`Sel`); `index.css` maakt daar in de telefoonlayout en op iOS/iPadOS 16px van — kleiner laat iOS bij het aantikken inzoomen en ingezoomd (zijwaarts schuifbaar) achter. Geen `text-[13px]` e.d. op een `input`/`select`/`textarea`: daar geldt die regel niet |
+| Datumveld | `type="date"` met `w-full` (of `flex-1`/`min-w-0`) is genoeg: op iOS zet `index.css` dan de eigen weergave uit, anders legt iOS een minimumbreedte op en steekt het veld buiten een smalle kolom |
+| Verticaal scrollend paneel op een telefoon | `overflow-y-auto overflow-x-hidden`; een lang woord zonder spaties (bestandsnaam) in een flex-rij krijgt `min-w-0 break-words` |
 
 **Regels:**
 - Gebruik `<SectionHeader title=... open=... onToggle=... info=... solid? rounded?>`
