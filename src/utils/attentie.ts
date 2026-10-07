@@ -90,9 +90,9 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
   return {
     productie: nietLeeg([
       {
-        // Batchflow-overzicht met het paneel "openstaande batchtaken" open:
+        // Batches-overzicht met het paneel "openstaande batchtaken" open:
         // elke batch met open taken op een rij, klik = de batch op zijn fase.
-        id: 'batchtaken', sleutel: 'attentie_batchtaken', pagina: 'batchflow', filter: 'taken',
+        id: 'batchtaken', sleutel: 'attentie_batchtaken', pagina: 'batches', filter: 'taken',
         aantal: telOpenstaandeBatchTaken(bron.batches, bron.batchTakenItems, bron.batchTakenGroepen),
       },
       {

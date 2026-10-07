@@ -173,6 +173,25 @@ export const bestellingenOmTePicken = (
     )
     .sort((a: any, b: any) => String(a?.datum || '').localeCompare(String(b?.datum || '')))
 
+// ── Ordernummer ─────────────────────────────────────────────────────────────
+// Het zichtbare nummer van een bestelling, overal gelijk (lijst, kopbalk,
+// pakbon, klantkaart). Een WooCommerce-order toont zijn winkelnummer, een
+// handmatige order zijn korte, oplopende bestelnummer uit de serverreeks
+// ("M-0015"); een oudere handmatige order zonder bestelnummer valt terug op
+// M-<id>.
+export interface OrderNummerBron {
+  id?: number | string | null
+  wc_order_nummer?: string | number | null
+  bestel_nummer?: string | null
+}
+
+export const orderNummer = (b: OrderNummerBron | null | undefined): string => {
+  if (!b) return ''
+  if (b.wc_order_nummer != null && String(b.wc_order_nummer) !== '') return `WC-${b.wc_order_nummer}`
+  if (b.bestel_nummer) return String(b.bestel_nummer)
+  return b.id != null && String(b.id) !== '' ? `M-${b.id}` : ''
+}
+
 // ── Pakbon vóór het picken ──────────────────────────────────────────────────
 // Het nog niet gepickte restant per bierregel van één bestelling: de bestelde
 // hoeveelheid min wat er al in `bestellingPicks` voor die regel staat. Vrije

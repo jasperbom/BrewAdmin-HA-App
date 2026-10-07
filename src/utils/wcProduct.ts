@@ -98,6 +98,13 @@ export interface WcVelden {
    * blijft onaangeraakt.
    */
   meta?: Record<string, WcMetaWaarde>
+  /**
+   * De `_cf_`-meta zoals die bij de laatste push of pull in de winkel stond,
+   * met het tijdstip. Daarmee zegt de etiketkaart of de website achterloopt
+   * op het product (nooit op de batch in de tank).
+   */
+  meta_stand?: Record<string, WcMetaWaarde>
+  meta_stand_op?: string
 }
 
 /** Een meta-waarde: tekst, getal of een lijstje label/waarde-regels. */

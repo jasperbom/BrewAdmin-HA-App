@@ -1,6 +1,10 @@
 import React, { useState, useRef } from 'react'
 import { t, setLang as i18nSetLang } from './i18n'
-import { WerkruimteId, WERKRUIMTE_IDS, PAGINA_WERKRUIMTE, Route, parseRoute, bouwHash, routeGelijk, isDetailRoute } from './utils/route'
+import {
+  WerkruimteId, WERKRUIMTE_IDS, Route, parseRoute, bouwHash, routeGelijk, isDetailRoute, lijstRoute, doelNaarRoute,
+  canoniekePagina, historieMarkering, historieDiepte, historieStap, vorigeIsEigen, type GaNaar, type GaNaarOpties,
+} from './utils/route'
+import { detailTitel } from './utils/detailTitel'
 import { afgeleideThemaKleuren } from './utils/kleurContrast'
 import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet, newId } from './utils/api'
 import { maakAppIcoon } from './utils/icoon'
@@ -321,95 +325,120 @@ function App() {
     });
   }, [auditLog, whoami, whoamiKlaar]);
 
-  // Startpunt: de URL-hash (`#/verkoop/bestellingen`) wint van de per-apparaat
-  // onthouden werkruimte — een gedeelde link of een herlaad landt dan precies
-  // waar je was.
+  // ── Navigatie en hash-routing ───────────────────────────────────────────
+  // Eén bron: de route (werkruimte, pagina en het geopende record) — zie
+  // utils/route.ts. Startpunt: de URL-hash (`#/verkoop/bestellingen/12`) wint
+  // van de per-apparaat onthouden werkruimte, zodat een gedeelde link of een
+  // herlaad precies landt waar je was. Een oude link (`#/productie/batchflow/3`,
+  // `#/productie/planning`) wordt bij het lezen omgezet.
   const [startRoute] = useState<Route | null>(() => (typeof window !== 'undefined' ? parseRoute(window.location.hash) : null));
-  const [werkruimte, setWerkruimteState] = useState<WerkruimteId>(() => startRoute?.werkruimte ?? leesWerkruimte());
-  const [page, setPageIntern] = useState(() => startRoute?.pagina ?? 'dashboard');
-  // Wisselt van werkruimte. Bij een ECHTE wissel (niet opnieuw op de al
-  // actieve werkruimte tikken) springt de pagina mee naar het dashboard van
-  // die werkruimte — anders zou de vorige pagina (uit de oude werkruimte)
-  // eronder blijven staan terwijl de nav al de nieuwe werkruimte toont, wat
-  // met geen enkel zichtbaar nav-item meer overeenkomt. Bij een deep-link
-  // (via setPage hieronder) wint de daaropvolgende setPageIntern(id)-call in
-  // dezelfde tick alsnog van deze dashboard-sprong (React batcht synchrone
-  // setState-aanroepen; de laatste wint).
-  // De actuele stand komt uit `routeRef` (bij elke render bijgewerkt), niet
-  // uit deze closure: handlers die in een useMemo zijn vastgelegd (de "Nu
-  // actief"-chips) zouden anders een verouderde werkruimte/pagina zien.
-  const kiesWerkruimte = (w: WerkruimteId) => {
-    if (w !== routeRef.current.werkruimte) setPageIntern('dashboard');
-    setWerkruimteState(w);
-    try { localStorage.setItem(WERKRUIMTE_KEY, w); } catch (_) { /* localStorage niet beschikbaar */ }
-  };
-  // Elke navigatie — ook diep vanuit een andere pagina (bv. een batch die naar
-  // boekhouding linkt) — wisselt de werkruimte automatisch mee. Alle
-  // bestaande setPage(...)-aanroepen (nav-knoppen, deep-links vanuit
-  // paginacomponenten) krijgen dit gedrag hierdoor gratis: alleen dít punt
-  // hoeft te weten welke pagina bij welke werkruimte hoort.
-  // Nogmaals op de nav-knop van de pagina waar je al bent = "terug naar het
-  // overzicht". De detailselectie (geopende batch, product, bestelling) leeft
-  // ín de paginacomponent, dus zonder dit gebeurt er zichtbaar niets. Een
-  // opgehoogde nonce in de key van <main> remount de pagina; deep-link-state
-  // (batch/order) wordt daarbij gewist zodat de pagina echt op het overzicht
-  // opent en niet meteen weer hetzelfde detail toont.
+  const [route, setRoute] = useState<Route>(() => startRoute ?? { werkruimte: leesWerkruimte(), pagina: 'dashboard' });
+  const werkruimte = route.werkruimte;
+  const page = route.pagina;
+  // De geopende batch (`#/productie/batches/<id>`) en het geopende recept,
+  // product of de geopende bestelling (`#/verkoop/producten/<id>`).
+  const navBatchId: number | null = page === 'batches' ? (route.batchId ?? null) : null;
+  const recordId: string | null = route.recordId ?? null;
+  // De actuele route voor handlers die in een useMemo zijn vastgelegd (de
+  // "Nu actief"-chips) — die zouden anders een verouderde stand zien.
+  const routeRef = useRef(route);
+  routeRef.current = route;
+  // De werkruimte blijft per apparaat onthouden (localStorage, geen server):
+  // de telefoon in de brouwerij blijft op Productie, de laptop op kantoor op
+  // Administratie.
+  React.useEffect(() => {
+    try { localStorage.setItem(WERKRUIMTE_KEY, werkruimte); } catch (_) { /* localStorage niet beschikbaar */ }
+  }, [werkruimte]);
+  // Nogmaals op de tab van de pagina waar je al bent = terug naar het
+  // overzicht: een opgehoogde nonce in de key van <main> remount de pagina,
+  // zodat ook filters en uitklapstanden opnieuw beginnen.
   const [navNonce, setNavNonce] = useState(0);
+  // De hash die de huidige history-entry moet vervangen in plaats van er één
+  // toe te voegen (zie het effect hieronder). Gekoppeld aan díe hash, niet
+  // een losse vlag: een pagina kan in haar mount-effect al een vervangende
+  // sprong vragen (Producten kiest op het bureau het eerste product) in
+  // dezelfde commit waarin het effect hieronder de vorige routewissel nog
+  // afhandelt — een losse vlag werd daar opgebruikt, en de sprong kwam er als
+  // extra entry bij.
+  const vervangHashRef = useRef<string | null>(null);
+  const navigeer = (r: Route, opties?: GaNaarOpties) => {
+    const doel = doelNaarRoute({
+      pagina: r.pagina,
+      id: canoniekePagina(r.pagina) === 'batches' ? r.batchId : r.recordId,
+      stand: r.stand ?? undefined,
+      werkruimte: r.werkruimte,
+    }, r.werkruimte);
+    const h = bouwHash(doel);
+    // Alleen als de route ook echt verandert; anders bleef de vraag hangen.
+    if (opties?.vervang && h !== bouwHash(routeRef.current)) vervangHashRef.current = h;
+    setRoute(doel);
+  };
+  // Naar een pagina (tabs, chips, de oude setPage-aanroepen van de pagina's).
+  // Elke pagina wisselt zelf de werkruimte mee; een oude naam (batchflow,
+  // planning) landt op Batches.
   const setPage = (id: string) => {
-    const w = PAGINA_WERKRUIMTE[id];
-    if (w && w !== routeRef.current.werkruimte) kiesWerkruimte(w);
-    if (id === routeRef.current.pagina) {
-      setNavBatchId(null);
-      setOpenOrderId(null);
-      setNavNonce(n => n + 1);
-    }
-    setPageIntern(id);
+    const huidig = routeRef.current;
+    const doel = doelNaarRoute({ pagina: id }, huidig.werkruimte);
+    if (doel.pagina === huidig.pagina) setNavNonce(n => n + 1);
+    navigeer(doel);
   };
   // Welke werkruimte-badge zijn uitklap ("wat vraagt om aandacht?") toont.
   const [openAttentie, setOpenAttentie] = useState<WerkruimteId|null>(null);
-  const [openOrderId, setOpenOrderId] = useState<number | null>(null);
-  const [navBatchId, setNavBatchId] = useState<number | null>(() => startRoute?.batchId ?? null);
   // Teller voor de Meten-knop in de onderbalk: het Productie-dashboard opent
   // bij elke ophoging zijn meting-modal.
   const [metingSignaal, setMetingSignaal] = useState(0);
 
-  // ── Hash-routing ──────────────────────────────────────────────────────────
-  // State → hash: elke wissel van werkruimte, pagina of geopende batch wordt
-  // een history-entry, zodat de terugknop van het toestel het detailscherm
-  // sluit in plaats van de app. Hash → state: de terugknop (hashchange) zet
-  // de state terug. De vergelijking via routeGelijk voorkomt de lus.
-  const huidigeRoute: Route = {
-    werkruimte, pagina: page,
-    batchId: ((page === 'dashboard' && werkruimte === 'productie') || page === 'batchflow') ? navBatchId : null,
-  };
-  const routeRef = useRef(huidigeRoute);
-  routeRef.current = huidigeRoute;
+  // State → URL: elke routewissel wordt een history-entry, met in
+  // `history.state` een markering hoe diep je in de app zit. Daardoor werkt
+  // de terugknop van het toestel (op Android sluit die anders de
+  // geïnstalleerde app) en weet de terugknop op een detailscherm of de vorige
+  // entry van de app zelf is. URL → state: de terugknop (popstate) en een
+  // met de hand gewijzigde hash (hashchange) zetten de route terug; de
+  // vergelijking via routeGelijk voorkomt de lus.
+  const routeHash = bouwHash(route);
   const eersteHashRef = useRef(true);
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
-    const h = bouwHash(huidigeRoute);
-    if (window.location.hash === h) { eersteHashRef.current = false; return; }
-    if (eersteHashRef.current) {
-      // De eerste normalisatie (lege of onbekende hash) mag geen extra
-      // history-entry maken: anders sluit "terug" niets.
-      eersteHashRef.current = false;
-      try { window.history.replaceState(null, '', h); } catch (_) { window.location.hash = h; }
-    } else {
-      window.location.hash = h;
-    }
-  }, [werkruimte, page, huidigeRoute.batchId]);
+    // Een vervang-vraag geldt alleen voor de hash waar hij bij hoort.
+    const vervang = vervangHashRef.current === routeHash;
+    if (vervang) vervangHashRef.current = null;
+    // De eerste normalisatie (lege, oude of onbekende hash) maakt geen extra
+    // history-entry: anders sluit "terug" niets (utils/route.ts historieStap).
+    const stap = historieStap({
+      eerste: eersteHashRef.current, vervang,
+      urlHash: window.location.hash, routeHash,
+      diepte: historieDiepte(window.history.state),
+    });
+    eersteHashRef.current = false;
+    if (!stap) return;
+    try {
+      if (stap.soort === 'push') window.history.pushState(historieMarkering(stap.diepte), '', routeHash);
+      else window.history.replaceState(historieMarkering(stap.diepte), '', routeHash);
+    } catch (_) { window.location.hash = routeHash; }
+  }, [routeHash]);
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
-    const bijHash = () => {
+    const bijUrl = () => {
+      // Een entry zonder markering binnen dit document is een met de hand
+      // gewijzigde hash of een gewone #-link (elke entry van de app zelf heeft
+      // er een): de vorige entry is van de app, dus markeren — dan brengt de
+      // terugknop op een detailscherm je daar weer heen. Al bij popstate (dat
+      // komt vóór hashchange), anders zette de normalisatie van een oude naam
+      // hieronder er eerst diepte 0 op.
+      if (historieDiepte(window.history.state) == null) {
+        try { window.history.replaceState(historieMarkering(1), '', window.location.href); } catch (_) { /* geen history-API */ }
+      }
       const r = parseRoute(window.location.hash);
       if (!r || routeGelijk(r, routeRef.current)) return;
-      setWerkruimteState(r.werkruimte);
-      try { localStorage.setItem(WERKRUIMTE_KEY, r.werkruimte); } catch (_) { /* localStorage niet beschikbaar */ }
-      setPageIntern(r.pagina);
-      setNavBatchId(r.batchId ?? null);
+      // Een met de hand getypte oude naam (`#/productie/planning`) heeft al
+      // een eigen entry: die vervangen door de nette vorm, niet nog één erbij.
+      const h = bouwHash(r);
+      if (h !== window.location.hash) vervangHashRef.current = h;
+      setRoute(r);
     };
-    window.addEventListener('hashchange', bijHash);
-    return () => window.removeEventListener('hashchange', bijHash);
+    window.addEventListener('popstate', bijUrl);
+    window.addEventListener('hashchange', bijUrl);
+    return () => { window.removeEventListener('popstate', bijUrl); window.removeEventListener('hashchange', bijUrl); };
   }, []);
 
   // Toetsenbord open → onderbalk weg (zie components/ui/toetsenbord.ts).
@@ -425,15 +454,6 @@ function App() {
   }, []);
   // Eén terugweg voor de hele app: pagina's plannen via useUndo().
   const undo = useUitgesteldeActie(5000);
-  // Snelkoppeling naar een lopende batch: altijd op de brouwzaal (het
-  // Productie-dashboard), waar de batch als paneel onder zijn tankkaart
-  // opent. Bewust niet via setPage: die wist bij "zelfde pagina" juist de
-  // batchselectie.
-  const openBatchOpBrouwzaal = (id: number) => {
-    if (routeRef.current.werkruimte !== 'productie') kiesWerkruimte('productie');
-    setNavBatchId(id);
-    setPageIntern('dashboard');
-  };
   const [preNieuwBatch, setPreNieuwBatch] = useState<any>(null);
   // Deep-link naar een specifieke Boekhouding-tab (bv. vanuit het
   // Administratie-dashboard) — eenmalig signaal; BoekhoudingPage consumeert
@@ -449,16 +469,52 @@ function App() {
   // Zelfde eenmalige-consume-patroon als boekhoudingTab: de pagina leest het
   // in zijn useState-initializer en wist het daarna via onNavDoelConsumed.
   const [navDoel, setNavDoel] = useState<AttentieDoel|null>(null);
-  const gaNaarDoel = (d: AttentieDoel) => {
-    if (d.pagina === 'boekhouding') {
-      setBoekhoudingTab(d.tab || null);
-      setBoekhoudingRapportTab(d.tab === 'rapporten' && d.filter ? d.filter : null);
+  // Eén navigatiefunctie voor de hele app (attentieposten, ketenlinks, een
+  // tankkaart, de "Nu actief"-strook): `gaNaar({pagina, id?, tab?, filter?,
+  // lotId?, stand?})`. Het record (`id`) gaat in de route, dus de terugknop,
+  // een herlaad en een gedeelde link werken; tab/filter/lot zijn een eenmalig
+  // signaal voor de doelpagina. Een sprong naar een andere werkruimte laat
+  // rail en onderbalk meewisselen. Pagina's krijgen hem als prop (`gaNaar`,
+  // bij de oudere pagina's onder de naam `gaNaarDoel`).
+  const gaNaar: GaNaar = (doel, opties) => {
+    const huidig = routeRef.current;
+    const r = doelNaarRoute(doel, huidig.werkruimte);
+    const signaal = !!(doel.tab || doel.filter || doel.lotId != null);
+    if (r.pagina === 'boekhouding') {
+      setBoekhoudingTab(doel.tab || null);
+      setBoekhoudingRapportTab(doel.tab === 'rapporten' && doel.filter ? doel.filter : null);
+    } else {
+      setNavDoel(signaal ? {
+        pagina: r.pagina,
+        ...(doel.tab ? { tab: doel.tab } : {}),
+        ...(doel.filter ? { filter: doel.filter } : {}),
+        ...(doel.lotId != null ? { lotId: doel.lotId } : {}),
+      } : null);
     }
-    else setNavDoel(d);
-    setPage(d.pagina);
+    // Zelfde pagina zonder record: opnieuw mounten, zodat de pagina het nieuwe
+    // signaal (tab/filter) leest — net als nogmaals op de tab tikken. Een
+    // record op dezelfde pagina wisselt zonder remount (de pagina volgt de route).
+    if (r.pagina === huidig.pagina && doel.id == null) setNavNonce(n => n + 1);
+    navigeer(r, opties);
   };
   const doelVoor = (pagina: string): AttentieDoel | null => navDoel?.pagina === pagina ? navDoel : null;
   const wisNavDoel = () => setNavDoel(null);
+  // Een batch openen (tankkaart, "Nu actief"-strook, tankalarm): altijd de
+  // batch als eigen pagina, `#/productie/batches/<id>`.
+  const openBatch = (id: number) => gaNaar({ pagina: 'batches', id });
+  // Een record op zijn eigen pagina openen of sluiten (recept, product,
+  // bestelling, batch): de selectie staat in de route. Sluiten (`null`) =
+  // terug naar de lijst van die pagina. Bewust zonder remount (anders dan
+  // gaNaar zonder id): zoekterm en uitklapstand van de lijst blijven staan.
+  const openRecord = (pagina: string) => (id: string | number | null, opties?: GaNaarOpties) =>
+    navigeer(doelNaarRoute({ pagina, id }, routeRef.current.werkruimte), opties);
+  // Terug op een detailscherm: `history.back()` als de vorige entry van de app
+  // zelf is (markering in history.state), anders — binnengekomen via een
+  // gedeelde link of een bladwijzer — naar de lijst, zonder de app te verlaten.
+  const terugVanDetail = () => {
+    if (typeof window !== 'undefined' && vorigeIsEigen(window.history.state)) { window.history.back(); return; }
+    navigeer(lijstRoute(routeRef.current), { vervang: true });
+  };
   const importRef = useRef<any>(null);
   const bfAutoSynced = React.useRef(false);
 
@@ -1641,13 +1697,13 @@ function App() {
       key: `alarm:${a.id}`, soort: a.soort === 'alarm' ? 'alarm' : 'waarschuwing', actie: true,
       tekst: t('nu_chip_alarm').replace('{tank}', a.tank).replace('{batch}', a.naam).replace('{melding}', a.tekst),
       knop: t('nu_btn_bekijken'), batchId: a.batchId,
-      onOpen: () => openBatchOpBrouwzaal(a.batchId), onSluit: () => bevestigTankAlarm(a.id),
+      onOpen: () => openBatch(a.batchId), onSluit: () => bevestigTankAlarm(a.id),
     })
     for (const x of stapGereedBatches) chips.push({
       key: `stap:${x.ackKey}`, soort: 'stap', actie: true,
       tekst: t('nu_chip_stap_gereed').replace('{batch}', x.naam).replace('{stap}', x.stap).replace('{dag}', String(x.dag)),
       knop: t('nu_btn_controleren'), batchId: x.id,
-      onOpen: () => openBatchOpBrouwzaal(x.id), onSluit: () => setStapAcked((p: string[]) => [...p, x.ackKey]),
+      onOpen: () => openBatch(x.id), onSluit: () => setStapAcked((p: string[]) => [...p, x.ackKey]),
     })
     for (const s of carbDoelBereikt) {
       const b = (bat || []).find((x: any) => x.id === s.batch_id)
@@ -1655,7 +1711,7 @@ function App() {
         key: `carbdoel:${s.id}`, soort: 'carb_doel', actie: true,
         tekst: t('nu_chip_carb_doel').replace('{batch}', b?.naam || b?.biernaam || t('lbl_naamloos')),
         knop: t('nu_btn_afronden'), batchId: s.batch_id,
-        onOpen: () => openBatchOpBrouwzaal(s.batch_id), onSluit: () => setCarbAcked((p: number[]) => [...p, s.id]),
+        onOpen: () => openBatch(s.batch_id), onSluit: () => setCarbAcked((p: number[]) => [...p, s.id]),
       })
     }
     if (wcAutoMelding) chips.push({
@@ -1664,11 +1720,11 @@ function App() {
     })
     for (const x of brouwendeBatches) chips.push({
       key: `brouwen:${x.id}`, soort: 'brouwen', actie: false, batchId: x.id,
-      tekst: t('nu_chip_brouwen').replace('{batch}', x.naam), onOpen: () => openBatchOpBrouwzaal(x.id),
+      tekst: t('nu_chip_brouwen').replace('{batch}', x.naam), onOpen: () => openBatch(x.id),
     })
     for (const x of carboniserendeBatches) chips.push({
       key: `carb:${x.id}`, soort: 'carboniseren', actie: false, batchId: x.id,
-      tekst: t('nu_chip_carboniseren').replace('{batch}', x.naam), onOpen: () => openBatchOpBrouwzaal(x.id),
+      tekst: t('nu_chip_carboniseren').replace('{batch}', x.naam), onOpen: () => openBatch(x.id),
     })
     return chips
   }, [openTankAlarmen, stapGereedBatches, carbDoelBereikt, wcAutoMelding, brouwendeBatches, carboniserendeBatches, bat])
@@ -1958,14 +2014,17 @@ function App() {
 
   // Per-werkruimte nav-items — de actieve werkruimte (hierboven) bepaalt welke
   // lijst getoond wordt; de andere twee blijven één tik verwijderd via de
-  // werkruimte-wisselaar. 'kassa' had voorheen bewust geen menuplek (alleen
-  // bereikbaar via de dashboardknop) — die krijgt hij hier alsnog, naast de
-  // dashboardknop die blijft bestaan.
+  // werkruimte-wisselaar. Productie en Verkoop beginnen met hun dashboard als
+  // zichtbare eerste tab (Brouwzaal, Overzicht), in de volgorde van de keten:
+  // Brouwzaal · Batches · Recepten · Ingrediënten · HACCP · Gereedschap en
+  // Overzicht · Producten · Bestellingen · Kassa · Klanten · Statiegeld.
+  // Planning is de stand Agenda van Batches geworden (alias in route.ts).
   const navPerWerkruimte: Record<WerkruimteId, Array<{id:string,l:string,sub?:Array<{id:string,l:string}>}>> = {
     productie: [
-      {id:'ingredienten',l:t('nav_ingredienten')},
+      {id:'dashboard',l:t('nav_brouwzaal')},
+      {id:'batches',l:t('nav_batches')},
       {id:'recepten',l:t('nav_recepten')},
-      {id:'batchflow',l:t('nav_planning')},
+      {id:'ingredienten',l:t('nav_ingredienten')},
       {id:'haccp',l:t('nav_haccp')},
       {id:'gereedschap',l:t('nav_gereedschap'),sub:[
         {id:'tool_phcorrectie',l:t('nav_tool_phcorrectie')},
@@ -1973,6 +2032,7 @@ function App() {
       ]},
     ],
     verkoop: [
+      {id:'dashboard',l:t('nav_overzicht')},
       {id:'producten',l:t('nav_producten')},
       {id:'bestellingen',l:t('nav_bestellingen')},
       {id:'kassa',l:t('nav_kassa')},
@@ -1996,20 +2056,36 @@ function App() {
     badge: n.id === 'bestellingen' ? openBestellingen : undefined,
     badgeTitel: n.id === 'bestellingen' && openBestellingen > 0 ? bestellingenTitel : undefined,
   }));
-  // Titel van het huidige scherm: de werkruimte op haar dashboard, anders de
-  // naam van de pagina (ook een sub-item van een groep).
-  const paginaLabel = (() => {
-    if (page === 'dashboard') return t(WERKRUIMTE_LABEL_KEYS[werkruimte]);
-    if (page === 'instellingen') return t('nav_instellingen');
-    if (page === 'meer') return t('nav_meer');
+  // De naam van een pagina zoals de tabs hem noemen (ook een sub-item van een
+  // groep); het dashboard heet per werkruimte anders (Brouwzaal, Overzicht).
+  const paginaNaam = (id: string): string => {
     for (const n of nav) {
-      if (n.id === page) return n.l;
-      const s = n.sub?.find(x => x.id === page);
+      if (n.id === id) return n.l;
+      const s = n.sub?.find(x => x.id === id);
       if (s) return s.l;
     }
-    return appName || t('app_title');
+    return t(WERKRUIMTE_LABEL_KEYS[werkruimte]);
+  };
+  const isDetail = isDetailRoute(route);
+  // Op een detailscherm is er geen onderbalk: `--onderbalk` wordt daar de
+  // safe-area (index.css, `body.schil-detail`), zodat een vaste actiebalk en
+  // de UndoBar op de onderrand staan in plaats van erboven te zweven.
+  React.useEffect(() => {
+    document.body.classList.toggle('schil-detail', isDetail);
+    return () => { document.body.classList.remove('schil-detail'); };
+  }, [isDetail]);
+  // Titel van de kopbalk (telefoon): de werkruimte, zoals de onderbalk; op
+  // Instellingen en Meer hun eigen naam. Op een detailscherm zegt hij wélk
+  // record je voor je hebt ("Kadeblond #2609", "WC-4321") — zolang dat nog
+  // niet geladen is (of niet bestaat) de naam van de lijst.
+  const kopTitel = (() => {
+    if (page === 'instellingen') return t('nav_instellingen');
+    if (page === 'meer') return t('nav_meer');
+    if (isDetail) {
+      return detailTitel(route, { batches: bat, recepten, producten, bestellingen }, t('lbl_naamloos')) || paginaNaam(page);
+    }
+    return t(WERKRUIMTE_LABEL_KEYS[werkruimte]);
   })();
-  const isDetail = isDetailRoute(huidigeRoute);
 
   // Header-logo: zolang de data nog laadt komt het logo uit de HTTP-cache
   // via api/app_icoon (ETag); pas als dat 404't valt hij terug op het
@@ -2118,8 +2194,7 @@ function App() {
     link.href = logo;
   }, [logo]);
 
-  // Eén props-set voor de batchflow: als eigen pagina (Planning + deep-links)
-  // én als paneel onder de tankkaart op de brouwzaal.
+  // De props van de batchflow (Batches: de lijst en de batch als eigen pagina).
   const batchFlowProps = {
     bat,
     setBat,
@@ -2209,14 +2284,18 @@ function App() {
     logo,
     whoami,
     setPage,
-    setNavBatchId,
+    gaNaar,
+    // De route is de bron: `#/productie/batches/<id>` opent de batch; de
+    // pagina opent en sluit een batch via onOpenBatch (een history-entry).
     openBatchId: navBatchId,
+    onOpenBatch: openRecord('batches'),
+    batchesStand: page === 'batches' ? (route.stand ?? null) : null,
     preNieuwBatch,
     setPreNieuwBatch,
     setProductArtikelen,
     ccpMetingen: haccpCcpMetingen,
     setCcpMetingen: setHaccpCcpMetingen,
-    navDoel: doelVoor('batchflow'),
+    navDoel: doelVoor('batches'),
     onNavDoelConsumed: wisNavDoel,
   };
 
@@ -2237,9 +2316,12 @@ function App() {
   const railItems = WERKRUIMTE_IDS.map(w => ({ id: w, label: kortLabel(w), icoon: WERKRUIMTE_ICOON[w], posten: attentie[w] }));
   const onderbalkItems = WERKRUIMTE_IDS.map(w => ({ id: w, label: kortLabel(w), icoon: WERKRUIMTE_ICOON[w], aantal: attentie[w].reduce((s, p) => s + p.aantal, 0) }));
   // Op de werkruimte waar je al bent tikken = terug naar haar dashboard.
-  const kiesVanuitSchil = (w: WerkruimteId) => { if (werkruimte === w && page !== 'instellingen' && page !== 'meer') setPage('dashboard'); else { kiesWerkruimte(w); setPageIntern('dashboard'); } };
+  const kiesVanuitSchil = (w: WerkruimteId) => {
+    if (werkruimte === w && page !== 'instellingen' && page !== 'meer') setPage('dashboard');
+    else navigeer({ werkruimte: w, pagina: 'dashboard' });
+  };
   // De Meten-knop: altijd de brouwzaal, en daar de meting-modal.
-  const openMeting = () => { if (werkruimte !== 'productie') kiesWerkruimte('productie'); setNavBatchId(null); setPageIntern('dashboard'); setMetingSignaal(n => n + 1); };
+  const openMeting = () => { navigeer({ werkruimte: 'productie', pagina: 'dashboard' }); setMetingSignaal(n => n + 1); };
   const schilZonderPaginas = page === 'instellingen' || page === 'meer';
 
   return (
@@ -2256,16 +2338,16 @@ function App() {
         badgeAchtergrond={nt.from}
         openAttentie={openAttentie}
         setOpenAttentie={setOpenAttentie}
-        onGaNaar={p=>gaNaarDoel(attentieDoel(p))}
+        onGaNaar={p=>gaNaar(attentieDoel(p))}
         style={railStyle}
       />
       {/* Telefoon: kopbalk (waar je bent) met de pagina's als chips eronder. */}
+      {/* Op een detailscherm: de naam van het record en één terugknop, geen
+          chips en (hieronder) geen onderbalk. */}
       <Kopbalk
-        titel={paginaLabel}
-        onTitel={!schilZonderPaginas && !isDetail && page !== 'dashboard' ? () => setPage('dashboard') : undefined}
-        titelHint={t('nav_naar_dashboard').replace('{w}', t(WERKRUIMTE_LABEL_KEYS[werkruimte]))}
+        titel={kopTitel}
         style={kopStyle}
-        onTerug={isDetail ? () => setNavBatchId(null) : page === 'instellingen' ? () => setPage('meer') : undefined}
+        onTerug={isDetail ? terugVanDetail : page === 'instellingen' ? () => setPage('meer') : undefined}
         logo={logoImg('h-8 w-auto max-w-[44px]')}
       >
         {!schilZonderPaginas && !isDetail && <PaginaNav items={paginaItems} pagina={page} onKies={setPage} variant="chips" />}
@@ -2273,15 +2355,10 @@ function App() {
       {/* Bureau: bovenbalk met de naam van de werkruimte en de pagina's als tabs. */}
       <header className="hidden md:block sticky top-0 z-30 bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 flex items-center gap-5 h-12">
-          {/* De titel is de weg terug naar het dashboard van de werkruimte:
-              op een pagina is hij een knop, op het dashboard zelf alleen tekst. */}
+          {/* De werkruimte als gewoon label: het dashboard is de eerste tab
+              (Brouwzaal, Overzicht), geen verborgen ingang meer. */}
           <h1 className="text-base font-bold text-gray-900 whitespace-nowrap">
-            {schilZonderPaginas ? paginaLabel : page === 'dashboard' ? t(WERKRUIMTE_LABEL_KEYS[werkruimte]) : (
-              <button type="button" onClick={() => setPage('dashboard')} title={t('nav_naar_dashboard').replace('{w}', t(WERKRUIMTE_LABEL_KEYS[werkruimte]))}
-                className="-mx-2 px-2 h-9 rounded-lg hover:bg-gray-100 t-accent-text-h transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
-                {t(WERKRUIMTE_LABEL_KEYS[werkruimte])}
-              </button>
-            )}
+            {schilZonderPaginas ? kopTitel : t(WERKRUIMTE_LABEL_KEYS[werkruimte])}
           </h1>
           {!schilZonderPaginas && <PaginaNav items={paginaItems} pagina={page} onKies={setPage} variant="tabs" cls="flex-1 min-w-0 self-stretch" />}
         </div>
@@ -2291,7 +2368,7 @@ function App() {
           <div className="max-w-7xl mx-auto px-3 sm:px-4 min-h-[2.5rem] py-1 flex items-center gap-2 overflow-x-auto nav-scroll">
             <span className="text-[11px] font-semibold text-gray-500 flex-shrink-0">{t('nu_actief')}</span>
             {nuActief.map(c => {
-              const open = navBatchId != null && c.batchId === navBatchId && (page === 'dashboard' || page === 'batchflow');
+              const open = navBatchId != null && c.batchId === navBatchId;
               return (
                 <span key={c.key} className={`flex items-center flex-shrink-0 rounded-full transition-colors ${c.actie ? 'bg-white text-gray-900 shadow-sm border border-gray-200' : 'bg-gray-200/70 text-gray-700 hover:bg-gray-200'} ${open ? 'ring-2 ring-[var(--t-accent-edge,var(--t-accent))]' : ''}`}>
                   <button type="button" onClick={c.onOpen} title={t('nu_chip_open_title')}
@@ -2310,33 +2387,35 @@ function App() {
           </div>
         </div>
       )}
-      <PageErrorBoundary page={page}>
+      {/* De foutgrens begint opnieuw bij elke routewissel, ook binnen een
+          pagina: loopt één batch of bestelling vast, dan brengt de terugknop
+          je weer bij een werkende lijst. */}
+      <PageErrorBoundary page={routeHash}>
       <main key={`${page}-${navNonce}`} className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 schil-inhoud">
         <LaadFout />
         {/* Dashboard-pad is werkruimte-loos qua route maar toont het dashboard
             van de actieve werkruimte — zo landt de werkruimte-wisselaar (die
             bij een echte wissel naar 'dashboard' springt) altijd op de juiste,
             kleine "dagelijkse takenlijst" voor die pet. */}
-        {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankBewaking={tankBewaking} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setNavBatchId={setNavBatchId} setPreNieuwBatch={setPreNieuwBatch} gaNaarDoel={gaNaarDoel} producten={producten} recepten={recepten} carbSessies={carbSessies} geselecteerdeBatchId={navBatchId} onSelecteerBatch={setNavBatchId} metingSignaal={metingSignaal}
-          batchPaneel={navBatchId != null ? <BatchFlowPage key={`paneel-${navBatchId}`} {...batchFlowProps} embedded onSluit={() => setNavBatchId(null)} /> : null} />}
-        {page==='dashboard' && werkruimte==='verkoop' && <VerkoopDashboard bestellingen={bestellingen} bestellingPicks={bestellingPicks} setOpenOrderId={setOpenOrderId} av={av} producten={producten} locaties={locaties} uit={uit} verplaatsingen={verplaatsingen} afboekingen={afboekingen} wcCreds={wcCreds} wcSyncLog={wcSyncLog} setPage={setPage} />}
-        {page==='dashboard' && werkruimte==='administratie' && <AdministratieDashboard btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} accijnsAangiftes={accijnsAangiftes} acc={acc} inkoopFacturen={inkoopFacturen} inkoopInbox={inkoopInbox} verkoopFacturen={verkoopFacturen} klanten={klanten} breweryDetails={breweryDetails} attentie={attentie.administratie} gaNaarDoel={gaNaarDoel} setPage={setPage} setBoekhoudingTab={setBoekhoudingTab} />}
+        {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankBewaking={tankBewaking} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} gaNaar={gaNaar} producten={producten} recepten={recepten} carbSessies={carbSessies} metingSignaal={metingSignaal} />}
+        {page==='dashboard' && werkruimte==='verkoop' && <VerkoopDashboard bestellingen={bestellingen} bestellingPicks={bestellingPicks} gaNaar={gaNaar} av={av} producten={producten} locaties={locaties} uit={uit} verplaatsingen={verplaatsingen} afboekingen={afboekingen} wcCreds={wcCreds} wcSyncLog={wcSyncLog} setPage={setPage} />}
+        {page==='dashboard' && werkruimte==='administratie' && <AdministratieDashboard btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} accijnsAangiftes={accijnsAangiftes} acc={acc} inkoopFacturen={inkoopFacturen} inkoopInbox={inkoopInbox} verkoopFacturen={verkoopFacturen} klanten={klanten} breweryDetails={breweryDetails} attentie={attentie.administratie} gaNaarDoel={gaNaar} setPage={setPage} setBoekhoudingTab={setBoekhoudingTab} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} kostenSoorten={kostenSoorten} bfCreds={bfCreds} auditLog={auditLog} setAuditLog={setAuditLog} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} setJournaal={setJournaal} navDoel={doelVoor('ingredienten')} onNavDoelConsumed={wisNavDoel} />}
-        {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bat={bat} av={av} verliesRegistraties={verliesRegistraties} inkoopFacturen={inkoopFacturen} verpakkingen={verpakkingen} onderdelen={onderdelen} accijnsInst={accijnsInst} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} />}
-        {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} ing={ing} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} onderdelen={onderdelen} av={av} setAv={setAv} uit={uit} bi={bi} lots={lots} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={wcCredsSchrijfbaar ? setWcCreds : undefined} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} />}
-        {(page==='batchflow' || page==='planning') && <BatchFlowPage {...batchFlowProps} onTerug={() => { setNavBatchId(null); setPageIntern('dashboard') }} />}
+        {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bat={bat} producten={producten} av={av} verliesRegistraties={verliesRegistraties} inkoopFacturen={inkoopFacturen} verpakkingen={verpakkingen} onderdelen={onderdelen} accijnsInst={accijnsInst} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setTagVolgorde={setTagVolgorde} geslotenGroepen={geslotenGroepen} setGeslotenGroepen={setGeslotenGroepen} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} recordId={recordId} onOpenRecord={openRecord('recepten')} gaNaar={gaNaar} />}
+        {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} ing={ing} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} onderdelen={onderdelen} av={av} setAv={setAv} uit={uit} bi={bi} lots={lots} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={wcCredsSchrijfbaar ? setWcCreds : undefined} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} recordId={recordId} onOpenRecord={openRecord('producten')} gaNaar={gaNaar} />}
+        {page==='batches' && <BatchFlowPage {...batchFlowProps} />}
         {page==='tool_phcorrectie' && <GereedschapPage tool="ph" />}
         {page==='tool_waterprofiel' && <GereedschapPage tool="water" waterProfielen={waterProfielen} setWaterProfielen={setWaterProfielen} waterDoelprofielen={waterDoelprofielen} setWaterDoelprofielen={setWaterDoelprofielen} claudeCreds={claudeCreds} />}
-        {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} openOrderId={openOrderId} setOpenOrderId={setOpenOrderId} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} accijnsAangiftes={accijnsAangiftes} afboekingen={afboekingen} smtpCreds={smtpCreds} mollieCreds={mollieCreds} mailTemplates={mailTemplates} btwTarieven={btwTarieven} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} setJournaal={setJournaal} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} navDoel={doelVoor('bestellingen')} onNavDoelConsumed={wisNavDoel} />}
-        {page==='kassa' && <KassaPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} producten={producten} productArtikelen={productArtikelen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} factuurLogo={factuurLogo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} klanten={klanten} setKlanten={setKlanten} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsAangiftes={accijnsAangiftes} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} />}
-        {page==='klanten' && <KlantenPage klanten={klanten} setKlanten={setKlanten} bestellingen={bestellingen} setBestellingen={setBestellingen} verkoopFacturen={verkoopFacturen} breweryDetails={breweryDetails} smtpCreds={smtpCreds} factuurLogo={factuurLogo} logo={logo} appName={appName} setPage={setPage} setOpenOrderId={setOpenOrderId} auditLog={auditLog} setAuditLog={setAuditLog} />}
+        {page==='bestellingen' && <BestellingenPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} recordId={recordId} onOpenRecord={openRecord('bestellingen')} gaNaar={gaNaar} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} accijnsAangiftes={accijnsAangiftes} afboekingen={afboekingen} smtpCreds={smtpCreds} mollieCreds={mollieCreds} mailTemplates={mailTemplates} btwTarieven={btwTarieven} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} setJournaal={setJournaal} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} navDoel={doelVoor('bestellingen')} onNavDoelConsumed={wisNavDoel} />}
+        {page==='kassa' && <KassaPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} producten={producten} productArtikelen={productArtikelen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} factuurLogo={factuurLogo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} klanten={klanten} setKlanten={setKlanten} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsAangiftes={accijnsAangiftes} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} gaNaar={gaNaar} />}
+        {page==='klanten' && <KlantenPage klanten={klanten} setKlanten={setKlanten} bestellingen={bestellingen} setBestellingen={setBestellingen} verkoopFacturen={verkoopFacturen} breweryDetails={breweryDetails} smtpCreds={smtpCreds} factuurLogo={factuurLogo} logo={logo} appName={appName} setPage={setPage} gaNaar={gaNaar} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} bestellingen={bestellingen} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} />}
         {page==='inventarisatie' && <InventarisatiePage lots={lots} ing={ing} av={av} bat={bat} uit={uit} afboekingen={afboekingen} setAfboekingen={setAfboekingen} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingPicks={bestellingPicks} bestellingen={bestellingen} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} setLots={setLots} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} accijnsInst={accijnsInst} />}
         {page==='voorraadverloop' && <VoorraadverloopPage lots={lots} bat={bat} bi={bi} av={av} uit={uit} afboekingen={afboekingen} log={log} ing={ing} accijnsInst={accijnsInst} producten={producten} locaties={locaties} verplaatsingen={verplaatsingen} />}
-        {page==='rapporten' && <RapportenPage gaNaarDoel={gaNaarDoel} />}
+        {page==='rapporten' && <RapportenPage gaNaarDoel={gaNaar} />}
         {page==='agp' && <AgpPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} producten={producten} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsInst={accijnsInst} log={log} setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog} accijnsAangiftes={accijnsAangiftes} verliezen={verliesRegistraties} bestellingen={bestellingen} bestellingPicks={bestellingPicks} />}
         {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} tankStatussen={tankStatussen} tankLog={tankReinigingLog} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} producten={producten} setProducten={setProducten} setBat={setBat} vrijgaven={haccpVrijgaven} sessies={afvulSessies} sluitcontroles={haccpSluitcontroles} etiketcontroles={haccpEtiketcontroles} afwijkingen={haccpAfwijkingen} traceOefeningen={haccpTraceOefeningen} setTraceOefeningen={setHaccpTraceOefeningen} whoami={whoami} afboekingen={afboekingen} klanten={klanten} bestellingen={bestellingen} bestellingPicks={bestellingPicks} haccpInst={haccpInst} breweryDetails={breweryDetails} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('haccp')} onNavDoelConsumed={wisNavDoel} />}
-        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} verpakkingen={verpakkingen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} setOpenOrderId={setOpenOrderId} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} mollieCreds={mollieCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} journaal={journaal} setJournaal={setJournaal} bankSaldi={bankSaldi} setBankSaldi={setBankSaldi} jaarafsluitingen={jaarafsluitingen} setJaarafsluitingen={setJaarafsluitingen} initialTab={boekhoudingTab} initialRapportTab={boekhoudingRapportTab} onInitialTabConsumed={() => { setBoekhoudingTab(null); setBoekhoudingRapportTab(null) }} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} inkoopInbox={inkoopInbox} setInkoopInbox={setInkoopInbox} refreshInkoopInbox={refreshInkoopInbox} imapCreds={imapCreds} onNaarPostvakInstellingen={() => gaNaarDoel({pagina: 'instellingen', tab: 'koppelingen', filter: 'postvak'})} />}
+        {page==='boekhouding' && <BoekhoudingPage wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} verpakkingen={verpakkingen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setPage={setPage} gaNaar={gaNaar} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} mollieCreds={mollieCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} journaal={journaal} setJournaal={setJournaal} bankSaldi={bankSaldi} setBankSaldi={setBankSaldi} jaarafsluitingen={jaarafsluitingen} setJaarafsluitingen={setJaarafsluitingen} initialTab={boekhoudingTab} initialRapportTab={boekhoudingRapportTab} onInitialTabConsumed={() => { setBoekhoudingTab(null); setBoekhoudingRapportTab(null) }} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} inkoopInbox={inkoopInbox} setInkoopInbox={setInkoopInbox} refreshInkoopInbox={refreshInkoopInbox} imapCreds={imapCreds} onNaarPostvakInstellingen={() => gaNaar({pagina: 'instellingen', tab: 'koppelingen', filter: 'postvak'})} />}
         {page==='instellingen' && <InstellingenPage haccpSchoonmaakTaken={haccpSchoonmaakTaken} accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} wcImportStatus={wcImportStatus} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} mollieCreds={mollieCreds} setMollieCreds={setMollieCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} acc={acc} accijnsAangiftes={accijnsAangiftes} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} notificatieInst={notificatieInst} setNotificatieInst={setNotificatieInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} websiteTelemetrie={websiteTelemetrie} setWebsiteTelemetrie={setWebsiteTelemetrie} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} haccpInst={haccpInst} setHaccpInst={setHaccpInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} gebruikersRollen={gebruikersRollen} setGebruikersRollen={setGebruikersRollen} loginInst={loginInst} setLoginInst={setLoginInst} resetApp={resetApp} integriteitData={{ingredienten: ing, lots, batches: bat, batch_ingredienten: bi, afvullingen: av, uitleveringen: uit, accijns: acc, bestellingen, bestelling_picks: bestellingPicks, verkoop_facturen: verkoopFacturen, afboekingen, klanten, producten, product_artikelen: productArtikelen, locaties, verplaatsingen, verpakkingen}} integriteitSetters={{lots: setLots, batches: setBat, afvullingen: setAv, product_artikelen: setProductArtikelen}} imapCreds={imapCreds} setImapCreds={setImapCreds} navDoel={doelVoor('instellingen')} onNavDoelConsumed={wisNavDoel} />}
         {page==='meer' && <MeerPage whoami={whoami} appName={appName} onInstellingen={()=>setPage('instellingen')} />}
       </main>
@@ -2362,7 +2441,7 @@ function App() {
           titel={t(WERKRUIMTE_LABEL_KEYS[openAttentie])}
           posten={attentie[openAttentie]}
           onSluit={() => setOpenAttentie(null)}
-          onGaNaar={p => gaNaarDoel(attentieDoel(p))}
+          onGaNaar={p => gaNaar(attentieDoel(p))}
         />
       )}
       <UndoBar undo={undo} />

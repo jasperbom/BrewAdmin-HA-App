@@ -10,10 +10,28 @@ import { ingredientenVoorType } from '../utils/ingTypes'
 import { receptRegelVoorraad } from '../utils/ingredientVoorraad'
 import { voegReceptSyncSamen, pasReceptRegelAan, wisLokaal } from '../utils/receptSync'
 import Icon from '../components/ui/Icon'
+import LegeStaat from '../components/ui/LegeStaat'
+import { _fetchedKeys } from '../utils/api'
 
-function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopFacturen=[], verpakkingen=[], onderdelen=[], accijnsInst=null, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[], setAuditLog=()=>{}}: any) {
+// recordId/onOpenRecord: het geopende recept staat in de route
+// (`#/productie/recepten/<id>`, App.tsx) — terug, herladen en een gedeelde link
+// werken. producten en bat (batches) zijn er voor "in gebruik" (F4); gaNaar
+// voor de ketenlinks naar product en batch.
+function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistraties=[], inkoopFacturen=[], verpakkingen=[], onderdelen=[], accijnsInst=null, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[], setAuditLog=()=>{}, recordId=null, onOpenRecord}: any) {
   const {useState} = React;
-  const [sel, setSel]         = useState(null);
+  // Het geopende recept: uit de route als de schil die meegeeft, anders lokaal.
+  // Id's worden als tekst vergeleken (een Brewfather-id is tekst, de route ook).
+  const [lokaalSel, setLokaalSel] = useState<any>(null);
+  const gestuurd = typeof onOpenRecord === 'function';
+  const sel: string | null = gestuurd ? (recordId == null || recordId === '' ? null : String(recordId)) : (lokaalSel == null ? null : String(lokaalSel));
+  // `opties.vervang`: de history-entry vervangen (een recept dat niet bestaat
+  // hoort niet terug te komen onder "terug").
+  const setSel = (v: any, opties?: {vervang?: boolean}) => {
+    const nieuw = typeof v === 'function' ? v(sel) : v;
+    const id = nieuw == null || nieuw === '' ? null : String(nieuw);
+    if (gestuurd) onOpenRecord(id, opties); else setLokaalSel(id);
+  };
+  const isSel = (id: any) => sel != null && String(id) === sel;
   const [syncing, setSyncing] = useState(false);
   const [msg, setMsg]         = useState('');
   const [zoek, setZoek]       = useState('');
@@ -43,7 +61,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
   const toggleVerbergen = (id: any, e: any) => {
     e.stopPropagation();
     setVerborgen((prev: any) => prev.includes(id) ? prev.filter((x: any)=>x!==id) : [...prev, id]);
-    if (sel === id) setSel(null);
+    if (isSel(id)) setSel(null);
   };
 
   const runSync = async () => {
@@ -53,21 +71,24 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
     setSyncing(true); setMsg('');
     try {
       const { recepten: recs, versionsSupported, totalVersions } = await bfGetRecipesWithVersions();
-      // Brewfather is leidend, maar de eigen velden (vaste kosten, verlies-%),
-      // de koppeling aan een voorraadingrediënt (ingredient_id) en een in de
-      // app gecorrigeerd hopschema (`_lokaal`) blijven staan — zie
+      // Brewfather is leidend, maar de eigen velden (vaste kosten, verlies-%,
+      // vastgepind), de koppeling aan een voorraadingrediënt (ingredient_id),
+      // een in de app gecorrigeerd hopschema (`_lokaal`) en een recept waar een
+      // batch of product nog naar verwijst blijven staan — zie
       // utils/receptSync.ts.
-      const { recepten: merged, behouden } = voegReceptSyncSamen(recepten, recs);
+      const { recepten: merged, behouden, bewaard } = voegReceptSyncSamen(recepten, recs, { batches: bat, producten });
       setRecepten(merged);
       const parentCount = recs.filter((r: any) => r.is_huidige !== false).length;
       const auditMsg = (versionsSupported
         ? `Brewfather sync: ${parentCount} recepten (+${totalVersions} versies)`
         : `Brewfather sync: ${parentCount} recepten`)
-        + (behouden > 0 ? `, ${behouden} lokale aanpassingen behouden` : '');
+        + (behouden > 0 ? `, ${behouden} lokale aanpassingen behouden` : '')
+        + (bewaard > 0 ? `, ${bewaard} recepten niet meer in Brewfather maar nog in gebruik bewaard` : '');
       logAudit(auditLog, setAuditLog, {entiteit:'Recept', entiteit_id:0, actie:'gewijzigd', omschrijving: auditMsg})
       const key = versionsSupported ? 'msg_bf_sync_with_versions' : 'msg_bf_sync_no_versions';
       setMsg(t(key).replace('{n}', String(parentCount)).replace('{v}', String(totalVersions))
-        + (behouden > 0 ? ' ' + t('msg_bf_sync_lokaal_behouden').replace('{n}', String(behouden)) : ''));
+        + (behouden > 0 ? ' ' + t('msg_bf_sync_lokaal_behouden').replace('{n}', String(behouden)) : '')
+        + (bewaard > 0 ? ' ' + t('msg_bf_sync_bewaard').replace('{n}', String(bewaard)) : ''));
     } catch(e: any) { setMsg(t('msg_bf_sync_failed').replace('{msg}', e.message||String(e))); }
     setSyncing(false);
   };
@@ -85,7 +106,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
   );
   const zichtbaar     = gefilterd.filter((r: any) => !verborgen.includes(r.id));
   const verborgenLijst = huidige.filter((r: any) => verborgen.includes(r.id));
-  const selRec = recepten.find((r: any) => r.id === sel);
+  const selRec = sel == null ? undefined : recepten.find((r: any) => String(r.id) === sel);
 
   // Type van een recipe-sectie naar het ingredient.type in de catalogus.
   const CAT_TO_TYPE: Record<string, string> = {mout:'Mout', hop:'Hop', gist:'Gist', overig:'Overig'};
@@ -353,15 +374,17 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-gray-800">{t('nav_recepten')}</h2>
-        <div className="flex items-center gap-3">
-          {msg && <span className={`text-sm ${msg.startsWith('✓')?'text-green-600':'text-orange-600'}`}>{msg}</span>}
+      <div className="mb-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xl font-bold text-gray-800">{t('nav_recepten')}</h2>
           <Btn onClick={runSync} disabled={syncing||!bfCreds?.enabled}
             cls={!bfCreds?.enabled?'opacity-50 cursor-not-allowed':''}>
             {syncing?t('recipe_syncing'):t('recipe_sync_brewfather')}
           </Btn>
         </div>
+        {/* De syncmelding op een eigen regel: naast de knop kneep een lange
+            melding (bewaarde recepten) op een telefoon de titel af. */}
+        {msg && <p className={`mt-2 text-sm md:text-right break-words ${msg.startsWith('✓')?'text-green-600':'text-orange-600'}`}>{msg}</p>}
       </div>
       <div className="flex flex-col md:flex-row gap-4 md:items-start">
         {/* Lijst */}
@@ -388,8 +411,8 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
               const open = !!versiesOpen[r.id];
               return (
                 <>
-                  <div onClick={()=>setSel((s: any)=>s===r.id?null:r.id)}
-                    className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors group ${sel===r.id?'t-sel border-l-2':''}`}>
+                  <div onClick={()=>setSel(isSel(r.id)?null:r.id)}
+                    className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors group ${isSel(r.id)?'t-sel border-l-2':''}`}>
                     <div className="flex items-center justify-between gap-1">
                       <span className="font-medium text-sm truncate">{r.naam}</span>
                       <div className="flex items-center gap-1 flex-shrink-0">
@@ -412,8 +435,8 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
                     </div>
                   </div>
                   {open && versies.map((v: any) => (
-                    <div key={v.id} onClick={()=>setSel((s: any)=>s===v.id?null:v.id)}
-                      className={`pl-6 pr-3 py-1.5 border-b cursor-pointer t-hover transition-colors text-xs ${sel===v.id?'t-sel border-l-2':''}`}>
+                    <div key={v.id} onClick={()=>setSel(isSel(v.id)?null:v.id)}
+                      className={`pl-6 pr-3 py-1.5 border-b cursor-pointer t-hover transition-colors text-xs ${isSel(v.id)?'t-sel border-l-2':''}`}>
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-blue-600 font-medium">{v.versie}</span>
                         <span className="text-gray-600 truncate flex-1">{v.naam}</span>
@@ -498,8 +521,8 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
                 <span>{t('lbl_hidden')} ({verborgenLijst.length})</span>
               </button>
               {verborgenOpen&&verborgenLijst.map((r: any)=>(
-                <div key={r.id} onClick={()=>setSel((s: any)=>s===r.id?null:r.id)}
-                  className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors group opacity-60 hover:opacity-100 ${sel===r.id?'t-sel border-l-2':''}`}>
+                <div key={r.id} onClick={()=>setSel(isSel(r.id)?null:r.id)}
+                  className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors group opacity-60 hover:opacity-100 ${isSel(r.id)?'t-sel border-l-2':''}`}>
                   <div className="flex items-center justify-between gap-1">
                     <span className="font-medium text-sm truncate">{r.naam}</span>
                     <button onClick={(e: any)=>toggleVerbergen(r.id,e)}
@@ -514,7 +537,8 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
         </div>
         {/* Detail */}
         {selRec ? (<>
-          <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors" onClick={()=>setSel(null)}>{t('btn_back')}</button>
+          {/* Met de route terug via de kopbalk (één terugweg); zonder route de eigen knop. */}
+          {!gestuurd && <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors" onClick={()=>setSel(null)}>{t('btn_back')}</button>}
           <div className="flex-1 bg-white rounded-xl shadow-card p-4 min-w-0">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
@@ -546,7 +570,7 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
                     // BatchFlowPage bouwt de batch (verwacht_*, liters, kleur,
                     // profielen) en de ingrediëntregels zelf uit het recept op.
                     setPreNieuwBatch({ recept_id: selRec.id, naam: selRec.naam })
-                    setPage('batchflow')
+                    setPage('batches')
                   }}>{t('btn_brouwen')}</Btn>
                 )}
               </div>
@@ -646,7 +670,15 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
               </div>
             )}
           </div>
-        </>):(
+        </>): sel != null ? (
+          // Een recept in de route dat er niet (meer) is: zeggen, met de weg
+          // naar de lijst. Zolang de recepten nog laden: niets.
+          _fetchedKeys.has('recepten') ? (
+            <LegeStaat cls="flex-1" icoon="search" titel={t('route_niet_gevonden_titel')} tekst={t('route_niet_gevonden_recept')}>
+              <Btn v="secondary" onClick={() => setSel(null, {vervang: true})}>{t('route_naar_lijst').replace('{lijst}', t('nav_recepten'))}</Btn>
+            </LegeStaat>
+          ) : null
+        ):(
           <div className="flex-1 flex items-center justify-center text-gray-300 text-sm py-24 bg-white rounded-xl shadow-card">
             {t('msg_select_recept')}
           </div>

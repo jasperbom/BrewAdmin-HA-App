@@ -43,7 +43,7 @@ describe('attentiePosten', () => {
       ['tht_binnenkort', 1],
     ])
     // Elke post wijst naar de pagina waar hij afgehandeld wordt.
-    expect(posten.map(p => p.pagina)).toEqual(['batchflow', 'haccp', 'ingredienten', 'ingredienten'])
+    expect(posten.map(p => p.pagina)).toEqual(['batches', 'haccp', 'ingredienten', 'ingredienten'])
     // Labels lopen altijd via i18n, nooit als letterlijke tekst.
     expect(posten.every(p => p.sleutel.startsWith('attentie_'))).toBe(true)
   })
@@ -67,7 +67,7 @@ describe('attentiePosten', () => {
       [...alle.productie, ...alle.verkoop, ...alle.administratie].map(p => [p.id, attentieDoel(p)]),
     )
     expect(doelen).toEqual({
-      batchtaken: { pagina: 'batchflow', filter: 'taken' },
+      batchtaken: { pagina: 'batches', filter: 'taken' },
       schoonmaak: { pagina: 'haccp', tab: 'reiniging' },
       tht_verlopen: { pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_verlopen' },
       tht_binnenkort: { pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_binnenkort' },

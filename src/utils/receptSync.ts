@@ -1,22 +1,31 @@
 // Brewfather-receptsync: de nieuwe stand uit Brewfather samenvoegen met wat de
 // gebruiker in de app aan de recepten heeft gedaan.
 //
-// Brewfather is leidend voor het recept zelf. Drie dingen zijn van de app en
+// Brewfather is leidend voor het recept zelf. Vier dingen zijn van de app en
 // blijven bij een sync staan:
-//  1. de eigen velden op het recept (`EIGEN_VELDEN`): vaste kosten per brouw en
-//     een handmatig verliespercentage — brouwerijgegevens, geen receptgegevens;
+//  1. de eigen velden op het recept (`RECEPT_EIGEN_VELDEN`): vaste kosten per
+//     brouw, een handmatig verliespercentage en `vastgepind` — brouwerij-
+//     gegevens, geen receptgegevens;
 //  2. de koppeling van een receptregel aan een voorraadingrediënt
 //     (`ingredient_id`);
 //  3. een hopschema dat de gebruiker in de app heeft gecorrigeerd (gebruik,
 //     tijd, tijdseenheid). Zo'n regel draagt `_lokaal` met de gewijzigde
 //     velden; zonder die markering zette elke sync de correctie stil terug en
 //     nam de volgende nieuwe batch weer het oude schema over. De markering
-//     wissen maakt Brewfather bij de volgende sync weer leidend.
+//     wissen maakt Brewfather bij de volgende sync weer leidend;
+//  4. een recept dat uit Brewfather verdwijnt maar waar de app nog naar
+//     verwijst (`batch.recept_id`/`recept_versie_id`, `product.recept_ids`/
+//     `recept_huidig_id`, ook via een versie) of dat vastgepind is. Dat blijft
+//     staan met `niet_in_brewfather: true` — een verwezen recept verdwijnt nooit
+//     stil. Komt het terug in Brewfather, dan valt die markering weg. Een recept
+//     waar niets naar verwijst verdwijnt zoals altijd.
 //
 // Puur: geen React, geen opslag.
 
+import { hoofdIdResolver, isReceptVersie } from './productKeten'
+
 /** Velden van het recept die van de app zijn en een sync overleven. */
-export const RECEPT_EIGEN_VELDEN = ['kostprijs_overig', 'kostprijs_verlies_pct']
+export const RECEPT_EIGEN_VELDEN = ['kostprijs_overig', 'kostprijs_verlies_pct', 'vastgepind']
 
 /** Regelvelden die in de app aan te passen zijn en dan lokaal blijven. */
 export const RECEPT_LOKALE_VELDEN = ['gebruik', 'tijd', 'tijdEenheid']
@@ -61,6 +70,66 @@ export interface ReceptSyncResultaat {
   recepten: any[]
   /** Aantal receptregels waarvan een lokale aanpassing is blijven staan. */
   behouden: number
+  /**
+   * Aantal hoofdrecepten dat niet meer in Brewfather staat maar bewaard bleef
+   * omdat de app er nog naar verwijst (of omdat het vastgepind is).
+   */
+  bewaard: number
+  /** Hun id's. */
+  bewaardIds: string[]
+  /** Aantal versie-records dat om dezelfde reden bleef staan. */
+  bewaardeVersies: number
+}
+
+/** Waar de app naar recepten verwijst; bepaalt wat een sync niet mag weggooien. */
+export interface ReceptVerwijzingen {
+  batches?: ReadonlyArray<{ recept_id?: string | null; recept_versie_id?: string | null } | null | undefined> | null
+  producten?: ReadonlyArray<{ recept_ids?: ReadonlyArray<string | null | undefined> | null; recept_huidig_id?: string | null } | null | undefined> | null
+}
+
+const isVersie = (r: any): boolean => isReceptVersie(r)
+
+/**
+ * De recepten uit `oud` die niet meer in Brewfather (`nieuw`) staan maar nog
+ * gebruikt worden: een hoofdrecept als het zelf of een versie ervan verwezen
+ * wordt of als het vastgepind is (dan met al zijn versies); een losse versie
+ * als ernaar verwezen wordt. Gemarkeerd met `niet_in_brewfather: true`.
+ */
+const verwezenRecepten = (oud: any[], nieuw: any[], verwijzingen: ReceptVerwijzingen | undefined) => {
+  const nieuwIds = new Set(nieuw.map((r: any) => String(r?.id)))
+  const hoofdVan = hoofdIdResolver(oud)
+  const verwezen = new Set<string>()
+  const voeg = (id: unknown) => { if (id != null && id !== '') verwezen.add(String(id)) }
+  for (const b of verwijzingen?.batches || []) { voeg(b?.recept_id); voeg(b?.recept_versie_id) }
+  for (const p of verwijzingen?.producten || []) {
+    for (const id of p?.recept_ids || []) voeg(id)
+    voeg(p?.recept_huidig_id)
+  }
+  const verwezenHoofd = new Set([...verwezen].map(hoofdVan))
+
+  const bewaardHoofd = new Set<string>()
+  for (const r of oud) {
+    if (r?.id == null || isVersie(r) || nieuwIds.has(String(r.id))) continue
+    if (verwezenHoofd.has(String(r.id)) || r.vastgepind === true) bewaardHoofd.add(String(r.id))
+  }
+  const records: any[] = []
+  const gehad = new Set<string>()
+  let versies = 0
+  for (const r of oud) {
+    if (r?.id == null || nieuwIds.has(String(r.id))) continue
+    const id = String(r.id)
+    // Elk id één keer: een dubbel record in de oude lijst komt niet dubbel
+    // terug (een lijst-key verwacht unieke id's, zie de delta-sync).
+    if (gehad.has(id)) continue
+    const blijft = isVersie(r)
+      ? verwezen.has(id) || bewaardHoofd.has(hoofdVan(id))
+      : bewaardHoofd.has(id)
+    if (!blijft) continue
+    gehad.add(id)
+    if (isVersie(r)) versies += 1
+    records.push({ ...r, niet_in_brewfather: true })
+  }
+  return { records, ids: [...bewaardHoofd], versies }
 }
 
 /**
@@ -72,7 +141,11 @@ export interface ReceptSyncResultaat {
  * koken én Citra dry hop), dus alleen op naam matchen zou de correctie van de
  * ene additie op de andere zetten.
  */
-export const voegReceptSyncSamen = (oud: any[] | null | undefined, nieuw: any[] | null | undefined): ReceptSyncResultaat => {
+export const voegReceptSyncSamen = (
+  oud: any[] | null | undefined,
+  nieuw: any[] | null | undefined,
+  verwijzingen?: ReceptVerwijzingen,
+): ReceptSyncResultaat => {
   const byId = new Map<any, any>((oud || []).map((r: any) => [r?.id, r]))
   let behouden = 0
   const recepten = (nieuw || []).map((nw: any) => {
@@ -110,5 +183,13 @@ export const voegReceptSyncSamen = (oud: any[] | null | undefined, nieuw: any[] 
     }
     return out
   })
-  return { recepten, behouden }
+  // Wat Brewfather niet meer kent maar de app nog gebruikt, blijft staan.
+  const bewaard = verwezenRecepten(oud || [], nieuw || [], verwijzingen)
+  return {
+    recepten: [...recepten, ...bewaard.records],
+    behouden,
+    bewaard: bewaard.ids.length,
+    bewaardIds: bewaard.ids,
+    bewaardeVersies: bewaard.versies,
+  }
 }

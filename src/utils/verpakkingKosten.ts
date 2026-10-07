@@ -96,8 +96,15 @@ export interface VerpakkingMixInvoer {
   onderdelen?: any[] | null
 }
 
-/** De verpakkingsmix over een set batches, gewogen op afgevulde liters. */
-function mixVoorBatches(invoer: VerpakkingMixInvoer, bron: VerpakkingMix['bron']): VerpakkingMix {
+/**
+ * De verpakkingsmix over een set batches, gewogen op afgevulde liters.
+ *
+ * `metPrijs` (standaard aan): een mix waarvan alle verpakkingen op nul euro
+ * staan geldt als "onbekend" — voor een kostprijs is dat zo. Voor de vraag
+ * "hoe verdeel je de liters over de verpakkingen" doen de prijzen er niet toe;
+ * `verpakkingVerdeling` zet hem daarom uit.
+ */
+function mixVoorBatches(invoer: VerpakkingMixInvoer, bron: VerpakkingMix['bron'], metPrijs = true): VerpakkingMix {
   const ids = new Set((invoer.batches || []).filter(Boolean).map((b: any) => Number(b?.id)))
   const rijen = (invoer.afvullingen || []).filter((a: any) => ids.has(Number(a?.batch_id)))
   if (!rijen.length) return leeg()
@@ -153,7 +160,7 @@ function mixVoorBatches(invoer: VerpakkingMixInvoer, bron: VerpakkingMix['bron']
 
   // Alles op nul betekent dat je de verpakkingsprijzen nog niet hebt ingevuld —
   // dat is geen mix van nul euro, dat is "onbekend".
-  if (perLiter <= 0) return leeg()
+  if (metPrijs && perLiter <= 0) return leeg()
 
   return {regels, perLiter, bron, batches: gezien.size, liters: rond(totaalLiters, 1)}
 }
@@ -174,6 +181,24 @@ export function verpakkingMix(
   if (eigen.bron !== 'geen') return eigen
   if (!alleBatches?.length) return leeg()
   return mixVoorBatches({...rest, batches: alleBatches}, 'brouwerij')
+}
+
+/**
+ * Hoe de afgevulde liters over de verpakkingen verdeeld worden — dezelfde
+ * bronvolgorde als `verpakkingMix` (eerst de eigen batches, anders de hele
+ * brouwerij), maar zonder de prijs: ook als de verpakkingsprijzen nog op nul
+ * staan is de verdeling bekend. Gebruikt voor "komt eraan" (hoeveel flessen en
+ * fusten levert een batch in de tank naar verwachting op).
+ */
+export function verpakkingVerdeling(
+  eigenBatches?: any[] | null,
+  alleBatches?: any[] | null,
+  rest?: Omit<VerpakkingMixInvoer, 'batches'>,
+): VerpakkingMix {
+  const eigen = mixVoorBatches({...rest, batches: eigenBatches}, 'recept', false)
+  if (eigen.bron !== 'geen') return eigen
+  if (!alleBatches?.length) return leeg()
+  return mixVoorBatches({...rest, batches: alleBatches}, 'brouwerij', false)
 }
 
 // ── De referentieverpakking bij een recept ──────────────────────────────────

@@ -1404,7 +1404,13 @@ export const bfGetRecipes = async (): Promise<any[]> => {
   let startAfter: string | null = null
   for (;;) {
     const r = await bfFetch(`recipes?complete=true&limit=50${startAfter?'&start_after='+startAfter:''}`)
-    if (!r.ok) break
+    // Een mislukte pagina (401, 500, 429 na de herkansing) is geen lege of
+    // korte receptenlijst. Stil stoppen liet de sync alles wat niet binnenkwam
+    // als "verdwenen uit Brewfather" behandelen: de recepten weg (met hun
+    // eigen velden en koppelingen) en wat nog verwezen werd ten onrechte
+    // gemarkeerd als `niet_in_brewfather`. Nu breekt de sync af en blijft de
+    // lijst zoals hij was (utils/receptSync.ts).
+    if (!r.ok) throw new Error(`Brewfather ${r.status}`)
     const d = await r.json()
     all.push(...d)
     if (d.length < 50) break

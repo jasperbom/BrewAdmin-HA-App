@@ -6,6 +6,7 @@ import { bestellingenOmTePicken } from '../utils/picking'
 import SectionHeader from '../components/ui/SectionHeader'
 import StatCard from '../components/ui/StatCard'
 import Btn from '../components/ui/Btn'
+import type { GaNaar } from '../utils/route'
 
 // Producten met minder dan dit aantal stuks beschikbaar tellen als
 // "laag voorraad". Er bestaat (nog) geen configureerbare drempel per product
@@ -15,7 +16,8 @@ const LAAG_VOORRAAD_DREMPEL = 12
 interface VerkoopDashboardProps {
   bestellingen: any[]
   bestellingPicks: any[]
-  setOpenOrderId: (id: number | null) => void
+  /** Navigatie van de schil: een bestelling of product openen (in de route). */
+  gaNaar: GaNaar
   av: any[]
   producten: any[]
   locaties: any[]
@@ -33,7 +35,7 @@ const fmtTs = (ts: any): string => {
 }
 
 function VerkoopDashboard({
-  bestellingen = [], bestellingPicks = [], setOpenOrderId = () => {},
+  bestellingen = [], bestellingPicks = [], gaNaar,
   av = [], producten = [], locaties = [], uit = [], verplaatsingen = [], afboekingen = [],
   wcCreds, wcSyncLog = [], setPage,
 }: VerkoopDashboardProps) {
@@ -79,7 +81,7 @@ function VerkoopDashboard({
           <div className="divide-y divide-gray-100">
             {tePicken.slice(0, 5).map((b: any) => (
               <div key={b.id} className="flex items-center justify-between gap-3 px-5 py-3 min-h-[44px] hover:bg-gray-50 cursor-pointer"
-                onClick={() => { setOpenOrderId(b.id); setPage('bestellingen') }}>
+                onClick={() => gaNaar({ pagina: 'bestellingen', id: b.id })}>
                 <div className="min-w-0">
                   <span className="font-medium text-sm text-gray-800">{b.klant_naam || '—'}</span>
                   <span className="text-xs text-gray-400 ml-2">{fmtD(b.datum)}</span>
@@ -106,7 +108,7 @@ function VerkoopDashboard({
           <SectionHeader title={t('dash_laag_voorraad')} info={laagVoorraad.length} onToggle={() => setPage('producten')} rounded="top" />
           <div className="divide-y divide-gray-100">
             {laagVoorraad.slice(0, 5).map(({ product, voorraad }: any) => (
-              <div key={product.id} className="flex items-center justify-between gap-3 px-5 py-3 min-h-[44px] hover:bg-gray-50 cursor-pointer" onClick={() => setPage('producten')}>
+              <div key={product.id} className="flex items-center justify-between gap-3 px-5 py-3 min-h-[44px] hover:bg-gray-50 cursor-pointer" onClick={() => gaNaar({ pagina: 'producten', id: product.id })}>
                 <span className="font-medium text-sm text-gray-800">{product.naam || t('lbl_naamloos')}</span>
                 <span className={`text-sm font-semibold ${voorraad <= 0 ? 'text-red-600' : 'text-orange-600'}`}>{fmtQty(voorraad)}</span>
               </div>

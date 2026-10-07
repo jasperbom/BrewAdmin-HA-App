@@ -6,7 +6,7 @@ import { TANK_REINIGING_LABEL_KEY, STATUSSEN } from '../utils/constants'
 import type { TankStatusMap } from '../types'
 import { telOpenstaandeBatchTaken } from '../utils/taken'
 import { bewakingLabel, type BatchOordeel } from '../utils/tankbewaking'
-import type { AttentieDoel } from '../utils/attentie'
+import type { GaNaar } from '../utils/route'
 import { volgendeBrouwdagStap } from '../utils/brouwdag'
 import { batchEbc } from '../utils/bierKleur'
 import { newId } from '../utils/api'
@@ -48,16 +48,10 @@ interface ProductieDashboardProps {
   recepten?: any[]
   carbSessies?: any[]
   setPage: (id: string) => void
-  setNavBatchId: (id: number | null) => void
   setPreNieuwBatch: (v: any) => void
-  /** Navigeert naar een exact doel (pagina + tabblad/filter/lot) — zie
-      utils/attentie.ts. Zonder deze prop valt de kaart terug op setPage. */
-  gaNaarDoel?: (d: AttentieDoel) => void
-  /** De batch die als paneel onder zijn kaart openstaat (App.tsx: navBatchId). */
-  geselecteerdeBatchId?: number | null
-  onSelecteerBatch?: (id: number | null) => void
-  /** Het paneel zelf (BatchFlowPage in embedded-modus), gerenderd door App.tsx. */
-  batchPaneel?: React.ReactNode
+  /** Navigatie van de schil (App.tsx): een batch openen (`{pagina: 'batches',
+      id}`) of een exact doel (pagina + tabblad/filter/lot, zie utils/attentie.ts). */
+  gaNaar: GaNaar
   /** Teller uit de schil: elke ophoging opent de meting-modal (de Meten-knop
       in de onderbalk landt hier, ook vanuit een andere werkruimte). */
   metingSignaal?: number
@@ -78,22 +72,20 @@ const BEWAKING_PILL: Record<string, string> = {
   sensor_stil: 'bg-gray-200 text-gray-600',
 }
 
-const PANEEL_ID = 'brouwzaal-batch-paneel'
-
 // Brouwzaal — het Productie-dashboard. De tankkaart is de app: alles wat je
 // op de vloer doet (meting, taken, reiniging, fase-overgang) begint op de
-// kaart, en de batchpagina opent als paneel ónder de kaarten in plaats van
-// als aparte pagina. Batches die niet in een tank zitten (gepland, brouwdag,
-// afgevuld) staan onder "Buiten de tanks"; gesloten batches zijn een
-// archieflink naar Planning. Mobile-first, tap-targets ≥44px.
+// kaart; een tik op de kaart opent de batch als eigen pagina
+// (`#/productie/batches/<id>`). Batches die niet in een tank zitten (gepland,
+// brouwdag, afgevuld) staan onder "Buiten de tanks"; gesloten batches zijn
+// een link naar Batches › Gesloten. Mobile-first, tap-targets ≥44px.
 function ProductieDashboard({
   bat = [], tanks = [], av = [], verliesRegistraties = [], haTankTemps = {}, tankBewaking = {},
   tankStatussen = {}, setTankStatussen = () => {}, tankLog = [], setTankLog = () => {},
   batchTakenItems = [], batchTakenGroepen = [], brouwdagStappen = [],
   lots = [], ing = [], gistMetingen = [], setGistMetingen = () => {}, auditLog = [], setAuditLog = () => {},
   producten = [], recepten = [],
-  setPage, setNavBatchId, setPreNieuwBatch = () => {},
-  gaNaarDoel, geselecteerdeBatchId = null, onSelecteerBatch, batchPaneel, metingSignaal = 0,
+  setPreNieuwBatch = () => {},
+  gaNaar, metingSignaal = 0,
 }: ProductieDashboardProps) {
   const batchNaam = (b: any) => b?.naam || b?.biernaam || t('lbl_naamloos')
   const FASE_LABEL: Record<string, string> = {
@@ -101,17 +93,9 @@ function ProductieDashboard({
     Conditioneren: t('status_conditioning'), Afgevuld: t('status_packaged'), Gesloten: t('status_closed'),
   }
 
-  // Batch openen = paneel onder de kaarten (App.tsx houdt de selectie bij);
-  // zonder die koppeling valt het terug op de losse batchpagina.
-  const openBatch = (id: number) => {
-    if (onSelecteerBatch) onSelecteerBatch(id)
-    else { setNavBatchId(id); setPage('batchflow') }
-  }
-  useEffect(() => {
-    if (geselecteerdeBatchId == null) return
-    const el = document.getElementById(PANEEL_ID)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [geselecteerdeBatchId])
+  // Batch openen = de batch als eigen pagina (een history-entry: terug brengt
+  // je weer hier).
+  const openBatch = (id: number) => gaNaar({ pagina: 'batches', id })
 
   // ── Meting opslaan — gedeeld tussen de snelknop-modal en de inline
   // "Meting" per tankkaart, zodat er maar één schrijfpad is.
@@ -209,9 +193,8 @@ function ProductieDashboard({
   }, [metingSignaal])
 
   const nieuweBatch = (tankId?: string) => {
-    setNavBatchId(null)
     setPreNieuwBatch(tankId ? { tank: tankId } : {})
-    setPage('batchflow')
+    gaNaar({ pagina: 'batches' })
   }
 
   // Eén grote meetwaarde op de kaart: leesbaar op een meter afstand.
@@ -236,7 +219,7 @@ function ProductieDashboard({
       <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-6">
         <Btn s="lg" cls="min-h-[44px]" onClick={openMetingModal}>{t('dash_meting_invoeren')}</Btn>
         <Btn s="lg" v="secondary" cls="min-h-[44px]" onClick={() => nieuweBatch()}>{t('dash_nieuwe_batch')}</Btn>
-        <Btn s="lg" v="secondary" cls="min-h-[44px]" onClick={() => setPage('batchflow')}>{t('nav_planning')}</Btn>
+        <Btn s="lg" v="secondary" cls="min-h-[44px]" onClick={() => gaNaar({ pagina: 'batches', stand: 'agenda' })}>{t('nav_planning')}</Btn>
       </div>
 
       {/* ── Actieve tanks: de tankkaart is de app ─────────────────────────── */}
@@ -259,7 +242,6 @@ function ProductieDashboard({
                 return batch.datum ? Math.floor((Date.now() - new Date(batch.datum).getTime()) / 86400000) : null
               })()
               const isFormOpen = inlineMetingBatchId === batch.id
-              const geselecteerd = geselecteerdeBatchId === batch.id
               const ebc = batchEbc(batch, producten, recepten)
               const taken = openTaken(batch)
               const faseIdx = STATUSSEN.indexOf(batch.status)
@@ -271,8 +253,8 @@ function ProductieDashboard({
 
               return (
                 <div key={tank.id}
-                  className={`bg-white rounded-xl shadow-sm border p-4 w-full sm:w-[300px] flex-shrink-0 ${geselecteerd ? 'ring-2 ring-[var(--t-accent)] border-transparent' : 't-border'}`}>
-                  <button type="button" className="w-full text-left flex items-start gap-3" onClick={() => openBatch(batch.id)} aria-expanded={geselecteerd}>
+                  className="bg-white rounded-xl shadow-sm border p-4 w-full sm:w-[300px] flex-shrink-0 t-border">
+                  <button type="button" className="w-full text-left flex items-start gap-3" onClick={() => openBatch(batch.id)}>
                     <TankVisualForSoort soort={tank.soort} fillPct={fillPct} status={batch.status} ebc={ebc ?? undefined} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between mb-1 gap-2">
@@ -365,13 +347,6 @@ function ProductieDashboard({
         </div>
       )}
 
-      {/* ── Batchpaneel: de batchpagina, uitgeklapt onder de kaarten ──────── */}
-      {batchPaneel && (
-        <div id={PANEEL_ID} className="mb-6 scroll-mt-32">
-          {batchPaneel}
-        </div>
-      )}
-
       {/* ── Vrije tanks + reinigingsstatus ───────────────────────────────── */}
       {vrijeTanks.length > 0 && (
         <div className="mb-6">
@@ -444,10 +419,9 @@ function ProductieDashboard({
             {buitenTanks.map((b: any) => {
               const taken = openTaken(b)
               const stap = b.status === 'Brouwen' ? volgendeBrouwdagStap(b.id, brouwdagStappen) : null
-              const geselecteerd = geselecteerdeBatchId === b.id
               const tank = b.tank ? (tanks.find((tk: any) => tk.id === b.tank)?.naam || b.tank) : null
               return (
-                <div key={b.id} className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:px-5 py-3 min-h-[44px] ${geselecteerd ? 'bg-[var(--t-pale)]' : ''}`}>
+                <div key={b.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:px-5 py-3 min-h-[44px]">
                   <button type="button" className="flex-1 min-w-0 flex items-center gap-2 text-left" onClick={() => openBatch(b.id)}>
                     <BierKleur ebc={batchEbc(b, producten, recepten)} s="md" />
                     <div className="min-w-0">
@@ -471,7 +445,7 @@ function ProductieDashboard({
             })}
             {geslotenAantal > 0 && (
               <button type="button" className="w-full text-left px-4 sm:px-5 py-3 min-h-[44px] text-sm text-gray-600 hover:bg-gray-50 flex items-center justify-between gap-2"
-                onClick={() => gaNaarDoel ? gaNaarDoel({ pagina: 'batchflow', filter: 'gesloten' }) : setPage('batchflow')}>
+                onClick={() => gaNaar({ pagina: 'batches', stand: 'gesloten' })}>
                 <span>{t('dash_gesloten_archief').replace('{n}', String(geslotenAantal))}</span>
                 <span className="text-gray-400">›</span>
               </button>
@@ -486,7 +460,7 @@ function ProductieDashboard({
           <SectionHeader
             title={t('dash_tht_waarschuwingen')}
             info={<span className={`px-1.5 py-0.5 rounded-full text-[11px] font-bold ${thtTelling.verlopen > 0 ? 'bg-red-600 text-white' : 'bg-white/90 text-yellow-800'}`}>{thtTelling.verlopen + thtTelling.binnenkort}</span>}
-            onToggle={() => gaNaarDoel ? gaNaarDoel({ pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_alle' }) : setPage('ingredienten')}
+            onToggle={() => gaNaar({ pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_alle' })}
             rounded="top"
           />
           <div className="divide-y divide-gray-100">
@@ -494,7 +468,7 @@ function ProductieDashboard({
               const verlopen = new Date(l.houdbaarheid) < new Date(new Date().setHours(0, 0, 0, 0))
               return (
                 <button type="button" key={l.id} className="w-full flex items-center justify-between gap-3 px-5 py-3 min-h-[44px] hover:bg-gray-50 text-left"
-                  onClick={() => gaNaarDoel ? gaNaarDoel({ pagina: 'ingredienten', tab: 'ingredienten', lotId: l.id }) : setPage('ingredienten')}>
+                  onClick={() => gaNaar({ pagina: 'ingredienten', tab: 'ingredienten', lotId: l.id })}>
                   <div className="min-w-0">
                     <span className="font-medium text-sm text-gray-800">{ing.find((i: any) => i.id === l.ingredient_id)?.naam || t('lbl_onbekend')}</span>
                     <div className="text-xs text-gray-500 mt-0.5">{fmtQty(l.hoeveelheid)} {l.eenheid}</div>

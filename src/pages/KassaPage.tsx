@@ -28,6 +28,7 @@ import { totaliseerRegels } from '../utils/centen'
 import { afvullingHoortBijBierNaam } from '../utils/picking'
 import { standaardBtwPct, artikelBtwPct } from '../utils/btw'
 import BierKleur from '../components/ui/BierKleur'
+import type { GaNaar } from '../utils/route'
 
 interface KassaPageProps {
   bat: any[]
@@ -70,6 +71,8 @@ interface KassaPageProps {
   setMerchArtikelen?: any
   merchVoorraadLog?: MerchMutatie[]
   setMerchVoorraadLog?: any
+  /** Navigatie van de schil (App.tsx): ketenlinks naar product en batch (F12). */
+  gaNaar?: GaNaar
 }
 
 // Eén regel op de kassabon. De prijs komt altijd uit het artikel (normaal of

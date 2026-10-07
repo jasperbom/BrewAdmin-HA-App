@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { verpakkingKostenPerStuk, vindVerpakking, verpakkingMix, referentieVerpakking, REFERENTIE_INHOUD } from '../verpakkingKosten'
+import { verpakkingKostenPerStuk, vindVerpakking, verpakkingMix, verpakkingVerdeling, referentieVerpakking, REFERENTIE_INHOUD } from '../verpakkingKosten'
 
 const ONDERDELEN = [
   {id: 1, naam: 'Fles 33cl', kosten_per_stuk: 0.22},
@@ -128,6 +128,44 @@ describe('verpakkingMix', () => {
   it('geeft niets terug zonder afvullingen', () => {
     expect(verpakkingMix([{id: 11}], null, {afvullingen: [], verpakkingen: VERPAKKINGEN}).bron).toBe('geen')
     expect(verpakkingMix(null, null, {afvullingen, verpakkingen: VERPAKKINGEN}).bron).toBe('geen')
+  })
+})
+
+// ── verpakkingVerdeling ─────────────────────────────────────────────────────
+
+describe('verpakkingVerdeling', () => {
+  // Verpakkingen zonder prijs: voor een kostprijs is dat "onbekend", maar de
+  // verdeling van de liters is gewoon bekend.
+  const zonderPrijs = [
+    {id: 1, naam: 'Fles 33cL', inhoud_liter: 0.33},
+    {id: 2, naam: 'Fust 20L', inhoud_liter: 20},
+  ]
+  const afvullingen = [
+    {id: 1, batch_id: 11, verpakking_id: 1, inhoud_per_eenheid: 0.33, hoeveelheid: 600},
+    {id: 2, batch_id: 11, verpakking_id: 2, inhoud_per_eenheid: 20, hoeveelheid: 3},
+  ]
+
+  it('verdeelt de liters ook als de verpakkingen nog op nul staan', () => {
+    expect(verpakkingMix([{id: 11}], null, {afvullingen, verpakkingen: zonderPrijs}).bron).toBe('geen')
+    const v = verpakkingVerdeling([{id: 11}], null, {afvullingen, verpakkingen: zonderPrijs})
+    expect(v.bron).toBe('recept')
+    expect(v.perLiter).toBe(0)
+    expect(v.regels.map(r => r.naam)).toEqual(['Fles 33cL', 'Fust 20L'])
+    // 198 L op fles, 60 L op fust
+    expect(v.regels[0].aandeel).toBeCloseTo(198 / 258, 3)
+    expect(v.regels[1].aandeel).toBeCloseTo(60 / 258, 3)
+  })
+
+  it('volgt dezelfde bronvolgorde: eigen batches, anders de brouwerij', () => {
+    const v = verpakkingVerdeling([{id: 99}], [{id: 11}], {afvullingen, verpakkingen: zonderPrijs})
+    expect(v.bron).toBe('brouwerij')
+    expect(verpakkingVerdeling([{id: 99}], null, {afvullingen, verpakkingen: zonderPrijs}).bron).toBe('geen')
+  })
+
+  it('geeft met prijzen dezelfde verdeling als verpakkingMix', () => {
+    const mix = verpakkingMix([{id: 11}], null, {afvullingen, verpakkingen: VERPAKKINGEN, onderdelen: ONDERDELEN})
+    const v = verpakkingVerdeling([{id: 11}], null, {afvullingen, verpakkingen: VERPAKKINGEN, onderdelen: ONDERDELEN})
+    expect(v.regels.map(r => r.aandeel)).toEqual(mix.regels.map(r => r.aandeel))
   })
 })
 

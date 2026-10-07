@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtDatumDoc } from '../format'
+import { fmtDatumDoc, fmtSg } from '../format'
 
 describe('fmtDatumDoc', () => {
   it('zet een ISO-datum om naar dd-mm-jjjj', () => {
@@ -21,5 +21,24 @@ describe('fmtDatumDoc', () => {
     expect(fmtDatumDoc('<img src=x onerror=alert(1)>')).toBe('—')
     expect(fmtDatumDoc('"><script>x</script>')).toBe('—')
     expect(fmtDatumDoc('morgen')).toBe('—')
+  })
+})
+
+describe('fmtSg', () => {
+  it('altijd drie decimalen met een punt', () => {
+    expect(fmtSg(1.064)).toBe('1.064')
+    expect(fmtSg(1.01)).toBe('1.010')
+    expect(fmtSg('1.0126')).toBe('1.013')
+    expect(fmtSg('1,012')).toBe('1.012')
+    expect(fmtSg(0.998)).toBe('0.998')
+  })
+
+  it('leeg, nul of onleesbaar wordt het leeg-teken', () => {
+    expect(fmtSg('')).toBe('—')
+    expect(fmtSg(null)).toBe('—')
+    expect(fmtSg(undefined)).toBe('—')
+    expect(fmtSg(0)).toBe('—')
+    expect(fmtSg('abc')).toBe('—')
+    expect(fmtSg('', '')).toBe('')
   })
 })

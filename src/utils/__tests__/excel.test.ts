@@ -175,6 +175,20 @@ describe('Excel backup round-trip (ERP 0.8 / 3.1)', () => {
     expect(uit.recepten_gesloten_groepen).toEqual([])
   })
 
+  it('bewaart vastgepind en niet_in_brewfather op een recept (recepten in gebruik)', () => {
+    const recepten = [
+      {id: 'abc', naam: 'Kadeblond v4', tags: ['Blond'], vastgepind: true, niet_in_brewfather: true},
+      {id: 'abc__v2', naam: 'Kadeblond v4', parent_id: 'abc', is_huidige: false},
+      {id: 'xyz', naam: 'Rauchbier test', vastgepind: false},
+    ]
+    const uit = roundTrip({recepten})
+    expect(uit.recepten).toEqual(recepten)
+    expect(uit.recepten[0].vastgepind).toBe(true)
+    expect(uit.recepten[0].niet_in_brewfather).toBe(true)
+    expect(uit.recepten[2].vastgepind).toBe(false)
+    expect('vastgepind' in uit.recepten[1]).toBe(false)
+  })
+
   it('herstelt losse waarden uit een oudere, kapotte backup (één kolom per teken)', () => {
     const wb = bouwBackupWerkboek({})
     wb.Sheets.ReceptenTags = XLSX.utils.json_to_sheet([

@@ -82,3 +82,93 @@ describe('voegReceptSyncSamen', () => {
     expect(recepten[0].overig).toEqual([])
   })
 })
+
+describe('voegReceptSyncSamen — verwezen recepten blijven (nooit stil verwijderen)', () => {
+  const hoofd = (id: string, extra: any = {}) => ({ id, naam: id.toUpperCase(), mout: [], hop: [], gist: [], overig: [], ...extra })
+  const versie = (parent: string, n: number) => hoofd(`${parent}__v${n}`, { parent_id: parent, is_huidige: false })
+
+  it('een verdwenen recept waar een batch naar verwijst blijft, met de markering', () => {
+    const oud = [hoofd('a'), hoofd('b')]
+    const { recepten, bewaard, bewaardIds } = voegReceptSyncSamen(oud, [hoofd('b')], { batches: [{ recept_id: 'a' }] })
+    expect(recepten.map(r => r.id)).toEqual(['b', 'a'])
+    expect(recepten[1]).toMatchObject({ id: 'a', naam: 'A', niet_in_brewfather: true })
+    expect(recepten[0].niet_in_brewfather).toBeUndefined()
+    expect(bewaard).toBe(1)
+    expect(bewaardIds).toEqual(['a'])
+  })
+
+  it('verwijzing via recept_versie_id, recept_ids of recept_huidig_id telt ook', () => {
+    const oud = [hoofd('a'), versie('a', 2), hoofd('b'), hoofd('c'), hoofd('d')]
+    const { recepten, bewaard, bewaardeVersies } = voegReceptSyncSamen(oud, [], {
+      batches: [{ recept_versie_id: 'a__v2' }],
+      producten: [{ recept_ids: ['b'] }, { recept_huidig_id: 'c' }],
+    })
+    expect(recepten.map(r => r.id).sort()).toEqual(['a', 'a__v2', 'b', 'c'])
+    expect(recepten.every(r => r.niet_in_brewfather === true)).toBe(true)
+    expect(bewaard).toBe(3)
+    expect(bewaardeVersies).toBe(1)
+  })
+
+  it('een verwezen versie houdt het hoofdrecept met al zijn versies vast', () => {
+    const oud = [hoofd('a'), versie('a', 1), versie('a', 2), hoofd('b'), versie('b', 1)]
+    const { recepten } = voegReceptSyncSamen(oud, [], { producten: [{ recept_ids: ['a__v1'] }] })
+    expect(recepten.map(r => r.id)).toEqual(['a', 'a__v1', 'a__v2'])
+  })
+
+  it('een verwezen versie van een recept dat nog in Brewfather staat blijft los staan', () => {
+    const oud = [hoofd('a'), versie('a', 1), versie('a', 2)]
+    const { recepten, bewaard, bewaardeVersies } = voegReceptSyncSamen(oud, [hoofd('a'), versie('a', 2)], { batches: [{ recept_id: 'a', recept_versie_id: 'a__v1' }] })
+    expect(recepten.map(r => r.id)).toEqual(['a', 'a__v2', 'a__v1'])
+    expect(recepten[2].niet_in_brewfather).toBe(true)
+    expect(bewaard).toBe(0)
+    expect(bewaardeVersies).toBe(1)
+  })
+
+  it('een verdwenen recept waar niets naar verwijst verdwijnt zoals altijd', () => {
+    const oud = [hoofd('a'), versie('a', 1), hoofd('b')]
+    const { recepten, bewaard } = voegReceptSyncSamen(oud, [hoofd('b')], { batches: [{ recept_id: 'x' }], producten: [{ recept_ids: [] }] })
+    expect(recepten.map(r => r.id)).toEqual(['b'])
+    expect(bewaard).toBe(0)
+  })
+
+  it('zonder verwijzingen (oude aanroep) blijft het gedrag hetzelfde', () => {
+    const { recepten, bewaard } = voegReceptSyncSamen([hoofd('a'), hoofd('b')], [hoofd('b')])
+    expect(recepten.map(r => r.id)).toEqual(['b'])
+    expect(bewaard).toBe(0)
+  })
+
+  it('vastgepind overleeft de sync — als eigen veld én als het recept verdwijnt', () => {
+    const oud = [hoofd('a', { vastgepind: true }), hoofd('b', { vastgepind: true }), versie('b', 1)]
+    const { recepten, bewaard } = voegReceptSyncSamen(oud, [hoofd('a')])
+    expect(recepten[0]).toMatchObject({ id: 'a', vastgepind: true })
+    expect(recepten[0].niet_in_brewfather).toBeUndefined()
+    expect(recepten.slice(1).map(r => r.id)).toEqual(['b', 'b__v1'])
+    expect(recepten[1]).toMatchObject({ vastgepind: true, niet_in_brewfather: true })
+    expect(bewaard).toBe(1)
+    // losgemaakt (false) blijft ook staan
+    const los = voegReceptSyncSamen([hoofd('a', { vastgepind: false })], [hoofd('a')])
+    expect(los.recepten[0].vastgepind).toBe(false)
+  })
+
+  it('een recept dat terugkomt in Brewfather verliest de markering', () => {
+    const oud = [hoofd('a', { niet_in_brewfather: true, kostprijs_overig: 40 })]
+    const { recepten, bewaard } = voegReceptSyncSamen(oud, [hoofd('a', { naam: 'A nieuw' })], { batches: [{ recept_id: 'a' }] })
+    expect(recepten).toHaveLength(1)
+    expect(recepten[0].niet_in_brewfather).toBeUndefined()
+    expect(recepten[0]).toMatchObject({ naam: 'A nieuw', kostprijs_overig: 40 })
+    expect(bewaard).toBe(0)
+  })
+
+  it('lege of kapotte verwijzingen breken niets', () => {
+    const { recepten } = voegReceptSyncSamen([hoofd('a')], [], { batches: [null, {}, { recept_id: '' }] as any, producten: [null, { recept_ids: null }] as any })
+    expect(recepten).toEqual([])
+  })
+
+  it('een dubbel record in de oude lijst komt één keer terug', () => {
+    const oud = [hoofd('a'), hoofd('a', { naam: 'A dubbel' }), versie('a', 1), versie('a', 1)]
+    const { recepten, bewaard, bewaardeVersies } = voegReceptSyncSamen(oud, [], { batches: [{ recept_id: 'a' }] })
+    expect(recepten.map(r => r.id)).toEqual(['a', 'a__v1'])
+    expect(bewaard).toBe(1)
+    expect(bewaardeVersies).toBe(1)
+  })
+})

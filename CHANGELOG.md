@@ -4,6 +4,56 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.90] — 2026-10-07
+
+### Productie & Verkoop, deel 1: routes, schil en het rekenfundament
+
+Eerste bouwstap van `docs/OPZET-PRODUCTIE-VERKOOP.md`.
+
+**Zichtbaar in de app**
+- **Brouwzaal en Overzicht zijn echte tabs.** Productie: Brouwzaal · Batches ·
+  Recepten · Ingrediënten · HACCP · Gereedschap. Verkoop: Overzicht · Producten ·
+  Bestellingen · Kassa · Klanten · Statiegeld. De werkruimtetitel is een gewoon
+  label.
+- **Een batch is altijd zijn eigen pagina** (`#/productie/batches/<id>`), ook
+  vanaf een tankkaart; het batchpaneel onder de tanks is weg. Op de telefoon
+  heet de kopbalk naar de batch ("Kadeblond #2609") met één terugknop, en een
+  koud geopende link toont de actuele fase.
+- **Recept, product en bestelling staan in de route**
+  (`#/productie/recepten/<id>`, `#/verkoop/producten/<id>`,
+  `#/verkoop/bestellingen/<id>`): de terugknop van het toestel werkt, herladen
+  blijft op het record en een link is te delen. Oude links (`batchflow`,
+  `planning`, `dashboard/<n>`) landen op de nieuwe plek.
+- **Brewfather-receptsync:** een recept dat uit Brewfather verdwijnt maar nog
+  aan een batch of product hangt (of vastgepind is) blijft bewaard, met de
+  markering "niet meer in Brewfather". Een mislukte Brewfather-pagina breekt de
+  sync af in plaats van recepten als verdwenen te behandelen.
+- Vensters van een vorige bestelling of product sluiten bij het wisselen van
+  record; half ingevulde formulieren gaan niet mee naar de volgende batch.
+
+**Fundament (pure logica met tests, gebruikt door de volgende stappen)**
+- `utils/etiket.ts` — etiket- en websitewaarden met bron: ABV via Balling (ook
+  met suiker na de kook), energie in kcal én kJ (bijlage XIV), de wettelijke
+  ABV-marge, allergenen via het lot, oordeel en statuschip, Bevat-regel,
+  etiketversie, `legEtiketVast` als enige schrijfweg, webshopstand.
+- `utils/productKeten.ts` — de keten recept › batch › product (huidig recept,
+  productvoorstel bij plannen, nieuw product uit een batch, tankstatus op een
+  brouwdatum, batchtitel), met één afleiding van het hoofdrecept van een
+  Brewfather-versie.
+- `utils/receptNaarBatch.ts` — één vertaling recept → batch (nieuwe batch en
+  "Recept opnieuw toepassen" gebruiken hem al, gedrag ongewijzigd).
+- `utils/receptGebruik.ts` — recepten "in gebruik" (vastgepind, lopend, huidig,
+  gekoppeld, recent 18 maanden; verborgen wint).
+- `utils/verkoopOverzicht.ts` — één voorraadtelling per product en verpakking,
+  "komt eraan" en dekking; `utils/volgendeStap.ts` — één volgende stap per
+  batch.
+- Nieuwe velden op bestaande records (geen nieuwe data-keys): o.a.
+  `batch.abv_bron`/`recept_versie_id`, `product.recept_huidig_id`/`kj`/
+  `energie_op_etiket`, `recept.vastgepind`/`niet_in_brewfather`, snapshots op
+  nieuwe CCP 3-controles, `wc.meta_stand` op een artikel.
+
+---
+
 ## [1.12.89] — 2026-10-07
 
 ### Opzet: Productie en Verkoop overzichtelijker

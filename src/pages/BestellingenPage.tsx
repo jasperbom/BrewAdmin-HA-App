@@ -39,8 +39,11 @@ import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
 import { totaliseerRegels, centNaarEuro } from '../utils/centen'
 import { regelBedrag, heeftAutoritair, corrigeerRegelBtw } from '../utils/orderRegel'
-import { matchAfvullingenVoorRegel, bestellingenOmTePicken, verzamelPicklijst } from '../utils/picking'
+import { matchAfvullingenVoorRegel, bestellingenOmTePicken, verzamelPicklijst, orderNummer } from '../utils/picking'
 import type { AttentieDoel } from '../utils/attentie'
+import type { GaNaar, GaNaarOpties } from '../utils/route'
+import { _fetchedKeys } from '../utils/api'
+import LegeStaat from '../components/ui/LegeStaat'
 import {
   MerchArtikel, MerchMutatie, merchLabel, onthoudMerch, vergeetMerch, verwijderMerch,
   volgtVoorraad, merchVoorraad, merchVoorraadWaarde, merchLogVoorArtikel,
@@ -74,8 +77,12 @@ interface BestellingenPageProps {
   log?: any[]
   setLog?: any
   factuurLogo?: string | null
-  openOrderId?: number | null
-  setOpenOrderId?: (id: number | null) => void
+  /** De geopende bestelling uit de route (`#/verkoop/bestellingen/<id>`, App.tsx). */
+  recordId?: string | null
+  /** Een bestelling openen of sluiten = de route wijzigen (een history-entry). */
+  onOpenRecord?: (id: number | null, opties?: GaNaarOpties) => void
+  /** Navigatie van de schil: ketenlinks naar product en batch (F13). */
+  gaNaar?: GaNaar
   klanten: any[]
   setKlanten?: any
   auditLog?: any[]
@@ -143,7 +150,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   wcCreds, accijnsInst, breweryDetails, appName='', logo=null,
   factuurCounter, setFactuurCounter=()=>{},
   log=[], setLog=()=>{}, factuurLogo=null,
-  openOrderId=null, setOpenOrderId=()=>{},
+  recordId=null, onOpenRecord,
   klanten=[],
   auditLog=[], setAuditLog=()=>{},
   producten=[], productArtikelen=[],
@@ -159,24 +166,27 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   merchVoorraadLog=[], setMerchVoorraadLog=()=>{},
   navDoel=null, onNavDoelConsumed=()=>{},
 }) => {
-  const [view, setView] = useState<'list' | 'detail'>('list')
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  // De geopende bestelling. De route is de bron (App.tsx): een bestelling
+  // openen of sluiten wijzigt de URL, zodat de terugknop van het toestel, een
+  // herlaad en een gedeelde link werken. Zonder route (losse inbedding) lokaal.
+  const gestuurd = typeof onOpenRecord === 'function'
+  const [lokaalView, setLokaalView] = useState<'list' | 'detail'>('list')
+  const [lokaalId, setLokaalId] = useState<number | null>(null)
+  const routeOrder = gestuurd && recordId != null && recordId !== ''
+    ? (bestellingen || []).find((b: any) => String(b.id) === String(recordId))
+    : undefined
+  const selectedId: number | null = gestuurd ? (routeOrder ? routeOrder.id : null) : lokaalId
+  const view: 'list' | 'detail' = gestuurd ? (recordId != null && recordId !== '' ? 'detail' : 'list') : lokaalView
+  const openOrder = (id: number | null, opties?: GaNaarOpties) => {
+    if (gestuurd) { onOpenRecord!(id, opties); return }
+    setLokaalId(id)
+    setLokaalView(id == null ? 'list' : 'detail')
+  }
   // Ontgrendelt het corrigeren van de BTW op een reeds afgeronde order (past dan
   // ook de gekoppelde verkoopfactuur aan). Bewust expliciet, want normaal is een
   // afgeronde order vergrendeld.
   const [btwCorrectie, setBtwCorrectie] = useState<number | null>(null)
 
-  // Navigate to order when openOrderId is set (e.g. from BoekhoudingPage)
-  React.useEffect(() => {
-    if (openOrderId != null) {
-      const order = bestellingen.find((b: any) => b.id === openOrderId)
-      if (order) {
-        setSelectedId(openOrderId)
-        setView('detail')
-      }
-      setOpenOrderId(null)
-    }
-  }, [openOrderId]) // eslint-disable-line react-hooks/exhaustive-deps
   // Startfilter uit het navigatiedoel (attentie-badge "Bestellingen om te
   // picken" → filter 'te_picken'). App.tsx mount de pagina per navigatie, dus
   // de useState-initializer volstaat; de callback wist alleen het App-signaal.
@@ -274,11 +284,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const orderTotaal = (b: any) =>
     centNaarEuro((b.regels||[]).reduce((s: number, r: any) => s + regelBedrag(r).bruto_cent, 0))
 
-  // Zichtbaar ordernummer. WooCommerce-orders tonen hun WC-nummer; handmatige
-  // orders hun korte, oplopende bestelnummer (server-reeks, bijv. "M-0015").
-  // Oudere handmatige orders zonder bestel_nummer vallen terug op M-<id>.
-  const orderNummer = (b: any): string =>
-    b.wc_order_nummer ? `WC-${b.wc_order_nummer}` : (b.bestel_nummer || `M-${b.id}`)
+  // Zichtbaar ordernummer: `orderNummer` uit utils/picking.ts (ook de
+  // kopbalk van de schil gebruikt hem).
 
   // "Betaald"-markering op een WooCommerce-order: het label plus, als
   // WooCommerce het weet, wanneer en waarmee er betaald is.
@@ -1398,7 +1405,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     void schrijfTerugNaarWc({...selectedOrder, status: 'geannuleerd'}, 'geannuleerd',
       teruggeboekt ? {uitgeslagen: false} : undefined)
     setShowAnnuleerModal(false)
-    setView('list')
+    openOrder(null)
   }
 
   const addVrijeRegel = () => {
@@ -1700,6 +1707,28 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }>(null)
   const [mailGenerating, setMailGenerating] = React.useState(false)
 
+  // Een andere bestelling of de lijst via de route (de terugknop van het
+  // toestel, een link): een open venster of half ingevuld formulier van de
+  // vorige bestelling gaat niet mee. Sinds de bestelling in de URL staat
+  // blijft deze pagina gemount waar "terug" haar vroeger verliet — zonder dit
+  // stond een open pickvenster (met de concept-picks per regel-id) of de
+  // annuleervraag meteen open bij de volgende bestelling.
+  const vorigeOrderRef = useRef(selectedId)
+  React.useEffect(() => {
+    if (vorigeOrderRef.current === selectedId) return
+    vorigeOrderRef.current = selectedId
+    setShowPickModal(false)
+    setDraftPicks({})
+    setShowAfrondModal(false)
+    setShowAnnuleerModal(false)
+    setShowVrijeRegelModal(false)
+    setShowVerzendkostenModal(false)
+    setVerzondenModal(null)
+    setMailModal(null)
+    setUitslagDoel(d => (d?.terug === 'pick' ? null : d))
+    setBtwCorrectie(null)
+  }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Een leeggebleven variabele (geen track & trace, geen leveringstekst) mag
   // geen dubbele witregel achterlaten in de mail.
   const interpolate = (tpl: string, vars: Record<string, string>): string =>
@@ -1911,6 +1940,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   // --- RENDER ---
 
+  // Een bestelling in de route die er niet (meer) is: zeggen, met de weg naar
+  // de lijst. Zolang de bestellingen nog laden: niets.
+  if (view === 'detail' && !selectedOrder && gestuurd) {
+    if (!_fetchedKeys.has('bestellingen')) return null
+    return (
+      <LegeStaat icoon="search" titel={t('route_niet_gevonden_titel')} tekst={t('route_niet_gevonden_bestelling')}>
+        <Btn v="secondary" onClick={() => openOrder(null, { vervang: true })}>{t('route_naar_lijst').replace('{lijst}', t('nav_bestellingen'))}</Btn>
+      </LegeStaat>
+    )
+  }
+
   if (view === 'detail' && selectedOrder) {
     const picks = picksVoorOrder(selectedOrder.id)
     const totaal = orderTotaal(selectedOrder)
@@ -1927,7 +1967,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     return (
       <div>
         <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <button onClick={() => setView('list')} className="flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 transition-colors">
+          {/* Op een telefoon gaat terug via de kopbalk (één terugweg); op een
+              bureau vervangt de bestelling de lijst, dus daar blijft de knop. */}
+          <button onClick={() => openOrder(null)} className={`${gestuurd ? 'hidden md:flex' : 'flex'} items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 transition-colors`}>
             {t('btn_back')}
           </button>
           <h2 className="text-xl font-bold text-gray-800">
@@ -3053,7 +3095,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           const orderNr = orderNummer(b)
           const kType = effectiveKlantType(b)
           return (
-            <div key={b.id} onClick={() => { setSelectedId(b.id); setView('detail') }}
+            <div key={b.id} onClick={() => openOrder(b.id)}
               className="bg-white rounded-xl shadow-card p-4 cursor-pointer hover:shadow-md transition-shadow flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <span className="font-mono text-sm font-semibold text-gray-700">{orderNr}</span>

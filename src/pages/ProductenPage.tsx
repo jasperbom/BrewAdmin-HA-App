@@ -1,6 +1,8 @@
 import React from 'react'
 import { t } from '../i18n'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
+import { _fetchedKeys } from '../utils/api'
+import LegeStaat from '../components/ui/LegeStaat'
 import WcProductModal from '../components/WcProductModal'
 import { WcVelden, bouwWcPayload, leesWcProduct, wcRegulierePrijsExcl } from '../utils/wcProduct'
 import {
@@ -70,9 +72,23 @@ const REDEN_COLORS: Record<AfboekingReden, string> = {
 
 // M-1: bijlagen (foto's / PDF) bij bijzondere mutaties via utils/bijlage.ts
 
-function ProductenPage({producten, setProducten, ing=[], productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], setVerplaatsingen=()=>{}, btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[]}: any) {
+// recordId/onOpenRecord: het geopende product staat in de route
+// (`#/verkoop/producten/<id>`, App.tsx) — terug, herladen en een gedeelde link
+// werken. gaNaar is er voor de ketenlinks naar recept en batch (F10).
+function ProductenPage({producten, setProducten, ing=[], productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], setVerplaatsingen=()=>{}, btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[], recordId=null, onOpenRecord}: any) {
   const {useState, useMemo, useEffect, useRef} = React;
-  const [sel, setSel] = useState<number|null>(null);
+  // Het geopende product: uit de route als de schil die meegeeft, anders
+  // lokaal. `setSel` opent of sluit een product (een history-entry).
+  const [lokaalSel, setLokaalSel] = useState<number|null>(null);
+  const gestuurd = typeof onOpenRecord === 'function';
+  const recordGevraagd = gestuurd && recordId != null && recordId !== '';
+  const routeProduct = recordGevraagd ? (producten||[]).find((p: any) => String(p.id) === String(recordId)) : undefined;
+  const sel: number|null = gestuurd ? (routeProduct ? routeProduct.id : null) : lokaalSel;
+  // Een product in de route dat er niet (meer) is (oude link, verwijderd).
+  const nietGevonden = recordGevraagd && !routeProduct;
+  const setSel = (id: number|null, opties?: {vervang?: boolean}) => {
+    if (gestuurd) onOpenRecord(id, opties); else setLokaalSel(id);
+  };
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState<any>({});
   const [zoek, setZoek] = useState('');
@@ -156,12 +172,38 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
   useEffect(() => {
     if (autoSelGedaan.current) return;
     if (typeof window === 'undefined' || window.innerWidth < 768) return;
-    if (sel !== null || editMode) return;
+    if (sel !== null || editMode || recordGevraagd) return;
     if (actieveProducten.length === 0) return;
     autoSelGedaan.current = true;
-    setSel(actieveProducten[0].id);
+    // Vervangen, geen nieuwe history-entry: anders bracht "terug" je naar de
+    // kale lijst, die meteen weer het eerste product koos.
+    setSel(actieveProducten[0].id, {vervang: true});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actieveProducten]);
+  // Een ander product via de route (terugknop, link): een open artikelformulier
+  // en het bewerkformulier van het vorige product sluiten. Een formulier voor
+  // een nieuw product blijft staan. Ook de vensters van het vorige product
+  // (uitslaan, verplaatsen, afboeken, rebranden, vernietiging, webshopkaart,
+  // recept/batch koppelen) sluiten: ze staan buiten de detailkolom en de
+  // terugknop van het toestel verlaat deze pagina niet meer — anders bleef
+  // zo'n venster openstaan boven de lijst of sprong het open bij het volgende
+  // product.
+  const vorigeSelRef = useRef(sel);
+  useEffect(() => {
+    if (vorigeSelRef.current === sel) return;
+    vorigeSelRef.current = sel;
+    setArtForm(null);
+    if (editMode && form?.id !== sel && (producten||[]).some((p: any) => p.id === form?.id)) setEditMode(false);
+    setUitslagOpen(false);
+    setVerplaatsModal(null);
+    setAfboekModal(null);
+    setRebrandModal(null);
+    setVernietigReviewModal(null);
+    setWcModalArt(null);
+    setReceptSelectOpen(false);
+    setBatchSelectOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel]);
 
   // Voorraad helpers — dezelfde telling als de kassa en de bestellingen
   // (utils/beschikbaarheid.ts).
@@ -427,7 +469,9 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
         product_ids: (b.product_ids||[]).filter((id: any) => Number(id) !== Number(sel)),
       };
     }));
-    setSel(null);
+    // Terug naar de lijst; de history-entry van het verwijderde product wordt
+    // vervangen.
+    setSel(null, {vervang: true});
   };
 
   const toggleArchiveer = () => {
@@ -1388,13 +1432,17 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
               {t('btn_wc_pull_alles')}
             </Btn>
           </>)}
-          <Btn onClick={() => startEdit()}>{t('btn_nieuw_product')}</Btn>
+          {/* Op een telefoon is een product in de route een eigen scherm met
+              de naam in de kopbalk: "+ Product" hoort bij de lijst. Anders kwam
+              het formulier voor een nieuw product onder de naam van het open
+              product, en bleef het na "terug" op de lijst staan. */}
+          <Btn onClick={() => startEdit()} cls={recordGevraagd ? 'hidden md:inline-block' : ''}>{t('btn_nieuw_product')}</Btn>
         </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 md:items-start">
         {/* Productlijst */}
-        <div className={`w-full md:w-60 md:flex-shrink-0${(sel || editMode) ? ' hidden md:block' : ''}`}>
+        <div className={`w-full md:w-60 md:flex-shrink-0${(sel || editMode || nietGevonden) ? ' hidden md:block' : ''}`}>
           <div className="mb-2">
             <SearchInput value={zoek} onChange={setZoek} placeholder={t('ph_product_zoek')} />
           </div>
@@ -1456,14 +1504,24 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
         </div>
 
       {/* Rechter kolom: product detail */}
-      <div className={`flex-1 min-w-0${(sel || editMode) ? '' : ' hidden md:block'}`}>
-        {(sel || editMode) && (
+      <div className={`flex-1 min-w-0${(sel || editMode || nietGevonden) ? '' : ' hidden md:block'}`}>
+        {/* Met de route gaat terug via de kopbalk (één terugweg); alleen een
+            formulier voor een nieuw product (geen record in de route) houdt
+            hier zijn eigen terugknop. */}
+        {(gestuurd ? (editMode && !sel) : (sel || editMode)) && (
           <button onClick={() => { setSel(null); setEditMode(false); }}
             className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors">
             {t('btn_back')}
           </button>
         )}
-        {!sel && !editMode && (
+        {nietGevonden && !editMode && (
+          _fetchedKeys.has('producten') ? (
+            <LegeStaat icoon="search" titel={t('route_niet_gevonden_titel')} tekst={t('route_niet_gevonden_product')}>
+              <Btn v="secondary" onClick={() => setSel(null, {vervang: true})}>{t('route_naar_lijst').replace('{lijst}', t('nav_producten'))}</Btn>
+            </LegeStaat>
+          ) : null
+        )}
+        {!sel && !editMode && !nietGevonden && (
           <div className="text-center text-gray-400 text-sm py-16">{actieveProducten.length > 0 ? t('lbl_selecteer_product') : t('lbl_geen_producten')}</div>
         )}
 
@@ -2150,7 +2208,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
             {/* Batches */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <SectionHeader
-                onToggle={() => setPage && setPage('batchflow')}
+                onToggle={() => setPage && setPage('batches')}
                 title={t('lbl_product_batches')}
                 info={selBatches.length}
               />

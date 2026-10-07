@@ -35,6 +35,15 @@ export const fmtDatumDoc = (d: string | undefined | null): string => {
 export const fmtQty = (v: any, max = 3): string =>
   Number(v || 0).toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: max })
 
+// Soortelijk gewicht (SG, OG, FG) altijd met drie decimalen en een punt, zoals
+// een brouwer hem afleest: "1.064", nooit "1.06" of "1,064". Leeg, nul of
+// onleesbaar wordt `leeg` (standaard een liggend streepje).
+export const fmtSg = (v: any, leeg = '—'): string => {
+  if (v === null || v === undefined || String(v).trim() === '') return leeg
+  const n = typeof v === 'number' ? v : Number(String(v).trim().replace(',', '.'))
+  return Number.isFinite(n) && n > 0 ? n.toFixed(3) : leeg
+}
+
 // Wiskundige afrondingen — gebruik bij opslag van bedragen/hoeveelheden om
 // drift door float-arithmetic te voorkomen.
 export const r2 = (n: any): number => Math.round(Number(n || 0) * 100) / 100

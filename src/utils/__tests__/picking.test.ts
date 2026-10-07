@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchAfvullingenVoorRegel, orderProductId, telOpenstaandeBestellingen, bestellingenOmTePicken, afvullingHoortBijBierNaam, onGepickteRegels, verzamelPicklijst } from '../picking'
+import { matchAfvullingenVoorRegel, orderProductId, telOpenstaandeBestellingen, bestellingenOmTePicken, afvullingHoortBijBierNaam, onGepickteRegels, verzamelPicklijst, orderNummer } from '../picking'
 
 // Referentiedata: één product "Tripel Phase" met verpakking 033 fles. De SKU
 // is in het verleden gewijzigd van "OUD033-1" naar "TAFL033-1"; de huidige
@@ -323,5 +323,25 @@ describe('verzamelPicklijst — één picklijst over meerdere bestellingen', () 
 
   it('is leeg zonder open orders', () => {
     expect(verzamelPicklijst([], [], {afvullingen, beschikbaar: () => 1, data: {bat}})).toEqual({regels: [], orders: [], totaal: 0})
+  })
+})
+
+describe('orderNummer — het zichtbare nummer van een bestelling', () => {
+  it('toont het WooCommerce-nummer van een webshoporder', () => {
+    expect(orderNummer({ id: 1712345678901, wc_order_nummer: '4321' })).toBe('WC-4321')
+    expect(orderNummer({ id: 3, wc_order_nummer: 4321, bestel_nummer: 'M-0014' })).toBe('WC-4321')
+  })
+
+  it('toont het bestelnummer van een handmatige order, anders M-<id>', () => {
+    expect(orderNummer({ id: 14, bestel_nummer: 'M-0014' })).toBe('M-0014')
+    expect(orderNummer({ id: 14 })).toBe('M-14')
+    expect(orderNummer({ id: 14, wc_order_nummer: '', bestel_nummer: '' })).toBe('M-14')
+    expect(orderNummer({ id: 14, wc_order_nummer: null })).toBe('M-14')
+  })
+
+  it('geeft een lege tekst zonder bestelling', () => {
+    expect(orderNummer(null)).toBe('')
+    expect(orderNummer(undefined)).toBe('')
+    expect(orderNummer({})).toBe('')
   })
 })

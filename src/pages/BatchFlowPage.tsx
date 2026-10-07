@@ -20,6 +20,9 @@ import { getEffectiveBrewProp } from '../utils/brewProps'
 import { ingredientenVoorType } from '../utils/ingTypes'
 import { openstaandeBatchTaken } from '../utils/taken'
 import type { AttentieDoel } from '../utils/attentie'
+import type { BatchesStand, GaNaar, GaNaarOpties } from '../utils/route'
+import { _fetchedKeys } from '../utils/api'
+import LegeStaat from '../components/ui/LegeStaat'
 import { registreerOntsmetting, taakReinigingStatus, taakSchoonmaakTaakId } from '../utils/ontsmetting'
 import {
   vergistProjectie, huidigeStapStartMs, stapDoelDagen, stapIsGereed, dagenInStap, verpakProjectie,
@@ -48,6 +51,7 @@ import { batchIsAfgerond, bouwBatchRapport } from '../utils/batchRapport'
 import { downloadBatchDossierPdf, printBatchDossier } from '../components/BatchRapportExport'
 import { actieveSessie, magAfvullingRegistreren, productVanLaatsteEtiketcontrole } from '../utils/afvulsessie'
 import { ingredientVoorBatchRegel, afgeboekteRegels } from '../utils/batchIngredienten'
+import { receptNaarBatch } from '../utils/receptNaarBatch'
 import { afvullingVerwijderBlokkade, batchVerwijderBlokkade, isFiscaleReden } from '../utils/afvullingVerwijderen'
 import type { VerwijderReden } from '../utils/afvullingVerwijderen'
 import {
@@ -132,8 +136,14 @@ interface BatchFlowPageProps {
   logo?: string | null,
   whoami: {gebruiker?: string, rol?: string} | null,
   setPage: (p: string) => void,
-  setNavBatchId: (id: number | null) => void,
+  /** Navigatie van de schil (App.tsx): ketenlinks naar recept, product, … */
+  gaNaar?: GaNaar,
+  /** De batch uit de route (`#/productie/batches/<id>`); null = de lijst. */
   openBatchId?: number | null,
+  /** Een batch openen of sluiten = de route wijzigen (een history-entry). */
+  onOpenBatch?: (id: number | null, opties?: GaNaarOpties) => void,
+  /** De stand van de Batches-lijst uit de route (F7 bouwt de segmenten). */
+  batchesStand?: BatchesStand | null,
   preNieuwBatch?: any,
   setPreNieuwBatch?: (v: any) => void,
   ccpMetingen?: any[], setCcpMetingen?: any,
@@ -142,13 +152,6 @@ interface BatchFlowPageProps {
       pagina consumeert en wist het via onNavDoelConsumed. */
   navDoel?: AttentieDoel | null,
   onNavDoelConsumed?: () => void,
-  /** Paneel-modus: de batch opent onder zijn tankkaart op de brouwzaal
-      (Productie-dashboard). Zonder geselecteerde batch rendert de pagina dan
-      niets, en "terug" wordt "sluiten". */
-  embedded?: boolean,
-  onSluit?: () => void,
-  /** Als eigen pagina: waar "← Brouwzaal" heen gaat (App.tsx: dashboard). */
-  onTerug?: () => void,
 }
 
 interface ChecklistItem {
@@ -426,21 +429,22 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   schoonmaakTaken = [], schoonmaakLog = [], setSchoonmaakLog = () => {},
   capa, setCapa, whoami,
   breweryDetails, appName = '', factuurLogo, logo,
-  setPage, setNavBatchId, openBatchId,
+  setPage, openBatchId, onOpenBatch, batchesStand = null,
   preNieuwBatch, setPreNieuwBatch,
   ccpMetingen, setCcpMetingen,
   navDoel = null, onNavDoelConsumed = () => {},
-  embedded = false, onSluit, onTerug,
 }) => {
-  const [sel, setSel] = useState<number | null>(openBatchId ?? null)
+  // De geopende batch. De route is de bron (App.tsx, `#/productie/batches/<id>`):
+  // `setSel` opent of sluit een batch via onOpenBatch — een history-entry, dus
+  // de terugknop van het toestel en een gedeelde link werken — en de route komt
+  // via openBatchId terug (effect hieronder).
+  const [sel, setSelIntern] = useState<number | null>(openBatchId ?? null)
+  const setSel = (id: number | null, opties?: GaNaarOpties) => {
+    setSelIntern(id)
+    if (onOpenBatch && id !== (openBatchId ?? null)) onOpenBatch(id, opties)
+  }
   // Terugweg van vijf seconden voor destructieve acties (UndoBar in App.tsx).
   const undo = useUndo()
-  // Paneel-modus: valt de selectie weg (batch verwijderd, of "terug" vanuit
-  // een sub-actie), dan sluit het paneel — de brouwzaal weet anders van niets.
-  React.useEffect(() => {
-    if (embedded && sel == null && openBatchId != null) onSluit && onSluit()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel])
   // Paneel "openstaande batchtaken" in het overzicht: álle batches met open
   // taken op een rij, klik = de batch op zijn actieve fase. Standaard
   // ingeklapt (het dashboard toont ze ook), open bij binnenkomst via de
@@ -455,8 +459,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // Handmatig open/dicht-geklapte stappen. Zolang een stap hier niet in staat,
   // volgt hij de default (open = niet-afgerond).
   const [openStappen, setOpenStappen] = useState<Record<string, boolean>>({})
-  // Archief: open bij binnenkomst via de archieflink op de brouwzaal.
-  const [geslotenOpen, setGeslotenOpen] = useState(navDoel?.filter === 'gesloten')
+  // Archief: open bij binnenkomst via de archieflink op de brouwzaal
+  // (`#/productie/batches/gesloten`, of het oude filter 'gesloten').
+  const [geslotenOpen, setGeslotenOpen] = useState(navDoel?.filter === 'gesloten' || batchesStand === 'gesloten')
   const [notitiesOpen, setNotitiesOpen] = useState(false)
   // Inklapbaar batch-gegevens-bewerkblok (naam/stijl/liters/product/gn-code),
   // het logboek en de recept-opnieuw-picker in de detail — overgenomen van de
@@ -519,8 +524,11 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [nieuwForm, setNieuwForm] = useState<any>({recept_id: '', naam: '', datum: tod(), tank: ''})
 
   // Open een batch: standaard alleen de actieve fase opengeklapt.
+  // `fasenVoorRef` = voor welke batch de fasen al zijn klaargezet.
+  const fasenVoorRef = React.useRef<number | null>(null)
   const openBatch = (id: number) => {
     const b = bat.find((x: any) => x.id === id)
+    fasenVoorRef.current = b ? id : null
     setSel(id)
     setOpenFasen(b ? [faseIndex(b.status)] : [0])
     setOpenStappen({})
@@ -528,13 +536,39 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setMoveTankTarget('')
     setAvF(emptyAvF)
     setActieveSessieId(null)
+    // Wat bij de vorige batch half was ingevuld (meting, verlies, carbonatie,
+    // ingrediënt, SKU) hoort niet bij deze. Sinds een batch altijd deze ene
+    // pagina is (geen paneel per batch meer), kan een batch rechtstreeks op
+    // een andere volgen — via de "Nu actief"-strook of de terugknop. De
+    // secties zelf (CCP 1, afvulsessie, brouwdag) beginnen opnieuw via de key
+    // op de detailweergave hieronder.
+    setMForm({sg: '', temp: '', ph: ''})
+    setVerliesForm({datum: tod(), bron: 'monster', liter: '', notitie: ''})
+    setCarbForm(emptyCarb)
+    setCarbComplete(emptyCarbComplete)
+    setIForm(emptyIForm)
+    setIngFormOpen(false)
+    setAvSkuForm(null)
+    setKoppelRow(null)
+    setReinigingMsg(null)
+    setNieuwProductNaam('')
+    setToonNieuwProduct(false)
+    setReceptPickerOpen(false)
+    setGegevensOpen(false)
   }
-  // Binnenkomen via de 'stap gereed'-banner (of andere navigatie): open direct
-  // de betreffende batch op zijn actieve fase.
+  // De route volgen: een batch via een tankkaart, de 'stap gereed'-banner, een
+  // link of de terugknop opent direct op zijn actieve fase; geen batch in de
+  // route = de lijst. Een koud geopende link (lege cache, herlaad) kent de
+  // batch nog niet: dan volgt de actuele fase zodra de batch geladen is, in
+  // plaats van te blijven hangen op fase 1.
+  const openBatchGeladen = openBatchId != null && (bat || []).some((x: any) => x.id === openBatchId)
   React.useEffect(() => {
-    if (openBatchId) openBatch(openBatchId)
+    if (openBatchId == null) { fasenVoorRef.current = null; setSelIntern(null); return }
+    if (!openBatchGeladen) { setSelIntern(openBatchId); return }
+    if (fasenVoorRef.current === openBatchId) { setSelIntern(openBatchId); return }
+    openBatch(openBatchId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openBatchId])
+  }, [openBatchId, openBatchGeladen])
   // Binnenkomen vanaf Recepten ('Brouwen') of het dashboard ('Nieuwe batch'):
   // open direct het voorgevulde nieuwe-batch-formulier in het overzicht. Een
   // meegegeven recept wordt voorgeselecteerd; maakNieuweBatch bouwt daarna de
@@ -642,7 +676,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const addLog = (entry: any) => setLog((prev: any[]) => [...(prev || []), {id: newId(prev || []), datum: tod(), ...entry}])
 
   // ── Nieuwe batch plannen (plus-kaart in het overzicht) ────────────────────
-  // De enige recept→batch-vertaling (maakNieuweBatch): doelen komen in
+  // De recept→batch-vertaling staat in utils/receptNaarBatch: doelen komen in
   // verwacht_* (geen metingen), ingrediënten worden batch-regels. De knop
   // 'Brouwen' op de receptenpagina geeft alleen het recept mee.
   const beschikbareRecepten = useMemo(() =>
@@ -681,93 +715,32 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const recept = nieuwForm.recept_id
       ? beschikbareRecepten.find((r: any) => String(r.id) === String(nieuwForm.recept_id))
       : null
-    const naam = String(nieuwForm.naam || '').trim() || recept?.naam || ''
-    if (!naam) { alert(t('err_name_required')); return }
+    // De vertaling recept → batch + regels staat in utils/receptNaarBatch
+    // (ook gebruikt door "Recept opnieuw toepassen").
+    const opties = {
+      nieuw: {
+        id: newId(bat || []),
+        batch_nummer: nextBatchNummer(bat || []),
+        naam: nieuwForm.naam,
+        datum: nieuwForm.datum || tod(),
+        tank: nieuwForm.tank,
+        created_at: new Date().toISOString(),
+      },
+      ingredienten: ing || [],
+    }
+    const nb: any = receptNaarBatch(recept, opties).batch
+    if (!nb.naam) { alert(t('err_name_required')); return }
     // Alleen actief gebruik blokkeert (er zit bier in de tank). Geen
     // ontsmet-eis bij het plannen: de tank wordt op de brouwdag ontsmet.
     if (nieuwForm.tank) {
       const bezet = tankBezetter(nieuwForm.tank, bat)
       if (bezet) { alert(t('err_tank_occupied').replace('{tank}', nieuwForm.tank).replace('{name}', bezet.naam)); return }
     }
-    // Rond gravity (3 dec) en ABV (2 dec) af: recept-waarden uit Brewfather
-    // kunnen floating-point-artefacten bevatten (bv. 1.0479999…).
-    const sg3 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 1000) / 1000
-    const abv2 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 100) / 100
-    const nb: any = {
-      id: newId(bat || []),
-      batch_nummer: nextBatchNummer(bat || []),
-      naam,
-      stijl: recept?.stijl || '',
-      status: 'Gepland',
-      datum: nieuwForm.datum || tod(),
-      tank: nieuwForm.tank || '',
-      OG: '', FG: '', ABV: '',
-      created_at: new Date().toISOString(),
-    }
-    if (recept) {
-      nb.recept_id = recept.id
-      nb.verwacht_og = sg3(recept.OG)
-      nb.verwacht_fg = sg3(recept.FG)
-      nb.verwacht_abv = abv2(recept.ABV)
-      nb.liter_vergist = recept.batch_size || ''
-      nb.kleur = recept.kleur || ''
-      nb.kooktijd = recept.kooktijd || ''
-      nb.kook_volume = recept.kook_volume || ''
-      nb.vergistingsprofiel = recept.vergistingsprofiel || []
-      nb.maischprofiel = recept.maischprofiel || []
-    }
     setBat((prev: any[]) => [...(prev || []), nb])
     addLog({type: 'aangemaakt', batch_id: nb.id, referentie: nb.naam})
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: nb.id, actie: 'aangemaakt', omschrijving: nb.naam})
-    if (recept) {
-      const receptIng = [
-        ...(recept.mout   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: i.ingredient_type || 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
-        ...(recept.hop    || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct, temp_c: i.temp_c })),
-        ...(recept.gist   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'pkg', ingredient_id: i.ingredient_id ?? null })),
-        ...(recept.overig || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik })),
-      ]
-      setBi((prev: any[]) => {
-        const startId = (prev || []).length ? Math.max(...prev.map((x: any) => x.id)) + 1 : 1
-        const nieuwe = receptIng.map((item: any, idx: number) => {
-          const ingMatch = item.ingredient_id
-            ? (ing || []).find((i: any) => i.id === item.ingredient_id)
-            : (ing || []).find((i: any) => i.naam.toLowerCase() === String(item.ingredient_naam || '').toLowerCase())
-          // Fallback voor brouwkundige eigenschappen: als het recept ze niet
-          // leverde, kijk dan in het gekoppelde Ingredient.bf_props.
-          const bfp = ingMatch?.bf_props || {}
-          const tType = String(item.ingredient_type || '').toLowerCase()
-          const isHop = tType === 'hop'
-          const isMout = tType === 'mout' || tType === 'suiker'
-          return {
-            id: startId + idx,
-            batch_id: nb.id,
-            ingredient_id: ingMatch ? ingMatch.id : null,
-            ingredient_naam: item.ingredient_naam,
-            ingredient_type: item.ingredient_type,
-            hoeveelheid: Number(item.hoeveelheid) || 0,
-            ...(isMout && {
-              extract_pct: item.extract_pct != null && item.extract_pct !== ''
-                ? Number(item.extract_pct)
-                : (bfp.yield != null ? Number(bfp.yield) : ''),
-            }),
-            ...(isHop && {
-              alpha_pct: item.alpha_pct != null && item.alpha_pct !== ''
-                ? Number(item.alpha_pct)
-                : (bfp.alpha != null ? Number(bfp.alpha) : ''),
-              tijdstip_min: item.tijdstip_min != null && item.tijdstip_min !== ''
-                ? Number(item.tijdstip_min) : '',
-              gebruik: String(item.gebruik || 'boil').toLowerCase(),
-              temp_c: item.temp_c != null && item.temp_c !== '' ? Number(item.temp_c) : '',
-            }),
-            eenheid: item.eenheid,
-            lot_id: null,
-            kosten: null,
-            afgeboekt: false,
-          }
-        })
-        return [...(prev || []), ...nieuwe]
-      })
-    }
+    // De regels tegen de verse lijst: hun id's lopen door vanaf het hoogste.
+    if (recept) setBi((prev: any[]) => receptNaarBatch(recept, {...opties, regels: prev || []}).alleRegels)
     setNieuwForm({recept_id: '', naam: '', datum: tod(), tank: ''})
     setNieuwOpen(false)
     // Direct de flow van de nieuwe batch openen op de fase Gepland.
@@ -1341,7 +1314,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setVerliesRegistraties((prev: any[]) => (prev || []).filter((r: any) => r.batch_id !== id))
     setCcpMetingen && setCcpMetingen((prev: any[]) => (prev || []).filter((m: any) => m.batch_id !== id))
     setLog((prev: any[]) => (prev || []).filter((l: any) => l.batch_id !== id))
-    setSel(null)
+    // Terug naar de lijst in plaats van de verwijderde batch: de history-entry
+    // wordt vervangen, anders bracht "terug" je bij een batch die er niet meer is.
+    setSel(null, { vervang: true })
   }
 
   // Recept opnieuw toepassen op een geplande batch — vervangt velden +
@@ -1359,50 +1334,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       return
     }
     if (!confirm(t('batch_sync_recept_confirm').replace('{recept}', r.naam || ''))) return
-    const sg3 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 1000) / 1000
-    const abv2 = (x: any) => (x === '' || x == null || isNaN(Number(x))) ? '' : Math.round(Number(x) * 100) / 100
-    const patch: any = {
-      recept_id: r.id, naam: r.naam || selB.naam, stijl: r.stijl || '',
-      OG: '', FG: '', ABV: '',
-      verwacht_og: sg3(r.OG), verwacht_fg: sg3(r.FG), verwacht_abv: abv2(r.ABV),
-      liter_vergist: r.batch_size || '', kleur: r.kleur || '', kooktijd: r.kooktijd || '',
-      kook_volume: r.kook_volume || '', vergistingsprofiel: r.vergistingsprofiel || [], maischprofiel: r.maischprofiel || [],
-    }
+    // Zelfde vertaling als een nieuwe batch (utils/receptNaarBatch): velden
+    // uit het recept, meetvelden leeg, regels van deze batch vervangen.
+    const opties = { batch: selB, ingredienten: ing || [] }
+    const patch = receptNaarBatch(r, opties).batch
     setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...patch} : b))
-    const nieuweIng = [
-      ...(r.mout   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: i.ingredient_type || 'Mout',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'kg',  ingredient_id: i.ingredient_id ?? null, extract_pct: i.extract_pct })),
-      ...(r.hop    || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Hop',    hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik, tijdstip_min: i.tijd, alpha_pct: i.alpha_pct, temp_c: i.temp_c })),
-      ...(r.gist   || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Gist',   hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'pkg', ingredient_id: i.ingredient_id ?? null })),
-      ...(r.overig || []).map((i: any) => ({ ingredient_naam: i.naam, ingredient_type: 'Overig', hoeveelheid: i.hoeveelheid, eenheid: i.eenheid || 'g',   ingredient_id: i.ingredient_id ?? null, gebruik: i.gebruik })),
-    ]
-    setBi((prev: any[]) => {
-      const overig = (prev || []).filter((x: any) => x.batch_id !== selB.id)
-      const startId = overig.length ? Math.max(...overig.map((x: any) => x.id), 0) + 1 : 1
-      const nieuwe = nieuweIng.map((item: any, idx: number) => {
-        const ingMatch = item.ingredient_id
-          ? (ing || []).find((i: any) => i.id === item.ingredient_id)
-          : (ing || []).find((i: any) => i.naam.toLowerCase() === String(item.ingredient_naam || '').toLowerCase())
-        const bfp = ingMatch?.bf_props || {}
-        const tType = String(item.ingredient_type || '').toLowerCase()
-        const isHop = tType === 'hop'
-        const isMout = tType === 'mout' || tType === 'suiker'
-        return {
-          id: startId + idx, batch_id: selB.id,
-          ingredient_id: ingMatch ? ingMatch.id : null,
-          ingredient_naam: item.ingredient_naam, ingredient_type: item.ingredient_type,
-          hoeveelheid: Number(item.hoeveelheid) || 0,
-          ...(isMout && { extract_pct: item.extract_pct != null && item.extract_pct !== '' ? Number(item.extract_pct) : (bfp.yield != null ? Number(bfp.yield) : '') }),
-          ...(isHop && {
-            alpha_pct: item.alpha_pct != null && item.alpha_pct !== '' ? Number(item.alpha_pct) : (bfp.alpha != null ? Number(bfp.alpha) : ''),
-            tijdstip_min: item.tijdstip_min != null && item.tijdstip_min !== '' ? Number(item.tijdstip_min) : '',
-            gebruik: String(item.gebruik || 'boil').toLowerCase(),
-            temp_c: item.temp_c != null && item.temp_c !== '' ? Number(item.temp_c) : '',
-          }),
-          eenheid: item.eenheid, lot_id: null, kosten: null, afgeboekt: false,
-        }
-      })
-      return [...overig, ...nieuwe]
-    })
+    setBi((prev: any[]) => receptNaarBatch(r, {...opties, regels: prev || []}).alleRegels)
     addLog({type: 'gewijzigd', batch_id: selB.id, referentie: t('batch_sync_recept_log').replace('{recept}', r.naam || '')})
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', omschrijving: t('batch_sync_recept_log').replace('{recept}', r.naam || '')})
     setReceptPickerOpen(false)
@@ -2046,9 +1983,19 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
+  // ── Een batch in de route die er niet (meer) is ───────────────────────────
+  // Een oude of afgekapte link, of een batch die intussen verwijderd is: dat
+  // zeggen, met de weg naar de lijst. Zolang de batches nog laden: niets.
+  if (!selB && sel != null) {
+    if (!_fetchedKeys.has('batches')) return null
+    return (
+      <LegeStaat icoon="search" titel={t('route_niet_gevonden_titel')} tekst={t('route_niet_gevonden_batch')}>
+        <Btn v="secondary" onClick={() => setSel(null, { vervang: true })}>{t('route_naar_lijst').replace('{lijst}', t('nav_batches'))}</Btn>
+      </LegeStaat>
+    )
+  }
+
   // ── Overzicht (geen batch geselecteerd) ───────────────────────────────────
-  // In paneel-modus is er geen overzicht: de brouwzaal ís het overzicht.
-  if (!selB && embedded) return null
   if (!selB) {
     const nieuwRecept = nieuwForm.recept_id
       ? beschikbareRecepten.find((r: any) => String(r.id) === String(nieuwForm.recept_id))
@@ -2063,7 +2010,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             batches leven op de brouwzaal (Productie-dashboard) — hier geen
             tweede kaartenwand en geen uitlegbanner meer. */}
         <div>
-          <h2 className="text-xl font-bold text-gray-800">{t('nav_planning')}</h2>
+          <h2 className="text-xl font-bold text-gray-800">{t('nav_batches')}</h2>
           <p className="text-sm text-gray-500 max-w-prose mt-0.5">{t('flow_planning_intro')}</p>
         </div>
 
@@ -4182,18 +4129,21 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
+  // De key per batch: een andere batch = de secties opnieuw (CCP 1, de
+  // afvulsessie met CCP 2/3, de brouwdag, dry hop), zodat een half ingevuld
+  // formulier van de ene batch nooit bij de volgende staat — zoals het oude
+  // paneel per batch deed. De lijst (zoekterm, uitklapstand) blijft staan.
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" key={`batch-${selB.id}`}>
       <div className="bg-white rounded-xl shadow-card overflow-hidden">
         <SectionHeader
           title={<>{selB.naam || t('lbl_naamloos')}{selB.batch_nummer ? ` · ${selB.batch_nummer}` : ''}</>}
         />
         <div className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            {/* Geen eigen terugknop: terug gaat via de kopbalk (telefoon) of
+                de tab en de history (bureau) — één terugweg. */}
             <div className="flex items-center gap-2">
-              {embedded
-                ? <Btn v="secondary" s="sm" onClick={() => onSluit && onSluit()}>{t('btn_sluiten')}</Btn>
-                : <Btn v="secondary" s="sm" onClick={() => onTerug ? onTerug() : setSel(null)}>← {t('flow_terug_brouwzaal')}</Btn>}
               <Badge s={selB.status} />
               {selB.stijl && <span className="text-xs text-gray-500">{selB.stijl}</span>}
             </div>

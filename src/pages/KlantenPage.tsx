@@ -20,6 +20,7 @@ import SearchInput from '../components/ui/SearchInput'
 import SectionHeader from '../components/ui/SectionHeader'
 import MailModal from '../components/MailModal'
 import { logAudit } from '../utils/audit'
+import type { GaNaar } from '../utils/route'
 
 interface Props {
   klanten: any[]
@@ -33,7 +34,8 @@ interface Props {
   logo?: string | null
   appName?: string
   setPage: (p: string) => void
-  setOpenOrderId: (id: number | null) => void
+  /** Navigatie van de schil: een bestelling openen (in de route). */
+  gaNaar: GaNaar
   auditLog: any[]
   setAuditLog: any
 }
@@ -83,7 +85,7 @@ const matchOngekoppeldeOrder = (b: any, email: string, naam: string): boolean =>
 const KlantenPage: React.FC<Props> = ({
   klanten, setKlanten, bestellingen, setBestellingen, verkoopFacturen,
   breweryDetails, smtpCreds, factuurLogo=null, logo=null, appName='',
-  setPage, setOpenOrderId, auditLog, setAuditLog,
+  gaNaar, auditLog, setAuditLog,
 }) => {
   const [view, setView] = React.useState<'list'|'detail'>('list')
   const [selectedId, setSelectedId] = React.useState<number|null>(null)
@@ -673,7 +675,7 @@ const KlantenPage: React.FC<Props> = ({
                             (s: number, r: any) => s + (r.aantal || 0) * (r.prijs_per_stuk || 0) * (1 + (r.btw_pct || 0) / 100), 0)
                           return (
                             <tr key={b.id} className="hover:bg-gray-50 cursor-pointer"
-                              onClick={() => { setOpenOrderId(b.id); setPage('bestellingen') }}>
+                              onClick={() => gaNaar({ pagina: 'bestellingen', id: b.id })}>
                               <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtD(b.datum)}</td>
                               <td className="px-3 py-2 font-mono text-xs text-gray-700">
                                 {b.wc_order_nummer ? `WC-${b.wc_order_nummer}` : `M-${b.id}`}
