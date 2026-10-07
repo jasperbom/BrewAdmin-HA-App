@@ -1,7 +1,7 @@
 // ── Vervallen en achterstallige facturen ─────────────────────────────────────
 // Eén plek voor de vraag "is deze factuur te laat?" — de attentie-badge van de
-// werkruimte Administratie, het Administratie-dashboard en de boekhoudpagina
-// rekenen hier allemaal mee, zodat ze nooit een verschillend aantal tonen.
+// werkruimte Administratie, het Administratie-dashboard en Administratie →
+// Facturen rekenen hier allemaal mee, zodat ze nooit een verschillend aantal tonen.
 //
 // Verkoopfacturen: de vervaldatum = factuurdatum + betalingstermijn, waarbij de
 // termijn van de klantkaart voorgaat op die van de brouwerij (Instellingen),
@@ -58,8 +58,8 @@ export function vervaldatumVerkoopFactuur(factuur: any, klanten: any[] = [], bre
 /**
  * De brouwerijgegevens met de betalingstermijn die voor déze factuur geldt
  * (klantkaart → brouwerij → 14). Geef dit mee aan de factuur-, herinnerings-
- * en UBL-opbouw: dan noemt elk document — vanuit Boekhouding, Bestellingen of
- * de kassa — dezelfde vervaldatum als waarmee de te-laat-badge rekent.
+ * en UBL-opbouw: dan noemt elk document — vanuit Administratie → Facturen,
+ * Bestellingen of de kassa — dezelfde vervaldatum als waarmee de te-laat-badge rekent.
  */
 export function breweryMetTermijn(factuur: any, klanten: any[] = [], breweryDetails: any = null): any {
   return {...(breweryDetails || {}), betalingstermijn: betalingstermijnVoor(factuur, klanten, breweryDetails)}

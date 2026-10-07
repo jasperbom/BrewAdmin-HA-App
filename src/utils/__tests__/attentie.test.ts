@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { attentiePosten, attentieTotalen, attentieTotaal, attentieDoel, attentieVoorPagina, AttentieBron } from '../attentie'
+import {
+  attentiePosten, attentieTotalen, attentieTotaal, attentieDoel, attentieVoorPagina, AttentieBron,
+  adminPosten, beslissingenBronVan,
+} from '../attentie'
+import { beslissingen, beslissingenPerPagina } from '../beslissingen'
+import { txKey } from '../bank'
 
 const leegBron = (): AttentieBron => ({
   batches: [], batchTakenItems: [], batchTakenGroepen: [],
@@ -72,10 +77,12 @@ describe('attentiePosten', () => {
       tht_verlopen: { pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_verlopen' },
       tht_binnenkort: { pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_binnenkort' },
       bestellingen: { pagina: 'bestellingen', filter: 'te_picken' },
-      verkoop_vervallen: { pagina: 'boekhouding', tab: 'verkoop' },
-      btw: { pagina: 'boekhouding', tab: 'btw_aangifte' },
-      accijns: { pagina: 'boekhouding', tab: 'accijns' },
-      inkoop_achterstallig: { pagina: 'boekhouding', tab: 'inkoop' },
+      // Eén rij in de groep: de post wijst die rij zelf aan (de factuur,
+      // de periode, de maand).
+      verkoop_vervallen: { pagina: 'facturen', tab: 'verkoop', filter: 'te_laat', id: 1 },
+      btw: { pagina: 'aangiftes', tab: 'btw', filter: '2026-Q1' },
+      accijns: { pagina: 'aangiftes', tab: 'accijns', filter: '2026-03' },
+      inkoop_achterstallig: { pagina: 'facturen', tab: 'inkoop', filter: 'te_laat', id: 1 },
     })
   })
 
@@ -125,7 +132,8 @@ describe('attentiePosten', () => {
     expect(posten.map(p => p.id)).toEqual(['btw'])
     // Q4-2025 en Q1-2026 zijn voorbij, niets ingediend of betaald.
     expect(posten[0].aantal).toBe(2)
-    expect(posten[0].pagina).toBe('boekhouding')
+    // Twee periodes: de post opent het BTW-segment, niet één periode.
+    expect(attentieDoel(posten[0])).toEqual({ pagina: 'aangiftes', tab: 'btw' })
   })
 
   it('telt vervallen verkoopfacturen: open én voorbij de betalingstermijn van klant of brouwerij', () => {
@@ -219,15 +227,15 @@ describe('attentiePosten', () => {
 describe('attentiePosten — facturen per e-mail', () => {
   const inboxItem = (id: number, status: string) => ({ id, status, ontvangen: '2026-05-09T10:00:00+00:00', bijlage: { naam: `f${id}.pdf`, bestand: `inbox_${id}.pdf` } })
 
-  it('telt alleen wat nog op verwerking wacht, onder Administratie op het tabblad Inkoop', () => {
+  it('telt het postvak als één punt (één rij op het dashboard), op het tabblad Inkoop', () => {
     const bron = leegBron()
     bron.inkoopInbox = [inboxItem(1, 'nieuw'), inboxItem(2, 'nieuw'), inboxItem(3, 'verwerkt'), inboxItem(4, 'genegeerd')]
     const posten = attentiePosten(bron).administratie
     expect(posten).toEqual([{
-      id: 'inkoop_inbox', sleutel: 'attentie_inkoop_inbox', pagina: 'boekhouding', tab: 'inkoop', aantal: 2,
+      id: 'inkoop_inbox', sleutel: 'attentie_postvak', pagina: 'facturen', tab: 'inkoop', filter: 'te_verwerken', aantal: 1,
     }])
-    expect(attentieDoel(posten[0])).toEqual({ pagina: 'boekhouding', tab: 'inkoop' })
-    expect(attentieTotalen(attentiePosten(bron)).administratie).toBe(2)
+    expect(attentieDoel(posten[0])).toEqual({ pagina: 'facturen', tab: 'inkoop', filter: 'te_verwerken' })
+    expect(attentieTotalen(attentiePosten(bron)).administratie).toBe(1)
   })
 
   it('valt weg zodra alles verwerkt of genegeerd is, of als er geen lijst is', () => {
@@ -236,5 +244,119 @@ describe('attentiePosten — facturen per e-mail', () => {
     expect(attentiePosten(bron).administratie).toEqual([])
     bron.inkoopInbox = undefined
     expect(attentiePosten(bron).administratie).toEqual([])
+  })
+})
+
+// ── Eén getal: werkruimte-badge = rijen op het Administratie-dashboard ──────
+// Tot 1.12.89 zei het Admin-icoon 13 terwijl het dashboard "Beslissingen 10"
+// toonde: de badge telde elke BTW-periode en elke postvak-PDF, het dashboard
+// bundelde ze. Nu komen de posten uit de rijen zelf.
+describe('attentiePosten — administratie = de rijen van het dashboard', () => {
+  // Een brouwerij zoals hij er in het echt bij ligt: facturen te laat aan
+  // beide kanten, BTW-kwartalen en accijnsmaanden open, een postvak met
+  // meer PDF's, ongekoppelde banktransacties en een afschrift met een gat.
+  const realistisch = (): AttentieBron => {
+    const bron = leegBron()
+    bron.vandaag = new Date('2026-10-07T12:00:00')
+    bron.vandaagIso = '2026-10-07'
+    bron.klanten = [
+      { id: 1, naam: 'Café De Zwaan', betalingstermijn: 14 },
+      { id: 2, naam: 'Slijterij Hoekstra', betalingstermijn: 30 },
+      { id: 3, naam: 'Restaurant Het Veer' },
+    ]
+    bron.verkoopFacturen = [
+      { id: 141, klant_id: 1, factuurnummer: '2025-0141', datum: '2025-11-20', bruto: 499, status: 'herinnering' },
+      { id: 152, klant_id: 2, factuurnummer: '2025-0152', datum: '2025-12-15', bruto: 346.06, status: 'open' },
+      { id: 249, klant_id: 2, factuurnummer: '2026-0049', datum: '2026-06-22', bruto: 900.24, status: 'open' },
+      { id: 268, klant_id: 3, factuurnummer: '2026-0068', datum: '2026-08-29', bruto: 389.02, status: 'open' },
+      { id: 274, klant_id: 1, factuurnummer: '2026-0074', datum: '2026-09-14', bruto: 296.33, status: 'open' },
+      { id: 279, klant_id: 2, factuurnummer: '2026-0079', datum: '2026-09-30', bruto: 496.1, status: 'open' },   // nog niet vervallen
+      { id: 281, klant_id: 3, factuurnummer: '2026-0081', datum: '2026-10-02', bruto: 199.89, status: 'open' }, // nog niet vervallen
+      { id: 903, klant_id: 1, factuurnummer: '2026-C003', datum: '2026-09-12', bruto: -24.2, status: 'credit' },
+      { id: 261, klant_id: 3, factuurnummer: '2026-0061', datum: '2026-08-02', bruto: 34.85, status: 'betaald' },
+      { id: 207, klant_id: 3, factuurnummer: '2026-0007', datum: '2026-02-03', bruto: 240, status: 'betaald' },
+    ]
+    bron.inkoopFacturen = [
+      { id: 11, leverancier: 'Mouterij', factuurnummer: 'M-88', datum: '2026-07-15', totaal_bruto: 612.5, status: 'open' }, // achterstallig
+      { id: 12, leverancier: 'Fermentis', factuurnummer: 'FE-1209', datum: '2026-09-20', totaal_bruto: 158.05, status: 'open' }, // binnen termijn
+      { id: 13, leverancier: 'Hopboer', factuurnummer: 'H-4', datum: '2026-04-02', totaal_bruto: 80, status: 'betaald' },
+    ]
+    // BTW per kwartaal: Q4 2025 ingediend, Q2 2026 betaald, Q1 en Q3 2026 open.
+    bron.btwAangiftes = [{ periodeKey: '2025-Q4' }]
+    bron.accijns = [
+      { datum: '2026-07-10', totaal_accijns: 40 },
+      { datum: '2026-08-11', totaal_accijns: 22 },
+      { datum: '2026-09-03', totaal_accijns: 18 },
+    ]
+    bron.accijnsAangiftes = [
+      { maand: '2026-07', status: 'betaald' },
+      { maand: '2026-08', status: 'berekend', controle_status: 'akkoord' },
+    ]
+    const item = (id: number, status: string) => ({ id, status, ontvangen: `2026-10-0${id}T08:00:00+00:00`, van: 'jan@x.nl', onderwerp: `F${id}`, bijlage: { naam: `f${id}.pdf`, bestand: `inbox_${id}.pdf` } })
+    bron.inkoopInbox = [item(1, 'nieuw'), item(2, 'nieuw'), item(3, 'nieuw'), item(4, 'verwerkt')]
+    const btwBetaling = { id: 1, afschrift_id: 2, iban: 'NL01', datum: '2026-09-28', type: 'D', bedrag: 229.69, referentie: 'BTWQ2' }
+    bron.bankTransacties = [
+      btwBetaling,
+      { id: 2, afschrift_id: 2, iban: 'NL01', datum: '2026-09-24', type: 'C', bedrag: 1000, referentie: 'STORT01' },
+      { id: 3, afschrift_id: 2, iban: 'NL01', datum: '2026-09-25', type: 'D', bedrag: 158.05, referentie: 'FE1209' },
+    ]
+    bron.bankKoppelingen = { [txKey(btwBetaling)]: { soort: 'btw', periodeKey: '2026-Q2' } }
+    bron.bankAfschriften = [
+      { id: 1, iban: 'NL01', afschriftNr: '00041', van: '2026-08-01', tot: '2026-08-31', beginsaldo: 2000, eindsaldo: 3100, transactie_ids: [] },
+      { id: 2, iban: 'NL01', afschriftNr: '00042', van: '2026-09-24', tot: '2026-09-28', beginsaldo: 3200, eindsaldo: 3812.26, transactie_ids: [1, 2, 3] },
+    ]
+    return bron
+  }
+
+  it('de werkruimte-badge telt precies de rijen van het dashboard', () => {
+    const bron = realistisch()
+    const rijen = beslissingen(beslissingenBronVan(bron))
+    const posten = attentiePosten(bron).administratie
+    // 5 vervallen verkoop, 1 inkoop, 2 BTW, 2 accijns, 1 postvak, 1 bank, 1 gat.
+    expect(rijen).toHaveLength(13)
+    expect(attentieTotaal(posten)).toBe(rijen.length)
+    expect(attentieTotalen(attentiePosten(bron)).administratie).toBe(rijen.length)
+    expect(posten.map(p => [p.id, p.aantal])).toEqual([
+      ['verkoop_vervallen', 5],
+      ['btw', 2],
+      ['accijns', 2],
+      ['inkoop_achterstallig', 1],
+      ['inkoop_inbox', 1],
+      ['bank_koppelen', 1],
+      ['bank_aansluiting', 1],
+    ])
+  })
+
+  it('de menubadge per pagina telt de rijen die naar die pagina gaan', () => {
+    const bron = realistisch()
+    const rijen = beslissingen(beslissingenBronVan(bron))
+    const posten = attentiePosten(bron).administratie
+    const perPagina = beslissingenPerPagina(rijen)
+    expect(perPagina).toEqual({ facturen: 7, aangiftes: 4, bank: 2 })
+    for (const pagina of ['facturen', 'bank', 'aangiftes', 'voorraad', 'rapporten']) {
+      expect(attentieTotaal(attentieVoorPagina(posten, pagina))).toBe(perPagina[pagina] || 0)
+    }
+  })
+
+  it('met de al berekende rijen (zoals App ze doorgeeft) dezelfde posten', () => {
+    const bron = realistisch()
+    const rijen = beslissingen(beslissingenBronVan(bron))
+    expect(attentiePosten({ ...bron, beslissingen: rijen }).administratie).toEqual(attentiePosten(bron).administratie)
+    expect(adminPosten(rijen)).toEqual(attentiePosten(bron).administratie)
+    // Zonder rijen: geen posten.
+    expect(adminPosten([])).toEqual([])
+    expect(adminPosten(undefined)).toEqual([])
+  })
+
+  it('een post met één rij opent die rij zelf, ook de handeling', () => {
+    const bron = realistisch()
+    const posten = attentiePosten(bron).administratie
+    const doel = (id: string) => attentieDoel(posten.find(p => p.id === id)!)
+    expect(doel('inkoop_achterstallig')).toEqual({ pagina: 'facturen', tab: 'inkoop', filter: 'te_laat', id: 11 })
+    expect(doel('bank_koppelen')).toEqual({ pagina: 'bank', filter: 'te_koppelen' })
+    expect(doel('bank_aansluiting')).toEqual({ pagina: 'bank', actie: 'importeren' })
+    // Meer rijen: de lijst met de filter, geen losse factuur.
+    expect(doel('verkoop_vervallen')).toEqual({ pagina: 'facturen', tab: 'verkoop', filter: 'te_laat' })
+    expect(doel('accijns')).toEqual({ pagina: 'aangiftes', tab: 'accijns' })
   })
 })

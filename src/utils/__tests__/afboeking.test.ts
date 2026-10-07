@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   afboekingAccijnsplichtig, bouwAfboekingAccijnsRecord,
-  accijnsMaandKey, groepeerAccijnsPerMaand,
+  accijnsMaandKey, groepeerAccijnsPerMaand, accijnsRecordsBetaald, accijnsRecordsOnbetaald,
 } from '../afboeking'
 
 const afvulling = { inhoud_per_eenheid: 0.33, verpakking_naam: 'Fles 33cl', verpakking_type: 'fles' }
@@ -105,6 +105,35 @@ describe('accijnsMaandKey', () => {
     expect(accijnsMaandKey('')).toBe('')
     expect(accijnsMaandKey(null)).toBe('')
     expect(accijnsMaandKey('geen datum')).toBe('')
+  })
+})
+
+describe('accijnsRecordsBetaald / accijnsRecordsOnbetaald', () => {
+  // De eerste van de maand is de valkuil: new Date('2026-08-01') is
+  // UTC-middernacht en viel in een westelijke tijdzone in juli.
+  const acc = [
+    { id: 1, datum: '2026-08-01', betaald: false },
+    { id: 2, datum: '2026-08-31', betaald: false },
+    { id: 3, datum: '2026-07-31', betaald: false },
+    { id: 4, datum: '2026-08-15', betaald: true, betaal_datum: '2026-08-20' },
+  ]
+  it('zet precies de records van de maand op betaald, ook de eerste van de maand', () => {
+    const uit = accijnsRecordsBetaald(acc, '2026-08', '2026-09-10')
+    expect(uit.map(a => a.betaald)).toEqual([true, true, false, true])
+    expect(uit[0]).toMatchObject({ betaal_datum: '2026-09-10' })
+    expect(uit[2]).toBe(acc[2])
+    // al betaald: ongewijzigd, ook de oude betaaldatum
+    expect(uit[3]).toBe(acc[3])
+  })
+  it('draait de maand terug zonder de buurmaand aan te raken', () => {
+    const betaald = accijnsRecordsBetaald(acc, '2026-08', '2026-09-10')
+    const terug = accijnsRecordsOnbetaald([...betaald, { id: 5, datum: '2026-09-01', betaald: true }], '2026-08')
+    expect(terug.map(a => a.betaald)).toEqual([false, false, false, false, true])
+    expect(terug[0]).toMatchObject({ betaal_datum: null })
+  })
+  it('lege invoer', () => {
+    expect(accijnsRecordsBetaald(null, '2026-08', '2026-09-10')).toEqual([])
+    expect(accijnsRecordsOnbetaald(undefined, '2026-08')).toEqual([])
   })
 })
 

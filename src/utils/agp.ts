@@ -11,14 +11,16 @@
 
 import type {
   Afvulling, Batch, Locatie, Uitlevering, Verplaatsing, Afboeking,
-  AccijnsRecord, AccijnsInst, AccijnsAangifte, VoorraadLog,
+  AccijnsRecord, AccijnsInst, AccijnsAangifte, VoorraadLog, VerliesRegistratie,
 } from '../types'
 import {
   accijnsCalc, tariefVoorDatum, voorraadPerLocatie, voorraadPerLocatieRaw,
-  getAgpLocatie, accijnsMaandGesloten,
+  getAgpLocatie, accijnsMaandGesloten, TANK_STATUSSEN, tankAccijnsWaarde,
 } from './calculations'
 import { fmt, tod } from './format'
 import { afvullingVerkoopbaar } from './haccp'
+import { inBereik, lokaleDag, dagNotatie, type Bereik } from './periode'
+import { zoekPast } from './factuurFilter'
 
 /** Voorraadlog-regel bij een uitslag. `VoorraadLog` zelf is generiek voor
  * ingrediënten; een bieruitslag legt daarnaast batch/afvulling vast. */
@@ -495,3 +497,240 @@ export const bouwUitslagBoekingen = (
   }
   return uit
 }
+
+// ── Eén accijnswaardering van de voorraad ──────────────────────────────────
+// Vóór de herindeling waardeerde elk scherm de AGP-voorraad op zijn eigen
+// manier: de AGP-tegels tegen het tarief van vandaag, het voorraadverloop en
+// de inventarisatie tegen de bevroren voorcalculatie van de afvulling (met elk
+// een eigen terugval). Nu één regel, voor AGP-stand, Verloop en Tellingen:
+//
+//  1. `voorcalc` — de voorcalculatie die bij het afvullen op de afvulling is
+//     bevroren (`voorcalc_accijns_per_eenheid`, Douane v2.4 §7.3);
+//  2. `geschat` — ontbreekt die (afvullingen van vóór v2.4), dan wat een
+//     uitslag op de peildatum zou kosten: het tarief van díe dag (standaard
+//     vandaag). Het scherm zegt er dan "geschat" bij.
+//
+// Boekt niets: de geboekte accijnsrecords blijven wat ze zijn. Dit is alleen
+// de waarde van wat er nog ligt.
+
+export type AccijnsWaardeBron = 'voorcalc' | 'geschat'
+
+export interface AccijnsWaarde {
+  /** Accijns over het hele aantal. */
+  bedrag: number
+  /** Per verpakte eenheid. */
+  perEenheid: number
+  bron: AccijnsWaardeBron
+}
+
+/** De accijnswaarde van `aantal` eenheden van deze afvulling. `peildatum`
+ * (JJJJ-MM-DD) bepaalt alleen het tarief van een schatting; standaard vandaag. */
+export const accijnsWaardeVoorraad = (
+  afv: Afvulling | null | undefined,
+  batch: Batch | null | undefined,
+  aantal: number,
+  accijnsInst?: AccijnsInst | null,
+  opts: { peildatum?: string } = {}
+): AccijnsWaarde => {
+  const n = Math.max(0, Number(aantal) || 0)
+  const bevroren = Number(afv?.voorcalc_accijns_per_eenheid || 0)
+  if (bevroren > 0) return { bedrag: bevroren * n, perEenheid: bevroren, bron: 'voorcalc' }
+  const datum = opts.peildatum || tod()
+  const perEenheid = uitslagAccijns(afv, batch, 1, accijnsInst, datum)
+  // Over het hele aantal rekenen (zoals een uitslag dat doet), zodat een eigen
+  // accijnsformule die niet lineair is hetzelfde bedrag geeft als de boeking.
+  const bedrag = n > 0 ? uitslagAccijns(afv, batch, n, accijnsInst, datum) : 0
+  return { bedrag, perEenheid, bron: 'geschat' }
+}
+
+export interface AccijnsWaardeSom {
+  bedrag: number
+  /** Het deel dat geschat is (geen bevroren voorcalculatie). */
+  geschat: number
+  /** `gemengd` = een deel voorcalculatie, een deel geschat; `null` = niets. */
+  bron: AccijnsWaardeBron | 'gemengd' | null
+}
+
+/** Telt waarderingen op en zegt waar het totaal op rust. */
+export const somAccijnsWaarden = (waarden: readonly AccijnsWaarde[]): AccijnsWaardeSom => {
+  let bedrag = 0
+  let geschat = 0
+  let aantalVoorcalc = 0
+  let aantalGeschat = 0
+  for (const w of waarden || []) {
+    if (!w) continue
+    bedrag += Number(w.bedrag) || 0
+    if (w.bron === 'geschat') { geschat += Number(w.bedrag) || 0; aantalGeschat++ } else aantalVoorcalc++
+  }
+  const bron: AccijnsWaardeSom['bron'] = aantalVoorcalc === 0 && aantalGeschat === 0 ? null
+    : aantalGeschat === 0 ? 'voorcalc'
+    : aantalVoorcalc === 0 ? 'geschat'
+    : 'gemengd'
+  return { bedrag, geschat, bron }
+}
+
+export interface AgpWaardeOpDag {
+  tank: number
+  verpakt: number
+  totaal: number
+}
+
+/** De AGP-waarde op dag `datum`, gewaardeerd zoals de tegel van de AGP-stand:
+ * verpakt met `accijnsWaardeVoorraad` (voorcalculatie, anders het tarief van
+ * die dag), tanks tegen het tarief van die dag (in een tank bestaat nog geen
+ * voorcalculatie). De voorraad zelf volgt `agpValueAt` in calculations.ts:
+ * een batch telt als hij op die dag in de tank zat (in TANK_STATUSSEN, of
+ * afgevuld/gesloten tot zijn laatste afvuldag), verpakt is de stand op de
+ * AGP-locatie op die dag. Zonder bevroren voorcalculaties geeft dit precies
+ * hetzelfde als `agpValueAt` (een test bewaakt dat). */
+export const agpWaardeOpDag = (
+  datum: string,
+  batches: Batch[],
+  afvullingen: Afvulling[],
+  uitleveringen: Uitlevering[],
+  verplaatsingen: Verplaatsing[],
+  afboekingen: Afboeking[],
+  locaties: Locatie[],
+  inst: AccijnsInst | null = null,
+  verliezen: VerliesRegistratie[] = []
+): AgpWaardeOpDag => {
+  const agp = getAgpLocatie(locaties)
+  const D = String(datum)
+  const afvTotD = (afvullingen || []).filter(a => String(a?.datum || '').slice(0, 10) <= D)
+  const verliesTotD = (verliezen || []).filter(r => String(r?.datum || '').slice(0, 10) <= D)
+
+  let tank = 0
+  for (const b of batches || []) {
+    const bDatum = String((b as any)?.datum || '')
+    if (bDatum && bDatum > D) continue
+    if (!TANK_STATUSSEN.includes(String((b as any)?.status))) {
+      const laatsteAfvulling = (afvullingen || [])
+        .filter(a => a.batch_id === (b as any)?.id)
+        .reduce((max, a) => {
+          const d = String(a?.datum || '').slice(0, 10)
+          return d > max ? d : max
+        }, '')
+      if (!laatsteAfvulling || D >= laatsteAfvulling) continue
+    }
+    tank += tankAccijnsWaarde(b, afvTotD, inst, verliesTotD, D).accijns
+  }
+
+  let verpakt = 0
+  for (const av of afvullingen || []) {
+    const avDatum = String(av?.datum || '')
+    if (avDatum && avDatum > D) continue
+    const inAgp = Number(voorraadPerLocatie(av, locaties, uitleveringen, verplaatsingen, afboekingen, D)[agp.id] || 0)
+    if (inAgp <= 0) continue
+    const batch = (batches || []).find(b => (b as any).id === av.batch_id) || null
+    verpakt += accijnsWaardeVoorraad(av, batch, inAgp, inst, { peildatum: D }).bedrag
+  }
+  return { tank, verpakt, totaal: tank + verpakt }
+}
+
+/** Gemiddelde AGP-waarde (`agpWaardeOpDag`) per dag over [van..tot], beide
+ * grenzen inclusief (JJJJ-MM-DD). Een leeg of omgedraaid bereik geeft 0. */
+export const gemAgpWaardeInPeriode = (
+  van: string,
+  tot: string,
+  batches: Batch[],
+  afvullingen: Afvulling[],
+  uitleveringen: Uitlevering[],
+  verplaatsingen: Verplaatsing[],
+  afboekingen: Afboeking[],
+  locaties: Locatie[],
+  inst: AccijnsInst | null = null,
+  verliezen: VerliesRegistratie[] = []
+): AgpWaardeOpDag => {
+  const nul = { tank: 0, verpakt: 0, totaal: 0 }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(van)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(tot)) || van > tot) return nul
+  const cur = new Date(Number(van.slice(0, 4)), Number(van.slice(5, 7)) - 1, Number(van.slice(8, 10)))
+  let n = 0
+  const som = { tank: 0, verpakt: 0, totaal: 0 }
+  // Lokale kalenderdagen (lokaleDag), nooit toISOString: dat geeft rond
+  // middernacht de UTC-dag.
+  for (let dag = lokaleDag(cur); dag <= tot; cur.setDate(cur.getDate() + 1), dag = lokaleDag(cur)) {
+    const w = agpWaardeOpDag(dag, batches, afvullingen, uitleveringen, verplaatsingen, afboekingen, locaties, inst, verliezen)
+    som.tank += w.tank; som.verpakt += w.verpakt; som.totaal += w.totaal; n++
+  }
+  if (n === 0) return nul
+  return { tank: som.tank / n, verpakt: som.verpakt / n, totaal: som.totaal / n }
+}
+
+// ── Accijns van uitgeslagen voorraad: betaald of nog open ──────────────────
+// Bier buiten de AGP is uitgeslagen: de accijns is geboekt bij de uitslag
+// (verplaatsing AGP → vrije locatie, met accijnsrecord). Of die al betaald is,
+// staat op dat record (`betaald`, gezet bij het betalen van de maandaangifte).
+// Welke uitslag bij de flesjes van nú hoort is niet vastgelegd; we nemen de
+// laatste uitslagen eerst (wat het eerst weg is, is het eerst verkocht), naar
+// déze locatie, anders van deze afvulling naar elders (via een verplaatsing
+// tussen vrije locaties hierheen gekomen).
+
+export type UitslagAccijnsStatus = 'betaald' | 'openstaand' | 'geen'
+
+export interface UitslagAccijnsOordeel {
+  /** `geen` = geen accijnsrecord gevonden (oude gegevens): niets te zeggen. */
+  status: UitslagAccijnsStatus
+  /** Nog niet betaalde accijns op het deel dat hier ligt. */
+  open: number
+  /** De accijnsrecords waar dit oordeel op rust. */
+  recordIds: number[]
+}
+
+export const uitgeslagenAccijnsStatus = (
+  afv: Afvulling | null | undefined,
+  locatieId: number,
+  aantal: number,
+  ctx: { locaties: Locatie[]; verplaatsingen?: Verplaatsing[]; accijns?: AccijnsRecord[] }
+): UitslagAccijnsOordeel => {
+  const leeg: UitslagAccijnsOordeel = { status: 'geen', open: 0, recordIds: [] }
+  if (!afv) return leeg
+  const agpId = getAgpLocatie(ctx.locaties).id
+  const uitslagen = (ctx.verplaatsingen || [])
+    .filter(v => v && v.afvulling_id === afv.id && v.van_locatie_id === agpId && v.naar_locatie_id !== agpId)
+    .slice()
+    .sort((a, b) => String(b.datum || '').localeCompare(String(a.datum || '')) || Number(b.id || 0) - Number(a.id || 0))
+  const hierheen = uitslagen.filter(v => v.naar_locatie_id === locatieId)
+  const kandidaten = hierheen.length > 0 ? hierheen : uitslagen
+  const records = ctx.accijns || []
+  const recordVoor = (v: Verplaatsing): AccijnsRecord | undefined =>
+    (v.accijns_record_id != null ? records.find(r => r?.id === v.accijns_record_id) : undefined)
+    || records.find(r => r?.verplaatsing_id === v.id)
+
+  let rest = Math.max(0, Number(aantal) || 0)
+  let open = 0
+  let onbetaald = false
+  const recordIds: number[] = []
+  for (const v of kandidaten) {
+    if (rest <= 0) break
+    const deel = Math.min(rest, Math.max(0, Number(v.aantal) || 0))
+    if (deel <= 0) continue
+    rest -= deel
+    const rec = recordVoor(v)
+    if (!rec) continue
+    recordIds.push(rec.id)
+    if (!rec.betaald) {
+      onbetaald = true
+      const bedrag = Number(rec.totaal_accijns ?? rec.accijns ?? v.accijns ?? 0)
+      open += Number(v.aantal) > 0 ? bedrag * deel / Number(v.aantal) : 0
+    }
+  }
+  if (recordIds.length === 0) return leeg
+  return { status: onbetaald ? 'openstaand' : 'betaald', open, recordIds }
+}
+
+// ── De lijst verplaatsingen ─────────────────────────────────────────────────
+
+/** Verplaatsingen in het bereik die bij de zoekterm passen, nieuwste eerst.
+ * `tekstVan` levert de doorzoekbare tekst (bier, verpakking, locaties); het
+ * accijnsbedrag is als bedrag te vinden ("12,40"). */
+export const filterVerplaatsingen = <V extends Pick<Verplaatsing, 'id' | 'datum'> & { accijns?: number }>(
+  lijst: readonly V[] | null | undefined,
+  bereik: Bereik,
+  zoek: string,
+  tekstVan: (v: V) => readonly unknown[]
+): V[] =>
+  (lijst || [])
+    .filter(v => v && inBereik(v.datum, bereik))
+    .filter(v => zoekPast([...tekstVan(v), v.datum, dagNotatie(String(v.datum || '').slice(0, 10))], [v.accijns], zoek))
+    .slice()
+    .sort((a, b) => String(b.datum || '').localeCompare(String(a.datum || '')) || Number(b.id || 0) - Number(a.id || 0))

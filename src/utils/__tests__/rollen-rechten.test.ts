@@ -40,6 +40,14 @@ describe('rolMagKey', () => {
     expect(rolMagKey('', 'batches')).toBe(true)
   })
 
+  it('de bewaarde bankafschriften zijn financieel: boekhouding wel, productie niet', () => {
+    for (const k of ['bank_transacties', 'bank_afschriften']) {
+      expect(rolMagKey('boekhouding', k), k).toBe(true)
+      expect(rolMagKey('productie', k), k).toBe(false)
+      expect(rolMagKey('alleen_lezen', k), k).toBe(false)
+    }
+  })
+
   it('de twee lijsten overlappen niet', () => {
     expect(BEHEER_KEYS.filter(k => FINANCIELE_KEYS.includes(k))).toEqual([])
   })

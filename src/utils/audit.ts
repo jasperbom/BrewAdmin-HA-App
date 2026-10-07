@@ -21,7 +21,7 @@ export const auditGebruiker = (w: { gebruiker?: string | null } | null | undefin
 // stellen een naam samen (`HA ${lijst}`), en dat moet mogelijk blijven.
 export const AUDIT_SOORTEN = [
   'Accijns', 'Accijnsaangifte', 'Afboeking', 'AfvulSessie', 'Afvulling', 'AltRekening',
-  'Artikel', 'Bankkoppeling', 'Batch', 'BatchTaak', 'BatchTaakGroep', 'Bestelling',
+  'Artikel', 'Bankafschrift', 'Bankkoppeling', 'Batch', 'BatchTaak', 'BatchTaakGroep', 'Bestelling',
   'BTW-aangifte', 'CAPA', 'Carbonatiesessie', 'Dryhop', 'EtiketControle', 'GN-code',
   'Gistmeting', 'HA Sensor', 'HA Service', 'HaccpVrijgave', 'Ingrediënt',
   'Ingrediënttype', 'Inkoopfactuur',

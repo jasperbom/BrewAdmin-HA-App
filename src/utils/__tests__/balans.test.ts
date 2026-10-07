@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { btwPositieCent } from '../balans'
+import { btwPositieCent, btwAfgerekendOp, btwPositieOp } from '../balans'
 import {
   verkoopFactuurBoeking, inkoopFactuurBoeking, btwAangifteBoeking, stornoBoekingVoor, voegBoekingToe,
 } from '../journaal'
@@ -67,5 +67,38 @@ describe('btwPositieCent', () => {
   it('leest ook de ruwe boekingsbouwers (terugval bij een leeg journaal)', () => {
     const ruw = [...verkoopFactuurBoeking(verkoop121), ...inkoopFactuurBoeking(inkoop, 'kwartaal')]
     expect(btwPositieCent(ruw, new Set(), 'kwartaal').cent).toBe(1050)
+  })
+})
+
+describe('BTW op een peildatum', () => {
+  it('een periode is pas afgerekend op de dag van de betaling (datum uit de koppelsleutel)', () => {
+    const koppelingen = {
+      '2026-10-28|D|21|BTW Q3': { soort: 'btw', periodeKey: '2026-Q3' },
+      '2026-07-25|D|10|BTW Q2': { soort: 'btw', periodeKey: '2026-Q2' },
+      '2026-07-01|C|50|X': { soort: 'verkoop', factuurId: 1 },
+    }
+    expect([...btwAfgerekendOp(koppelingen, [], '2026-09-30')]).toEqual(['2026-Q2'])
+    expect([...btwAfgerekendOp(koppelingen, [], '2026-10-31')].sort()).toEqual(['2026-Q2', '2026-Q3'])
+  })
+  it('een nihil-aangifte telt vanaf de indieningsdatum; een koppeling zonder datum altijd', () => {
+    const indieningen = [
+      { periodeKey: '2026-Q1', bedrag: 0, ingediend_datum: '2026-04-20' },
+      { periodeKey: '2026-Q2', bedrag: 120, ingediend_datum: '2026-07-20' },
+      { periodeKey: '2025-Q4', bedrag: 0.4 },
+    ]
+    expect([...btwAfgerekendOp({ onzin: { soort: 'btw', periodeKey: '2025-Q3' } }, indieningen, '2026-03-31')].sort())
+      .toEqual(['2025-Q3', '2025-Q4'])
+    expect(btwAfgerekendOp(null, indieningen, '2026-04-30').has('2026-Q1')).toBe(true)
+  })
+  it('btwPositieOp telt alleen journaalregels tot en met de peildatum', () => {
+    const later = { ...verkoop121, id: 9, datum: '2026-10-02' }
+    const j = boek(verkoopFactuurBoeking(verkoop121), verkoopFactuurBoeking(later))
+    expect(btwPositieOp(j, new Set(), 'kwartaal', '2026-09-30')).toEqual({ cent: 2100, openPerioden: ['2026-Q2'] })
+    expect(btwPositieOp(j, new Set(), 'kwartaal', '2026-10-07').cent).toBe(4200)
+  })
+  it('op vandaag gelijk aan btwPositieCent met alle afgerekende periodes', () => {
+    const j = boek(verkoopFactuurBoeking(verkoop121), inkoopFactuurBoeking(inkoop, 'kwartaal'))
+    const af = btwAfgerekendOp({ '2026-07-20|D|10.5|x': { soort: 'btw', periodeKey: '2026-Q2' } }, [], '2026-10-07')
+    expect(btwPositieOp(j, af, 'kwartaal', '2026-10-07')).toEqual(btwPositieCent(j, new Set(['2026-Q2']), 'kwartaal'))
   })
 })

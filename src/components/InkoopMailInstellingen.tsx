@@ -12,7 +12,7 @@ import {
 
 // Instellingen → Koppelingen → "Facturen per e-mail". Het postvak waar je een
 // inkoopfactuur naartoe stuurt; de server haalt er de PDF-bijlagen uit
-// (`_inbox_tick`) en zet ze op de tab Inkoop klaar om te verwerken. Alleen
+// (`_inbox_tick`) en zet ze op Facturen → Inkoop klaar om te verwerken. Alleen
 // `beheer` mag dit wijzigen (`imap_creds` staat in _BEHEER_KEYS).
 
 interface InkoopMailInstellingenProps {
@@ -47,7 +47,7 @@ const BEVEILIGING_LABEL: Record<ImapBeveiliging, string> = {
 
 const card = 'bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 break-inside-avoid'
 
-// Waar "Naar de instellingen" op de tab Inkoop precies landt (zie InstellingenPage).
+// Waar "Naar de instellingen" op Facturen → Inkoop precies landt (zie InstellingenPage).
 export const POSTVAK_KAART_ID = 'instellingen-postvak'
 
 export default function InkoopMailInstellingen({ creds, setCreds, fmtTs, onAudit }: InkoopMailInstellingenProps) {

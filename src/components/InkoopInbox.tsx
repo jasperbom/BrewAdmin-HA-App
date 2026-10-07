@@ -14,7 +14,7 @@ import {
   inboxTerugzetten, inboxVerwijder,
 } from '../utils/inkoopInbox'
 
-// Tab Inkoop → "Ontvangen per e-mail": de PDF-facturen die de server uit het
+// Administratie → Facturen → Inkoop → "Ontvangen per e-mail": de PDF-facturen die de server uit het
 // postvak heeft gehaald (`_inbox_tick` in server.py) en die op verwerking
 // wachten. Verwerken = de factuur openen, scannen en boeken via het gewone
 // inkoopformulier; dat opent de pagina zelf (`onVerwerk`). Hier alleen de
@@ -32,6 +32,8 @@ interface InkoopInboxProps {
   onNaarInstellingen?: () => void
   /** Legt een handeling vast in het auditlogboek van de app. */
   onAudit?: (omschrijving: string, id: number, actie: 'gewijzigd' | 'verwijderd') => void
+  /** Wat er staat als er niets in te stellen, te doen of te tonen is (standaard niets). */
+  leeg?: React.ReactNode
 }
 
 // Genoeg om terug te kijken; de rest blijft in de lijst staan maar niet in beeld.
@@ -47,7 +49,7 @@ const tijdTekst = (iso: string | undefined): string => {
 
 const bestandUrl = (i: InkoopInboxItem): string => `${ADDON_BASE}api/file/${i.bijlage.bestand}`
 
-export default function InkoopInbox({ items, setItems, actief, onVerwerk, vernieuw, onNaarInstellingen, onAudit }: InkoopInboxProps) {
+export default function InkoopInbox({ items, setItems, actief, onVerwerk, vernieuw, onNaarInstellingen, onAudit, leeg = null }: InkoopInboxProps) {
   const undo = useUndo()
   const open = React.useMemo(() => inboxOpen(items), [items])
   const afgehandeld = React.useMemo(() => inboxAfgehandeld(items), [items])
@@ -73,8 +75,9 @@ export default function InkoopInbox({ items, setItems, actief, onVerwerk, vernie
   // Eén foutmelding tegelijk: die van de laatste handmatige ronde gaat voor die van de server.
   const getoondeFout: InboxFout | null | undefined = melding ? (melding.ok ? null : melding.fout) : fout
 
-  // Niets in te stellen, niets te doen, niets te tonen: de tab blijft schoon.
-  if (!actief && open.length === 0 && afgehandeld.length === 0 && overgeslagen.length === 0) return null
+  // Niets in te stellen, niets te doen, niets te tonen: de tab blijft schoon
+  // (of de pagina geeft een lege staat mee, als het postvak het hele scherm is).
+  if (!actief && open.length === 0 && afgehandeld.length === 0 && overgeslagen.length === 0) return <>{leeg}</>
 
   const ophalen = async () => {
     setBezig(true); setMelding(null)

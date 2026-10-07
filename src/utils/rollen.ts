@@ -74,6 +74,7 @@ export const BEHEER_KEYS: readonly string[] = [
 export const FINANCIELE_KEYS: readonly string[] = [
   'inkoop_facturen', 'verkoop_facturen', 'scan_correcties', 'journaal',
   'inkoop_inbox', 'jaarafsluitingen', 'bank_saldi', 'bank_koppelingen',
+  'bank_transacties', 'bank_afschriften',
   'kapitaal_boekingen', 'accijns', 'accijns_aangiftes',
   'accijns_instellingen', 'btw_aangiftes', 'btw_instellingen',
   'btw_tarieven', 'ing_type_btw', 'alt_rekeningen', 'kosten_soorten',

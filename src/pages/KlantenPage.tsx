@@ -6,22 +6,39 @@
  *   voor losse WC-orders die nog niet aan een klantkaart gekoppeld zijn.
  * - Ongekoppelde orders zijn aan een klantkaart te koppelen op e-mail óf op
  *   exact dezelfde klantnaam (zie matchOngekoppeldeOrder).
+ * - Klanten staan alleen hier (Verkoop). De facturen van een klant openen het
+ *   factuurdetail op Administratie › Facturen; "Facturen van deze klant" opent
+ *   die lijst met de klant als filter. Welke factuur bij welke klant hoort en
+ *   wat "vervallen" is, komt uit utils/klantFacturen.ts — dezelfde regels als
+ *   de klantfilter en de te-laat-badge daar.
  */
 import React from 'react'
 import { t, getLang } from '../i18n'
 import { newId, _fetchedKeys } from '../utils/api'
 import { nextKlantnummer, ordersTeKoppelenBijOpslaan, koppelOrderAanKlant, KLANT_SYNC_STATUSSEN } from '../utils/klant'
 import { landOpties, normaliseerLand } from '../utils/btwCategorie'
-import { fmt, fmtD } from '../utils/format'
+import { fmt, fmtD, tod } from '../utils/format'
+import { centNaarEuro } from '../utils/centen'
+import { facturenPerKlant, klantenMetVervallenFactuur, klantFactuurCijfers } from '../utils/klantFacturen'
+import { verkoopStand } from '../utils/factuurTijdlijn'
+import type { AttentieDoel } from '../utils/attentie'
+import { zetGedeeldePeriode } from '../components/ui/useGedeeldePeriode'
 import Btn from '../components/ui/Btn'
+import BevestigKnop from '../components/ui/BevestigKnop'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import SearchInput from '../components/ui/SearchInput'
 import SectionHeader from '../components/ui/SectionHeader'
+import LegeStaat from '../components/ui/LegeStaat'
+import Icon from '../components/ui/Icon'
+import ResponsiveLijst from '../components/ui/ResponsiveLijst'
+import type { LijstKolom } from '../components/ui/ResponsiveLijst'
+import { VerkoopPil } from './admin/facturen/FactuurPil'
 import MailModal from '../components/MailModal'
+import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
 
-interface Props {
+export interface KlantenPageProps {
   klanten: any[]
   setKlanten: any
   bestellingen: any[]
@@ -36,6 +53,11 @@ interface Props {
   setOpenOrderId: (id: number | null) => void
   auditLog: any[]
   setAuditLog: any
+  /** Naar een ander scherm met segment/filter/record (een factuur op Facturen). */
+  gaNaarDoel?: (d: AttentieDoel) => void
+  /** `{pagina: 'klanten', id}` = die klant meteen openen (bijv. vanuit het factuurdetail). */
+  navDoel?: AttentieDoel | null
+  onNavDoelConsumed?: () => void
 }
 
 const EMAIL_RE = /^[^@\s,;<>"]+@[^@\s,;<>"]+\.[^@\s,;<>"]+$/
@@ -80,10 +102,11 @@ const matchOngekoppeldeOrder = (b: any, email: string, naam: string): boolean =>
   return !!((emailLc && beLc === emailLc) || (naamLc && bnLc === naamLc))
 }
 
-const KlantenPage: React.FC<Props> = ({
+const KlantenPage: React.FC<KlantenPageProps> = ({
   klanten, setKlanten, bestellingen, setBestellingen, verkoopFacturen,
   breweryDetails, smtpCreds, factuurLogo=null, logo=null, appName='',
   setPage, setOpenOrderId, auditLog, setAuditLog,
+  gaNaarDoel, navDoel = null, onNavDoelConsumed,
 }) => {
   const [view, setView] = React.useState<'list'|'detail'>('list')
   const [selectedId, setSelectedId] = React.useState<number|null>(null)
@@ -138,6 +161,21 @@ const KlantenPage: React.FC<Props> = ({
   const [dirty, setDirty] = React.useState(false)
   const [mailModal, setMailModal] = React.useState<null | {to:string,subject:string,text:string}>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false)
+  const vandaagIso = tod()
+
+  // Welke factuur bij welke klant hoort: de live klantkaart (ook via het
+  // e-mailadres), anders de klant_id op de factuur — dezelfde regel als de
+  // klantfilter op Facturen › Verkoop, zodat "Facturen van deze klant" daar
+  // precies deze lijst toont.
+  const facturenVanKlant = React.useMemo(
+    () => facturenPerKlant(verkoopFacturen, klanten), [verkoopFacturen, klanten])
+  // De oranje stip = een échte vervallen factuur (vervallenVerkoopFacturen),
+  // niet "er staat iets open".
+  const klantenMetVervallen = React.useMemo(
+    () => klantenMetVervallenFactuur(verkoopFacturen, klanten, breweryDetails, vandaagIso),
+    [verkoopFacturen, klanten, breweryDetails, vandaagIso])
+  const factuurCtx = React.useMemo(
+    () => ({ klanten, breweryDetails, vandaagIso }), [klanten, breweryDetails, vandaagIso])
 
   // Per-klant statistieken. Match via klant_id, en als fallback via case-
   // insensitive email-match — zo worden ook losse WC-orders met klant_email
@@ -146,34 +184,36 @@ const KlantenPage: React.FC<Props> = ({
   // Definities:
   //   omzet      — strikt gefactureerd: som van alle verkoopfacturen voor
   //                deze klant (creditnota's hebben een negatieve bruto en
-  //                verlagen de omzet zoals het hoort). Consistent met de
-  //                `verkoopTotals.bruto` in de Boekhouding-pagina.
+  //                verlagen de omzet zoals het hoort), in centen opgeteld.
   //   openOrders — pipeline: orders die nog niet gefactureerd zijn en niet
   //                geannuleerd. Pas omzet ZODRA er een factuur is.
-  //   openstaand — open facturen (niet betaald, geen creditnota).
+  //   openstaand — open facturen (isVerkoopFactuurOpen: niet betaald, geen
+  //                creditnota) — hetzelfde als de chip Open op Facturen.
   const statsPerKlant = React.useMemo(() => {
-    const map: Record<number, {bestellingen: any[], facturen: any[], omzet: number, openOrders: number, openstaand: number, laatsteDatum: string}> = {}
+    const map: Record<number, {bestellingen: any[], facturen: any[], omzet: number, omzetCent: number, openOrders: number, openstaand: number, openstaandCent: number, laatsteDatum: string}> = {}
     klanten.forEach(k => {
       const emailLc = (k.email || '').toLowerCase()
       const matchOrder = (b: any) => b.klant_id === k.id
         || (emailLc && b.klant_email && b.klant_email.toLowerCase() === emailLc)
-      const matchFactuur = (f: any) => f.klant_id === k.id
       const bestellingenK = bestellingen.filter(matchOrder)
-      const facturenK = verkoopFacturen.filter(matchFactuur)
-      const omzet = facturenK.reduce((s: number, f: any) => s + (f.bruto || 0), 0)
+      const facturenK = facturenVanKlant.get(String(k.id)) || []
+      const c = klantFactuurCijfers(facturenK)
       const openOrders = bestellingenK
         .filter((b: any) => b.status !== 'geannuleerd'
           && !facturenK.some((f: any) => f.bestelling_id === b.id))
         .reduce((s: number, b: any) => s + orderBruto(b), 0)
-      const openstaand = facturenK
-        .filter((f: any) => f.status !== 'betaald' && f.status !== 'credit')
-        .reduce((s: number, f: any) => s + (f.bruto || 0), 0)
       const laatsteDatum = bestellingenK.reduce((d: string, b: any) =>
         (b.datum || '') > d ? b.datum : d, '')
-      map[k.id] = {bestellingen: bestellingenK, facturen: facturenK, omzet, openOrders, openstaand, laatsteDatum}
+      map[k.id] = {
+        bestellingen: bestellingenK, facturen: facturenK,
+        omzet: centNaarEuro(c.omzetCent), omzetCent: c.omzetCent,
+        openOrders,
+        openstaand: centNaarEuro(c.openstaandCent), openstaandCent: c.openstaandCent,
+        laatsteDatum,
+      }
     })
     return map
-  }, [klanten, bestellingen, verkoopFacturen])
+  }, [klanten, bestellingen, facturenVanKlant])
 
   // Synthetische klantkaarten uit bestellingen die nog niet aan een
   // klantkaart gekoppeld zijn. Worden gegroepeerd op e-mail (of, als die er
@@ -307,18 +347,38 @@ const KlantenPage: React.FC<Props> = ({
     setView('detail')
   }
 
-  const goBack = () => {
-    if (dirty && !confirm(t('klanten_unsaved_confirm'))) return
+  // Terug naar de lijst. Met niet-opgeslagen wijzigingen vraagt de terugknop
+  // het eerst zelf (BevestigKnop), niet via een confirm-venster.
+  const naarLijst = () => {
     setView('list')
     setSelectedId(null)
     setSynthSourceKey(null)
     setDirty(false)
   }
 
+  // Navigatiedoel `{pagina: 'klanten', id}` (de klant in het factuurdetail):
+  // die klant meteen openen. Zolang de klantenlijst nog van de server komt
+  // wachten we; staat hij er dan niet in, dan blijft de lijst staan.
+  const navKlantId = React.useRef<number | null>(
+    navDoel?.pagina === 'klanten' && navDoel.id != null && Number.isFinite(Number(navDoel.id)) ? Number(navDoel.id) : null)
+  React.useEffect(() => {
+    const id = navKlantId.current
+    // Een doel zonder bruikbare klant-id is meteen afgehandeld (niet laten
+    // hangen tot de volgende navigatie).
+    if (id === null) { if (navDoel) onNavDoelConsumed?.(); return }
+    const k = klanten.find((x: any) => String(x?.id) === String(id))
+    if (!k && !_fetchedKeys.has('klanten')) return
+    navKlantId.current = null
+    if (k) openDetail(k)
+    onNavDoelConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [klanten])
+
   const update = (patch: any) => { setForm((f: any) => ({...f, ...patch})); setDirty(true) }
 
   const save = () => {
-    if (!form.naam.trim()) { alert(t('klanten_err_no_name')); return }
+    // De opslaanknop staat uit zonder naam; dit vangt alleen een omweg af.
+    if (!form.naam.trim()) return
     // Klantnummer wordt ALTIJD automatisch bepaald — nooit door de gebruiker
     // ingevoerd. Voorkomt dubbele nummers per definitie. Bij een nieuwe klant
     // pakken we het volgende vrije nummer; bij een bestaande klant behouden
@@ -446,19 +506,19 @@ const KlantenPage: React.FC<Props> = ({
     setKlanten((prev: any[]) => prev.filter((k: any) => k.id !== selectedId))
     logAudit(auditLog, setAuditLog, {entiteit:'Klant', entiteit_id:selectedId, actie:'verwijderd', omschrijving:naam})
     setShowDeleteConfirm(false)
-    setView('list')
-    setSelectedId(null)
+    naarLijst()
   }
 
   // Koppel losse WC-orders die op e-mail óf naam matchen aan deze klant
   // (klant_id zetten). De order-snapshot blijft ongemoeid zodat een afwijkend
   // e-mailadres op de bestelling bewaard blijft.
+  // De knop staat er alleen als er iets te koppelen is en vraagt zelf om
+  // bevestiging (BevestigKnop met het aantal).
   const koppelOrders = () => {
     if (!selected) return
     const toLink = bestellingen.filter((b: any) =>
       matchOngekoppeldeOrder(b, selected.email || '', selected.naam || ''))
-    if (toLink.length === 0) { alert(t('klanten_no_unlinked_orders')); return }
-    if (!confirm(t('klanten_link_orders_confirm').replace('{n}', String(toLink.length)))) return
+    if (toLink.length === 0) return
     const ids = new Set(toLink.map((b: any) => b.id))
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       ids.has(b.id) ? {...b, klant_id: selected.id} : b
@@ -467,15 +527,38 @@ const KlantenPage: React.FC<Props> = ({
   }
 
   const mailKlant = () => {
-    if (!selected?.email) { alert(t('mail_no_recipient')); return }
+    // De mailknop kijkt naar het adres in het formulier (staat uit zonder
+    // geldig adres); de mail gaat dus ook naar dát adres, anders deed de knop
+    // niets zolang een nieuw adres nog niet opgeslagen was.
+    const aan = (form.email || '').trim() || selected?.email || ''
+    if (!selected || !aan) return
     setMailModal({
-      to: selected.email,
+      to: aan,
       subject: '',
       text: `${t('lbl_dear')} ${selected.naam.split(' ')[0] || ''},\n\n\n\n${t('lbl_kind_regards')},\n${(breweryDetails as any)?.naam || appName || ''}`,
     })
   }
 
   // ── RENDER ────────────────────────────────────────────────────────────────
+
+  const bestelNr = (b: any): string => b.wc_order_nummer ? `WC-${b.wc_order_nummer}` : `M-${b.id}`
+  const bestelStatus = (b: any) => (
+    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${STATUS_COLORS[b.status] || 'bg-gray-100'}`}>
+      {t(`orders_status_${b.status}`, b.status)}
+    </span>
+  )
+  const bestellingKolommen: LijstKolom<any>[] = [
+    { id: 'datum', kop: t('lbl_date'), cel: (b: any) => <span className="text-gray-600 whitespace-nowrap">{fmtD(b.datum)}</span> },
+    { id: 'nr', kop: t('factuur_number'), cel: (b: any) => <span className="font-mono text-xs text-gray-700">{bestelNr(b)}</span> },
+    { id: 'status', kop: t('lbl_status'), cel: bestelStatus },
+    { id: 'bruto', kop: t('lbl_bruto'), rechts: true, klasse: 'whitespace-nowrap', cel: (b: any) => <span className="font-semibold">{fmt(orderBruto(b))}</span> },
+  ]
+  const factuurKolommen: LijstKolom<any>[] = [
+    { id: 'datum', kop: t('lbl_date'), cel: (f: any) => <span className="text-gray-600 whitespace-nowrap">{fmtD(f.datum)}</span> },
+    { id: 'nr', kop: t('factuur_number'), cel: (f: any) => <span className="font-mono text-xs text-gray-700">{f.factuurnummer || t('lbl_onbekend')}</span> },
+    { id: 'status', kop: t('lbl_status'), cel: (f: any) => <VerkoopPil stand={verkoopStand(f, factuurCtx)} /> },
+    { id: 'bruto', kop: t('lbl_bruto'), rechts: true, klasse: 'whitespace-nowrap', cel: (f: any) => <span className="font-semibold">{fmt(f.bruto || 0)}</span> },
+  ]
 
   if (view === 'detail') {
     const emailValid = !form.email || EMAIL_RE.test(form.email.trim())
@@ -497,10 +580,16 @@ const KlantenPage: React.FC<Props> = ({
     return (
       <div>
         <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <button onClick={goBack}
-            className="flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 transition-colors">
-            {t('btn_back')}
-          </button>
+          {dirty ? (
+            <BevestigKnop v="secondary" vraag={t('klanten_terug_vraag')} onBevestig={naarLijst}>
+              {t('btn_back')}
+            </BevestigKnop>
+          ) : (
+            <button type="button" onClick={naarLijst}
+              className="flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 min-h-tap sm:min-h-0 transition-colors">
+              {t('btn_back')}
+            </button>
+          )}
           <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
             {selectedId !== null && selected?.klantnummer && (
               <span className="font-mono text-base text-gray-400">{selected.klantnummer}</span>
@@ -595,7 +684,7 @@ const KlantenPage: React.FC<Props> = ({
               <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_email')}</label>
                 <input type="email" value={form.email} onChange={(e: any) => update({email: e.target.value})}
-                  placeholder="naam@example.com"
+                  placeholder={t('klanten_email_placeholder')}
                   className={`w-full border rounded-lg px-3 py-2 text-sm bg-white t-input outline-none transition-all ${
                     form.email && !emailValid ? 'border-red-300 bg-red-50' : 'border-gray-200'
                   }`} />
@@ -642,111 +731,96 @@ const KlantenPage: React.FC<Props> = ({
                 : t('klanten_unlinked_hint_new').replace('{n}', String(ongekoppeldeOrders))}
             </div>
             {selectedId !== null && (
-              <Btn v="blue" onClick={koppelOrders}>{t('klanten_link_orders_btn')}</Btn>
+              <BevestigKnop v="secondary" onBevestig={koppelOrders}
+                vraag={t('klanten_link_orders_confirm').replace('{n}', String(ongekoppeldeOrders))}>
+                {t('klanten_link_orders_btn')}
+              </BevestigKnop>
             )}
           </div>
         )}
 
-        {/* Bestellingen + facturen */}
+        {/* Bestellingen + facturen. Een bestelling opent Bestellingen, een
+            factuur het factuurdetail op Administratie › Facturen. */}
         {selectedId !== null && selectedStats && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-            <div className="bg-white rounded-xl shadow-card overflow-hidden">
-              <SectionHeader title={`${t('nav_bestellingen')} (${selectedStats.bestellingen.length})`} />
-              {selectedStats.bestellingen.length === 0 ? (
-                <div className="p-6 text-center text-sm text-gray-400">{t('klanten_no_orders')}</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="text-xs text-gray-500 bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-2 text-left">{t('lbl_date')}</th>
-                        <th className="px-3 py-2 text-left">{t('factuur_number')}</th>
-                        <th className="px-3 py-2 text-left">{t('lbl_status')}</th>
-                        <th className="px-3 py-2 text-right">{t('lbl_bruto')}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {[...selectedStats.bestellingen]
-                        .sort((a: any, b: any) => (b.datum || '').localeCompare(a.datum || ''))
-                        .map((b: any) => {
-                          const totaal = (b.regels || []).reduce(
-                            (s: number, r: any) => s + (r.aantal || 0) * (r.prijs_per_stuk || 0) * (1 + (r.btw_pct || 0) / 100), 0)
-                          return (
-                            <tr key={b.id} className="hover:bg-gray-50 cursor-pointer"
-                              onClick={() => { setOpenOrderId(b.id); setPage('bestellingen') }}>
-                              <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtD(b.datum)}</td>
-                              <td className="px-3 py-2 font-mono text-xs text-gray-700">
-                                {b.wc_order_nummer ? `WC-${b.wc_order_nummer}` : `M-${b.id}`}
-                              </td>
-                              <td className="px-3 py-2">
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[b.status] || 'bg-gray-100'}`}>
-                                  {t(`orders_status_${b.status}`, b.status)}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{fmt(totaal)}</td>
-                            </tr>
-                          )
-                        })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 min-w-0">
+            <section className="min-w-0">
+              <h3 className="text-sm font-semibold text-gray-800 mb-2">
+                {t('nav_bestellingen')} ({selectedStats.bestellingen.length})
+              </h3>
+              <ResponsiveLijst
+                rijen={[...selectedStats.bestellingen].sort((a: any, b: any) => (b.datum || '').localeCompare(a.datum || ''))}
+                sleutel={(b: any) => b.id}
+                kolommen={bestellingKolommen}
+                kaart={(b: any) => (
+                  <div className="flex items-start justify-between gap-3 min-w-0">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 font-mono">{bestelNr(b)}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{fmtD(b.datum)}</div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm font-semibold tabular-nums">{fmt(orderBruto(b))}</div>
+                      <div className="mt-1">{bestelStatus(b)}</div>
+                    </div>
+                  </div>
+                )}
+                onKies={(b: any) => { setOpenOrderId(b.id); setPage('bestellingen') }}
+                rijLabel={(b: any) => `${bestelNr(b)}, ${fmtD(b.datum)}`}
+                label={t('nav_bestellingen')}
+                leeg={<LegeStaat titel={t('klanten_no_orders')} />}
+              />
+            </section>
 
-            <div className="bg-white rounded-xl shadow-card overflow-hidden">
-              <SectionHeader title={`${t('tab_verkoop')} (${selectedStats.facturen.length})`} />
-              {selectedStats.facturen.length === 0 ? (
-                <div className="p-6 text-center text-sm text-gray-400">{t('msg_no_verkoopfacturen')}</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="text-xs text-gray-500 bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-2 text-left">{t('lbl_date')}</th>
-                        <th className="px-3 py-2 text-left">{t('factuur_number')}</th>
-                        <th className="px-3 py-2 text-left">{t('lbl_status')}</th>
-                        <th className="px-3 py-2 text-right">{t('lbl_bruto')}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {[...selectedStats.facturen]
-                        .sort((a: any, b: any) => (b.datum || '').localeCompare(a.datum || ''))
-                        .map((f: any) => (
-                          <tr key={f.id}>
-                            <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtD(f.datum)}</td>
-                            <td className="px-3 py-2 font-mono text-xs text-gray-700">{f.factuurnummer || '—'}</td>
-                            <td className="px-3 py-2">
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                f.status === 'betaald' ? 'bg-green-100 text-green-700'
-                                : f.status === 'aanmaning' ? 'bg-red-100 text-red-700'
-                                : f.status === 'credit' ? 'bg-purple-100 text-purple-700'
-                                : 'bg-orange-100 text-orange-700'
-                              }`}>
-                                {t(`factuur_${f.status}`, f.status)}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{fmt(f.bruto || 0)}</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            <section className="min-w-0">
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <h3 className="text-sm font-semibold text-gray-800">
+                  {t('nav_facturen')} ({selectedStats.facturen.length})
+                </h3>
+                {gaNaarDoel && selectedStats.facturen.length > 0 && (
+                  <button type="button"
+                    onClick={() => {
+                      // Alle facturen van de klant, zoals hier: de gedeelde
+                      // periode gaat op "alles" (status Alles, filter op de klant).
+                      zetGedeeldePeriode('alles')
+                      gaNaarDoel({ pagina: 'facturen', tab: 'verkoop', filter: `klant:${selectedId}` })
+                    }}
+                    className="t-accent-text text-sm font-medium hover:underline min-h-tap sm:min-h-0 px-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+                    {t('klanten_facturen_van_klant')}
+                  </button>
+                )}
+              </div>
+              <ResponsiveLijst
+                rijen={[...selectedStats.facturen].sort((a: any, b: any) => (b.datum || '').localeCompare(a.datum || ''))}
+                sleutel={(f: any) => f.id}
+                kolommen={factuurKolommen}
+                kaart={(f: any) => (
+                  <div className="flex items-start justify-between gap-3 min-w-0">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 font-mono break-words">{f.factuurnummer || t('lbl_onbekend')}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{fmtD(f.datum)}</div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm font-semibold tabular-nums">{fmt(f.bruto || 0)}</div>
+                      <div className="mt-1"><VerkoopPil stand={verkoopStand(f, factuurCtx)} /></div>
+                    </div>
+                  </div>
+                )}
+                onKies={gaNaarDoel ? (f: any) => gaNaarDoel({ pagina: 'facturen', tab: 'verkoop', id: Number(f.id) }) : undefined}
+                rijLabel={(f: any) => `${f.factuurnummer || t('lbl_onbekend')}, ${fmtD(f.datum)}`}
+                label={t('nav_facturen')}
+                leeg={<LegeStaat titel={t('klanten_geen_facturen')} />}
+              />
+            </section>
           </div>
         )}
 
         {showDeleteConfirm && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5">
-              <h3 className="font-semibold text-gray-800 mb-3">{t('klanten_delete_title')}</h3>
-              <p className="text-sm text-gray-600 mb-4">{t('klanten_delete_confirm').replace('{naam}', selected?.naam || '')}</p>
-              <div className="flex justify-end gap-2">
-                <Btn v="secondary" onClick={() => setShowDeleteConfirm(false)}>{t('btn_cancel')}</Btn>
-                <Btn v="danger" onClick={deleteKlant}>{t('btn_delete')}</Btn>
-              </div>
+          <Modal title={t('klanten_delete_title')} onClose={() => setShowDeleteConfirm(false)}>
+            <p className="text-sm text-gray-600 mb-4">{t('klanten_delete_confirm').replace('{naam}', selected?.naam || '')}</p>
+            <div className="flex justify-end gap-2">
+              <Btn v="secondary" onClick={() => setShowDeleteConfirm(false)}>{t('btn_cancel')}</Btn>
+              <Btn v="danger" onClick={deleteKlant}>{t('btn_delete')}</Btn>
             </div>
-          </div>
+          </Modal>
         )}
 
         {mailModal && (
@@ -773,11 +847,78 @@ const KlantenPage: React.FC<Props> = ({
 
   // ── LIJSTWEERGAVE ─────────────────────────────────────────────────────────
 
-  const totaalOmzet = klanten.reduce((s: number, k: any) => s + (statsPerKlant[k.id]?.omzet || 0), 0)
+  const totaalOmzet = centNaarEuro(klanten.reduce((s: number, k: any) => s + (statsPerKlant[k.id]?.omzetCent || 0), 0))
   const totaalOpenOrders = klanten.reduce((s: number, k: any) => s + (statsPerKlant[k.id]?.openOrders || 0), 0)
     + syntheticKlanten.reduce((s: number, k: any) => s + (k._stats?.openOrders || 0), 0)
-  const totaalOpenstaand = klanten.reduce((s: number, k: any) => s + (statsPerKlant[k.id]?.openstaand || 0), 0)
+  const totaalOpenstaand = centNaarEuro(klanten.reduce((s: number, k: any) => s + (statsPerKlant[k.id]?.openstaandCent || 0), 0))
   const synthCount = syntheticKlanten.length
+
+  const statsVan = (k: any) => k._synthetic
+    ? k._stats
+    : (statsPerKlant[k.id] || {bestellingen: [], omzet: 0, openOrders: 0, openstaand: 0, laatsteDatum: ''})
+  // De oranje stip: alleen bij een vervallen factuur (utils/klantFacturen.ts).
+  const vervallenStip = (k: any) => !k._synthetic && klantenMetVervallen.has(String(k.id)) && (
+    <span className="inline-block w-2 h-2 bg-orange-500 rounded-full flex-shrink-0"
+      title={t('tooltip_expired_invoices')} aria-label={t('tooltip_expired_invoices')} role="img" />
+  )
+  const synthBadge = (k: any) => k._synthetic && (
+    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 uppercase tracking-wide">
+      {t('klanten_synth_badge')}
+    </span>
+  )
+  const bedragOfStreep = (v: number, kleur: string) => v > 0
+    ? <span className={kleur}>{fmt(v)}</span>
+    : <span className="text-gray-400">—</span>
+  const klantKolommen: LijstKolom<any>[] = [
+    { id: 'naam', kop: t('lbl_name'), cel: (k: any) => (
+      <span className="block min-w-0">
+        <span className="font-medium text-gray-800 flex items-center gap-2 flex-wrap">
+          {vervallenStip(k)}
+          {k.klantnummer && <span className="font-mono text-xs text-gray-400">{k.klantnummer}</span>}
+          <span className={k._synthetic ? 'italic text-gray-600' : ''}>{k.naam || t('lbl_naamloos')}</span>
+          {synthBadge(k)}
+        </span>
+        {k.bedrijf && <span className="block text-xs text-gray-500 mt-0.5">{k.bedrijf}</span>}
+      </span>
+    ) },
+    { id: 'email', kop: t('lbl_email'), breed: true, cel: (k: any) => <span className="text-gray-500 text-xs break-all">{k.email || '—'}</span> },
+    { id: 'telefoon', kop: t('lbl_telefoon'), breed: true, cel: (k: any) => <span className="text-gray-500 text-xs whitespace-nowrap">{k.telefoon || '—'}</span> },
+    { id: 'orders', kop: t('klanten_stat_orders'), rechts: true, cel: (k: any) => <span className="font-mono">{statsVan(k).bestellingen.length || '—'}</span> },
+    { id: 'omzet', kop: <span title={t('klanten_omzet_tooltip')}>{t('klanten_stat_omzet')}</span>, rechts: true, klasse: 'whitespace-nowrap',
+      cel: (k: any) => <span className="font-semibold">{bedragOfStreep(statsVan(k).omzet, 'text-green-700')}</span> },
+    { id: 'open_orders', kop: <span title={t('klanten_open_orders_tooltip')}>{t('klanten_stat_open_orders')}</span>, rechts: true, klasse: 'whitespace-nowrap',
+      cel: (k: any) => <span className="font-medium">{bedragOfStreep(statsVan(k).openOrders, 'text-blue-700')}</span> },
+    { id: 'openstaand', kop: t('klanten_stat_openstaand'), rechts: true, klasse: 'whitespace-nowrap',
+      cel: (k: any) => <span className="font-medium">{bedragOfStreep(statsVan(k).openstaand, 'text-orange-600')}</span> },
+    { id: 'laatste', kop: t('klanten_stat_last_order'), rechts: true, breed: true,
+      cel: (k: any) => <span className="text-gray-500 text-xs whitespace-nowrap">{statsVan(k).laatsteDatum ? fmtD(statsVan(k).laatsteDatum) : '—'}</span> },
+  ]
+  // Telefoon: naam en wat er openstaat in één kaart; de hele kaart opent de klant.
+  const klantKaart = (k: any) => {
+    const st = statsVan(k)
+    return (
+      <div className="flex items-start justify-between gap-3 min-w-0">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-gray-900 flex items-center gap-2 flex-wrap break-words">
+            {vervallenStip(k)}
+            <span className={k._synthetic ? 'italic text-gray-600' : ''}>{k.naam || t('lbl_naamloos')}</span>
+            {synthBadge(k)}
+          </div>
+          {(k.bedrijf || k.email) && <div className="text-xs text-gray-500 mt-0.5 break-words">{k.bedrijf || k.email}</div>}
+          <div className="text-xs text-gray-500 mt-0.5">
+            {t('klanten_stat_orders')}: {st.bestellingen.length}
+            {st.laatsteDatum ? ` · ${fmtD(st.laatsteDatum)}` : ''}
+          </div>
+        </div>
+        <div className="text-right flex-shrink-0 text-sm tabular-nums">
+          {st.omzet > 0 && <div className="font-semibold text-green-700">{fmt(st.omzet)}</div>}
+          {st.openstaand > 0 && <div className="text-xs font-medium text-orange-600">{t('klanten_stat_openstaand')} {fmt(st.openstaand)}</div>}
+          {/* Open orders (nog te factureren) — op het bureau een eigen kolom. */}
+          {st.openOrders > 0 && <div className="text-xs font-medium text-blue-700">{t('klanten_stat_open_orders')} {fmt(st.openOrders)}</div>}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -787,9 +928,9 @@ const KlantenPage: React.FC<Props> = ({
       </div>
 
       {synthCount > 0 && (
-        <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800 flex items-center gap-2 flex-wrap">
-          <span>ℹ</span>
-          <span>{t('klanten_synth_explainer').replace('{n}', String(synthCount))}</span>
+        <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800 flex items-start gap-2">
+          <Icon n="info" cls="flex-shrink-0 mt-0.5" />
+          <span className="min-w-0">{t('klanten_synth_explainer').replace('{n}', String(synthCount))}</span>
         </div>
       )}
 
@@ -823,78 +964,19 @@ const KlantenPage: React.FC<Props> = ({
         <SearchInput value={search} onChange={setSearch} placeholder={t('klanten_search_placeholder')} />
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-card p-10 text-center text-sm text-gray-400">
-          {klanten.length === 0 ? t('klanten_empty_state') : t('klanten_no_search_results')}
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[800px]">
-              <thead className="text-xs text-gray-500 bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2.5 text-left font-medium">{t('lbl_name')}</th>
-                  <th className="px-3 py-2.5 text-left font-medium">{t('lbl_email')}</th>
-                  <th className="px-3 py-2.5 text-left font-medium">{t('lbl_telefoon')}</th>
-                  <th className="px-3 py-2.5 text-right font-medium">{t('klanten_stat_orders')}</th>
-                  <th className="px-3 py-2.5 text-right font-medium" title={t('klanten_omzet_tooltip')}>{t('klanten_stat_omzet')}</th>
-                  <th className="px-3 py-2.5 text-right font-medium" title={t('klanten_open_orders_tooltip')}>{t('klanten_stat_open_orders')}</th>
-                  <th className="px-3 py-2.5 text-right font-medium">{t('klanten_stat_openstaand')}</th>
-                  <th className="px-3 py-2.5 text-right font-medium">{t('klanten_stat_last_order')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtered.map((k: any) => {
-                  const isSynth = !!k._synthetic
-                  const s = isSynth
-                    ? k._stats
-                    : (statsPerKlant[k.id] || {bestellingen: [], omzet: 0, openstaand: 0, laatsteDatum: ''})
-                  return (
-                    <tr key={k.id} className={`hover:bg-gray-50 cursor-pointer transition-colors ${isSynth ? 'bg-blue-50/30' : ''}`}
-                      onClick={() => isSynth ? openNewFromSynth(k) : openDetail(k)}>
-                      <td className="px-4 py-2.5">
-                        <div className="font-medium text-gray-800 flex items-center gap-2 flex-wrap">
-                          {s.openstaand > 0 && (
-                            <span className="inline-block w-2 h-2 bg-orange-500 rounded-full"
-                              title={t('tooltip_expired_invoices')}/>
-                          )}
-                          {k.klantnummer && (
-                            <span className="font-mono text-xs text-gray-400">{k.klantnummer}</span>
-                          )}
-                          <span className={isSynth ? 'italic text-gray-600' : ''}>
-                            {k.naam || t('lbl_naamloos')}
-                          </span>
-                          {isSynth && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 uppercase tracking-wide">
-                              {t('klanten_synth_badge')}
-                            </span>
-                          )}
-                        </div>
-                        {k.bedrijf && <div className="text-xs text-gray-500 mt-0.5">{k.bedrijf}</div>}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-500 text-xs">{k.email || '—'}</td>
-                      <td className="px-3 py-2.5 text-gray-500 text-xs">{k.telefoon || '—'}</td>
-                      <td className="px-3 py-2.5 text-right font-mono">{s.bestellingen.length || '—'}</td>
-                      <td className="px-3 py-2.5 text-right font-semibold text-green-700">
-                        {s.omzet > 0 ? fmt(s.omzet) : '—'}
-                      </td>
-                      <td className={`px-3 py-2.5 text-right font-medium ${s.openOrders > 0 ? 'text-blue-700' : 'text-gray-400'}`}>
-                        {s.openOrders > 0 ? fmt(s.openOrders) : '—'}
-                      </td>
-                      <td className={`px-3 py-2.5 text-right font-medium ${s.openstaand > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
-                        {s.openstaand > 0 ? fmt(s.openstaand) : '—'}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-gray-500 text-xs whitespace-nowrap">
-                        {s.laatsteDatum ? fmtD(s.laatsteDatum) : '—'}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <ResponsiveLijst
+        rijen={filtered}
+        sleutel={(k: any) => k.id}
+        kolommen={klantKolommen}
+        kaart={klantKaart}
+        onKies={(k: any) => k._synthetic ? openNewFromSynth(k) : openDetail(k)}
+        rijLabel={(k: any) => k.naam || t('lbl_naamloos')}
+        rijKlasse={(k: any) => k._synthetic ? 'bg-blue-50/40' : ''}
+        label={t('nav_klanten')}
+        leeg={klanten.length === 0 && syntheticKlanten.length === 0
+          ? <LegeStaat titel={t('klanten_leeg')} icoon="user"><Btn onClick={openNew}>+ {t('klanten_new')}</Btn></LegeStaat>
+          : <LegeStaat titel={t('klanten_no_search_results')} icoon="search" />}
+      />
     </div>
   )
 }

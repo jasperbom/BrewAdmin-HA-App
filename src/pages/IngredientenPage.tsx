@@ -93,7 +93,7 @@ const IngredientenPage: React.FC<Props> = ({
   )
   // App.tsx rendert deze pagina conditioneel (mount per navigatie), dus de
   // useState-initializers volstaan om het navigatiedoel te lezen; de
-  // consumed-callback wist alleen het App-signaal (zie BoekhoudingPage).
+  // consumed-callback wist alleen het App-signaal (zie pages/admin/AdministratiePage.tsx).
   const [tab, setTab] = useState(navDoel?.tab || 'ingredienten')
   const [sel, setSel] = useState<number | null>(null)
   // THT-overzicht: álle lots die verlopen zijn of binnen 30 dagen verlopen,
@@ -484,7 +484,7 @@ const IngredientenPage: React.FC<Props> = ({
   }
 
   const saveOntvangst = ({ factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual }: any): boolean => {
-    // Lots en ontvangst-log via dezelfde bouwer als de boekhoudpagina
+    // Lots en ontvangst-log via dezelfde bouwer als Administratie (Facturen, Bank)
     // (utils/inkoopOntvangst.ts): een regel met meer lotnummers wordt meer
     // lots, en etiketfoto's komen bij elk lot van die regel.
     const ontvangst = bouwIngredientOntvangst(productLijst || [], factuurForm, ing, lots, { datum: tod(), nu: new Date().toISOString() })
@@ -512,7 +512,7 @@ const IngredientenPage: React.FC<Props> = ({
       setOnderdelen(na)
     }
     const verlegd = (factuurForm.btw_soort || 'binnenlands') !== 'binnenlands'
-    // Factuurregels via dezelfde bouwer als de boekhoudpagina
+    // Factuurregels via dezelfde bouwer als Administratie (Facturen, Bank)
     // (utils/inkoopOntvangst.ts): het regelbedrag is de ingevoerde totaalprijs
     // (de stuksprijs in het formulier is afgerond op 4 decimalen) en een vrije
     // regel houdt zijn kostensoort — anders boeken journaal en W&V hem onder

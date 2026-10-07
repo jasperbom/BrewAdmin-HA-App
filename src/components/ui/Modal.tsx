@@ -32,12 +32,17 @@ const Modal: React.FC<ModalProps> = ({title, children, onClose, wide=false, ultr
         <div className="flex items-center justify-between px-5 py-4 border-b t-border t-panel rounded-t-2xl">
           <h3 id={titleId} className="font-semibold text-gray-800 text-base">{title}</h3>
           {!hideClose && (
+            // Tapdoel van 44 px op de telefoon; het rondje blijft 28 px en de
+            // negatieve marge houdt de kop even hoog. Op het bureau 28 px.
             <button
+              type="button"
               onClick={onClose}
               aria-label={t('btn_sluiten')}
-              className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 w-7 h-7 flex items-center justify-center rounded-full text-lg transition-colors"
+              className="group flex-shrink-0 w-11 h-11 -my-2 -mr-2 sm:w-7 sm:h-7 sm:m-0 flex items-center justify-center rounded-full"
             >
-              &times;
+              <span aria-hidden="true" className="text-gray-400 group-hover:text-gray-600 group-hover:bg-gray-100 w-7 h-7 flex items-center justify-center rounded-full text-lg transition-colors">
+                &times;
+              </span>
             </button>
           )}
         </div>
