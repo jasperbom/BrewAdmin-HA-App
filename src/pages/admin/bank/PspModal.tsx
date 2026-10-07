@@ -5,6 +5,7 @@ import { pspFactuurDatum } from '../../../utils/bank'
 import { vulIn } from '../../../utils/periode'
 import { verslagKosten, type VerslagKoppeling } from '../../../utils/pspVerslag'
 import { pspKostenRegels, type KostenFactuurKandidaat, type PspVerslagInfo } from '../../../utils/pspUitbetaling'
+import type { TeFactureren } from '../../../utils/orderFactuur'
 import Modal from '../../../components/ui/Modal'
 import TransactieKop from './TransactieKop'
 import VerslagBlok, { type VerslagStand } from './VerslagBlok'
@@ -43,6 +44,11 @@ export interface PspModalProps {
   /** Er is een Claude-sleutel: het verslag mag ook een scan of foto zijn. */
   verslagSleutel: boolean
   onKiesVerslag: () => void
+  /** Bestellingen uit het verslag zonder factuur (nog niet afgerond) en hoe het daarmee staat. */
+  teFactureren: TeFactureren[]
+  factureerBezig: boolean
+  /** Factureer deze bestellingen nu al (utils/orderFactuur.ts). */
+  onFactureer: (bestellingIds: number[]) => void
   kostenWijze: PspKostenWijze
   setKostenWijze: (w: PspKostenWijze) => void
   /** Per factuurnummer uit het verslag ('' zonder verslag) de gekozen inkoopfactuur; null = factuur volgt. */
@@ -61,6 +67,7 @@ const brutoCent = (f: any): number => {
 const PspModal: React.FC<PspModalProps> = ({
   tx, verkoopFacturen, selectie, setSelectie, btwPct, setBtwPct, toonAlles, setToonAlles,
   kandidatenVoor, klantNaamVoor, psp, verslagInfo, verslagStand, verslagKoppeling, verslagSleutel, onKiesVerslag,
+  teFactureren, factureerBezig, onFactureer,
   kostenWijze, setKostenWijze, kostenKeuze, setKostenKeuze, kostenKandidaten, onOpslaan, onSluit,
 }) => {
   // Alleen facturen die écht in een PSP-uitbetaling kúnnen zitten:
@@ -97,7 +104,8 @@ const PspModal: React.FC<PspModalProps> = ({
       <div className="space-y-3">
         <TransactieKop tx={tx} />
         <VerslagBlok info={verslagInfo} stand={verslagStand} koppeling={verslagKoppeling} uitbetaaldCent={uitbetaaldCent}
-          psp={psp} factuurNummer={nummerVan} sleutel={verslagSleutel} onKies={onKiesVerslag} />
+          psp={psp} factuurNummer={nummerVan} sleutel={verslagSleutel} onKies={onKiesVerslag}
+          teFactureren={teFactureren} factureerBezig={factureerBezig} onFactureer={onFactureer} />
         <p className="text-xs text-gray-500">{t('msg_psp_uitleg')}</p>
         {/* Niets voorgesteld: zeg wát de gebruiker dan kan doen in plaats
             van een lege lijst met vinkjes te tonen. */}

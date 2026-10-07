@@ -88,7 +88,8 @@ BrewAdmin-HA-App/
 │   │       │               # FactuurKiezer (zoeken i.p.v. keuzelijst), KeuzeModal (periode/maand/rekening),
 │   │       │               # TransactieModal ("Wat is deze transactie?"), PspModal (uitsplitsen: verslag +
 │   │       │               # facturen + kosten verrekenen/factuur volgt/kostenpost), VerslagBlok (het
-│   │       │               # uitbetalingsverslag en de factuur per regel), verslagLezen (eerst de tekstlaag,
+│   │       │               # uitbetalingsverslag en de factuur per regel; "Factuur maken" voor een betaalde
+│   │       │               # bestelling die nog geen factuur heeft), verslagLezen (eerst de tekstlaag,
 │   │       │               # anders Claude: scan, foto's, onbekende opmaak), KapitaalModal, bankTekst
 │   │       ├── AangiftesSectie.tsx # BTW | Accijns: periodelijst met stappen, detail met invulhulp,
 │   │       │               # controle, indienen en betaling; webshopverkopen ophalen
@@ -298,6 +299,13 @@ BrewAdmin-HA-App/
 │   │   │                   # factuur-, herinnerings- en mailopbouw (Facturen, Bestellingen,
 │   │   │                   # kassa) — nooit een eigen `?? 14`, anders noemt het document een
 │   │   │                   # andere vervaldatum dan de badge
+│   │   ├── orderFactuur.ts # De verkoopfactuur van een bestelling (`bouwOrderFactuur`: afronden, "Factuur maken"
+│   │   │                   # en Bank) en de creditnota bij annuleren (`bouwCreditnota`). Een betaalde webshoporder
+│   │   │                   # kan zijn factuur al vóór het ophalen of verzenden krijgen (`voorafFactuurBlokkade`:
+│   │   │                   # betaald, niet afgebroken, nog geen factuur — picken hoeft niet); afronden maakt dan
+│   │   │                   # geen tweede en de regels liggen vast. `orderFactuurVan` (via `factuur_id`, anders
+│   │   │                   # `bestelling_id`), `teFacturerenUitVerslag` (bestellingen zonder factuur in een
+│   │   │                   # PSP-uitbetaling: uitkomst `geen_factuur` van `koppelPspVerslag`)
 │   │   ├── factuurFilter.ts # Filterregels van Facturen: status (`open`/`te_laat`/`betaald`/`credit`/
 │   │   │                   # `alles`, Inkoop ook `te_verwerken` = het postvak), `periodeGeldtVoorStatus`
 │   │   │                   # (niet bij Open/Te laat/Te verwerken), zoeken (`zoekPast`: nummer, relatie,
@@ -342,7 +350,8 @@ BrewAdmin-HA-App/
 │   │   │                   # terugbetaling/kosten/compensatie/overig; kenmerk + totaal) en `koppelPspVerslag`
 │   │   │                   # (factuur via `wc_order_nummer` → `bestelling_id` of het factuurnummer van de
 │   │   │                   # betaallink; terugstorting in hetzelfde verslag = netto nul, anders de creditnota;
-│   │   │                   # kosten per factuur van de PSP via `verslagKosten`). Koppelt zelf niets
+│   │   │                   # kosten per factuur van de PSP via `verslagKosten`; een betaling van een bestelling
+│   │   │                   # zonder factuur = `geen_factuur` met `bestellingId`). Koppelt zelf niets
 │   │   ├── pspVerslagScan.ts # Terugval voor wat de tekstlaag niet levert (scan, foto's, andere PSP of
 │   │   │                   # opmaak): schema + prompt voor Claude, die alleen de tabel overschrijft — zonder
 │   │   │                   # consument en zonder het uitbetaalde bedrag (de optelcontrole blijft echt);
@@ -615,7 +624,7 @@ uit `bank_koppelingen`, aansluiting per afschrift, verwijderen +
 `bank_saldi`), de bankwerklijst en de koppelvoorstellen
 (`bankWerklijst.test.ts`, `bankVoorstel.test.ts`: datumgrens, ambigu, storno,
 één factuur één betaling, deelbetaling in de kiezer), de automatische koppeling
-bij het inlezen (`bankImportKoppeling.test.ts`: dezelfde datumgrens), het uitbetalingsverslag van Mollie (`pspVerslag.test.ts`: bedragen en datums in vijf talen, kolommen uit de kopregel, een streepje is geen minteken, terugstorting tegen betaling, creditnota, in twee keer betaald, kosten per factuur van de PSP), de terugval op Claude (`pspVerslagScan.test.ts`: schema binnen de grenzen en zonder consument, hetzelfde verslag en dezelfde koppeling als de tekstlaag, opschonen, kosten per transactie, bewaren en teruglezen) en de kostenverrekening (`pspUitbetaling.test.ts`: vier uitbetalingen dekken de factuur → betaald op de laatste dag, ontkoppelen → weer open, een eigen 'betaald' blijft staan, kostenpost vervalt, nooit meer dan de kosten), de aangiftestappen
+bij het inlezen (`bankImportKoppeling.test.ts`: dezelfde datumgrens), het uitbetalingsverslag van Mollie (`pspVerslag.test.ts`: bedragen en datums in vijf talen, kolommen uit de kopregel, een streepje is geen minteken, terugstorting tegen betaling, creditnota, in twee keer betaald, kosten per factuur van de PSP), de terugval op Claude (`pspVerslagScan.test.ts`: schema binnen de grenzen en zonder consument, hetzelfde verslag en dezelfde koppeling als de tekstlaag, opschonen, kosten per transactie, bewaren en teruglezen), de factuur bij een bestelling (`orderFactuur.test.ts`: WooCommerce-bedragen cent-exact, betaald = betaald, vooraf factureren alleen als hij betaald is, creditnota precies min de factuur en het journaal valt weg, en de Mollie-uitbetaling die na de factuur vooraf wél uitsplitst) en de kostenverrekening (`pspUitbetaling.test.ts`: vier uitbetalingen dekken de factuur → betaald op de laatste dag, ontkoppelen → weer open, een eigen 'betaald' blijft staan, kostenpost vervalt, nooit meer dan de kosten), de aangiftestappen
 (`aangifteStappen.test.ts`: de telling op het segment = die van de badge, in
 kwartaal- én maandmodus; nihil; controlesleutel en migratie; navigatiedoel), de
 rapporten (`rapporten.test.ts`: W&V telt op tot `nettowinst`, peildatum, open
@@ -1132,8 +1141,8 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `inkoop_facturen` | array | Inkoopfacturen. `betaald_via_alt_id` = betaald vanaf een alt-rekening; `betaald_door_verrekening` = de factuur van een PSP staat op betaald omdat de uitbetalingen hem dekken (`kostenVerrekend` in `bank_koppelingen`); `vorige_stand` = de stand van vóór een afrekening via een alt-rekening (ongedaan maken zet hem terug) |
 | `scan_correcties` | array | Het scangeheugen (`utils/scanGeheugen.ts`): `{tekst, soort, leverancier?, artikelcode?, naam?, kostensoort?, eenheid?}`, de nieuwste 500. Bij elk opslaan van een gescande factuur geleerd (per leverancier + artikelnummer, anders omschrijving); de oude `{tekst, soort}` blijft gelden als algemene correctie. Gaat vóór de indeling van het model |
 | `inkoop_inbox` | array | Facturen per e-mail: de PDF-bijlagen die de server-tick `_inbox_tick` uit het postvak (IMAP) haalde, met `status` `nieuw`/`verwerkt`/`genegeerd`. Item: `{id, ontvangen, mail_datum, van, van_naam, onderwerp, message_id, bijlage: {naam, bestand}, grootte, sha256, status, factuur_id?, afgehandeld?}`. De server voegt alleen nieuwe items toe (bestand `inbox_<sha256[:20]>.pdf` in de bijlagenmap); verwerken, negeren, terugzetten en verwijderen doet de app. Een PDF met een `sha256` die er al in staat (ook genegeerd/verwerkt) komt er nooit nog eens bij. Financiële key: alleen `boekhouding`/`beheer` schrijven. Wel in de Excel-backup |
-| `verkoop_facturen` | array | Verkoopfacturen. `verrekend_alt_id` = verrekend met de schuld aan een alt-rekening (ook nadat de factuur met de hand op betaald is gezet); `vorige_stand` = de stand daarvoor |
-| `bestellingen` | array | WooCommerce-bestellingen |
+| `verkoop_facturen` | array | Verkoopfacturen. `verrekend_alt_id` = verrekend met de schuld aan een alt-rekening (ook nadat de factuur met de hand op betaald is gezet); `vorige_stand` = de stand daarvoor. De factuur van een bestelling draagt `bestelling_id` (opgebouwd door `bouwOrderFactuur` in `utils/orderFactuur.ts`); wordt een gefactureerde bestelling geannuleerd, dan komt er een creditnota met `credit_van_factuur_id` en hetzelfde `bestelling_id` |
+| `bestellingen` | array | WooCommerce-bestellingen. `factuur_id`/`factuur_nummer` = de verkoopfactuur; die kan er al zijn vóór `afgerond` — een betaalde order die nog niet is opgehaald of verzonden, vooraf gefactureerd (Bestellingen "Factuur maken", of Bank vanuit een PSP-uitbetaling). Afronden maakt dan geen tweede factuur, de orderregels liggen vast en annuleren maakt een creditnota |
 | `bestelling_picks` | array | Pickregels per bestelling |
 | `afboekingen` | array | Biervoorraadbewegingen (vermis, vernietiging, overig). `bron_locatie_id` = waar het bier lág — bepaalt van welke locatie het afgaat én of er accijns verschuldigd wordt. Ontbreekt op records van vóór v1.12.52; die gelden als AGP |
 | `klanten` | array | Klanten |
@@ -1208,7 +1217,7 @@ Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `ex
 `getPeriodes(year, periode)` in `utils/btw.ts` berekent kwartaal- of maandperiodes (`key` = `2026-Q3` of `2026-M09`). Aangiftes (`pages/admin/AangiftesSectie.tsx`) toont per jaar de perioden die al begonnen zijn, als stappen (`btwRijen` in `utils/aangifteStappen.ts`); de gekozen periode is het detail, niet een filter op de pagina. De cijfers van één periode — rubrieken 1a/1b/1d/2a/4a/4b/5b, voorbelasting per tarief, het te betalen of terug te ontvangen bedrag in centen — komen uit `btwPeriodeCijfers`, het jaartotaal in de kop uit `btwJaarCijfers`.
 
 - **Facturen tellen op hun effectieve periode** (`inBtwPeriode`/`inBtwJaar` in `utils/btw.ts`), inkoop én verkoop: een factuur met een datum in een al ingediende of betaalde periode krijgt bij aanmaken `btw_periode` (rollover) en telt in de lopende aangifte. WooCommerce-orders blijven op betaaldatum.
-- **Eén bron per verkoop:** een opgehaalde WooCommerce-order telt alleen mee zolang er in de app geen verkoopfactuur voor bestaat (`wcOrdersNogNietGefactureerd`); een afgeronde webshoporder telt via zijn factuur.
+- **Eén bron per verkoop:** een opgehaalde WooCommerce-order telt alleen mee zolang er in de app geen verkoopfactuur voor bestaat (`wcOrdersNogNietGefactureerd`); een gefactureerde webshoporder (afgerond, of vooraf gefactureerd zodra hij betaald was) telt via zijn factuur.
 - **Handmatige inkooptotalen** worden een correctieregel (`inkoopRegelsMetCorrectie` in `utils/centen.ts`), zodat journaal, W&V, rubriek 5b en de periodekaart dezelfde voorbelasting tellen.
 
 ### Periodestatus: vijf stappen (v1.12.90)
@@ -1431,7 +1440,11 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   betaalstatus van al bestaande orders ververst — een order die als `pending`
   binnenkwam kan later betaald zijn. Een order die in WooCommerce betaald is,
   levert bij afronden een verkoopfactuur met status `betaald` (die factuur
-  vraagt niet meer om een overboeking, in de mail noch op de PDF)
+  vraagt niet meer om een overboeking, in de mail noch op de PDF). Die factuur
+  kan ook al eerder, zodra de order betaald is ("Factuur maken" op de
+  bestelling, `utils/orderFactuur.ts`): een afhaalklant die zijn bier nog niet
+  ophaalde houdt de order open, maar de betaling zit al in een
+  Mollie-uitbetaling. Afronden maakt dan geen tweede factuur
 - **Annulering in de winkel** (`utils/wcOrderImport.ts`): open bestellingen
   die niet in de statusselectie zaten, haalt elke import apart per id op
   (`include=…&status=any`, alleen verversen, nooit nieuw). Geannuleerd, mislukt
@@ -1591,7 +1604,7 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 - Server gebruikt de **Payment Links API** (`/v2/payment-links`), niet de Payments API: een betaallink **verloopt standaard niet** en blijft geldig tot de klant betaalt. De deelbare URL komt uit `_links.paymentLink.href` (pure helper `_mollie_link_url`). Een Payments-checkout zou kortlevend zijn en na verlopen naar de `redirectUrl` (de website/homepagina) leiden
 - **Eén link per factuur** (`utils/mollieLink.ts`): omdat een link niet verloopt, komt de eerste link op de verkoopfactuur (`mollie_link: {id, url, amount_cent, aangemaakt}`) en gebruikt elke volgende mail (herinnering, aanmaning, opnieuw versturen) díe link zolang de factuur openstaat en het bedrag gelijk is (`herbruikbareBetaallink`). Maak nooit per mail een nieuwe link: twee links = de klant kan dezelfde factuur twee keer betalen. Een link die na betaling via de bank of een creditnota nog openstaat, wordt (nog) niet bij Mollie gearchiveerd
 - Redirect-URL valt terug op `brewery_details.website`; zonder een geldige URL blijft de checkbox uitgeschakeld (Mollie vereist een `redirectUrl`)
-- Betaling-terugkoppeling loopt via de bestaande **PSP-bankreconciliatie** (`bank.ts`): een Mollie-uitbetaling op het afschrift wordt aan de factuur/facturen gekoppeld — er is (bewust) geen webhook, want de addon is doorgaans niet publiek bereikbaar. Met het **uitbetalingsverslag** (PDF) erbij zoekt de app de facturen zelf (`utils/pspVerslag.ts`: "Factuur F2026-0044" = de betaallink, "Bestelling 3289" = de webshoporder) en worden de ingehouden kosten verrekend met de maandfactuur van Mollie (`utils/pspUitbetaling.ts`, zie "`bankKoppelingen` — koppelingtypen")
+- Betaling-terugkoppeling loopt via de bestaande **PSP-bankreconciliatie** (`bank.ts`): een Mollie-uitbetaling op het afschrift wordt aan de factuur/facturen gekoppeld — er is (bewust) geen webhook, want de addon is doorgaans niet publiek bereikbaar. Met het **uitbetalingsverslag** (PDF) erbij zoekt de app de facturen zelf (`utils/pspVerslag.ts`: "Factuur F2026-0044" = de betaallink, "Bestelling 3289" = de webshoporder) en worden de ingehouden kosten verrekend met de maandfactuur van Mollie (`utils/pspUitbetaling.ts`, zie "`bankKoppelingen` — koppelingtypen"). Een betaalde bestelling die nog niet is afgerond (de klant heeft hem nog niet opgehaald) heeft nog geen factuur: het venster noemt die regel `geen_factuur` en maakt de factuur met één klik (`teFacturerenUitVerslag` + `bouwOrderFactuur`); de order blijft open
 
 ### Home Assistant
 

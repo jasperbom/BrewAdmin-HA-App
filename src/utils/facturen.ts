@@ -78,12 +78,13 @@ export const isVerkoopFactuurOpen = (f: any): boolean =>
 /**
  * Heeft deze bestelling al een verkoopfactuur? Ja bij status `afgerond`, een
  * `factuur_id` op de order, of een factuur met dit `bestelling_id` die zelf
- * geen creditnota is en niet door een creditnota is tenietgedaan. Afronden
- * vraagt het vóór het een factuurnummer ophaalt: een tweede klik (of een
- * tweede tabblad) mag nooit een tweede definitieve factuur en journaalboeking
- * voor dezelfde order maken.
+ * geen creditnota is en niet door een creditnota is tenietgedaan. Afronden en
+ * vooraf factureren (utils/orderFactuur.ts) vragen het vóór ze een
+ * factuurnummer ophalen: een tweede klik (of een tweede tabblad) mag nooit een
+ * tweede definitieve factuur en journaalboeking voor dezelfde order maken.
+ * Een betaalde webshoporder kan zijn factuur al vóór het afronden hebben.
  */
-export function orderIsGefactureerd(order: any, verkoopFacturen: any[] | null | undefined): boolean {
+export function orderIsGefactureerd(order: any, verkoopFacturen: readonly any[] | null | undefined): boolean {
   if (!order) return false
   if (order.status === 'afgerond' || order.factuur_id != null) return true
   const lijst = verkoopFacturen || []

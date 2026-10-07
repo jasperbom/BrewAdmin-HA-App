@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.94] — 2026-10-07
+
+### Factuur al maken als een betaalde bestelling nog niet is opgehaald
+
+- **Factuur maken vóór het ophalen.** Een webshopbestelling die betaald is
+  kreeg zijn factuur pas bij het afronden. Haalt een afhaalklant zijn bier niet
+  op, dan bleef de order open zonder factuur — terwijl de betaling al in een
+  uitbetaling van Mollie zat, die daardoor niet uit te splitsen was. Een
+  betaalde bestelling heeft nu de knop "Factuur maken": de factuur krijgt een
+  nummer en staat op betaald (met de betaaldatum uit de webshop), de bestelling
+  blijft open. Dat kan ook vóór het picken. Afronden maakt daarna geen tweede
+  factuur. In de lijst en op de bestelling staat "Gefactureerd".
+- **Rechtstreeks vanuit de Mollie-uitbetaling.** Zit er in een uitbetaling een
+  betaalde bestelling zonder factuur, dan zegt het venster op Bank dat bij die
+  regel ("nog geen factuur") en maakt "Factuur maken" hem meteen; hij wordt
+  aangevinkt en de uitbetaling telt op.
+- **Regels liggen vast, annuleren crediteert.** Een gefactureerde bestelling
+  krijgt geen regels meer bij of af; de BTW corrigeren kan via "BTW
+  corrigeren", net als na afronden (de factuur gaat mee). Wordt zo'n bestelling
+  toch geannuleerd, dan maakt de app een creditnota voor het hele bedrag. Het
+  terugbetalen zelf gebeurt in de webshop; die terugboeking koppelt later aan
+  de creditnota.
+
 ## [1.12.93] — 2026-10-07
 
 ### Uitbetalingsverslag: Claude leest wat de app zelf niet kan lezen

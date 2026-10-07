@@ -1,7 +1,8 @@
 import React from 'react'
 import { t } from '../../i18n'
 import { tod, r2, fmtD } from '../../utils/format'
-import { newId, ADDON_BASE } from '../../utils/api'
+import { newId, ADDON_BASE, volgendFactuurNummer } from '../../utils/api'
+import { bouwOrderFactuur, teFacturerenUitVerslag, voorafFactuurBlokkade } from '../../utils/orderFactuur'
 import { sndKoppelKandidaten } from '../../utils/sndAfdracht'
 import { logAudit } from '../../utils/audit'
 import { periodeKeyLabel, standaardBtwPct } from '../../utils/btw'
@@ -81,7 +82,7 @@ function BankSectie() {
   const {
     navDoel, gaNaarDoel, inkoopFacturen, setInkoopFacturen, ing, lots,
     onderdelen, verpakkingen, btwInst, claudeCreds, ingTypes, ingTypeBtw, klanten,
-    verkoopFacturen, setVerkoopFacturen, bestellingen, breweryDetails, bankKoppelingen, setBankKoppelingen,
+    verkoopFacturen, setVerkoopFacturen, bestellingen, setBestellingen, breweryDetails, bankKoppelingen, setBankKoppelingen,
     kapitaalBoekingen, setKapitaalBoekingen, altRekeningen, accijnsAangiftes, btwAangiftes,
     auditLog, setAuditLog, kostenSoorten, scanCorrecties, setScanCorrecties, setJournaal,
     bankSaldi, setBankSaldi, merchArtikelen, setMerchArtikelen, merchVoorraadLog, setMerchVoorraadLog,
@@ -327,6 +328,69 @@ function BankSectie() {
     setPspSelectie(k.factuurIds)
     setPspKostenWijze('verrekenen')
     setPspKostenKeuze(Object.fromEntries(k.kosten.map(x => [x.nummer, x.factuurId])))
+  }
+
+  // Bestellingen in het verslag die betaald zijn maar nog geen factuur hebben
+  // — de klant heeft zijn bier nog niet opgehaald, dus de order is niet
+  // afgerond. Hier meteen vooraf factureren (utils/orderFactuur.ts), zodat de
+  // uitbetaling uit te splitsen is; de order blijft open en afronden maakt
+  // later geen tweede factuur. Elk nummer komt uit de server-reeks; facturen,
+  // journaal en de verwijzing op de bestellingen gaan in één commit.
+  const verkoopFacturenRef = React.useRef<any[]>(verkoopFacturen)
+  verkoopFacturenRef.current = verkoopFacturen
+  const bestellingenRef = React.useRef<any[]>(bestellingen)
+  bestellingenRef.current = bestellingen
+  const factureerBezigRef = React.useRef(false)
+  const [factureerBezig, setFactureerBezig] = React.useState(false)
+  const statiegeldLabel = (soort: string, vp: any): string =>
+    `${t(soort === 'snd' ? 'statiegeld_snd' : 'statiegeld_fust')} – ${vp.naam}`
+  const factureerUitVerslag = async (bestellingIds: number[]) => {
+    if (factureerBezigRef.current || !bestellingIds.length) return
+    factureerBezigRef.current = true
+    setFactureerBezig(true)
+    const txId = pspTxRef.current
+    const tx = txMetId(txId)
+    try {
+      let facturen: any[] = [...(verkoopFacturenRef.current || [])]
+      const nieuw: any[] = []
+      let nummerFout = false
+      for (const id of bestellingIds) {
+        const order = (bestellingenRef.current || []).find((b: any) => b.id === id)
+        if (!order || voorafFactuurBlokkade(order, facturen) !== null) continue
+        let nummer: string
+        try { nummer = await volgendFactuurNummer('factuur') }
+        catch { nummerFout = true; break }
+        const f = bouwOrderFactuur(order, {id: newId(facturen), nummer, datum: tod(), klanten, verpakkingen,
+          statiegeldOmschrijving: statiegeldLabel})
+        facturen = [...facturen, f]
+        nieuw.push(f)
+      }
+      if (nieuw.length) {
+        setVerkoopFacturen((prev: any[]) => [...(prev || []), ...nieuw])
+        // Journaal (ERP-plan 2.1): een orderfactuur is bij uitreiken definitief → boeken.
+        setJournaal((prev: any[]) => nieuw.reduce((j: any[], f: any) => voegBoekingToe(j, verkoopFactuurBoeking(f)), prev || []))
+        const opOrder = new Map<any, any>(nieuw.map((f: any) => [f.bestelling_id, f]))
+        setBestellingen((prev: any[]) => (prev || []).map((b: any) => {
+          const f = opOrder.get(b.id)
+          return f ? {...b, factuur_id: f.id, factuur_nummer: f.factuurnummer} : b
+        }))
+        const waar = tx ? `uitbetaling ${tx.verslag?.referentie || tx.referentie || ''} ${tx.datum}`.trim() : 'Bank'
+        for (const f of nieuw) {
+          logAudit(auditLog, setAuditLog, {entiteit: 'Bestelling', entiteit_id: f.bestelling_id, actie: 'gewijzigd',
+            omschrijving: `${f.klant_naam || ''} — factuur ${f.factuurnummer} gemaakt vóór afronden (vanuit Bank, ${waar})`})
+          logAudit(auditLog, setAuditLog, {entiteit: 'Verkoopfactuur', entiteit_id: f.id, actie: 'aangemaakt',
+            omschrijving: `${f.factuurnummer} ${f.klant_naam || ''} ${fmt(f.bruto)} — vóór afronden, vanuit ${waar}`})
+        }
+        // De nieuwe facturen erbij aanvinken; wat de gebruiker al koos blijft staan.
+        if (pspTxRef.current === txId) setPspSelectie((prev: number[]) => [...new Set([...(prev || []), ...nieuw.map((f: any) => f.id)])])
+      }
+      if (nummerFout && pspTxRef.current === txId) {
+        setPspVerslag(v => v && v.txId === txId ? {...v, fout: t('err_factuurnummer_ophalen')} : v)
+      }
+    } finally {
+      factureerBezigRef.current = false
+      setFactureerBezig(false)
+    }
   }
 
   // Een verslag dat al op de transactie staat terughalen voor het venster: wat
@@ -1258,6 +1322,10 @@ function BankSectie() {
   // verkoopIdsElders leest bankKoppelingen; die staat in de deps.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [pspVerslagStand?.gelezen, pspTx, verkoopFacturen, inkoopFacturen, bestellingen, bankKoppelingen])
+  // Bestellingen uit het verslag zonder factuur (nog niet afgerond), met de
+  // reden als ze nu niet vooraf gefactureerd kunnen worden.
+  const pspTeFactureren = React.useMemo(() => teFacturerenUitVerslag(pspVerslagKoppeling, bestellingen, verkoopFacturen),
+    [pspVerslagKoppeling, bestellingen, verkoopFacturen])
   const pspKostenKandidaten = React.useMemo(() => {
     if (!pspTx) return []
     const gelezen = pspVerslagStand?.gelezen
@@ -1420,6 +1488,7 @@ function BankSectie() {
           klantNaamVoor={klantNaamVoor} psp={pspNaam(pspTx) || 'PSP'}
           verslagInfo={pspTx.verslag || null} verslagStand={pspVerslagStand} verslagKoppeling={pspVerslagKoppeling}
           verslagSleutel={heeftSleutel} onKiesVerslag={() => kiesVerslag(pspTx.id)}
+          teFactureren={pspTeFactureren} factureerBezig={factureerBezig} onFactureer={factureerUitVerslag}
           kostenWijze={pspKostenWijze} setKostenWijze={setPspKostenWijze}
           kostenKeuze={pspKostenKeuze} setKostenKeuze={setPspKostenKeuze} kostenKandidaten={pspKostenKandidaten}
           onOpslaan={savePspKoppeling} onSluit={sluitPspModal} />

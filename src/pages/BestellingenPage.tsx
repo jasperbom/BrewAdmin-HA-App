@@ -4,7 +4,10 @@ import { newId, wcGet, wcPut, wcPost, volgendFactuurNummer, volgendBestelNummer 
 import { wcFoutMelding } from '../utils/wcFout'
 import { geslotenPeriodeSets, magFactuurMuteren, standaardBtwPct, artikelBtwPct } from '../utils/btw'
 import { orderIsGefactureerd, breweryMetTermijn, vervaldatumTekst } from '../utils/facturen'
-import { statiegeldFactuurRegels } from '../utils/statiegeld'
+import {
+  bouwOrderFactuur, btwOverzicht, voorafFactuurBlokkade, voorafBlokkadeSleutel, orderFactuurVan,
+  factuurIsGecrediteerd, bouwCreditnota,
+} from '../utils/orderFactuur'
 import { fmt, fmtD, tod } from '../utils/format'
 import { voorraadPerLocatie, getAgpLocatie, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
 import { verkoopUitAgpToegestaan, uitTeSlaan, bouwUitslagBoekingen, uitslagDatumFout, laatsteAfvulDatum, VERPLAATS_FOUT_KEYS } from '../utils/agp'
@@ -38,7 +41,7 @@ import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
 import { totaliseerRegels, centNaarEuro } from '../utils/centen'
-import { regelBedrag, heeftAutoritair, corrigeerRegelBtw } from '../utils/orderRegel'
+import { regelBedrag, corrigeerRegelBtw } from '../utils/orderRegel'
 import { matchAfvullingenVoorRegel, bestellingenOmTePicken, verzamelPicklijst } from '../utils/picking'
 import type { AttentieDoel } from '../utils/attentie'
 import {
@@ -1101,10 +1104,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   const voerAfrondingUit = async (): Promise<boolean | undefined> => {
     if (!selectedOrder) return
-    // Al afgerond of al gefactureerd (bijv. een klik uit een verouderde
-    // weergave, of een tweede tabblad dat de factuur al maakte): nooit een
-    // tweede factuur. Kijkt ook naar de facturen zelf (utils/facturen.ts).
-    if (orderIsGefactureerd(selectedOrder, verkoopFacturen)) { setShowAfrondModal(false); return }
+    // Al afgerond (een klik uit een verouderde weergave, of een tweede
+    // tabblad): niets meer te doen. Al gefactureerd — vooraf, zodra de order
+    // betaald was (utils/orderFactuur.ts) — dan rondt hij af zónder tweede
+    // factuur. Een order die als gefactureerd telt maar waarvan de factuur
+    // niet te vinden is, rondt niet af: liever niets dan een tweede factuur.
+    if (selectedOrder.status === 'afgerond') { setShowAfrondModal(false); return }
+    const bestaandeFactuur = orderFactuurVan(selectedOrder, verkoopFacturen)
+    if (!bestaandeFactuur && orderIsGefactureerd(selectedOrder, verkoopFacturen)) { setShowAfrondModal(false); return }
     const picks = picksVoorOrder(selectedOrder.id)
     if (heeftPickRegels(selectedOrder) && !picks.length) { alert(t('err_order_no_picks')); return }
     const vandaag = tod()
@@ -1154,9 +1161,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
     // Factuurnummer pas ná alle validaties server-side ophalen (atomair,
     // ERP-plan 0.2) zodat een afgebroken afronding geen nummer verbruikt.
+    // Een vooraf gemaakte factuur houdt zijn nummer.
     let factuurNummer: string
-    try { factuurNummer = await volgendFactuurNummer('factuur') }
-    catch (e) { alert(t('err_factuurnummer_ophalen')); return }
+    if (bestaandeFactuur) factuurNummer = bestaandeFactuur.factuurnummer || ''
+    else {
+      try { factuurNummer = await volgendFactuurNummer('factuur') }
+      catch (e) { alert(t('err_factuurnummer_ophalen')); return }
+    }
 
     let nieuweUitleveringen: any[] = []
     let pickResult: Record<number, {uitlevering_ids: number[], accijns_ids: number[]}> = {}
@@ -1177,84 +1188,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       ...nieuweUitleveringen,
     ]
 
-    // 3. VerkoopFactuur
-    const rnd2 = (n: number) => Math.round(n * 100) / 100
-    const regelsList: any[] = (selectedOrder.regels||[]).map((r: any) => {
-      // Bedragen via regelBedrag: autoritatieve WooCommerce-bedragen zijn
-      // leidend (voorkomt cent-kasverschil), anders klassieke reconstructie.
-      const b = regelBedrag(r)
-      return {
-        omschrijving: r.omschrijving || `${r.bier_naam} – ${r.verpakking_type}`,
-        hoeveelheid: Number(r.aantal||0),
-        prijs_per_stuk: Number(r.prijs_per_stuk||0),
-        btw_pct: Number(r.btw_pct||0),
-        netto: b.netto,
-        btw_bedrag: b.btw,
-        bruto: b.bruto,
-        ...(heeftAutoritair(r) ? { wc_netto: Number(r.wc_netto), wc_btw: Number(r.wc_btw) } : {}),
-      }
+    // 3. VerkoopFactuur (utils/orderFactuur.ts): de orderregels met de
+    // WooCommerce-bedragen, statiegeld bij een handmatige order, de klant
+    // uit de live klantkaart. Betaald in WooCommerce = betaald hier; de
+    // PSP-uitbetaling koppelt later gewoon aan deze factuur. Is hij al
+    // vooraf gemaakt, dan blijft het bij die factuur.
+    const verkoopFact: any = bestaandeFactuur ? null : bouwOrderFactuur(selectedOrder, {
+      id: newId(verkoopFacturen||[]), nummer: factuurNummer, datum: vandaag, klanten, verpakkingen,
+      statiegeldOmschrijving: statiegeldLabel,
     })
-    // Statiegeld: per bierregel met een SND-/fustverpakking één extra
-    // factuurregel (0% BTW) — alleen bij een handmatige order. Bij een
-    // webshoporder zijn de WooCommerce-bedragen leidend: wat de klant betaalde
-    // is wat de winkel rekende (utils/statiegeld.ts).
-    regelsList.push(...statiegeldFactuurRegels(selectedOrder, verpakkingen || [],
-      (soort, vp) => `${t(soort === 'snd' ? 'statiegeld_snd' : 'statiegeld_fust')} – ${vp.naam}`))
-    const btwTarieven = [...new Set(regelsList.map((r: any) => Number(r.btw_pct||0)))] as number[]
-    const btw_overzicht = btwTarieven.map(tarief => {
-      const regelsVanTarief = regelsList.filter((r: any) => Number(r.btw_pct||0) === tarief)
-      return {
-        tarief,
-        netto: rnd2(regelsVanTarief.reduce((s: number, r: any) => s + r.netto, 0)),
-        btw: rnd2(regelsVanTarief.reduce((s: number, r: any) => s + r.btw_bedrag, 0)),
-      }
-    })
-    // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
-    const factuurTotalen = totaliseerRegels(regelsList)
-    // Klantgegevens uit de live klantkaart (via klant_id of email-match) zodat
-    // de factuur ook bij volgende renders/mails de actuele waarden vindt.
-    const snap = resolveKlantSnapshot(selectedOrder, klanten)
-    const verkoopFact: any = {
-      id: newId(verkoopFacturen||[]),
-      datum: vandaag,
-      factuurnummer: factuurNummer,
-      bestelling_id: selectedOrder.id,
-      // Herkomstdatums naast de factuurdatum: de bankkoppeling van een
-      // PSP-uitbetaling zoekt op wanneer er betaald is, niet op wanneer de
-      // order is afgerond (dat kan dagen later zijn).
-      order_datum: selectedOrder.datum || vandaag,
-      ...(selectedOrder.wc_betaald_datum ? {wc_betaald_datum: selectedOrder.wc_betaald_datum} : {}),
-      ...(selectedOrder.wc_betaal_methode ? {wc_betaal_methode: selectedOrder.wc_betaal_methode} : {}),
-      klant_id: snap.klant_id ?? null,
-      klant_naam: snap.klant_naam || '',
-      klant_bedrijf: snap.klant_bedrijf || '',
-      klant_email: snap.klant_email || '',
-      klant_straat: snap.klant_straat || '',
-      klant_huisnummer: snap.klant_huisnummer || '',
-      klant_postcode: snap.klant_postcode || '',
-      klant_stad: snap.klant_stad || '',
-      klant_btw_nummer: snap.klant_btw_nummer || '',
-      klant_adres: [snap.klant_straat, snap.klant_huisnummer, snap.klant_postcode, snap.klant_stad].filter(Boolean).join(' '),
-      regels: regelsList,
-      btw_overzicht,
-      netto: factuurTotalen.netto,
-      btw: factuurTotalen.btw,
-      bruto: factuurTotalen.bruto,
-      netto_cent: factuurTotalen.netto_cent,
-      btw_cent: factuurTotalen.btw_cent,
-      bruto_cent: factuurTotalen.bruto_cent,
-      // Een webshoporder is meestal al afgerekend voordat hij hier wordt
-      // afgerond. Die factuur openzetten klopt niet: hij zou in de openstaande
-      // posten staan, een betaalverzoek meesturen en om een herinnering vragen
-      // voor geld dat al binnen is. Betaald in WooCommerce = betaald hier.
-      // De PSP-uitbetaling koppelt later gewoon aan deze factuur — die
-      // zoekfunctie neemt betaalde facturen mee (zie utils/bank.ts).
-      status: selectedOrder.wc_betaald ? 'betaald' : 'open',
-      ...(selectedOrder.wc_betaald
-        ? {betaald_datum: selectedOrder.wc_betaald_datum || vandaag}
-        : {}),
-      definitief: true,
-    }
+    const factuurId = verkoopFact ? verkoopFact.id : bestaandeFactuur.id
 
     // 4. State-updates. Records uit savePicks zijn al in state;
     //    fallback-records (legacy picks zonder ids) worden nu toegevoegd.
@@ -1275,21 +1218,24 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (nieuweUitleveringen.length > 0) {
       setUit((prev: any[]) => [...(prev||[]), ...nieuweUitleveringen])
     }
-    setVerkoopFacturen((prev: any[]) => [...(prev||[]), verkoopFact])
-    // Merch-voorraad afboeken, met het factuurnummer als referentie.
+    if (verkoopFact) {
+      setVerkoopFacturen((prev: any[]) => [...(prev||[]), verkoopFact])
+      // Journaal (ERP-plan 2.1): orderfactuur is bij uitreiken definitief → boeken.
+      setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(verkoopFact)))
+    }
+    // Merch-voorraad afboeken, met het factuurnummer als referentie. Ook bij
+    // een vooraf gemaakte factuur pas nu: de klant neemt de merch nu mee.
     if (merchMutaties.length) {
       const geboekt = boekMerchMutaties(merchArtikelen, merchVoorraadLog,
         merchMutaties.map(m => ({...m, referentie: factuurNummer})))
       setMerchArtikelen(geboekt.artikelen)
       setMerchVoorraadLog(geboekt.log)
     }
-    // Journaal (ERP-plan 2.1): orderfactuur is bij uitreiken definitief → boeken.
-    setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(verkoopFact)))
     setBestellingen((prev: any[]) => prev.map((b: any) => b.id === selectedOrder.id ? {
       ...b,
       status: 'afgerond',
       verzend_datum: b.verzend_datum || vandaag,
-      factuur_id: verkoopFact.id,
+      factuur_id: factuurId,
       factuur_nummer: factuurNummer,
       pakbon_nummer: pakbonNummer,
     } : b))
@@ -1320,10 +1266,67 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       entiteit: 'Bestelling',
       entiteit_id: selectedOrder.id,
       actie: 'gewijzigd',
-      omschrijving: `${selectedOrder.klant_naam} — afgerond, factuur ${factuurNummer} (${alleUitleveringenVoorOrder.length} uitleveringen)`,
+      omschrijving: `${selectedOrder.klant_naam} — afgerond, factuur ${factuurNummer}${bestaandeFactuur ? ' (al vooraf gemaakt)' : ''} (${alleUitleveringenVoorOrder.length} uitleveringen)`,
     })
     setShowAfrondModal(false)
     return true
+  }
+
+  // Statiegeldregel op de factuur van een handmatige order (utils/statiegeld.ts).
+  const statiegeldLabel = (soort: string, vp: any): string =>
+    `${t(soort === 'snd' ? 'statiegeld_snd' : 'statiegeld_fust')} – ${vp.naam}`
+
+  // --- Factuur vooraf (utils/orderFactuur.ts) ---
+  // Een betaalde webshoporder kan zijn factuur krijgen vóór hij opgehaald of
+  // verzonden is. Komt een afhaalklant niet, dan blijft de order open, maar
+  // de betaling zit al in een uitbetaling van Mollie — en die is pas uit te
+  // splitsen als de factuur er is. De order blijft open; afronden maakt
+  // daarna geen tweede factuur. Zelfde dubbelklikgrendel als bij afronden.
+  const [showVoorafModal, setShowVoorafModal] = useState(false)
+  const voorafBezigRef = useRef(false)
+  const [voorafBezig, setVoorafBezig] = useState(false)
+  const openVooraf = () => {
+    voorafBezigRef.current = false
+    setVoorafBezig(false)
+    setShowVoorafModal(true)
+  }
+  const maakFactuurVooraf = async () => {
+    if (!selectedOrder || voorafBezigRef.current) return
+    voorafBezigRef.current = true
+    setVoorafBezig(true)
+    let gelukt = false
+    try {
+      const blokkade = voorafFactuurBlokkade(selectedOrder, verkoopFacturen)
+      if (blokkade) { alert(t(voorafBlokkadeSleutel(blokkade))); setShowVoorafModal(false); return }
+      let nummer: string
+      try { nummer = await volgendFactuurNummer('factuur') }
+      catch (e) { alert(t('err_factuurnummer_ophalen')); return }
+      const factuur = bouwOrderFactuur(selectedOrder, {
+        id: newId(verkoopFacturen || []), nummer, datum: tod(), klanten, verpakkingen,
+        statiegeldOmschrijving: statiegeldLabel,
+      })
+      // Factuur, journaal en de verwijzing op de order in dezelfde tick: de
+      // client bundelt ze tot één commit.
+      setVerkoopFacturen((prev: any[]) => [...(prev || []), factuur])
+      setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(factuur)))
+      setBestellingen((prev: any[]) => prev.map((b: any) => b.id === selectedOrder.id
+        ? {...b, factuur_id: factuur.id, factuur_nummer: nummer} : b))
+      logAudit(auditLog, setAuditLog, {
+        entiteit: 'Bestelling', entiteit_id: selectedOrder.id, actie: 'gewijzigd',
+        omschrijving: `${selectedOrder.klant_naam} — factuur ${nummer} gemaakt vóór afronden (${factuur.status === 'betaald' ? `betaald ${factuur.betaald_datum}` : 'open'})`,
+      })
+      logAudit(auditLog, setAuditLog, {
+        entiteit: 'Verkoopfactuur', entiteit_id: factuur.id, actie: 'aangemaakt',
+        omschrijving: `${nummer} ${factuur.klant_naam} ${fmt(factuur.bruto)} — bestelling ${orderNummer(selectedOrder)}, vóór afronden`,
+      })
+      setShowVoorafModal(false)
+      gelukt = true
+    } finally {
+      if (!gelukt) {
+        voorafBezigRef.current = false
+        setVoorafBezig(false)
+      }
+    }
   }
 
   // --- Picks terugdraaien (utils/uitlevering.ts) ---
@@ -1381,24 +1384,58 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     })
   }
 
-  const annuleerOrder = () => {
-    if (!selectedOrder) return
-    // Gepickt maar nog niet verzonden: het bier ligt er nog, dus terug naar de
-    // voorraad. Verzonden bier is echt weg (alleen een notitie in de winkel).
-    const terug = pickTerugdraaiing(selectedOrder)
-    const teruggeboekt = !!terug && !terug.blokkade
-    if (teruggeboekt) voerTerugdraaiingUit(selectedOrder.id, terug!)
-    setBestellingen((prev: any[]) => prev.map((b: any) =>
-      b.id === selectedOrder.id ? {...b, status: 'geannuleerd'} : b
-    ))
-    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd',
-      omschrijving:`Geannuleerd — ${selectedOrder.klant_naam}${teruggeboekt ? ` (${terug!.uitleveringIds.length} uitleveringen teruggedraaid, ${terug!.stuks} st. terug in voorraad)` : ''}`})
-    // Teruggedraaid = niets meer uitgeslagen, dus de winkel mag naar
-    // `cancelled` en zijn voorraad terugboeken — net als BrewAdmin nu doet.
-    void schrijfTerugNaarWc({...selectedOrder, status: 'geannuleerd'}, 'geannuleerd',
-      teruggeboekt ? {uitgeslagen: false} : undefined)
-    setShowAnnuleerModal(false)
-    setView('list')
+  // Al gefactureerd (vooraf, zodra de order betaald was) en nog niet
+  // gecrediteerd? Dan hoort bij annuleren een creditnota: een definitieve
+  // factuur verdwijnt nooit, hij wordt tenietgedaan (utils/orderFactuur.ts).
+  const teCrediterenFactuur = (order: any): any | null => {
+    const f = orderFactuurVan(order, verkoopFacturen)
+    return f && f.status !== 'credit' && !factuurIsGecrediteerd(f, verkoopFacturen) ? f : null
+  }
+  const annuleerBezigRef = useRef(false)
+  const [annuleerBezig, setAnnuleerBezig] = useState(false)
+  const annuleerOrder = async () => {
+    if (!selectedOrder || annuleerBezigRef.current) return
+    annuleerBezigRef.current = true
+    setAnnuleerBezig(true)
+    try {
+      // Het creditnotanummer eerst (server-reeks): lukt dat niet, dan wordt
+      // er ook niet geannuleerd — anders stond er een factuur zonder order.
+      const factuur = teCrediterenFactuur(selectedOrder)
+      let creditnota: any = null
+      if (factuur) {
+        let nummer: string
+        try { nummer = await volgendFactuurNummer('creditnota') }
+        catch (e) { alert(t('err_factuurnummer_ophalen')); return }
+        creditnota = bouwCreditnota(factuur, {id: newId(verkoopFacturen || []), nummer, datum: tod()})
+      }
+      // Gepickt maar nog niet verzonden: het bier ligt er nog, dus terug naar de
+      // voorraad. Verzonden bier is echt weg (alleen een notitie in de winkel).
+      const terug = pickTerugdraaiing(selectedOrder)
+      const teruggeboekt = !!terug && !terug.blokkade
+      if (teruggeboekt) voerTerugdraaiingUit(selectedOrder.id, terug!)
+      setBestellingen((prev: any[]) => prev.map((b: any) =>
+        b.id === selectedOrder.id ? {...b, status: 'geannuleerd'} : b
+      ))
+      if (creditnota) {
+        setVerkoopFacturen((prev: any[]) => [...(prev || []), creditnota])
+        // Journaal (ERP-plan 2.1): de creditnota is direct definitief → boeken
+        // (bedragen negatief, zie StatiegeldPage).
+        setJournaal((prev: any[]) => voegBoekingToe(prev || [], verkoopFactuurBoeking(creditnota)))
+        logAudit(auditLog, setAuditLog, {entiteit:'Verkoopfactuur', entiteit_id:creditnota.id, actie:'aangemaakt',
+          omschrijving:`Creditnota ${creditnota.factuurnummer} voor ${factuur.factuurnummer} — bestelling ${orderNummer(selectedOrder)} geannuleerd`})
+      }
+      logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd',
+        omschrijving:`Geannuleerd — ${selectedOrder.klant_naam}${teruggeboekt ? ` (${terug!.uitleveringIds.length} uitleveringen teruggedraaid, ${terug!.stuks} st. terug in voorraad)` : ''}${creditnota ? `, creditnota ${creditnota.factuurnummer} voor factuur ${factuur.factuurnummer}` : ''}`})
+      // Teruggedraaid = niets meer uitgeslagen, dus de winkel mag naar
+      // `cancelled` en zijn voorraad terugboeken — net als BrewAdmin nu doet.
+      void schrijfTerugNaarWc({...selectedOrder, status: 'geannuleerd'}, 'geannuleerd',
+        teruggeboekt ? {uitgeslagen: false} : undefined)
+      setShowAnnuleerModal(false)
+      setView('list')
+    } finally {
+      annuleerBezigRef.current = false
+      setAnnuleerBezig(false)
+    }
   }
 
   const addVrijeRegel = () => {
@@ -1466,25 +1503,15 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // (netto/btw_bedrag/bruto per regel + btw_overzicht + totalen). Zelfde rekenwijze
   // als bij het opstellen in `rondeAf`.
   const herberekenFactuur = (fact: any) => {
-    const rnd2 = (n: number) => Math.round(n * 100) / 100
     const regels = (fact.regels||[]).map((r: any) => {
       // Autoritatieve WooCommerce-bedragen blijven leidend (geen kasverschil);
       // regels zonder die bedragen worden uit hoeveelheid × prijs herberekend.
       const b = regelBedrag(r)
       return {...r, netto: b.netto, btw_bedrag: b.btw, bruto: b.bruto}
     })
-    const tarieven = [...new Set(regels.map((r: any) => Number(r.btw_pct||0)))] as number[]
-    const btw_overzicht = tarieven.map(tarief => {
-      const rv = regels.filter((r: any) => Number(r.btw_pct||0) === tarief)
-      return {
-        tarief,
-        netto: rnd2(rv.reduce((s: number, r: any) => s + r.netto, 0)),
-        btw: rnd2(rv.reduce((s: number, r: any) => s + r.btw_bedrag, 0)),
-      }
-    })
     // Totalen cent-exact (ERP-plan 2.2); cent-velden zijn de canonieke waarde.
     const tot = totaliseerRegels(regels)
-    return {...fact, regels, btw_overzicht, netto: tot.netto, btw: tot.btw, bruto: tot.bruto,
+    return {...fact, regels, btw_overzicht: btwOverzicht(regels), netto: tot.netto, btw: tot.btw, bruto: tot.bruto,
       netto_cent: tot.netto_cent, btw_cent: tot.btw_cent, bruto_cent: tot.bruto_cent}
   }
 
@@ -1494,17 +1521,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // want de BTW-aangifte leest uit de factuur, niet uit de order.
   const updateRegelBtw = (regelId: number, nieuwBtw: number) => {
     if (!selectedOrder) return
+    // De factuur van deze order: na afronden, of al vooraf (utils/orderFactuur.ts).
+    const gekoppeld = orderFactuurVan(selectedOrder, verkoopFacturen)
     // Periode-lock (ERP-plan 0.4): zodra de gekoppelde factuur meetelt in een
     // ingediende/betaalde BTW-periode is corrigeren geblokkeerd — dat zou de
     // aangiftecijfers achteraf veranderen. Correctie dan via creditnota.
-    if (selectedOrder.factuur_id != null) {
-      const fact = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
-      if (fact) {
-        const periodeType = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
-        const {ingediend, betaald} = geslotenPeriodeSets(btwAangiftes||[], bankKoppelingen||{})
-        if (!magFactuurMuteren(fact, periodeType, ingediend, betaald)) {
-          alert(t('err_periode_gesloten_mutatie')); return
-        }
+    if (gekoppeld) {
+      const periodeType = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
+      const {ingediend, betaald} = geslotenPeriodeSets(btwAangiftes||[], bankKoppelingen||{})
+      if (!magFactuurMuteren(gekoppeld, periodeType, ingediend, betaald)) {
+        alert(t('err_periode_gesloten_mutatie')); return
       }
     }
     const orderRegels = selectedOrder.regels||[]
@@ -1521,20 +1547,18 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     // Gekoppelde verkoopfactuur meecorrigeren. De factuurregels zijn 1-op-1 in
     // dezelfde volgorde uit de orderregels opgebouwd (statiegeldregels komen
     // erná), dus factuurregel op positie `regelIdx` hoort bij deze orderregel.
-    if (selectedOrder.factuur_id != null && regelIdx >= 0) {
-      const fact = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
-      if (fact) {
-        const regels = (fact.regels||[]).map((fr: any, i: number) => i === regelIdx ? corrigeerRegelBtw(fr, nieuwBtw) : fr)
-        const nieuweFactuur = herberekenFactuur({...fact, regels})
-        setVerkoopFacturen((prev: any[]) => (prev||[]).map((f: any) => f.id === fact.id ? nieuweFactuur : f))
-        // Journaal (ERP-plan 2.1): correctie op een al geboekte factuur =
-        // storno van de oude regels + herboeking van de gecorrigeerde factuur.
-        setJournaal((prev: any[]) => voegBoekingToe(
-          voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'verkoop_factuur', fact.id)),
-          verkoopFactuurBoeking(nieuweFactuur)))
-      }
+    if (gekoppeld && regelIdx >= 0) {
+      const fact = gekoppeld
+      const regels = (fact.regels||[]).map((fr: any, i: number) => i === regelIdx ? corrigeerRegelBtw(fr, nieuwBtw) : fr)
+      const nieuweFactuur = herberekenFactuur({...fact, regels})
+      setVerkoopFacturen((prev: any[]) => (prev||[]).map((f: any) => f.id === fact.id ? nieuweFactuur : f))
+      // Journaal (ERP-plan 2.1): correctie op een al geboekte factuur =
+      // storno van de oude regels + herboeking van de gecorrigeerde factuur.
+      setJournaal((prev: any[]) => voegBoekingToe(
+        voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'verkoop_factuur', fact.id)),
+        verkoopFactuurBoeking(nieuweFactuur)))
     }
-    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`BTW gewijzigd: ${regel?.bier_naam||regelId} → ${nieuwBtw}%${selectedOrder.factuur_id != null ? ` (factuur ${selectedOrder.factuur_nummer||selectedOrder.factuur_id} bijgewerkt)` : ''}`})
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`BTW gewijzigd: ${regel?.bier_naam||regelId} → ${nieuwBtw}%${gekoppeld ? ` (factuur ${gekoppeld.factuurnummer||gekoppeld.id} bijgewerkt)` : ''}`})
   }
 
   // Regelsoort wisselen tussen 'bier' (uit de biervoorraad picken) en 'vrij'
@@ -1672,7 +1696,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   const printOrderFactuur = () => {
     if (!selectedOrder) return
-    const factuur = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
+    const factuur = orderFactuurVan(selectedOrder, verkoopFacturen)
     if (!factuur) { alert(t('err_no_invoice_for_order')); return }
     // Termijn van de klantkaart (anders de brouwerij): dezelfde vervaldatum
     // als vanuit Administratie → Facturen en als waarmee de te-laat-badge rekent.
@@ -1743,7 +1767,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   const mailOrderFactuur = async () => {
     if (!selectedOrder) return
-    const factuur = (verkoopFacturen||[]).find((f: any) => f.id === selectedOrder.factuur_id)
+    const factuur = orderFactuurVan(selectedOrder, verkoopFacturen)
     if (!factuur) { alert(t('err_no_invoice_for_order')); return }
     setMailGenerating(true)
     try {
@@ -1923,6 +1947,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     // het niet verzonden is (null = niets terug te draaien).
     const uitgeleverd = orderUitgeleverd(bestellingPicks, selectedOrder.id)
     const terugdraaiing = pickTerugdraaiing(selectedOrder)
+    // De factuur: na afronden, of al vooraf zodra de order betaald was. Een
+    // gefactureerde order houdt zijn regels vast (wijzigen = creditnota); de
+    // BTW corrigeren kan via "BTW corrigeren", net als na afronden.
+    const orderFactuur = orderFactuurVan(selectedOrder, verkoopFacturen)
+    const gefactureerd = orderIsGefactureerd(selectedOrder, verkoopFacturen)
+    const kanVooraf = voorafFactuurBlokkade(selectedOrder, verkoopFacturen) === null
+    const crediteren = teCrediterenFactuur(selectedOrder)
 
     return (
       <div>
@@ -1937,6 +1968,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             {t(`orders_status_${selectedOrder.status}`, selectedOrder.status)}
           </span>
           <BetaaldBadge b={selectedOrder} />
+          {orderFactuur && selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd' && (
+            <span title={t('orders_gefactureerd_tip').replace('{nummer}', orderFactuur.factuurnummer || '')}
+              className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
+              <Icon n="receipt" /> {t('orders_gefactureerd')}
+            </span>
+          )}
           <LeveringBadge b={selectedOrder} />
           <WcSyncBadge b={selectedOrder} />
           {(() => {
@@ -1945,7 +1982,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             // Vóór het picken mag privé/zakelijk nog gecorrigeerd worden
             // (bijv. een verkeerd gedetecteerde WooCommerce-import). Daarna is
             // het type bevroren omdat de AGP-allocatie erop gebaseerd is.
-            const aanpasbaar = selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd'
+            const aanpasbaar = (selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd') && !gefactureerd
             if (!aanpasbaar) return (
               <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${kType === 'zakelijk' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
                 {t(kType === 'zakelijk' ? 'lbl_zakelijk' : 'lbl_prive')}
@@ -2072,7 +2109,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
           <SectionHeader
             title={t('orders_lines')}
-            info={selectedOrder.status === 'afgerond' ? (
+            info={gefactureerd && selectedOrder.status !== 'geannuleerd' ? (
               btwCorrectie === selectedOrder.id
                 ? <button onClick={() => setBtwCorrectie(null)} className="underline hover:text-white">{t('orders_btw_correctie_klaar')}</button>
                 : <button onClick={() => setBtwCorrectie(selectedOrder.id)} className="underline hover:text-white">{t('orders_btw_correctie')}</button>
@@ -2102,10 +2139,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 const volledig = gepickt >= r.aantal
                 const soort = regelSoort(r)
                 const isVrij = soort === 'vrij' || soort === 'verzending' || soort === 'korting'
-                const canDelete = isVrij && selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd'
+                // Gefactureerd (afgerond, of vooraf): de regels staan op de
+                // factuur, dus niet meer weghalen; de BTW alleen via "BTW
+                // corrigeren" — dan gaat de factuur mee (updateRegelBtw).
+                const canDelete = isVrij && !gefactureerd && selectedOrder.status !== 'geannuleerd'
                 const kanRegelWisselen = selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd' && gepickt === 0
-                const isBtwCorrectie = selectedOrder.status === 'afgerond' && btwCorrectie === selectedOrder.id
-                const canEditBtw = (selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd') || isBtwCorrectie
+                const isBtwCorrectie = gefactureerd && selectedOrder.status !== 'geannuleerd' && btwCorrectie === selectedOrder.id
+                const canEditBtw = (!gefactureerd && selectedOrder.status !== 'geannuleerd') || isBtwCorrectie
                 return (
                   <tr key={r.id} className={isVrij ? 'bg-blue-50' : volledig ? 'bg-green-50' : ''}>
                     <td className="px-3 py-2 font-medium">
@@ -2245,14 +2285,28 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             </BevestigKnop>
           )}
           {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && (<>
-            <Btn v="secondary" onClick={() => { setVrijeRegelForm({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'}); setShowVrijeRegelModal(true) }}>
-              + {t('btn_vrije_regel')}
-            </Btn>
-            <Btn v="secondary" onClick={addVerzendkosten}><Icon n="truck" /> {t('btn_verzendkosten')}</Btn>
+            {/* Gefactureerd: de regels staan vast (ze staan al op de factuur). */}
+            {!gefactureerd && (<>
+              <Btn v="secondary" onClick={() => { setVrijeRegelForm({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'}); setShowVrijeRegelModal(true) }}>
+                + {t('btn_vrije_regel')}
+              </Btn>
+              <Btn v="secondary" onClick={addVerzendkosten}><Icon n="truck" /> {t('btn_verzendkosten')}</Btn>
+            </>)}
             {/* De pakbon mag ook vóór (of halverwege) het picken geprint worden:
                 de nog niet gepickte regels staan er dan zonder batch/THT op
                 en het document draagt een concept-markering (PakbonExport). */}
             <Btn v="secondary" onClick={printOrderPakbon} title={!magAfronden ? t('order_print_pakbon_concept_uitleg') : ''}><Icon n="printer" /> {t('order_print_pakbon')}</Btn>
+          </>)}
+          {/* Betaald maar nog niet opgehaald of verzonden: de factuur kan nu al,
+              zodat de betaling (de uitbetaling van Mollie) eraan te koppelen is. */}
+          {kanVooraf && (
+            <Btn v="secondary" onClick={openVooraf} title={t('order_factuur_vooraf_tip')}><Icon n="receipt" /> {t('order_factuur_vooraf')}</Btn>
+          )}
+          {orderFactuur && (selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && (<>
+            <Btn v="secondary" onClick={printOrderFactuur}><Icon n="printer" /> {t('order_print_factuur')}</Btn>
+            <Btn v="secondary" onClick={mailOrderFactuur} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
+              {mailGenerating ? t('mail_generating_pdf') : '✉ ' + t('order_mail_factuur')}
+            </Btn>
           </>)}
           {magAfronden && (<>
             <Btn v="secondary" onClick={mailOrderPakbon} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
@@ -2266,13 +2320,18 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           )}
           {(selectedOrder.status === 'afgerond' || selectedOrder.status === 'verzonden') && (<>
             <Btn v="secondary" onClick={printOrderPakbon}><Icon n="printer" /> {t('order_print_pakbon')}</Btn>
-            <Btn v="secondary" onClick={printOrderFactuur}><Icon n="printer" /> {t('order_print_factuur')}</Btn>
+            {/* Een verzonden order heeft pas een factuur als hij vooraf gemaakt is. */}
+            {orderFactuur && (
+              <Btn v="secondary" onClick={printOrderFactuur}><Icon n="printer" /> {t('order_print_factuur')}</Btn>
+            )}
             <Btn v="secondary" onClick={mailOrderPakbon} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
               {mailGenerating ? t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}
             </Btn>
-            <Btn v="secondary" onClick={mailOrderFactuur} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-              {mailGenerating ? t('mail_generating_pdf') : '✉ ' + t('order_mail_factuur')}
-            </Btn>
+            {orderFactuur && (
+              <Btn v="secondary" onClick={mailOrderFactuur} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
+                {mailGenerating ? t('mail_generating_pdf') : '✉ ' + t('order_mail_factuur')}
+              </Btn>
+            )}
             {selectedOrder.wc_levering !== 'afhalen' && (
               <Btn v="secondary" onClick={() => mailOrderVerzending()} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
                 <Icon n="package" /> {t('order_mail_verzending')}
@@ -2398,8 +2457,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 <p>{t('order_afrond_intro')}</p>
                 <p className="mt-2 text-xs text-green-700">{t('order_afrond_uitleg')}</p>
                 <ul className="mt-1 space-y-1 list-disc list-inside text-xs">
-                  <li>{t('order_afrond_punt_factuur')}</li>
-                  <li>{t('order_afrond_punt_nummers')}</li>
+                  {orderFactuur ? (<>
+                    {/* Vooraf gefactureerd: afronden maakt geen tweede factuur. */}
+                    <li>{t('order_afrond_punt_factuur_al').replace('{nummer}', orderFactuur.factuurnummer || '')}</li>
+                    <li>{t('order_afrond_punt_pakbon')}</li>
+                  </>) : (<>
+                    <li>{t('order_afrond_punt_factuur')}</li>
+                    <li>{t('order_afrond_punt_nummers')}</li>
+                  </>)}
                   <li>{t('order_afrond_punt_status')}</li>
                 </ul>
               </div>
@@ -2717,9 +2782,45 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     ? `${blokkadeTekst(terugdraaiing)} ${t('msg_order_cancel_niet_terug')}`
                     : t('msg_order_cancel_confirm')}
               </p>
+              {/* Al gefactureerd: annuleren maakt de creditnota. Het geld gaat
+                  daarmee niet vanzelf terug — dat gebeurt in de webshop. */}
+              {crediteren && (
+                <p className="text-sm text-orange-800 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                  {t('msg_order_cancel_creditnota')
+                    .replace('{nummer}', crediteren.factuurnummer || '')
+                    .replace('{bedrag}', fmt(Number(crediteren.bruto || 0)))}
+                </p>
+              )}
               <div className="flex justify-end gap-2">
-                <Btn v="secondary" onClick={() => setShowAnnuleerModal(false)}>{t('btn_cancel')}</Btn>
-                <Btn v="danger" onClick={annuleerOrder}>{t('order_cancel_bevestig')}</Btn>
+                <Btn v="secondary" onClick={() => setShowAnnuleerModal(false)} disabled={annuleerBezig}>{t('btn_cancel')}</Btn>
+                <Btn v="danger" onClick={annuleerOrder} disabled={annuleerBezig}>
+                  {crediteren ? t('order_cancel_bevestig_credit') : t('order_cancel_bevestig')}
+                </Btn>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Factuur vooraf: de bestelling is betaald, maar nog niet opgehaald
+            of verzonden (utils/orderFactuur.ts). */}
+        {showVoorafModal && (
+          <Modal title={t('order_factuur_vooraf')} onClose={() => { if (!voorafBezig) setShowVoorafModal(false) }}>
+            <div className="space-y-4">
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-900 text-sm">
+                <p>{t('order_vooraf_intro')}</p>
+                <ul className="mt-2 space-y-1 list-disc list-inside text-xs">
+                  <li>{t('order_vooraf_punt_betaald').replace('{datum}', selectedOrder.wc_betaald_datum ? fmtD(selectedOrder.wc_betaald_datum) : '—')}</li>
+                  <li>{t('order_vooraf_punt_open')}</li>
+                  <li>{t('order_vooraf_punt_regels')}</li>
+                </ul>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">{t('orders_total')}</span>
+                <span className="font-semibold">{fmt(totaal)}</span>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Btn v="secondary" onClick={() => setShowVoorafModal(false)} disabled={voorafBezig}>{t('btn_cancel')}</Btn>
+                <Btn onClick={maakFactuurVooraf} disabled={voorafBezig}>{t('order_factuur_vooraf_bevestig')}</Btn>
               </div>
             </div>
           </Modal>
@@ -3072,6 +3173,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               <div className="flex items-center flex-wrap gap-3">
                 {picks.length > 0 && <span className="text-xs text-gray-400">{t('msg_stuks_gepickt').replace('{n}', String(picks.reduce((s: number, p: any) => s+p.aantal,0)))}</span>}
                 <BetaaldBadge b={b} />
+                {/* Vooraf gefactureerd, nog niet afgerond (niet opgehaald of verzonden). */}
+                {b.factuur_id != null && b.status !== 'afgerond' && b.status !== 'geannuleerd' && (
+                  <span title={t('orders_gefactureerd_tip').replace('{nummer}', b.factuur_nummer || '')}
+                    className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
+                    <Icon n="receipt" /> {t('orders_gefactureerd')}
+                  </span>
+                )}
                 <LeveringBadge b={b} />
                 <span className="font-semibold text-gray-800">{fmt(totaal)}</span>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[b.status]||'bg-gray-100'}`}>

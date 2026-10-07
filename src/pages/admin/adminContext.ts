@@ -47,7 +47,8 @@ export interface AdminContextWaarde {
   claudeCreds: any
   ingTypes: any
   ingTypeBtw: any
-  bestellingen: any
+  /** Bestellingen; Bank zet er `factuur_id` op als hij een factuur vooraf maakt (utils/orderFactuur.ts). */
+  bestellingen: any; setBestellingen: any
   bat: any
   acc: any; setAcc: any
   breweryDetails: any

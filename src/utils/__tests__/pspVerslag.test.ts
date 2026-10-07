@@ -207,9 +207,11 @@ describe('koppelPspVerslag', () => {
     const v = leesPspVerslag([{ pagina: 1, items: VERSLAG_01 }])!
     const k = koppelPspVerslag(v, { verkoopFacturen, bestellingen, inkoopFacturen, alGekoppeld: new Set([3]) })
     expect(k.matches.map(m => [m.uitkomst, m.factuurId ?? null])).toEqual([
-      ['factuur', 1], ['factuur', 2], ['elders', 3], ['niet_gevonden', null],
+      ['factuur', 1], ['factuur', 2], ['elders', 3], ['geen_factuur', null],
       ['factuur', 5], ['factuur', 6], ['kosten', null], ['kosten', null],
     ])
+    // Bestelling 3235 bestaat, maar is nog niet gefactureerd (niet afgerond).
+    expect(k.matches[3].bestellingId).toBe(104)
     expect(k.matches[4].bedragWijkt).toBe(true)
     expect(k.matches[0].bedragWijkt).toBe(false)
     expect(k.factuurIds).toEqual([1, 2, 5, 6])
@@ -257,9 +259,25 @@ describe('koppelPspVerslag', () => {
       verkoopFacturen: [{ id: 40, bestelling_id: 600, bruto: -5, status: 'credit' }],
       bestellingen: [{ id: 600, wc_order_nummer: '6000' }],
     })
-    expect(k.matches.map(m => m.uitkomst)).toEqual(['niet_gevonden', 'overig'])
+    // Alleen een creditnota: de bestelling heeft geen (geldige) factuur meer.
+    expect(k.matches.map(m => m.uitkomst)).toEqual(['geen_factuur', 'overig'])
+    expect(k.matches[0].bestellingId).toBe(600)
     expect(k.ontbrekend).toBe(2)
     expect(k.kosten).toEqual([])
+  })
+
+  it('niet_gevonden blijft voor een onbekende bestelling, een onbekend factuurnummer en een terugstorting zonder creditnota', () => {
+    const k = koppelPspVerslag(verslag([
+      regel('Bestelling 7000', 500),
+      regel('Factuur F2026-0999', 500),
+      regel('Bestelling 7100', -300, 'Terugstortingen'),
+    ]), {
+      verkoopFacturen: [{ id: 50, bestelling_id: 710, bruto: 3, status: 'betaald' }],
+      bestellingen: [{ id: 710, wc_order_nummer: '7100' }],
+    })
+    expect(k.matches.map(m => m.uitkomst)).toEqual(['niet_gevonden', 'niet_gevonden', 'niet_gevonden'])
+    expect(k.matches.every(m => m.bestellingId === undefined)).toBe(true)
+    expect(k.ontbrekend).toBe(3)
   })
 
   it('normFactuurnummer negeert hoofdletters en spaties', () => {
