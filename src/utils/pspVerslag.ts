@@ -364,16 +364,20 @@ export interface VerslagContext {
  *  - netto_nul: betaald en in hetzelfde verslag weer terugbetaald — telt niet;
  *  - kosten: ingehouden kosten of compensatie (de factuur van de PSP);
  *  - elders: de factuur hangt al aan een andere banktransactie;
+ *  - geen_factuur: de bestelling bestaat, maar heeft nog geen factuur (nog
+ *    niet afgerond, bijv. niet opgehaald) — zie utils/orderFactuur.ts;
  *  - niet_gevonden: geen factuur bij deze bestelling of dit nummer;
  *  - overig: een regel die de app niet kent.
  */
-export type VerslagUitkomst = 'factuur' | 'creditnota' | 'netto_nul' | 'kosten' | 'elders' | 'niet_gevonden' | 'overig'
+export type VerslagUitkomst = 'factuur' | 'creditnota' | 'netto_nul' | 'kosten' | 'elders' | 'geen_factuur' | 'niet_gevonden' | 'overig'
 
 export interface VerslagMatch {
   regel: PspVerslagRegel
   uitkomst: VerslagUitkomst
   /** De gevonden verkoopfactuur of creditnota. */
   factuurId?: number
+  /** Bij `geen_factuur`: de bestelling zonder factuur. */
+  bestellingId?: number
   /** Het bedrag op de factuur is niet het bedrag van de regel. */
   bedragWijkt?: boolean
 }
@@ -395,7 +399,7 @@ export interface VerslagKoppeling {
   kosten: VerslagKosten[]
   /** Som van de kosten in centen. */
   kostenCent: number
-  /** Regels zonder factuur: niet gevonden of onbekend. */
+  /** Regels zonder factuur: nog niet gefactureerd, niet gevonden of onbekend. */
   ontbrekend: number
 }
 
@@ -470,7 +474,19 @@ export function koppelPspVerslag(verslag: PspVerslag, ctx: VerslagContext = {}):
     kandidaten.find((f: any) => gebruikt.has(Number(f.id))) || null
   const zetFactuur = (m: VerslagMatch, kandidaten: any[], uitkomst: 'factuur' | 'creditnota') => {
     const f = kies(kandidaten, m.regel.uitbetaald_cent, gebruikt) || zelfdeAlsEerder(kandidaten)
-    if (!f) { m.uitkomst = 'niet_gevonden'; return }
+    if (!f) {
+      // Een betaling van een bestelling die er wel is maar nog geen factuur
+      // heeft (niet afgerond, bijv. nog niet opgehaald): die kan vooraf
+      // gefactureerd worden. Een terugstorting zonder creditnota niet.
+      const bestelling = uitkomst === 'factuur' && m.regel.bestelling ? bestellingIds(m.regel.bestelling)[0] : undefined
+      if (bestelling !== undefined && Number.isFinite(Number(bestelling))) {
+        m.uitkomst = 'geen_factuur'
+        m.bestellingId = Number(bestelling)
+      } else {
+        m.uitkomst = 'niet_gevonden'
+      }
+      return
+    }
     m.factuurId = Number(f.id)
     if (bezet.has(Number(f.id))) { m.uitkomst = 'elders'; return }
     gebruikt.add(Number(f.id))
@@ -520,6 +536,6 @@ export function koppelPspVerslag(verslag: PspVerslag, ctx: VerslagContext = {}):
       .map(m => m.factuurId as number))],
     kosten,
     kostenCent: kosten.reduce((s, k) => s + k.cent, 0),
-    ontbrekend: matches.filter(m => m.uitkomst === 'niet_gevonden' || m.uitkomst === 'overig').length,
+    ontbrekend: matches.filter(m => m.uitkomst === 'geen_factuur' || m.uitkomst === 'niet_gevonden' || m.uitkomst === 'overig').length,
   }
 }
