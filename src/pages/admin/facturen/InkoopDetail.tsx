@@ -36,6 +36,8 @@ export interface InkoopDetailProps {
   meer: DetailKnop[]
   onSluit: () => void
   terugLabel: string
+  /** Extra klassen op het paneel. */
+  cls?: string
 }
 
 const Rij: React.FC<{ label: string, children: React.ReactNode }> = ({ label, children }) => (
@@ -55,7 +57,7 @@ const hoeveelheidTekst = (r: any): string => {
 
 const InkoopDetail: React.FC<InkoopDetailProps> = ({
   factuur: f, stand, verlegd, bank, betaaldDatum, altNaam, vergrendeld, onBijlage, bijlageBezig,
-  primair, tweede, meer, onSluit, terugLabel,
+  primair, tweede, meer, onSluit, terugLabel, cls,
 }) => {
   const c = inkoopCenten(f)
   const regels: any[] = Array.isArray(f.regels) ? f.regels : []
@@ -67,6 +69,7 @@ const InkoopDetail: React.FC<InkoopDetailProps> = ({
       kopExtra={<InkoopPil stand={stand} altNaam={altNaam} />}
       onSluit={onSluit}
       terugLabel={terugLabel}
+      cls={cls}
       acties={primair || tweede ? <ActieBalk primair={primair} tweede={tweede} /> : undefined}
     >
       <div className="grid gap-4">

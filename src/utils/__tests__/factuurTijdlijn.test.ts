@@ -224,6 +224,13 @@ describe('verkoopTijdlijn', () => {
     })
     expect(tl[tl.length - 1]).toMatchObject({ soort: 'betaald', sleutel: 'ftl_betaald_psp', vars: { n: '2' } })
   })
+  it('gekoppeld aan een bijschrijving maar nog open: geen "betaald", wel de bijschrijving', () => {
+    const tl = verkoopTijdlijn({ ...per(4), status: 'open' }, basis)
+    const bank = tl.find(r => r.soort === 'betaald')
+    expect(bank).toMatchObject({ sleutel: 'ftl_bank_gekoppeld', toon: 'normaal', dag: '2026-08-10' })
+    expect(bank?.bank?.tegenpartij).toBe('Slijterij Hoekstra')
+    expect(tl.some(r => r.sleutel.startsWith('ftl_betaald'))).toBe(false)
+  })
   it('creditnota van een factuur: gemaakt als creditnota met het bronnummer, geen vervaldatum', () => {
     const tl = verkoopTijdlijn(per(5), basis)
     expect(tl.map(r => r.soort)).toEqual(['gemaakt'])
@@ -255,7 +262,7 @@ describe('verkoopTijdlijn', () => {
       { id: 63, status: 'credit' }, { id: 64, status: 'betaald', verrekend_alt_id: 1 }]
     const extra: TijdlijnContext = { ...basis, verkoopFacturen: [...verkoop, { id: 80, status: 'credit', credit_van_factuur_id: 2 }] }
     for (const f of facturen) for (const r of verkoopTijdlijn(f, extra)) sleutels.add(r.sleutel)
-    for (const k of ['ftl_betaald_psp', 'ftl_gemaild', 'ftl_betaallink', 'ftl_tweede_herinnering', 'ftl_bijschrijving']) sleutels.add(k)
+    for (const k of ['ftl_betaald_psp', 'ftl_gemaild', 'ftl_betaallink', 'ftl_tweede_herinnering', 'ftl_bijschrijving', 'ftl_bank_gekoppeld']) sleutels.add(k)
     const talen: Record<string, Record<string, string>> = { nl, en, de, fr, es }
     const plaatshouders = (s: string) => (s.match(/\{[a-z_]+\}/g) || []).sort().join(',')
     for (const k of sleutels) {

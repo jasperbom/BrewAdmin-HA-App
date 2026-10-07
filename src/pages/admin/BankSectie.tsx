@@ -511,8 +511,20 @@ function BankSectie() {
   };
 
   // SNd-periodes waar deze afschrijving de afdracht van kan zijn — wie geen
-  // SNd-verpakkingen verkoopt, krijgt de keuze niet te zien.
-  const sndKandidaten = (tx: any) => sndKoppelKandidaten(verkoopFacturen, bankKoppelingen, tx, tod(), {bestellingen, verpakkingen})
+  // SNd-verpakkingen verkoopt, krijgt de keuze niet te zien. Elke ongekoppelde
+  // afschrijving vraagt dit bij elke weergave (het ⋯-menu), en de berekening
+  // loopt alle facturen en bestellingen door: per datum/bedrag bewaren tot de
+  // gegevens veranderen (bijvoorbeeld niet opnieuw bij elke toets in het zoekveld).
+  const sndCache = React.useMemo(() => new Map<string, any[]>(), [verkoopFacturen, bankKoppelingen, bestellingen, verpakkingen])
+  const sndKandidaten = (tx: any): any[] => {
+    const sleutel = `${tx?.datum}|${tx?.bedrag}`
+    let uitkomst = sndCache.get(sleutel)
+    if (!uitkomst) {
+      uitkomst = sndKoppelKandidaten(verkoopFacturen, bankKoppelingen, tx, tod(), {bestellingen, verpakkingen})
+      sndCache.set(sleutel, uitkomst)
+    }
+    return uitkomst
+  }
 
   const markeerInkoopBetaald = (id: number, betaaldDatum?: string) => {
     setInkoopFacturen((prev: any[]) => prev.map((f: any) =>
@@ -745,10 +757,13 @@ function BankSectie() {
   // kostenpost en de betaalstatus weg, accijns zet de maand terug op
   // ingediend. De uitvoering komt na vijf seconden en zoekt de transactie dan
   // pas op (via de ref naar de nieuwste stand).
-  const ontkoppelNu = (txId: number) => {
+  const ontkoppelNu = (txId: number, verwacht?: string) => {
     const tx = txMetId(txId)
     const k = koppelingVan(tx)
     if (!tx || !k) return
+    // Binnen de vijf seconden opnieuw gekoppeld (via het transactievenster):
+    // die nieuwe koppeling blijft staan, alleen de geplande gaat eraf.
+    if (verwacht !== undefined && JSON.stringify(k) !== verwacht) return
     switch (k.soort) {
       case 'psp': ontkoppelPsp(tx); break
       case 'verkoop': koppelBankTransactie(tx, null, 'verkoop'); break
@@ -764,12 +779,13 @@ function BankSectie() {
       case 'aflossing': ontkoppelAflossing(tx); break
     }
   }
-  const laatste = React.useRef<{ontkoppelNu: (id: number) => void}>({ontkoppelNu})
+  const laatste = React.useRef<{ontkoppelNu: (id: number, verwacht?: string) => void}>({ontkoppelNu})
   laatste.current = {ontkoppelNu}
   const planOntkoppel = (tx: any) => {
     const titel = koppelingWeergave(tx, tekstData)?.titel
+    const gepland = JSON.stringify(koppelingVan(tx))
     undo.plan(`${ONTKOPPEL_UNDO}${tx.id}`, titel ? `${t('bank_undo_ontkoppeld')} · ${titel}` : t('bank_undo_ontkoppeld'),
-      () => laatste.current.ontkoppelNu(tx.id))
+      () => laatste.current.ontkoppelNu(tx.id, gepland))
   }
 
   // Het voorstel uitvoeren: dezelfde handelingen als met de hand koppelen.
@@ -859,7 +875,7 @@ function BankSectie() {
     if (!h) return null
     return (
       <button type="button" onClick={h.onClick}
-        className={`px-3 min-h-[40px] sm:min-h-[30px] rounded-lg text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] ${knopKlasse(h.soort)} ${extra}`}>
+        className={`px-3 min-h-tap sm:min-h-[30px] rounded-lg text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] ${knopKlasse(h.soort)} ${extra}`}>
         {h.label}
       </button>
     )
@@ -1057,7 +1073,9 @@ function BankSectie() {
             ) : null}
             {laatstePerRekening.map((a: any) => (
               <span key={a.id} className="text-sm text-gray-600">
-                {rekening === 'alle' && meerdereRekeningen && <span className="font-mono text-gray-500 mr-1.5">…{ibanSleutel(a).slice(-4)}</span>}
+                {rekening === 'alle' && meerdereRekeningen && (
+                  <span className="font-mono text-gray-500 mr-1.5">{ibanSleutel(a) === 'onbekend' ? t('lbl_onbekend') : `…${ibanSleutel(a).slice(-4)}`}</span>
+                )}
                 {/* Het bedrag vet binnen de vertaalde zin ("Saldo {bedrag} op {datum}"). */}
                 {t('bank_saldo_op').replace('{datum}', fmtD(a.tot) || '—').split('{bedrag}').map((deel, i, delen) => (
                   <React.Fragment key={i}>{deel}{i < delen.length - 1 && <b className="text-gray-900 tabular-nums">{fmt(a.eindsaldo)}</b>}</React.Fragment>

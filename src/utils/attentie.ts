@@ -7,13 +7,13 @@
 // springen. De tellingen zelf blijven waar ze horen (taken.ts, calculations.ts,
 // picking.ts, btw.ts) — hier worden ze alleen gelabeld en gebundeld.
 
-import { telThtAlerts, telOpenAccijnsMaanden } from './calculations'
+import { telThtAlerts } from './calculations'
 import { telNieuweWebshopOrders, telWebshopAfgebroken } from './wcOrderImport'
-import { telOpenstaandeBtwPerioden, BtwPeriodeType } from './btw'
+import type { BtwPeriodeType } from './btw'
 import { telOpenstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './taken'
 import { telOpenstaandeBestellingen } from './picking'
-import { vervallenVerkoopFacturen, achterstalligeInkoopFacturen } from './facturen'
-import { telInboxOpen } from './inkoopInbox'
+import { beslissingen, BESLISSING_SOORTEN } from './beslissingen'
+import type { Beslissing, BeslissingenBron, BeslissingSoort } from './beslissingen'
 
 export type WerkruimteId = 'productie' | 'verkoop' | 'administratie'
 
@@ -46,6 +46,9 @@ export interface AttentiePost extends Omit<AttentieDoel, 'id'> {
   /** i18n-sleutel voor het label — de UI vertaalt, deze module nooit. */
   sleutel: string
   aantal: number
+  /** Het record dat de doelpagina meteen opent (`AttentieDoel.id`), als de
+      post precies één ding aanwijst (één vervallen factuur). */
+  recordId?: number
 }
 
 export interface AttentieBron {
@@ -75,6 +78,14 @@ export interface AttentieBron {
   /** Klantkaarten + brouwerijgegevens: de betalingstermijn voor de vervaldatum. */
   klanten?: any[]
   breweryDetails?: any
+  /** `bank_transacties` en `bank_afschriften` (bewaard): te koppelen en de
+      saldo-aansluiting van het laatste afschrift. */
+  bankTransacties?: any[]
+  bankAfschriften?: any[]
+  /** De al berekende rijen van het Administratie-dashboard. App rekent ze één
+      keer uit en geeft ze aan het dashboard én hier mee; zonder rekent deze
+      module ze zelf uit dezelfde bron. */
+  beslissingen?: Beslissing[]
   /** Vandaag als Date (batchtaken/THT/schoonmaak/accijns) — de BTW- en
       factuurtellingen krijgen de 'YYYY-MM-DD'-variant hieronder, zelfde
       formaat als de periodegrenzen en de factuurdatums. */
@@ -90,7 +101,72 @@ export const attentieDoel = (p: AttentiePost): AttentieDoel => ({
   pagina: p.pagina,
   ...(p.tab ? { tab: p.tab } : {}),
   ...(p.filter ? { filter: p.filter } : {}),
+  ...(p.lotId != null ? { lotId: p.lotId } : {}),
+  ...(p.recordId != null ? { id: p.recordId } : {}),
+  ...(p.actie ? { actie: p.actie } : {}),
 })
+
+// ── Administratie: posten uit de beslissingen ───────────────────────────────
+
+/** De bron van de beslissingen, uit dezelfde gegevens als de badges. */
+export const beslissingenBronVan = (bron: AttentieBron): BeslissingenBron => ({
+  verkoopFacturen: bron.verkoopFacturen, inkoopFacturen: bron.inkoopFacturen,
+  klanten: bron.klanten, breweryDetails: bron.breweryDetails,
+  btwPeriode: bron.btwPeriode, btwAangiftes: bron.btwAangiftes, bankKoppelingen: bron.bankKoppelingen,
+  accijnsAangiftes: bron.accijnsAangiftes, accijns: bron.accijns,
+  inkoopInbox: bron.inkoopInbox,
+  bankTransacties: bron.bankTransacties, bankAfschriften: bron.bankAfschriften,
+  vandaag: bron.vandaag, vandaagIso: bron.vandaagIso,
+})
+
+/**
+ * Label en algemeen doel per soort beslissing. Het doel is dat van de hele
+ * groep (de lijst met de statusfilter erop); wijst de groep precies één rij
+ * aan, dan neemt de post het doel van die rij over (de factuur, de periode).
+ */
+const ADMIN_POST: Record<BeslissingSoort, { id: string, sleutel: string, doel: AttentieDoel }> = {
+  verkoop_vervallen: { id: 'verkoop_vervallen', sleutel: 'attentie_verkoop_vervallen', doel: { pagina: 'facturen', tab: 'verkoop', filter: 'te_laat' } },
+  btw: { id: 'btw', sleutel: 'attentie_btw', doel: { pagina: 'aangiftes', tab: 'btw' } },
+  accijns: { id: 'accijns', sleutel: 'attentie_accijns', doel: { pagina: 'aangiftes', tab: 'accijns' } },
+  inkoop_achterstallig: { id: 'inkoop_achterstallig', sleutel: 'attentie_inkoop_achterstallig', doel: { pagina: 'facturen', tab: 'inkoop', filter: 'te_laat' } },
+  // Het postvak en de bank zijn één rij (een wachtrij), dus één punt: het
+  // label noemt de klus, niet het aantal stukken erin.
+  inkoop_inbox: { id: 'inkoop_inbox', sleutel: 'attentie_postvak', doel: { pagina: 'facturen', tab: 'inkoop', filter: 'te_verwerken' } },
+  bank_koppelen: { id: 'bank_koppelen', sleutel: 'attentie_bank_koppelen', doel: { pagina: 'bank', filter: 'te_koppelen' } },
+  bank_aansluiting: { id: 'bank_aansluiting', sleutel: 'attentie_bank_aansluiting', doel: { pagina: 'bank', actie: 'importeren' } },
+}
+
+const postVanDoel = (d: AttentieDoel): Omit<AttentiePost, 'id' | 'sleutel' | 'aantal'> => ({
+  pagina: d.pagina,
+  ...(d.tab ? { tab: d.tab } : {}),
+  ...(d.filter ? { filter: d.filter } : {}),
+  ...(d.lotId != null ? { lotId: d.lotId } : {}),
+  ...(d.id != null ? { recordId: d.id } : {}),
+  ...(d.actie ? { actie: d.actie } : {}),
+})
+
+/**
+ * De administratieposten: per soort het aantal rijen van het dashboard, in
+ * vaste volgorde (BESLISSING_SOORTEN). Som = aantal rijen.
+ */
+export function adminPosten(rijen: readonly Beslissing[] | null | undefined): AttentiePost[] {
+  const perSoort = new Map<BeslissingSoort, Beslissing[]>()
+  for (const b of rijen || []) {
+    if (!b || !ADMIN_POST[b.soort]) continue
+    const lijst = perSoort.get(b.soort) || []
+    lijst.push(b)
+    perSoort.set(b.soort, lijst)
+  }
+  const uit: AttentiePost[] = []
+  for (const soort of BESLISSING_SOORTEN) {
+    const groep = perSoort.get(soort)
+    if (!groep?.length) continue
+    const def = ADMIN_POST[soort]
+    const doel = groep.length === 1 ? groep[0].doel : def.doel
+    uit.push({ id: def.id, sleutel: def.sleutel, ...postVanDoel(doel), aantal: groep.length })
+  }
+  return uit
+}
 
 export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, AttentiePost[]> {
   const tht = telThtAlerts(bron.lots, bron.vandaag)
@@ -131,46 +207,11 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
         aantal: telWebshopAfgebroken(bron.bestellingen),
       },
     ]),
-    // Administratie: eerst wat geld kost als je het laat liggen (vervallen
-    // facturen), dan de aangiftes, dan de eigen betalingen. Elke post landt
-    // op de plek waar hij afgehandeld wordt (Facturen, Aangiftes), met het
-    // segment en de statusfilter erbij. Het Administratie-dashboard toont
-    // dezelfde lijst — één bron, één getal.
-    administratie: nietLeeg([
-      {
-        // Facturen → Verkoop, statusfilter "te laat".
-        id: 'verkoop_vervallen', sleutel: 'attentie_verkoop_vervallen', pagina: 'facturen', tab: 'verkoop', filter: 'te_laat',
-        aantal: vervallenVerkoopFacturen(bron.verkoopFacturen, bron.klanten || [], bron.breweryDetails, bron.vandaagIso).length,
-      },
-      {
-        // Aangiftes → BTW.
-        id: 'btw', sleutel: 'attentie_btw', pagina: 'aangiftes', tab: 'btw',
-        aantal: telOpenstaandeBtwPerioden(
-          [bron.vandaag.getFullYear() - 1, bron.vandaag.getFullYear()],
-          bron.btwPeriode, bron.btwAangiftes, bron.bankKoppelingen,
-          [...(bron.verkoopFacturen || []), ...(bron.inkoopFacturen || [])], bron.vandaagIso,
-        ),
-      },
-      {
-        // Aangiftes → Accijns: afgelopen maanden met uitslagen waarvan de
-        // aangifte nog niet ingediend of betaald is.
-        id: 'accijns', sleutel: 'attentie_accijns', pagina: 'aangiftes', tab: 'accijns',
-        aantal: telOpenAccijnsMaanden(bron.accijnsAangiftes || [], bron.accijns || [], bron.vandaag),
-      },
-      {
-        // Facturen → Inkoop, "te laat": onbetaald en ouder dan de vuistregel-
-        // termijn (INKOOP_ACHTERSTALLIG_DAGEN in utils/facturen.ts).
-        id: 'inkoop_achterstallig', sleutel: 'attentie_inkoop_achterstallig', pagina: 'facturen', tab: 'inkoop', filter: 'te_laat',
-        aantal: achterstalligeInkoopFacturen(bron.inkoopFacturen, bron.vandaagIso).length,
-      },
-      {
-        // Facturen → Inkoop, "te verwerken": facturen die per e-mail zijn
-        // binnengekomen en op scannen en boeken wachten (utils/inkoopInbox →
-        // telInboxOpen).
-        id: 'inkoop_inbox', sleutel: 'attentie_inkoop_inbox', pagina: 'facturen', tab: 'inkoop', filter: 'te_verwerken',
-        aantal: telInboxOpen(bron.inkoopInbox),
-      },
-    ]),
+    // Administratie: de rijen van het Administratie-dashboard, per soort
+    // gebundeld (adminPosten). Zo telt de werkruimte-badge precies het aantal
+    // rijen op het dashboard en de menubadge per pagina het aantal rijen dat
+    // daarheen gaat — één bron, één getal.
+    administratie: adminPosten(bron.beslissingen ?? beslissingen(beslissingenBronVan(bron))),
   }
 }
 

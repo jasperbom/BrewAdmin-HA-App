@@ -65,6 +65,9 @@ export function koppelingWeergave(tx: any, d: BankTekstData): KoppelingWeergave 
   const k = koppelingVan(tx)
   if (!k) return null
   const hints: string[] = []
+  // Een terugboeking blijft herkenbaar, ook als hij gekoppeld is (de oude
+  // Bank-tab toonde het label altijd).
+  if (tx.storno) hints.push(t('lbl_mt940_storno'))
   if (tx.retroGematcht) hints.push(t('bank_hint_retro'))
   else if (tx.herinneringsGematcht) hints.push(t('bank_hint_onthouden'))
   else if (tx.autoGematcht) hints.push(t('bank_hint_auto'))

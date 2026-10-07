@@ -294,10 +294,24 @@ describe('factuurKiezerKandidaten', () => {
   it('ook betaalde facturen op verzoek; creditnota\'s nooit bij verkoop', () => {
     expect(factuurKiezerKandidaten(t1, 'verkoop', facturen, { ookBetaald: true }).map(x => x.id)).toEqual([3, 1, 5, 2])
   })
-  it('al elders gekoppeld = weg, maar de eigen koppeling blijft kiesbaar', () => {
+  it('al elders gekoppeld: open blijft kiesbaar (deelbetaling) maar achteraan en gemarkeerd; de eigen koppeling telt niet als elders', () => {
     const eigen = tx({ bedrag: 100 })
     const koppelingen = { anders: { soort: 'verkoop', factuurId: 1 }, [txKey(eigen)]: { soort: 'verkoop', factuurId: 5 } }
-    expect(factuurKiezerKandidaten(eigen, 'verkoop', facturen, { bankKoppelingen: koppelingen }).map(x => x.id)).toEqual([5, 2])
+    const r = factuurKiezerKandidaten(eigen, 'verkoop', facturen, { bankKoppelingen: koppelingen })
+    // Factuur 1 klopt qua bedrag, maar hangt al aan "anders": na de vrije facturen.
+    expect(r.map(x => x.id)).toEqual([5, 2, 1])
+    expect(r.find(x => x.id === 1)).toMatchObject({ elders: true, klopt: true })
+    expect(r.find(x => x.id === 5)?.elders).toBe(false)
+  })
+  it('een betaalde factuur die al elders hangt doet nooit mee, ook niet met "ook betaalde"', () => {
+    const koppelingen = { anders: { soort: 'verkoop', factuurId: 3 } }
+    expect(factuurKiezerKandidaten(t1, 'verkoop', facturen, { ookBetaald: true, bankKoppelingen: koppelingen }).map(x => x.id)).toEqual([1, 5, 2])
+  })
+  it('PSP-bundel en PSP-kostenpost tellen als elders gekoppeld', () => {
+    const koppelingen = { psp: { soort: 'psp', factuurIds: [2], kostenFactuurId: 9 } }
+    const r = factuurKiezerKandidaten(t1, 'verkoop', facturen, { bankKoppelingen: koppelingen })
+    expect(r.map(x => x.id)).toEqual([1, 5, 2])
+    expect(r[2].elders).toBe(true)
   })
   it('zoeken op nummer, naam en bedrag', () => {
     expect(factuurKiezerKandidaten(t1, 'verkoop', facturen, { zoek: 'hoekstra' }).map(x => x.id)).toEqual([2])

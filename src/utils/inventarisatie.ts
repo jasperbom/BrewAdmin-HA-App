@@ -11,6 +11,9 @@
 // kan niet: of de fysieke telling vóór of ná de mutatie viel, weet alleen de
 // gebruiker.
 
+import { normaliseerZoek } from './factuurFilter'
+import { dagNotatie } from './periode'
+
 /** Eén telregel zoals InventarisatiePage hem bewaart. */
 export interface InventarisatieTellingBasis {
   id: number
@@ -22,6 +25,12 @@ export interface InventarisatieTellingBasis {
   verschil: number
   voorcalc_accijns_per_eenheid?: number
   accijns_impact?: number
+  /** Waar `voorcalc_accijns_per_eenheid` op rust (`accijnsWaardeVoorraad`):
+   * de bevroren voorcalculatie of een schatting op het tarief van de
+   * aanmaakdag. Ontbreekt op oudere regels. */
+  accijns_bron?: 'voorcalc' | 'geschat'
+  verklaring?: string
+  eenheid?: string
   /** Heeft de gebruiker hier zelf een telling ingevoerd? Ontbreekt op oudere
    * regels; dan geldt een geteld aantal dat afwijkt van de administratie als
    * ingevoerd. */
@@ -110,4 +119,105 @@ export const herijkTelling = <T extends InventarisatieTellingBasis>(tel: T, actu
     verschil,
     accijns_impact: (tel.voorcalc_accijns_per_eenheid || 0) * verschil,
   }
+}
+
+// ── Lijst en telling: filteren en samenvatten ──────────────────────────────
+
+export type InventarisatieType = 'ingredienten' | 'bier' | 'volledig'
+export type InventarisatieStatus = 'open' | 'afgerond'
+
+/** Een inventarisatie zoals InventarisatiePage hem bewaart. */
+export interface InventarisatieBasis<T extends InventarisatieTellingBasis = InventarisatieTellingBasis> {
+  id: number
+  datum: string
+  type: InventarisatieType
+  status: InventarisatieStatus
+  tellingen: T[]
+  opmerkingen?: string
+}
+
+export type InventarisatieStatusFilter = 'alle' | InventarisatieStatus
+export type InventarisatieTypeFilter = 'alle' | InventarisatieType
+
+const zoekIn = (velden: readonly unknown[], zoek: string): boolean => {
+  const q = normaliseerZoek(zoek).trim()
+  if (!q) return true
+  const hooiberg = velden.map(normaliseerZoek).join('\u0001')
+  // Elk woord moet ergens voorkomen ("blond fles" vindt "Blond — Fles 33cl").
+  return q.split(/\s+/).every(w => hooiberg.includes(w))
+}
+
+/** De lijst tellingen met status-, type- en zoekfilter, nieuwste eerst. De
+ * zoekterm vindt het nummer (#12), de datum (ook DD-MM-JJJJ), de opmerkingen
+ * en de namen van de getelde regels. */
+export const filterInventarisaties = <I extends InventarisatieBasis>(
+  lijst: readonly I[] | null | undefined,
+  filter: { status?: InventarisatieStatusFilter; type?: InventarisatieTypeFilter; zoek?: string }
+): I[] =>
+  (lijst || [])
+    .filter(inv => !!inv)
+    .filter(inv => !filter.status || filter.status === 'alle' || inv.status === filter.status)
+    .filter(inv => !filter.type || filter.type === 'alle' || inv.type === filter.type)
+    .filter(inv => zoekIn([
+      `#${inv.id}`, inv.datum, dagNotatie(String(inv.datum || '').slice(0, 10)), inv.opmerkingen,
+      ...(inv.tellingen || []).map(tel => tel?.naam),
+    ], filter.zoek || ''))
+    .slice()
+    .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+
+/** Aantal per statuschip, binnen het type- en zoekfilter (zodat het cijfer op
+ * de chip gelijk is aan de lijst eronder). */
+export const telInventarisatieStatussen = <I extends InventarisatieBasis>(
+  lijst: readonly I[] | null | undefined,
+  filter: { type?: InventarisatieTypeFilter; zoek?: string }
+): Record<InventarisatieStatusFilter, number> => {
+  const basis = filterInventarisaties(lijst, { ...filter, status: 'alle' })
+  return {
+    alle: basis.length,
+    open: basis.filter(i => i.status === 'open').length,
+    afgerond: basis.filter(i => i.status === 'afgerond').length,
+  }
+}
+
+/** Heeft deze regel een verschil? */
+export const heeftVerschil = (tel: Pick<InventarisatieTellingBasis, 'verschil'>): boolean =>
+  Math.abs(Number(tel?.verschil) || 0) > GELIJK
+
+/** De regels van één telling: alleen verschillen en/of een zoekterm (naam of
+ * verklaring). `blijfZichtbaar` houdt regels in beeld die bij het aanzetten
+ * van "alleen verschillen" een verschil hadden: wie daar het aantal
+ * corrigeert, ziet de regel anders onder zijn vingers verdwijnen. */
+export const filterTellingen = <T extends InventarisatieTellingBasis>(
+  tellingen: readonly T[] | null | undefined,
+  filter: { alleenVerschillen?: boolean; zoek?: string; blijfZichtbaar?: ReadonlySet<number> | null }
+): T[] =>
+  (tellingen || [])
+    .filter(tel => !!tel)
+    .filter(tel => !filter.alleenVerschillen || heeftVerschil(tel) || !!filter.blijfZichtbaar?.has(tel.id))
+    .filter(tel => zoekIn([tel.naam, tel.verklaring], filter.zoek || ''))
+
+export interface TellingSamenvatting {
+  /** Regels met een verschil: grondstoffen (lots) en bier (afvullingen). */
+  lotVerschillen: number
+  bierVerschillen: number
+  /** Verschillen zonder verklaring — die blokkeren het doorvoeren. */
+  zonderVerklaring: number
+  /** Accijns op de getelde tekorten (positief bedrag) en overschotten. */
+  tekortAccijns: number
+  overschotAccijns: number
+}
+
+/** Wat het afronden van deze telling zou doorvoeren. */
+export const tellingSamenvatting = (tellingen: readonly InventarisatieTellingBasis[] | null | undefined): TellingSamenvatting => {
+  const uit: TellingSamenvatting = { lotVerschillen: 0, bierVerschillen: 0, zonderVerklaring: 0, tekortAccijns: 0, overschotAccijns: 0 }
+  for (const tel of tellingen || []) {
+    if (!tel || !heeftVerschil(tel)) continue
+    if (tel.ref_type === 'afvulling') uit.bierVerschillen++
+    else uit.lotVerschillen++
+    if (!String(tel.verklaring || '').trim()) uit.zonderVerklaring++
+    const impact = Number(tel.accijns_impact) || 0
+    if (impact < 0) uit.tekortAccijns += -impact
+    else if (impact > 0) uit.overschotAccijns += impact
+  }
+  return uit
 }

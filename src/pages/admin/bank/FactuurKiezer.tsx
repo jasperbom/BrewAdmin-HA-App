@@ -11,9 +11,9 @@ import { geldCent } from './bankTekst'
 
 // ── "Koppel aan verkoopfactuur / inkoopfactuur / creditnota…" ──────────────
 // Een kiezer met zoeken in plaats van een keuzelijst met elke open factuur.
-// Wat qua bedrag klopt staat bovenaan; een factuur die al aan een andere
-// transactie hangt staat er niet in (één factuur, één betaling). De regels
-// zelf: `factuurKiezerKandidaten` in utils/bankVoorstel.ts.
+// Wat qua bedrag klopt staat bovenaan; een open factuur die al aan een andere
+// transactie hangt (deelbetaling) staat achteraan, met die waarschuwing erbij.
+// De regels zelf: `factuurKiezerKandidaten` in utils/bankVoorstel.ts.
 
 const MAX_GETOOND = 60
 
@@ -70,6 +70,7 @@ const FactuurKiezer: React.FC<FactuurKiezerProps> = ({ tx, soort, facturen, bank
                         {fmtD(f.datum) || '—'}
                         {r.klopt && <span className="ml-2 text-green-700 font-medium">✓ {t('bank_kies_bedrag_klopt')}</span>}
                         {r.betaald && <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">{t('factuur_paid')}</span>}
+                        {r.elders && <span className="block text-orange-700">{t('bank_kies_elders')}</span>}
                       </span>
                     </span>
                     <span className="text-sm font-semibold text-gray-800 whitespace-nowrap tabular-nums">{geldCent(soort === 'creditnota' ? -r.bedragCent : r.bedragCent)}</span>

@@ -50,7 +50,7 @@ const AfschriftenModal: React.FC<AfschriftenModalProps> = ({
     return (
       <div className="inline-flex items-center gap-1">
         <button type="button" onClick={() => { onToon(a); onSluit() }} disabled={getoond}
-          className="px-3 min-h-[40px] sm:min-h-[30px] rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-default whitespace-nowrap">
+          className="px-3 min-h-tap sm:min-h-[30px] rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-default whitespace-nowrap">
           {getoond ? t('bank_afs_getoond') : t('bank_afs_toon')}
         </button>
         <RowActions acties={[{ id: 'verwijderen', label: t('btn_afschrift_verwijderen'), soort: 'gevaar', onClick: () => { onSluit(); onVerwijder(a) } }]} />
@@ -76,7 +76,7 @@ const AfschriftenModal: React.FC<AfschriftenModalProps> = ({
     <div className="min-w-0 space-y-1">
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-semibold text-gray-900 text-sm">{periode(a)}</span>
-        <span className="text-xs text-gray-500 whitespace-nowrap">{Number(a.aantal) || 0} {t('bank_afs_kol_aantal').toLowerCase()}</span>
+        <span className="text-xs text-gray-500 whitespace-nowrap">{vulIn(t('bank_afs_aantal'), { n: Number(a.aantal) || 0 })}</span>
       </div>
       <div className="text-xs text-gray-600 break-words">
         {a.afschriftNr || a.referentie || t('lbl_onbekend')}{meerdereRekeningen ? ` · ${ibanWeergave(a.iban)}` : ''}

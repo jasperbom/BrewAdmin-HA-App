@@ -1,765 +1,687 @@
 import React from 'react'
-import { t, getLang } from '../../i18n'
-import { tod, r2 } from '../../utils/format'
+import { t } from '../../i18n'
+import { tod } from '../../utils/format'
 import { newId, wcGet } from '../../utils/api'
 import { wcFoutMelding } from '../../utils/wcFout'
 import { logAudit } from '../../utils/audit'
-import { effectievePeriodeKey, periodeKeyLabel, omzetBtwOpGrondslag, getPeriodes, wcOrdersNogNietGefactureerd, inBtwPeriode, inBtwJaar } from '../../utils/btw'
-import { btwAangifteBoeking, stornoBoekingVoor, voegBoekingToe } from '../../utils/journaal'
-import { isGekoppeld } from '../../utils/bank'
-import AccijnsPage from '../AccijnsPage'
+import { periodeKeyLabel, getPeriodes, wcOrdersNogNietGefactureerd } from '../../utils/btw'
+import { btwAangifteBoeking, accijnsAangifteBoeking, stornoBoekingVoor, voegBoekingToe } from '../../utils/journaal'
+import { accijnsMaandKey, groepeerAccijnsPerMaand } from '../../utils/afboeking'
+import { rolMagKey } from '../../utils/rollen'
+import { centNaarEuro } from '../../utils/centen'
+import { dagNotatie } from '../../utils/periode'
+import {
+  btwPeriodeCijfers, btwJaarCijfers, btwActievePerioden, btwRijen, accijnsRijen, accijnsMaandCent,
+  sorteerRijen, telVraagtActie, betalingKandidaten, enigVoorstel, controleurOpties,
+  controleBlokkade, zelfdePersoon, metBtwControle, leesAangifteDoel, actieSleutel, dagMaand,
+  type AangifteRij, type AangifteSoort, type BtwCijfers, type BtwStappenBron, type ControleInvoer,
+} from '../../utils/aangifteStappen'
+import type { BtwPeriode } from '../../utils/btw'
+import Btn from '../../components/ui/Btn'
+import BevestigKnop from '../../components/ui/BevestigKnop'
+import LegeStaat from '../../components/ui/LegeStaat'
 import Icon from '../../components/ui/Icon'
+import DetailPaneel, { LijstMetDetail } from '../../components/ui/DetailPaneel'
+import { KAART_INTERACTIEF } from '../../components/ui/ResponsiveLijst'
+import { useSmalScherm, useTelefoonIndeling } from '../../components/ui/useSmalScherm'
+import { useUndo } from '../../components/ui/UndoBar'
 import Segment from '../../components/inkoop/Segment'
-import { useAdmin, txKey, fmt, card } from './adminContext'
+import PeriodeLijst from './aangiftes/PeriodeLijst'
+import ControleBlok from './aangiftes/ControleBlok'
+import BetalingBlok from './aangiftes/BetalingBlok'
+import BtwRubrieken from './aangiftes/BtwRubrieken'
+import AccijnsBoekingen from './aangiftes/AccijnsBoekingen'
+import { useRollenConfig } from './aangiftes/useRollenConfig'
+import { StappenBalk, Pil, MetVet, fmtCent, periodeTitel, vul } from './aangiftes/onderdelen'
+import { useAdmin, txKey } from './adminContext'
 
 // ── Aangiftes (Administratie) ───────────────────────────────────────────────
-// BTW en accijns met BTW | Accijns als segment. BTW = het oude tabblad
-// BTW-aangifte (periodekaarten, invulhulp, controle, betaling koppelen);
-// Accijns = AccijnsPage met de koppeling naar de banktransacties.
+// BTW en accijns lopen in hetzelfde ritme: een periode loopt, is berekend,
+// wordt gecontroleerd door een tweede persoon, ingediend en betaald. Dus één
+// lijst per segment (BTW | Accijns) met per periode de stap, het bedrag en
+// één volgende handeling, en het detail van de gekozen periode ernaast (op
+// een telefoon als eigen scherm): de rubrieken of de accijnsboekingen, de
+// controle, het indienen en de betaling.
+//
+// Wat de stap is, welk bedrag en welke deadline: utils/aangifteStappen.ts.
+// De handelingen zelf zijn die van de oude BTW-tab en AccijnsPage
+// (markeerAangifteIngediend, de accijnsstatus, koppelen/ontkoppelen),
+// aangevuld met wie het deed (whoami).
+
+type Focus = 'controle' | 'betaling' | null
+
+const leegConcept = (rec: any): ControleInvoer => ({
+  controleur: String(rec?.reviewer || ''), bevindingen: String(rec?.bevindingen || ''), tochAkkoord: false,
+})
+
 function AangiftesSectie() {
   const {
-    navDoel, gaNaarDoel, wcCreds, inkoopFacturen, btwInst, verkoopFacturen, bestellingen,
-    bat, acc, setAcc, bankKoppelingen, setBankKoppelingen, accijnsAangiftes,
-    setAccijnsAangiftes, btwAangiftes, setBtwAangiftes, av, uit, accijnsInst,
-    auditLog, setAuditLog, setJournaal, bankTransacties, setBankTransacties, btwBetaaldePerioden,
-    btwIngediendePerioden, btwPeriodeType, koppelBtwBetaling, ontkoppelBtwBetaling, markeerAccijnsMaandBetaald, ontkoppelAccijnsBetaling,
+    navDoel, gaNaarDoel, whoami, wcCreds, inkoopFacturen, verkoopFacturen, bestellingen,
+    bat, acc, setAcc, bankKoppelingen, accijnsAangiftes, setAccijnsAangiftes, btwAangiftes, setBtwAangiftes,
+    av, uit, auditLog, setAuditLog, setJournaal, bankTransacties, btwPeriodeType,
+    koppelBtwBetaling, ontkoppelBtwBetaling, ontkoppelAccijnsBetaling, koppelAccijnsBetaling,
   } = useAdmin()
+  const smal = useSmalScherm()
+  // Zelfde omslag als het detail (een telefoon dwars blijft telefoon): daar
+  // horen tapdoelen van 44 px.
+  const telefoon = useTelefoonIndeling()
+  const undo = useUndo()
+  const rollen = useRollenConfig()
+  const ingelogd = String(whoami?.gebruiker || '').trim()
+  const magSchrijven = (soort: AangifteSoort) => rolMagKey(whoami?.rol, soort === 'btw' ? 'btw_aangiftes' : 'accijns_aangiftes')
 
-  // Segment uit het navigatiedoel: tab = btw|accijns. Bij BTW kiest filter
-  // (de periodesleutel, `2026-Q3` / `2026-M09`) meteen dat jaar en die
-  // periode. De accijnsmaand als filter komt met het herontwerp van Accijns.
-  const [tab, setTab] = React.useState<'btw' | 'accijns'>(navDoel?.tab === 'accijns' ? 'accijns' : 'btw')
-  const startPeriode = (() => {
-    const key = navDoel?.tab !== 'accijns' && typeof navDoel?.filter === 'string' ? navDoel.filter : ''
-    if (!/^\d{4}-(Q[1-4]|M(0[1-9]|1[0-2]))$/.test(key)) return null
-    const jaar = Number(key.slice(0, 4))
-    const p = getPeriodes(jaar, btwInst?.periode === 'maand' ? 'maand' : 'kwartaal', getLang()).find((x: any) => x.key === key)
-    return {jaar, periode: p ? {from: p.from, to: p.to, label: p.label, key: p.key} : null}
-  })()
+  // ── Beginstand uit het navigatiedoel: segment, jaar en de periode open ──
+  const [doel] = React.useState(() => leesAangifteDoel(navDoel, btwPeriodeType))
+  const huidigJaar = new Date().getFullYear()
+  const [tab, setTabState] = React.useState<AangifteSoort>(doel.tab)
+  const [jaar, setJaarState] = React.useState<number>(doel.jaar ?? huidigJaar)
+  const [gekozen, setGekozen] = React.useState<string | null>(doel.sleutel)
+  const [focus, setFocus] = React.useState<Focus>(null)
 
-  // Aangiftes tab state
-  const [aangifteYear, setAangifteYear] = React.useState(startPeriode?.jaar ?? new Date().getFullYear());
-  const [aangifteOrders, setAangifteOrders] = React.useState([]);
-  const [aangifteLoading, setAangifteLoading] = React.useState(false);
-  const [aangifteError, setAangifteError] = React.useState('');
-  const [aangifteFetched, setAangifteFetched] = React.useState(false);
-  const [selectedPeriode, setSelectedPeriode] = React.useState<{from:string,to:string,label:string,key:string}|null>(startPeriode?.periode ?? null);
+  // Webshoporders van het jaar (de bestaande ophaalactie van de BTW-tab).
+  const [wcOrders, setWcOrders] = React.useState<any[]>([])
+  const [wcBezig, setWcBezig] = React.useState(false)
+  const [wcFout, setWcFout] = React.useState('')
+  const [wcGeladen, setWcGeladen] = React.useState(false)
 
-  const btwPerTariefAangifte = React.useMemo(() => {
-    const map: any = {};
-    const periode = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
-    const targetKey = selectedPeriode?.key
-    const yearPrefix = `${aangifteYear}-`
-    inkoopFacturen
-      .filter((f: any) => {
-        const eff = effectievePeriodeKey(f, periode)
-        if (targetKey) return eff === targetKey
-        return eff.startsWith(yearPrefix)
-      })
-      .forEach((f: any) => (f.regels||[]).forEach((r: any) => {
-        // Verlegde regels (intracom-EU / import-niet-EU) tellen niet mee in
-        // de "voorbelasting per tarief" — die gaan naar rubriek 4a/4b.
-        const soort = r.btw_soort || 'binnenlands';
-        if (soort !== 'binnenlands') return;
-        const k = r.btw_tarief ?? 0;
-        if (!map[k]) map[k] = {tarief:k, netto:0, btw:0};
-        map[k].netto += r.netto||0;
-        map[k].btw   += r.btw_bedrag||0;
-      }));
-    return Object.values(map).sort((a: any,b: any)=>a.tarief-b.tarief);
-  }, [inkoopFacturen, aangifteYear, selectedPeriode, btwInst]);
+  // Invoer per periode (blijft staan als het detail sluit of de indeling wisselt).
+  const [concepten, setConcepten] = React.useState<Record<string, ControleInvoer>>({})
+  const [gekozenTx, setGekozenTx] = React.useState<Record<string, string>>({})
+  const [betaalDatum, setBetaalDatum] = React.useState<Record<string, string>>({})
+  const [weergave, setWeergave] = React.useState<Record<string, 'batch' | 'uitslag'>>({})
+  const [alleRubrieken, setAlleRubrieken] = React.useState(false)
+  const [tariefOpen, setTariefOpen] = React.useState(false)
 
-  // Rubriek 4a (import niet-EU) en 4b (intracommunautaire verwerving):
-  // de afnemer berekent zelf de verschuldigde BTW over de netto-grondslag en
-  // geeft die op. Tegelijk is dit bedrag aftrekbaar als voorbelasting (5b),
-  // dus per saldo €0 — maar de rapportage is wettelijk verplicht.
-  const verlegdAangifte = React.useMemo(() => {
-    const periode = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
-    const targetKey = selectedPeriode?.key
-    const yearPrefix = `${aangifteYear}-`
-    const init = () => ({ netto: 0, btw: 0, nulNetto: 0 })
-    const totals = { intracom_eu: init(), import_niet_eu: init() }
-    inkoopFacturen
-      .filter((f: any) => {
-        const eff = effectievePeriodeKey(f, periode)
-        if (targetKey) return eff === targetKey
-        return eff.startsWith(yearPrefix)
-      })
-      .forEach((f: any) => (f.regels||[]).forEach((r: any) => {
-        const soort = r.btw_soort
-        if (soort !== 'intracom_eu' && soort !== 'import_niet_eu') return
-        const netto = Number(r.netto) || 0
-        const tarief = Number(r.btw_tarief) || 0
-        totals[soort].netto += netto
-        totals[soort].btw   += netto * tarief / 100
-        // Verlegde regels op 0%: grondslag telt mee maar er wordt geen BTW
-        // berekend — vrijwel altijd een omissie, dus apart bijhouden voor
-        // een waarschuwing in het rubriek-kaartje.
-        if (!tarief && netto > 0) totals[soort].nulNetto += netto
-      }))
-    return {
-      rubriek4a: { netto: r2(totals.import_niet_eu.netto), btw: r2(totals.import_niet_eu.btw), nulNetto: r2(totals.import_niet_eu.nulNetto) },
-      rubriek4b: { netto: r2(totals.intracom_eu.netto),    btw: r2(totals.intracom_eu.btw),    nulNetto: r2(totals.intracom_eu.nulNetto) },
-    }
-  }, [inkoopFacturen, aangifteYear, selectedPeriode, btwInst]);
+  const controleRef = React.useRef<HTMLElement | null>(null)
+  const betalingRef = React.useRef<HTMLElement | null>(null)
 
+  const setTab = (v: AangifteSoort) => { setTabState(v); setGekozen(null) }
+  const setJaar = (j: number) => {
+    setJaarState(j); setGekozen(null)
+    setWcGeladen(false); setWcOrders([]); setWcFout('')
+  }
+
+  const vandaag = tod()
+  const type = btwPeriodeType
+
+  // ── BTW: cijfers en stappen ──────────────────────────────────────────────
   // Webshoporders die in de app al een eigen verkoopfactuur hebben tellen
   // alleen via die factuur mee — anders staat de omzet-BTW er dubbel.
-  const aangifteOrdersOpen = React.useMemo(
-    () => wcOrdersNogNietGefactureerd(aangifteOrders, bestellingen, verkoopFacturen),
-    [aangifteOrders, bestellingen, verkoopFacturen]);
+  const ordersOpen = React.useMemo(
+    () => wcOrdersNogNietGefactureerd(wcOrders, bestellingen, verkoopFacturen),
+    [wcOrders, bestellingen, verkoopFacturen])
+  const cijferBron = React.useMemo(
+    () => ({ verkoopFacturen, inkoopFacturen, wcOrders: ordersOpen, periodeType: type }),
+    [verkoopFacturen, inkoopFacturen, ordersOpen, type])
+  const cijfersVan = React.useMemo(() => {
+    const cache = new Map<string, BtwCijfers>()
+    return (p: { key: string, from: string, to: string }): BtwCijfers => {
+      let c = cache.get(p.key)
+      if (!c) { c = btwPeriodeCijfers(p, cijferBron); cache.set(p.key, c) }
+      return c
+    }
+  }, [cijferBron])
+  const periodeVan = React.useCallback((key: string): BtwPeriode | null =>
+    getPeriodes(Number(key.slice(0, 4)), type).find(p => p.key === key) || null, [type])
+  const actief = React.useMemo(
+    () => btwActievePerioden([...(verkoopFacturen || []), ...(inkoopFacturen || [])], type),
+    [verkoopFacturen, inkoopFacturen, type])
+  const btwBron: BtwStappenBron = React.useMemo(() => ({
+    periodeType: type, vandaag, btwAangiftes, bankKoppelingen, bankTransacties, actief,
+    bedragCent: (key: string) => { const p = periodeVan(key); return p ? cijfersVan(p).teBetalenCent : 0 },
+  }), [type, vandaag, btwAangiftes, bankKoppelingen, bankTransacties, actief, periodeVan, cijfersVan])
+  const btwJaarRijen = React.useMemo(() => btwRijen(jaar, btwBron), [jaar, btwBron])
+  // Telling voor het segment: hetzelfde venster als de werkruimte-badge
+  // (vorig + dit jaar), los van het jaar dat je bekijkt.
+  const btwTelling = React.useMemo(() => [huidigJaar - 1, huidigJaar].map(j => ({
+    jaar: j, n: telVraagtActie(j === jaar ? btwJaarRijen : btwRijen(j, btwBron)),
+  })), [huidigJaar, jaar, btwJaarRijen, btwBron])
 
-  // Verschuldigde BTW (rubriek 1a/1b) op grondslag per tarief (ERP-plan 2.2):
-  // eerst de netto-grondslag per tarief optellen (in centen), dan pas de BTW
-  // berekenen — niet als som van per regel afgeronde bedragen.
-  const omzetBtwPerTarief = React.useMemo(() => {
-    const periode = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
-    const fromDate = selectedPeriode?.from ?? `${aangifteYear}-01-01`;
-    const toDate   = selectedPeriode?.to   ?? `${aangifteYear}-12-31`;
-    // Verkoopfacturen op hun effectieve BTW-periode (incl. rollover), net als
-    // de inkoop; WooCommerce-orders kennen geen rollover en blijven op datum.
-    const facturen = (verkoopFacturen||[]).filter((f: any) => selectedPeriode
-      ? inBtwPeriode(f, periode, selectedPeriode.key)
-      : inBtwJaar(f, periode, aangifteYear));
-    const orders = aangifteOrdersOpen.filter((o: any) => {
-      const d = ((o as any).date_paid||(o as any).date_created||'').slice(0,10);
-      return d >= fromDate && d <= toDate && ['completed','processing'].includes((o as any).status);
-    });
-    return omzetBtwOpGrondslag(facturen, orders);
-  }, [verkoopFacturen, aangifteOrdersOpen, aangifteYear, selectedPeriode, btwInst]);
+  // ── Accijns: stappen per maand ───────────────────────────────────────────
+  const accAlle = React.useMemo(() => accijnsRijen({
+    vandaag: new Date(`${vandaag}T12:00:00`), acc, accijnsAangiftes, bankKoppelingen, bankTransacties,
+  }), [vandaag, acc, accijnsAangiftes, bankKoppelingen, bankTransacties])
+  const accRecordsPerMaand = React.useMemo(
+    () => groepeerAccijnsPerMaand<any>(acc, accijnsMaandKey(new Date(`${vandaag}T12:00:00`))).byMonth,
+    [acc, vandaag])
 
+  const btwN = btwTelling.reduce((s, x) => s + x.n, 0)
+  const accN = telVraagtActie(accAlle)
+  const rijen = React.useMemo(
+    () => sorteerRijen(tab === 'btw' ? btwJaarRijen : accAlle.filter(r => r.jaar === jaar)),
+    [tab, btwJaarRijen, accAlle, jaar])
+  const gekozenRij = gekozen ? rijen.find(r => r.sleutel === gekozen) || null : null
+
+  // Een periode in een ander jaar die om actie vraagt: één tik erheen.
+  const anderJaar = React.useMemo(() => {
+    const per = new Map<number, number>()
+    if (tab === 'btw') btwTelling.forEach(x => { if (x.jaar !== jaar && x.n > 0) per.set(x.jaar, x.n) })
+    else accAlle.forEach(r => { if (r.vraagtActie && r.jaar !== jaar) per.set(r.jaar, (per.get(r.jaar) || 0) + 1) })
+    const [eerste] = [...per.entries()].sort((a, b) => b[0] - a[0])
+    return eerste ? { jaar: eerste[0], n: eerste[1] } : null
+  }, [tab, btwTelling, accAlle, jaar])
+
+  // ── Webshopverkopen ophalen (WooCommerce) ────────────────────────────────
+  const haalWebshop = async (j: number) => {
+    if (!wcCreds?.enabled || !wcCreds.storeUrl) { setWcFout(t('msg_wc_not_active_settings')); return }
+    setWcBezig(true); setWcFout('')
+    try {
+      const alle: any[] = []
+      let pg = 1
+      while (true) {
+        const qs = `orders?per_page=100&page=${pg}&status=any&after=${j}-01-01T00:00:00&before=${j}-12-31T23:59:59&orderby=date&order=desc`
+        const batch = await wcGet(qs)
+        alle.push(...batch)
+        if (batch.length < 100) break
+        pg++
+      }
+      setWcOrders(alle)
+      setWcGeladen(true)
+    } catch (e: any) { setWcFout(t('msg_fetch_error') + wcFoutMelding(e, t)) }
+    finally { setWcBezig(false) }
+  }
+
+  // ── Handelingen: BTW ─────────────────────────────────────────────────────
   const markeerAangifteIngediend = (periodeKey: string, bedrag: number) => {
-    const today = tod();
+    const today = tod()
     setBtwAangiftes((prev: any[]) => {
-      const zonder = (prev||[]).filter((a: any) => a.periodeKey !== periodeKey);
-      return [...zonder, {id: newId(zonder), periodeKey, ingediend_datum: today, bedrag: Math.round(bedrag)}];
-    });
+      const zonder = (prev || []).filter((a: any) => a.periodeKey !== periodeKey)
+      return [...zonder, {
+        id: newId(zonder), periodeKey, ingediend_datum: today, bedrag: Math.round(bedrag),
+        ...(ingelogd ? { ingediend_door: ingelogd } : {}),
+      }]
+    })
     // Journaal (ERP-plan 2.1): het ingediende aangiftebedrag vastleggen als
     // onveranderlijke boeking (na storno van een eventuele eerdere indiening
     // van dezelfde periode).
     setJournaal((prev: any[]) => voegBoekingToe(
       voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'btw_aangifte', periodeKey)),
-      btwAangifteBoeking(periodeKey, Math.round(bedrag), `${t('lbl_btw_aangifte')} ${periodeKeyLabel(periodeKey)}`)));
-    logAudit(auditLog, setAuditLog, {entiteit:'BTW-aangifte', entiteit_id:0, actie:'aangemaakt', omschrijving:`Aangifte ${periodeKey} ingediend (€ ${Math.round(bedrag)})`});
-  };
+      btwAangifteBoeking(periodeKey, Math.round(bedrag), `${t('lbl_btw_aangifte')} ${periodeKeyLabel(periodeKey)}`)))
+    logAudit(auditLog, setAuditLog, { entiteit: 'BTW-aangifte', entiteit_id: 0, actie: 'aangemaakt', omschrijving: `Aangifte ${periodeKey} ingediend (€ ${Math.round(bedrag)})` })
+  }
 
   const ontkoppelAangifteIngediend = (periodeKey: string) => {
-    setBtwAangiftes((prev: any[]) => (prev||[]).filter((a: any) => a.periodeKey !== periodeKey));
+    setBtwAangiftes((prev: any[]) => (prev || []).filter((a: any) => a.periodeKey !== periodeKey))
     // Journaal (ERP-plan 2.1): terugzetten = tegenboeking van de aangifte.
-    setJournaal((prev: any[]) => voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'btw_aangifte', periodeKey)));
-    logAudit(auditLog, setAuditLog, {entiteit:'BTW-aangifte', entiteit_id:0, actie:'verwijderd', omschrijving:`Aangifte ${periodeKey} teruggezet naar openstaand`});
-  };
-
-  const fetchJaarordrers = async (year: any) => {
-    if (!wcCreds?.enabled || !wcCreds.storeUrl) { setAangifteError(t('msg_wc_not_active_settings')); return; }
-    setAangifteLoading(true); setAangifteError('');
-    try {
-      const all: any[] = [];
-      let pg = 1;
-      while (true) {
-        const qs = `orders?per_page=100&page=${pg}&status=any&after=${year}-01-01T00:00:00&before=${year}-12-31T23:59:59&orderby=date&order=desc`;
-        const batch = await wcGet(qs);
-        all.push(...batch);
-        if (batch.length < 100) break;
-        pg++;
-      }
-      setAangifteOrders(all);
-      setAangifteFetched(true);
-    } catch(e: any) { setAangifteError(t('msg_fetch_error') + wcFoutMelding(e, t)); }
-    finally { setAangifteLoading(false); }
-  };
-
-  const koppelAccijnsBetaling = (txKeyStr: string, maandKey: string) => {
-    const tx = bankTransacties.find((t: any) => txKey(t) === txKeyStr)
-    if (!tx) return
-    setBankKoppelingen((k: any) => ({...k, [txKeyStr]: {soort: 'accijns', maandKey}}))
-    setBankTransacties((prev: any[]) => prev.map((t: any) =>
-      txKey(t) === txKeyStr ? {...t, gekoppeldAccijnsMaand: maandKey} : t
-    ))
-    markeerAccijnsMaandBetaald(maandKey, tx.datum)
-    logAudit(auditLog, setAuditLog, {entiteit:'Bankkoppeling', entiteit_id:0, actie:'aangemaakt', omschrijving:`Accijnsmaand ${maandKey} gekoppeld (betaald ${tx.datum})`});
+    setJournaal((prev: any[]) => voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'btw_aangifte', periodeKey)))
+    logAudit(auditLog, setAuditLog, { entiteit: 'BTW-aangifte', entiteit_id: 0, actie: 'verwijderd', omschrijving: `Aangifte ${periodeKey} teruggezet naar openstaand` })
   }
 
-  // Gekoppelde banktransactie-info voor een accijnsmaand (voor weergave op de
-  // Accijns-pagina). Valt terug op de koppeling zelf als de transactie niet
-  // (meer) bewaard is — een koppeling van vóór het bewaren, of een verwijderd afschrift.
-  const accijnsKoppelingInfo = (maandKey: string): {datum?: string, bedrag?: number} | null => {
-    const entry = Object.keys(bankKoppelingen as any).find((key: string) => {
-      const k = (bankKoppelingen as any)[key]
-      return k?.soort === 'accijns' && k.maandKey === maandKey
+  // ── Handelingen: accijns (de statusstappen van de oude AccijnsPage) ──────
+  const zetAccijns = (maand: string, velden: Record<string, unknown>) =>
+    setAccijnsAangiftes((prev: any[]) => {
+      const lijst = prev || []
+      if (lijst.some((x: any) => x.maand === maand)) return lijst.map((x: any) => (x.maand === maand ? { ...x, ...velden } : x))
+      return [...lijst, { maand, status: 'berekend', ...velden }]
     })
-    if (!entry) return null
-    const tx = bankTransacties.find((t: any) => txKey(t) === entry)
-    if (tx) return {datum: tx.datum, bedrag: tx.bedrag}
-    // txKey-formaat: datum|type|bedrag|referentie
-    const [datum, , bedrag] = entry.split('|')
-    return {datum, bedrag: Number(bedrag) || undefined}
+
+  const indienenAccijns = (maand: string) => {
+    const rec = (accijnsAangiftes || []).find((x: any) => x.maand === maand)
+    // Douane v2.4 §12.2: zonder akkoord van de controleur geen indiening (de
+    // knop staat dan uit, met de reden erbij).
+    if (rec?.controle_status !== 'akkoord') return
+    // Het maandtotaal vastleggen: dat maakt het matchen van de bankbetaling
+    // mogelijk (zelfde patroon als de BTW-aangifte).
+    const bedrag = centNaarEuro(accijnsMaandCent(accRecordsPerMaand[maand] || []))
+    zetAccijns(maand, { status: 'ingediend', ingediend_datum: tod(), bedrag, ...(ingelogd ? { ingediend_door: ingelogd } : {}) })
+    // Journaal (ERP-plan 2.1): het gecontroleerde maandbedrag als
+    // onveranderlijke boeking; een eerdere indiening eerst tegengeboekt.
+    setJournaal((prev: any[]) => voegBoekingToe(
+      voegBoekingToe(prev || [], stornoBoekingVoor(prev || [], 'accijns_aangifte', maand)),
+      accijnsAangifteBoeking(maand, bedrag, `${t('lbl_accijns_aangifte')} ${maand}`)))
+    logAudit(auditLog, setAuditLog, { entiteit: 'Accijnsaangifte', entiteit_id: 0, actie: 'gewijzigd', omschrijving: `Aangifte ${maand} → ingediend (€ ${bedrag.toFixed(2)})` })
   }
 
-  // Nog niet gekoppelde debettransacties (de bewaarde afschriften, vlaggen
-  // uit bank_koppelingen), als opties voor de koppel-selector op de Accijns-pagina.
-  // Geen passende transactie: naar Bank, waar de bestandskiezer meteen opent.
-  const naarBankImport = () => gaNaarDoel({pagina: 'bank', actie: 'importeren'})
+  // Zonder bankkoppeling op betaald, met de opgegeven betaaldatum.
+  const markeerAccijnsBetaald = (maand: string, datum: string) => {
+    zetAccijns(maand, { status: 'betaald', betaald_datum: datum })
+    setAcc((prev: any[]) => (prev || []).map((a: any) =>
+      accijnsMaandKey(a.datum) === maand && !a.betaald ? { ...a, betaald: true, betaal_datum: datum } : a))
+    logAudit(auditLog, setAuditLog, { entiteit: 'Accijnsaangifte', entiteit_id: 0, actie: 'gewijzigd', omschrijving: `Aangifte ${maand} → betaald op ${datum} (zonder bankkoppeling)` })
+  }
 
-  const bankDebetsVoorKoppeling = React.useMemo(() =>
-    bankTransacties
-      .filter((tx: any) => tx.type === 'D' && !isGekoppeld(tx))
-      .map((tx: any) => ({key: txKey(tx), datum: tx.datum, label: tx.tegenpartij || tx.omschrijving || '?', bedrag: tx.bedrag})),
-  [bankTransacties]);
+  // ── Handelingen: de controle (beide soorten) ─────────────────────────────
+  const auditSoort = (r: AangifteRij) => (r.soort === 'btw' ? 'BTW-aangifte' : 'Accijnsaangifte')
+  const auditPeriode = (r: AangifteRij) => (r.soort === 'btw' ? `periode ${r.sleutel}` : `maand ${r.sleutel}`)
+  const zetControle = (r: AangifteRij, velden: Record<string, unknown>) => {
+    if (r.soort === 'btw') setBtwAangiftes((prev: any[]) => metBtwControle(prev, r.sleutel, velden))
+    else zetAccijns(r.sleutel, velden)
+  }
+
+  const vraagControle = (r: AangifteRij, controleur: string) => {
+    zetControle(r, {
+      ...(r.soort === 'accijns' ? { status: 'berekend' } : {}),
+      berekend_datum: tod(), berekend_door: ingelogd || undefined, reviewer: controleur.trim(), controle_status: 'open',
+    })
+    logAudit(auditLog, setAuditLog, {
+      entiteit: auditSoort(r), entiteit_id: 0, actie: 'gewijzigd',
+      omschrijving: `Controle gevraagd aan ${controleur.trim()} — ${auditPeriode(r)}${r.soort === 'accijns' ? ' (status berekend)' : ''}`,
+    })
+  }
+
+  const legControleVast = (r: AangifteRij, akkoord: boolean, c: ControleInvoer, zelfde: boolean) => {
+    const status = akkoord ? 'akkoord' : 'opmerkingen'
+    zetControle(r, {
+      reviewer: c.controleur.trim(), controle_status: status, controle_datum: new Date().toISOString(),
+      controle_door: ingelogd || undefined, bevindingen: c.bevindingen.trim(),
+      zelfde_persoon_akkoord: akkoord && zelfde ? true : undefined,
+    })
+    setConcepten(prev => { const n = { ...prev }; delete n[r.sleutel]; return n })
+    logAudit(auditLog, setAuditLog, {
+      entiteit: auditSoort(r), entiteit_id: 0, actie: 'gewijzigd',
+      omschrijving: `${r.soort === 'btw' ? 'BTW-controle' : 'Controle'} ${status} door ${c.controleur.trim()} — ${auditPeriode(r)}${c.bevindingen.trim() ? ` (bevindingen: ${c.bevindingen.trim()})` : ''}${akkoord && zelfde ? ' (zelfde persoon als berekenaar: toch akkoord)' : ''}`,
+    })
+  }
+
+  const heropenControle = (r: AangifteRij) => {
+    zetControle(r, { controle_status: 'open' })
+    logAudit(auditLog, setAuditLog, { entiteit: auditSoort(r), entiteit_id: 0, actie: 'gewijzigd', omschrijving: `Controle heropend — ${auditPeriode(r)}` })
+  }
+
+  // ── Volgende stap: indienen en koppelen (met vijf seconden terugweg) ────
+  const planId = (r: AangifteRij, wat: string) => `agf:${r.soort}:${r.sleutel}:${wat}`
+  const isBezig = (r: AangifteRij) => (undo.actie?.id || '').startsWith(`agf:${r.soort}:${r.sleutel}:`)
+
+  const planIndienen = (r: AangifteRij) => {
+    const label = t('agf_undo_ingediend').replace('{periode}', periodeTitel(r))
+    if (r.soort === 'btw') {
+      const bedrag = centNaarEuro(r.bedragCent)
+      undo.plan(planId(r, 'indienen'), label, () => markeerAangifteIngediend(r.sleutel, bedrag))
+    } else {
+      undo.plan(planId(r, 'indienen'), label, () => indienenAccijns(r.sleutel))
+    }
+  }
+
+  const koppel = (r: AangifteRij, tx: any) => {
+    if (!tx) return
+    if (r.soort === 'btw') koppelBtwBetaling(tx, r.sleutel)
+    else koppelAccijnsBetaling(tx, r.sleutel)
+    setGekozenTx(prev => { const n = { ...prev }; delete n[r.sleutel]; return n })
+  }
+
+  const planBetaald = (r: AangifteRij, datum: string) =>
+    undo.plan(planId(r, 'betaald'), t('agf_undo_betaald').replace('{periode}', periodeTitel(r)), () => markeerAccijnsBetaald(r.sleutel, datum))
+
+  const kandidatenVoor = (r: AangifteRij) =>
+    betalingKandidaten(bankTransacties, { credit: r.teruggave, bedragCent: r.bedragCent, vanaf: r.van })
+
+  const naarBankImport = () => gaNaarDoel({ pagina: 'bank', actie: 'importeren' })
+
+  const open = (r: AangifteRij, f: Focus = null) => { setGekozen(r.sleutel); setFocus(f) }
+
+  // Het detail opent op de plek van de volgende stap (controle of betaling).
+  React.useEffect(() => {
+    if (!focus || !gekozenRij) return
+    const el = focus === 'controle' ? controleRef.current : betalingRef.current
+    el?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+    setFocus(null)
+  }, [focus, gekozenRij])
+
+  // ── De knop in een lijstregel (hooguit één) ──────────────────────────────
+  const rijKnop = (r: AangifteRij, telefoon: boolean): React.ReactNode => {
+    if (!r.actie || !magSchrijven(r.soort)) return null
+    const bezig = isBezig(r)
+    const s = telefoon ? 'md' as const : 'sm' as const
+    const cls = telefoon ? `${KAART_INTERACTIEF} w-full` : ''
+    if (r.actie === 'controleren') {
+      return <Btn s={s} cls={cls} onClick={() => open(r, 'controle')}>{t('agf_actie_controleren')}</Btn>
+    }
+    if (r.actie === 'indienen') {
+      // Webshop gekoppeld maar de verkopen nog niet opgehaald: dan klopt
+      // rubriek 1a nog niet. Niet meteen indienen vanuit de lijst, maar het
+      // detail openen, waar dat staat (met de ophaalknop).
+      if (r.soort === 'btw' && wcCreds?.enabled && !wcGeladen) {
+        return <Btn s={s} cls={cls} onClick={() => open(r)}>{t('agf_actie_indienen')}</Btn>
+      }
+      return <Btn s={s} cls={cls} disabled={bezig} onClick={() => planIndienen(r)}>{t('agf_actie_indienen')}</Btn>
+    }
+    const een = enigVoorstel(kandidatenVoor(r))
+    if (een) {
+      const label = t(r.teruggave ? 'agf_actie_koppel_teruggave_datum' : 'agf_actie_koppel_datum').replace('{datum}', dagMaand(een.tx.datum))
+      return <Btn v="secondary" s={s} cls={cls} disabled={bezig} onClick={() => koppel(r, een.tx)}>{label}</Btn>
+    }
+    return <Btn v="secondary" s={s} cls={cls} onClick={() => open(r, 'betaling')}>{t(actieSleutel(r) || 'agf_actie_koppel')}</Btn>
+  }
+
+  // ── Kop: segment, jaar, jaartotaal, webshop ──────────────────────────────
+  const telLabel = (n: number) => n > 0 ? <span className="ml-1.5 px-1.5 rounded-full bg-orange-100 text-orange-800 text-[11px] font-semibold tabular-nums">{n}</span> : null
+  const segment = (
+    <Segment<AangifteSoort>
+      label={t('aangiftes_segment')}
+      waarde={tab}
+      onKies={setTab}
+      cls={smal ? 'w-full' : ''}
+      opties={[
+        { v: 'btw', aria: `${t('lbl_btw')} · ${t('agf_seg_actie').replace('{n}', String(btwN))}`, l: <>{t('lbl_btw')}{telLabel(btwN)}</> },
+        { v: 'accijns', aria: `${t('nav_accijns')} · ${t('agf_seg_actie').replace('{n}', String(accN))}`, l: <>{t('nav_accijns')}{telLabel(accN)}</> },
+      ]}
+    />
+  )
+
+  const jaarKiezer = (
+    <div className="inline-flex items-center gap-1 flex-shrink-0" role="group" aria-label={t('agf_jaar')}>
+      <button type="button" onClick={() => setJaar(jaar - 1)} aria-label={t('agf_vorig_jaar')} title={t('agf_vorig_jaar')}
+        className="w-11 sm:w-8 min-h-tap sm:min-h-0 sm:h-8 inline-flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+        <Icon n="chevronLeft" />
+      </button>
+      <span className="text-base font-semibold text-gray-900 tabular-nums w-12 text-center" aria-live="polite">{jaar}</span>
+      <button type="button" onClick={() => setJaar(jaar + 1)} aria-label={t('agf_volgend_jaar')} title={t('agf_volgend_jaar')}
+        className="w-11 sm:w-8 min-h-tap sm:min-h-0 sm:h-8 inline-flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+        <Icon n="chevronRight" />
+      </button>
+    </div>
+  )
+
+  const totNu = jaar === huidigJaar
+  const samenvatting = (() => {
+    if (tab === 'btw') {
+      const j = btwJaarCijfers(jaar, cijferBron)
+      const terug = j.teBetalenCent < 0
+      const sleutel = terug ? (totNu ? 'agf_jaar_tot_nu_terug' : 'agf_jaar_terug') : (totNu ? 'agf_jaar_tot_nu_betalen' : 'agf_jaar_betalen')
+      // De opbouw van het jaartotaal (de oude jaarkaart: omzet-BTW en
+      // voorbelasting) als toelichting bij het bedrag.
+      const opbouw = `${t('lbl_omzet_btw')} ${fmtCent(j.omzetBtwCent)} · ${t('lbl_voorbelasting')} ${fmtCent(j.voorbelastingCent)}`
+      return (
+        <span className="text-sm text-gray-600">
+          <span title={t('lbl_aangifte_period_hint')}>{type === 'maand' ? t('lbl_aangifte_maand') : t('lbl_aangifte_kwartaal')}</span>
+          {' · '}<span title={opbouw}><MetVet sjabloon={t(sleutel)} vet={fmtCent(Math.abs(j.teBetalenCent))} vars={{ jaar: String(jaar) }} /></span>
+          <span className="sr-only"> ({opbouw})</span>
+        </span>
+      )
+    }
+    const jaarRecords = (acc || []).filter((a: any) => accijnsMaandKey(a?.datum).startsWith(`${jaar}-`))
+    const totaal = accijnsMaandCent(jaarRecords)
+    const open = accijnsMaandCent(jaarRecords.filter((a: any) => !a?.betaald))
+    return (
+      <span className="text-sm text-gray-600">
+        {t('lbl_aangifte_maand')}{' · '}
+        <MetVet sjabloon={t(totNu ? 'agf_acc_jaar_tot_nu' : 'agf_acc_jaar')} vet={fmtCent(totaal)} vars={{ jaar: String(jaar) }} />
+        {open > 0 && <>{' · '}<MetVet sjabloon={t('agf_acc_open')} vet={fmtCent(open)} /></>}
+      </span>
+    )
+  })()
+
+  const webshopKnop = tab === 'btw' && wcCreds?.enabled ? (
+    <button type="button" onClick={() => haalWebshop(jaar)} disabled={wcBezig}
+      className="wc-btn px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 min-h-tap sm:min-h-0 whitespace-nowrap">
+      {wcBezig ? t('btn_aangifte_loading') : wcGeladen ? t('agf_wc_vernieuwen') : t('agf_wc_ophalen')}
+    </button>
+  ) : null
+  const webshopMelding = tab === 'btw' && (wcFout || wcGeladen) ? (
+    wcFout
+      ? <p role="alert" className="text-sm text-red-700">{wcFout}</p>
+      : <p className="text-xs text-green-700">{t('msg_aangifte_loaded').replace('{n}', String(wcOrders.length)).replace('{year}', String(jaar))}</p>
+  ) : null
+
+  // ── Detail van de gekozen periode ────────────────────────────────────────
+  const detail = (() => {
+    const r = gekozenRij
+    if (!r) return null
+    const schrijf = magSchrijven(r.soort)
+    const bezig = isBezig(r)
+    const recControle = r.soort === 'btw' ? { ...(r.controleRecord || {}), ingediend_door: r.ingediendDoor || undefined } : r.controleRecord
+    const concept = concepten[r.sleutel] ?? leegConcept(r.controleRecord)
+    const setConcept = (c: ControleInvoer) => setConcepten(prev => ({ ...prev, [r.sleutel]: c }))
+    const opties = controleurOpties(rollen, [ingelogd, r.controleRecord?.reviewer])
+    const voorIndienen = !r.totNu && !r.afgerond && r.stap !== 'ingediend'
+    const toonControle = !r.totNu && (voorIndienen || r.controle === 'akkoord' || !!r.controleRecord?.reviewer)
+    const akkoordBlokkade = controleBlokkade(concept, recControle, true)
+    const opmerkingenBlokkade = controleBlokkade(concept, recControle, false)
+    const zelfde = zelfdePersoon(concept.controleur, [recControle?.berekend_door, recControle?.ingediend_door])
+    const aanvraagBlokkade = concept.controleur.trim() ? null : 'agf_reden_geen_controleur'
+    const kandidaten = kandidatenVoor(r)
+    const heeftKandidaten = kandidaten.voorgesteld.length + kandidaten.overig.length > 0
+    const txSleutel = gekozenTx[r.sleutel] ?? (enigVoorstel(kandidaten)?.sleutel || '')
+    const txGekozen = txSleutel ? (bankTransacties || []).find((x: any) => txKey(x) === txSleutel) || null : null
+    // Achteraf het betaalbewijs koppelen (oude AccijnsPage): een maand die op
+    // betaald staat zonder banktransactie. Niet bij een nulaangifte: daar
+    // komt nooit een betaling.
+    const retro = r.soort === 'accijns' && !r.betaling && !r.totNu && r.einde !== 'nihil' && (r.afgerond || (r.boekingenBetaald && r.stap !== 'ingediend'))
+    const toonBetaling = !!r.betaling || r.stap === 'ingediend' || retro
+    const datum = betaalDatum[r.sleutel] || tod()
+
+    // De ene primaire knop van de actiebalk: de volgende stap.
+    let primair: { label: string, onClick: () => void, disabled?: boolean } | null = null
+    if (schrijf && !r.totNu && !r.afgerond) {
+      if (r.stap === 'berekend' && r.controle === 'open') {
+        primair = { label: t('agf_btn_vraag_controle'), disabled: !!aanvraagBlokkade, onClick: () => vraagControle(r, concept.controleur) }
+      } else if (r.stap === 'berekend') {
+        primair = { label: t('controle_btn_akkoord'), disabled: !!akkoordBlokkade, onClick: () => legControleVast(r, true, concept, zelfde) }
+      } else if (r.stap === 'gecontroleerd') {
+        primair = { label: t('agf_actie_indienen'), disabled: bezig, onClick: () => planIndienen(r) }
+      } else if (r.stap === 'ingediend') {
+        primair = heeftKandidaten
+          ? { label: t(actieSleutel(r) || 'agf_actie_koppel'), disabled: !txGekozen, onClick: () => koppel(r, txGekozen) }
+          : { label: t('btn_afschrift_importeren'), onClick: naarBankImport }
+      }
+    }
+
+    const ondertitel = `${r.soort === 'btw' ? t('lbl_btw_aangifte') : t('lbl_accijns_aangifte')} · ${vul({ sleutel: 'periode_omschr_bereik', vars: { van: dagNotatie(r.van), tot: dagNotatie(r.tot) } })}`
+
+    // Indienen: wanneer, door wie en voor welk bedrag — of waarom het nog niet kan.
+    // Accijns: een maand die via de bank (achteraf) op betaald kwam zonder ooit
+    // ingediend te zijn heeft geen indiendatum; die telt hier niet als ingediend.
+    const ingediendRec = r.soort === 'btw'
+      ? (btwAangiftes || []).find((a: any) => a?.periodeKey === r.sleutel) || null
+      : (r.controleRecord && (r.controleRecord.status === 'ingediend' || (r.controleRecord.status === 'betaald' && r.controleRecord.ingediend_datum)) ? r.controleRecord : null)
+    // Afgerond zonder indiening (een betaling die vóór het indienen gekoppeld
+    // werd): niets meer in te dienen — de oude periodekaart bood dat ook niet.
+    const indienBlok = r.totNu || (r.afgerond && !ingediendRec) ? null : (
+      <section aria-label={t('agf_indienen')} className="border-t border-gray-100 pt-3 space-y-2">
+        <h3 className="text-sm font-semibold text-gray-800">{t('agf_indienen')}</h3>
+        {ingediendRec ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="flex-1 min-w-0 text-sm text-gray-800">
+              {(ingediendRec.ingediend_door
+                ? t('agf_ingediend_op_door').replace('{naam}', ingediendRec.ingediend_door)
+                : t('lbl_aangifte_ingediend_op')).replace('{datum}', dagNotatie(String(ingediendRec.ingediend_datum || '')))}
+              {' · '}<span className="font-semibold tabular-nums">{fmtCent(Math.abs(r.bedragCent))}</span>
+              {r.teruggave && <span className="text-gray-500"> ({t('agf_bedrag_terug')})</span>}
+            </p>
+            {r.soort === 'btw' && schrijf && !r.betaling && (
+              <BevestigKnop v="secondary" s="sm" vraag={t('agf_terugzetten_vraag')} onBevestig={() => ontkoppelAangifteIngediend(r.sleutel)}>
+                {t('agf_terugzetten')}
+              </BevestigKnop>
+            )}
+            {r.einde === 'nihil' && <p className="w-full text-xs text-gray-500">{t('agf_nihil_uitleg')}</p>}
+          </div>
+        ) : r.controle === 'akkoord' ? (
+          <p className="text-sm text-gray-700">
+            <MetVet sjabloon={t(r.soort === 'btw' ? 'agf_indienen_uitleg_btw' : 'agf_indienen_uitleg_accijns')} vet={fmtCent(Math.abs(r.bedragCent))} />
+          </p>
+        ) : r.soort === 'btw' ? (
+          schrijf ? (
+            <div className="space-y-1.5">
+              <p className="text-xs text-gray-600">{t('agf_indienen_na_controle_btw')}</p>
+              <BevestigKnop v="secondary" s="sm" vraag={t('agf_indienen_zonder_controle_vraag')} onBevestig={() => planIndienen(r)} disabled={bezig}>
+                {t('agf_indienen_zonder_controle')}
+              </BevestigKnop>
+            </div>
+          ) : <p className="text-xs text-gray-600">{t('agf_indienen_na_controle_btw')}</p>
+        ) : (
+          <div className="space-y-1.5">
+            <Btn v="secondary" s="sm" disabled>{t('agf_actie_indienen')}</Btn>
+            <p className="text-xs text-gray-600">{t('agf_indienen_geblokkeerd')}</p>
+          </div>
+        )}
+      </section>
+    )
+
+    const c = r.soort === 'btw' ? (() => { const p = periodeVan(r.sleutel); return p ? cijfersVan(p) : null })() : null
+    const records = r.soort === 'accijns' ? (accRecordsPerMaand[r.sleutel] || []) : []
+    const perBatch = (weergave[r.sleutel] || (r.totNu ? 'uitslag' : 'batch')) === 'batch'
+
+    return (
+      <DetailPaneel
+        key={`${r.soort}-${r.sleutel}`}
+        titel={periodeTitel(r)}
+        ondertitel={ondertitel}
+        onSluit={() => setGekozen(null)}
+        kopExtra={<Pil rij={r} />}
+        terugLabel={t('nav_aangiftes')}
+        acties={primair ? <Btn cls="flex-1" disabled={primair.disabled} onClick={primair.onClick}>{primair.label}</Btn> : undefined}
+      >
+        <div className="space-y-3">
+          <StappenBalk rij={r} volledig />
+          {r.totNu && (
+            <p className="text-xs text-gray-600 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2">
+              {t('agf_lopend_uitleg').replace('{datum}', dagNotatie(r.tot))}
+            </p>
+          )}
+
+          {r.soort === 'btw' && c && (
+            <>
+              <BtwRubrieken c={c} teBetalenCent={c.teBetalenCent} alle={alleRubrieken} setAlle={setAlleRubrieken}
+                tariefOpen={tariefOpen} setTariefOpen={setTariefOpen} />
+              <p className="text-xs text-gray-500">
+                {t('agf_telling').replace('{verkoop}', String(c.aantalVerkoop)).replace('{inkoop}', String(c.aantalInkoop))}
+                {c.aantalWc > 0 && t('agf_telling_wc').replace('{wc}', String(c.aantalWc))}
+                <br />
+                {t('lbl_verkoop_netto')} <span className="tabular-nums text-gray-700">{fmtCent(c.verkoopNettoCent)}</span>
+                {' · '}{t('lbl_inkoop_netto')} <span className="tabular-nums text-gray-700">{fmtCent(c.inkoopNettoCent)}</span>
+              </p>
+              {!wcCreds?.enabled && <p className="text-xs text-gray-500">{t('msg_wc_inactive_vat')}</p>}
+              {wcCreds?.enabled && !wcGeladen && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-orange-50 border border-orange-200 px-3 py-2">
+                  <span className="flex-1 min-w-0 text-xs text-orange-900">{t('agf_wc_niet_geladen')}</span>
+                  <button type="button" onClick={() => haalWebshop(jaar)} disabled={wcBezig}
+                    className="text-xs font-medium t-accent-text hover:underline min-h-tap sm:min-h-0 disabled:opacity-40">
+                    {wcBezig ? t('btn_aangifte_loading') : t('agf_wc_ophalen')}
+                  </button>
+                </div>
+              )}
+              {c.sndCent > 0 && (
+                <p className="text-xs text-gray-600 flex items-center justify-between gap-2">
+                  <span>{t('statiegeld_snd_in_periode')}</span>
+                  <span className="font-semibold tabular-nums text-gray-900">{fmtCent(c.sndCent)}</span>
+                </p>
+              )}
+            </>
+          )}
+
+          {r.soort === 'accijns' && (
+            <div className="space-y-2">
+              {records.length > 0 && (
+                <Segment<'batch' | 'uitslag'>
+                  klein={!telefoon}
+                  label={t('agf_acc_weergave')}
+                  waarde={perBatch ? 'batch' : 'uitslag'}
+                  onKies={v => setWeergave(prev => ({ ...prev, [r.sleutel]: v }))}
+                  opties={[{ v: 'batch', l: t('agf_acc_per_batch') }, { v: 'uitslag', l: t('agf_acc_per_uitslag') }]}
+                />
+              )}
+              <AccijnsBoekingen records={records} bat={bat} uit={uit} av={av} perBatch={perBatch} />
+              {r.boekingenBetaald && !r.afgerond && (
+                <p className="text-xs text-gray-600">{t('agf_acc_boekingen_betaald')}</p>
+              )}
+            </div>
+          )}
+
+          {toonControle && (
+            <ControleBlok
+              ref={controleRef}
+              soort={r.soort}
+              fase={r.controle}
+              rec={recControle}
+              ingelogd={ingelogd}
+              opties={opties}
+              concept={concept}
+              setConcept={setConcept}
+              blokkade={r.controle === 'open' ? aanvraagBlokkade : akkoordBlokkade}
+              vast={!voorIndienen}
+              magSchrijven={schrijf}
+              onOpmerkingen={() => legControleVast(r, false, concept, false)}
+              opmerkingenBlokkade={opmerkingenBlokkade}
+              onWijzigen={() => heropenControle(r)}
+            />
+          )}
+
+          {indienBlok}
+
+          {toonBetaling && (
+            <BetalingBlok
+              ref={betalingRef}
+              rij={r}
+              kandidaten={kandidaten}
+              gekozen={txSleutel}
+              setGekozen={k => setGekozenTx(prev => ({ ...prev, [r.sleutel]: k }))}
+              magSchrijven={schrijf}
+              bezig={bezig}
+              onOntkoppel={() => (r.soort === 'btw' ? ontkoppelBtwBetaling(r.sleutel) : ontkoppelAccijnsBetaling(r.sleutel))}
+              onImporteren={primair?.onClick === naarBankImport ? null : naarBankImport}
+              achteraf={retro}
+              onKoppelHier={retro ? () => koppel(r, txGekozen) : null}
+              handmatig={r.soort === 'accijns' && r.stap === 'ingediend'
+                ? { datum, setDatum: d => setBetaalDatum(prev => ({ ...prev, [r.sleutel]: d })), onMarkeer: () => planBetaald(r, datum) }
+                : null}
+            />
+          )}
+        </div>
+      </DetailPaneel>
+    )
+  })()
+
+  // ── Lege staat ───────────────────────────────────────────────────────────
+  const leeg = tab === 'btw'
+    ? <LegeStaat titel={t('agf_leeg_btw').replace('{jaar}', String(jaar))} icoon="calendar">
+        {jaar > huidigJaar && <Btn v="secondary" onClick={() => setJaar(huidigJaar)}>{t('agf_naar_dit_jaar')}</Btn>}
+      </LegeStaat>
+    : <LegeStaat titel={t('agf_leeg_accijns').replace('{jaar}', String(jaar))} icoon="calendar">
+        {jaar !== huidigJaar && <Btn v="secondary" onClick={() => setJaar(huidigJaar)}>{t('agf_naar_dit_jaar')}</Btn>}
+      </LegeStaat>
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 min-w-0">
+      {smal ? (
+        <div className="space-y-2">
+          {segment}
+          <div className="flex items-center gap-2 min-w-0">
+            {jaarKiezer}
+            <div className="flex-1 min-w-0 text-right leading-snug">{samenvatting}</div>
+          </div>
+          {webshopKnop && <div className="flex">{webshopKnop}</div>}
+          {webshopMelding}
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 min-w-0">
+            {segment}
+            {jaarKiezer}
+            <span className="flex-1" />
+            {samenvatting}
+            {webshopKnop}
+          </div>
+          {webshopMelding}
+        </div>
+      )}
 
-      {/* BTW | Accijns: hetzelfde ritme (periode, berekenen, controleren,
-          indienen, betalen), dus één plek. */}
-      <Segment<'btw' | 'accijns'>
-        label={t('aangiftes_segment')}
-        waarde={tab}
-        onKies={setTab}
-        opties={[{v: 'btw', l: t('lbl_btw')}, {v: 'accijns', l: t('nav_accijns')}]}
+      {anderJaar && (
+        <button type="button" onClick={() => setJaar(anderJaar.jaar)}
+          className="text-sm font-medium t-accent-text hover:underline min-h-tap sm:min-h-0 text-left">
+          {t(tab === 'btw'
+            ? (anderJaar.n === 1 ? 'agf_ander_jaar_btw_1' : 'agf_ander_jaar_btw_n')
+            : (anderJaar.n === 1 ? 'agf_ander_jaar_acc_1' : 'agf_ander_jaar_acc_n'))
+            .replace('{n}', String(anderJaar.n)).replace('{jaar}', String(anderJaar.jaar))}
+        </button>
+      )}
+
+      <LijstMetDetail
+        open={!!detail}
+        detail={detail}
+        lijst={(
+          <PeriodeLijst
+            rijen={rijen}
+            naastDetail={!!detail}
+            gekozen={gekozenRij ? gekozenRij.sleutel : null}
+            onKies={r => open(r)}
+            knop={rijKnop}
+            label={tab === 'btw' ? t('agf_lijst_btw') : t('agf_lijst_accijns')}
+            leeg={leeg}
+          />
+        )}
       />
-
-      {/* ══════════════════════ ACCIJNS ══════════════════════ */}
-      {tab==='accijns' && <AccijnsPage bat={bat} acc={acc} setAcc={setAcc} uit={uit} av={av} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} bankDebets={bankDebetsVoorKoppeling} onBankImporteren={naarBankImport} koppelAccijnsBetaling={koppelAccijnsBetaling} ontkoppelAccijnsBetaling={ontkoppelAccijnsBetaling} accijnsKoppelingInfo={accijnsKoppelingInfo} setJournaal={setJournaal} />}
-
-      {/* ══════════════════════ BTW AANGIFTE ══════════════════════ */}
-      {tab==='btw' && (()=>{
-        const periode = (btwInst as any)?.periode || 'kwartaal';
-        const periodes = getPeriodes(aangifteYear, periode, getLang());
-        // tod() = lokale kalenderdag; toISOString() is UTC en gaf rond
-        // middernacht (CET/CEST) een dag verschil in de periodestatus.
-        const today = tod();
-
-        return (<>
-          {/* Jaar-selector + ophaalknop */}
-          <div className={card}>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                <button onClick={()=>{setAangifteYear((y: any)=>y-1); setAangifteFetched(false); setAangifteOrders([]); setSelectedPeriode(null);}}
-                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-lg leading-none transition-colors">‹</button>
-                <span className="text-lg font-bold text-gray-800 w-14 text-center">{aangifteYear}</span>
-                <button onClick={()=>{setAangifteYear((y: any)=>y+1); setAangifteFetched(false); setAangifteOrders([]); setSelectedPeriode(null);}}
-                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-lg leading-none transition-colors">›</button>
-              </div>
-              <div className="text-xs text-gray-400 italic">
-                {periode==='kwartaal' ? t('lbl_aangifte_kwartaal') : t('lbl_aangifte_maand')} · {t('lbl_aangifte_period_hint')}
-              </div>
-              {wcCreds?.enabled
-                ? <button onClick={()=>fetchJaarordrers(aangifteYear)} disabled={aangifteLoading}
-                    className="ml-auto px-4 py-1.5 tbtn rounded-lg text-sm font-medium disabled:opacity-50 transition-colors">
-                    {aangifteLoading ? t('btn_aangifte_loading') : aangifteFetched ? t('btn_aangifte_refresh') : t('btn_aangifte_fetch')}
-                  </button>
-                : <span className="ml-auto text-xs text-gray-500">{t('msg_wc_inactive_vat')}</span>
-              }
-            </div>
-            {aangifteError && <p className="mt-2 text-sm text-red-600">{aangifteError}</p>}
-            {aangifteFetched && <p className="mt-2 text-xs text-green-600">{t('msg_aangifte_loaded').replace('{n}',String(aangifteOrders.length)).replace('{year}',String(aangifteYear))}</p>}
-          </div>
-
-          {/* Jaar totaal */}
-          {(()=>{
-            const yearStr = String(aangifteYear);
-            const jaarOrders = aangifteOrdersOpen.filter((o: any) => {
-              const d = (o.date_paid||o.date_created||'').slice(0,4);
-              return d === yearStr && ['completed','processing'].includes(o.status);
-            });
-            // Verschuldigde BTW op grondslag per tarief (ERP-plan 2.2),
-            // consistent met de periodekaarten en de invulhulp — dus ook op de
-            // effectieve BTW-periode (incl. rollover), niet op de kale datum.
-            const jaarVerkoop = (verkoopFacturen||[]).filter((f: any) => inBtwJaar(f, btwPeriodeType, yearStr));
-            const jaarOmzet = omzetBtwOpGrondslag(jaarVerkoop, jaarOrders);
-            const jaarOmzetBtw = jaarOmzet.hoog.btw + jaarOmzet.laag.btw;
-            const jaarVoorbelast = inkoopFacturen
-              .filter((f: any) => inBtwJaar(f, btwPeriodeType, yearStr))
-              .reduce((s: any,f: any)=>s+(f.totaal_btw||0), 0);
-            const jaarTeBetalen = jaarOmzetBtw - jaarVoorbelast;
-            return (
-              <div className={card + ' border-gray-200'}>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-bold text-gray-700">{t('lbl_jaar_totaal')} {aangifteYear}</span>
-                  {selectedPeriode && (
-                    <button onClick={()=>setSelectedPeriode(null)}
-                      className="text-xs px-2 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors">
-                      ✕ {t('lbl_aangifte_heel_jaar').replace('{year}','')}
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-gray-50 rounded-xl p-2">
-                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_omzet_btw')}</div>
-                    <div className="text-sm font-bold text-gray-800">{fmt(jaarOmzetBtw)}</div>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-2">
-                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_voorbelasting')}</div>
-                    <div className="text-sm font-bold text-blue-700">{fmt(jaarVoorbelast)}</div>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-2">
-                    <div className="text-xs text-gray-400 mb-0.5">{t('lbl_te_betalen')}</div>
-                    <div className={`text-sm font-bold ${jaarTeBetalen >= 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                      {fmt(Math.abs(jaarTeBetalen))}
-                    </div>
-                    <div className={`text-xs font-medium ${jaarTeBetalen >= 0 ? 'text-orange-500' : 'text-green-500'}`}>
-                      {jaarTeBetalen >= 0 ? t('lbl_te_betalen') : t('lbl_terug')}
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400 mt-2 italic">{t('lbl_aangifte_klik_periode')}</p>
-              </div>
-            );
-          })()}
-
-          {/* Periode-kaarten */}
-          <div className={`grid gap-4 ${periode==='maand' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2'}`}>
-            {periodes.map((p: any) => {
-              // Verkoop BTW voor deze periode (WooCommerce + eigen verkoopfacturen)
-              // Alleen orders zonder eigen verkoopfactuur (aangifteOrdersOpen):
-              // een afgeronde webshoporder telt via zijn factuur.
-              const pOrders = aangifteOrdersOpen.filter((o: any) => {
-                const d = (o.date_paid||o.date_created||'').slice(0,10);
-                return d >= p.from && d <= p.to && ['completed','processing'].includes(o.status);
-              });
-              const wcVerkoopNetto = pOrders.reduce((s: any,o: any)=>s+parseFloat(o.total||0)-parseFloat(o.total_tax||0), 0);
-              // Eigen verkoopfacturen, op hun effectieve BTW-periode (rollover).
-              const pVerkoop = (verkoopFacturen||[]).filter((f: any) => inBtwPeriode(f, btwPeriodeType, p.key));
-              const eigenVerkoopNetto = pVerkoop.reduce((s: any,f: any)=>s+(f.netto||0), 0);
-              // Verschuldigde BTW op grondslag per tarief (ERP-plan 2.2),
-              // identiek aan de invulhulp — zo is het ingediende bedrag exact
-              // het rubriek 1a + 1b-cijfer.
-              const pOmzetBtw = omzetBtwOpGrondslag(pVerkoop, pOrders);
-              const verkoopBtw   = pOmzetBtw.hoog.btw + pOmzetBtw.laag.btw;
-              const verkoopNetto = wcVerkoopNetto + eigenVerkoopNetto;
-              const eigenFacturenLabel = pVerkoop.length > 0 ? ` + ${pVerkoop.length} eigen` : '';
-
-              // Inkoop voorbelasting — filter op effectieve BTW-periodeKey,
-              // zodat doorgerolde facturen (btw_periode gezet) in de juiste
-              // periode worden meegeteld i.p.v. in hun datum-periode.
-              const pFacturen = inkoopFacturen.filter((f: any) => effectievePeriodeKey(f, btwPeriodeType) === p.key);
-              const voorbelasting = pFacturen.reduce((s: any,f: any)=>s+(f.totaal_btw||0), 0);
-              const inkoopNetto   = pFacturen.reduce((s: any,f: any)=>s+(f.totaal_netto||0), 0);
-
-              const teBetalen = verkoopBtw - voorbelasting;
-
-              // Periode status
-              const isBetaald    = btwBetaaldePerioden.has(p.key);
-              const aangifte     = btwIngediendePerioden[p.key];
-              const isIngediend  = !!aangifte && !isBetaald;
-              const isFuture     = p.from > today;
-              const isCurrent    = p.from <= today && p.to >= today;
-              const isPast       = p.to < today;
-              const isOpenstaand = isPast && !isBetaald && !isIngediend;
-              const isAfgesloten = isPast && isBetaald;
-
-              const statusCls = isFuture
-                ? 'bg-gray-50 border-gray-100'
-                : isCurrent
-                  ? 'bg-blue-50 border-blue-100'
-                  : isOpenstaand
-                    ? 'bg-orange-50 border-orange-200'
-                    : isIngediend
-                      ? 'bg-blue-50 border-blue-100'
-                      : 'bg-green-50 border-green-100';
-
-              // Openstaand vraagt om actie (oranje), ingediend wacht alleen op
-              // de betaling (blauw = neutrale informatie). Ze deelden eerder
-              // bijna dezelfde tint en waren daardoor niet te onderscheiden.
-              const badgeCls = isFuture
-                ? 'bg-gray-100 text-gray-400'
-                : isCurrent
-                  ? 'bg-blue-100 text-blue-700'
-                  : isOpenstaand
-                    ? 'bg-orange-100 text-orange-700'
-                    : isIngediend
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-green-100 text-green-700';
-
-              const badgeLabel = isFuture ? t('lbl_aangifte_toekomstig')
-                : isCurrent    ? t('lbl_aangifte_lopend')
-                : isOpenstaand ? t('lbl_aangifte_openstaand')
-                : isIngediend  ? t('lbl_aangifte_ingediend')
-                : t('lbl_aangifte_afgesloten');
-
-              const isSelected = selectedPeriode?.from === p.from;
-              return (
-                <div key={p.key}
-                  onClick={()=>setSelectedPeriode(isSelected ? null : {from:p.from, to:p.to, label:p.label, key:p.key})}
-                  className={`rounded-2xl border shadow-sm p-5 space-y-3 cursor-pointer transition-all ${isSelected ? 'ring-2 ring-[var(--t-accent)] bg-white border-transparent' : statusCls}`}>
-                  {/* Header */}
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="text-lg font-bold text-gray-800">{p.label} <span className="text-sm font-normal text-gray-400">{aangifteYear}</span></div>
-                      <div className="text-xs text-gray-400">{p.from} {t('lbl_t_m')} {p.to}</div>
-                    </div>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${badgeCls}`}>{badgeLabel}</span>
-                  </div>
-
-                  {/* Cijfers */}
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-white/70 rounded-xl p-2">
-                      <div className="text-xs text-gray-400 mb-0.5">{t('lbl_omzet_btw')}</div>
-                      <div className="text-sm font-bold text-gray-800">{fmt(verkoopBtw)}</div>
-                      <div className="text-xs text-gray-400">{pOrders.length > 0 ? `${pOrders.length} WC` : ''}{eigenFacturenLabel}</div>
-                    </div>
-                    <div className="bg-white/70 rounded-xl p-2">
-                      <div className="text-xs text-gray-400 mb-0.5">{t('lbl_voorbelasting')}</div>
-                      <div className="text-sm font-bold text-blue-700">{fmt(voorbelasting)}</div>
-                      <div className="text-xs text-gray-400">{pFacturen.length} {t('lbl_fact_abbr')}</div>
-                    </div>
-                    <div className="bg-white/70 rounded-xl p-2">
-                      <div className="text-xs text-gray-400 mb-0.5">{t('lbl_te_betalen')}</div>
-                      <div className={`text-sm font-bold ${teBetalen >= 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                        {fmt(Math.abs(teBetalen))}
-                      </div>
-                      <div className={`text-xs font-medium ${teBetalen >= 0 ? 'text-orange-500' : 'text-green-500'}`}>
-                        {teBetalen >= 0 ? t('lbl_te_betalen') : t('lbl_terug')}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Detail inkoop */}
-                  {pFacturen.length > 0 && (
-                    <div className="text-xs text-gray-400 border-t border-gray-100 pt-2">
-                      {t('lbl_inkoop_netto')} <span className="font-medium text-gray-600">{fmt(inkoopNetto)}</span>
-                      {' · '}{t('lbl_verkoop_netto')} <span className="font-medium text-gray-600">{fmt(verkoopNetto)}</span>
-                    </div>
-                  )}
-
-                  {/* Statiegeld Nederland — info-only afdracht */}
-                  {(()=>{
-                    let sndBedrag = 0;
-                    (verkoopFacturen||[]).forEach((f: any) => {
-                      if (!f?.datum || f.datum < p.from || f.datum > p.to) return;
-                      (f.regels||[]).forEach((r: any) => {
-                        if (r?.statiegeld_soort === 'snd') sndBedrag += Number(r.netto||0);
-                      });
-                    });
-                    if (sndBedrag === 0) return null;
-                    return (
-                      <div className="text-xs border-t border-gray-100 pt-2 flex items-center justify-between">
-                        <span className="text-gray-500">{t('statiegeld_snd_in_periode')}</span>
-                        <span className="font-semibold" style={{color:'var(--t-accent)'}}>{fmt(Math.round(sndBedrag*100)/100)}</span>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Betaling koppelen / betalingsstatus */}
-                  {isPast && (()=>{
-                    const gekoppeldeKey = Object.keys(bankKoppelingen as any).find((k: any) => (bankKoppelingen as any)[k]?.soort === 'btw' && (bankKoppelingen as any)[k].periodeKey === p.key);
-                    const txInfo = gekoppeldeKey ? bankTransacties.find((tx: any) => txKey(tx) === gekoppeldeKey) : null;
-                    if (isAfgesloten) {
-                      return (
-                        <div className="border-t border-green-200 pt-2 flex items-center justify-between" onClick={(e: any)=>e.stopPropagation()}>
-                          <span className="text-xs text-green-600 font-medium">
-                            ✓ {t('lbl_btw_betaling_gekoppeld')}
-                            {txInfo ? ` · ${txInfo.datum} · ${fmt(txInfo.bedrag)}` : ''}
-                          </span>
-                          <button onClick={()=>ontkoppelBtwBetaling(p.key)}
-                            className="text-xs text-gray-400 hover:text-red-500 ml-2 transition-colors">
-                            {t('btn_ontkoppel')}
-                          </button>
-                        </div>
-                      );
-                    }
-                    if (isOpenstaand) {
-                      return (
-                        <div className="border-t border-orange-200 pt-2 flex items-center justify-between gap-2" onClick={(e: any)=>e.stopPropagation()}>
-                          <span className="text-xs text-orange-600 font-medium">{t('lbl_aangifte_nog_indienen')}</span>
-                          <button onClick={()=>markeerAangifteIngediend(p.key, teBetalen)}
-                            className="text-xs font-medium px-3 py-1 rounded-lg tbtn text-white transition-colors">
-                            {t('btn_aangifte_ingediend')}
-                          </button>
-                        </div>
-                      );
-                    }
-                    // isIngediend: toon koppel-selector met euro-tolerantie rond
-                    // aangifte-bedrag. Een POSITIEF bedrag is een betaling aan de
-                    // Belastingdienst (debettransactie); een NEGATIEF bedrag is
-                    // een teruggave die als CREDIT op de rekening binnenkomt.
-                    const isTeruggave = Number(aangifte?.bedrag || 0) < 0;
-                    const aangifteBedrag = Math.abs(Number(aangifte?.bedrag || 0));
-                    // Alleen transacties die nog nergens aan hangen (één
-                    // transactie = één koppeling in bank_koppelingen) en niet
-                    // van vóór de periode: de bewaarde afschriften gaan jaren terug.
-                    const kandidaten = bankTransacties.filter((tx: any) =>
-                      tx.type === (isTeruggave ? 'C' : 'D') && !isGekoppeld(tx) && String(tx.datum || '') >= p.from
-                    );
-                    const nearMatches = kandidaten.filter((tx: any) => Math.abs(Math.abs(tx.bedrag) - aangifteBedrag) <= 1.00);
-                    const otherDebits = kandidaten.filter((tx: any) => !nearMatches.includes(tx));
-                    return (
-                      <div className="border-t t-border pt-2 space-y-1" onClick={(e: any)=>e.stopPropagation()}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs t-accent-text font-medium">
-                            {t('lbl_aangifte_ingediend_op').replace('{datum}', aangifte.ingediend_datum || '')} · {isTeruggave ? `${t('lbl_terug')} ` : ''}{fmt(aangifteBedrag)}
-                          </span>
-                          <button onClick={()=>ontkoppelAangifteIngediend(p.key)}
-                            className="text-xs text-gray-400 hover:text-red-500 transition-colors">
-                            {t('btn_ongedaan')}
-                          </button>
-                        </div>
-                        {kandidaten.length > 0 ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs t-accent-text font-medium shrink-0">{t(isTeruggave ? 'lbl_koppel_teruggave' : 'lbl_koppel_betaling')}</span>
-                            <select onChange={(e: any)=>{
-                              const idx = bankTransacties.findIndex((tx: any) => txKey(tx) === e.target.value);
-                              if (idx >= 0) koppelBtwBetaling(idx, p.key);
-                            }} defaultValue=""
-                              className="border t-border rounded px-2 py-0.5 text-xs t-input focus:outline-none flex-1 min-w-0">
-                              <option value="">— {t('lbl_selecteer_transactie')} —</option>
-                              {nearMatches.length > 0 && (
-                                <optgroup label={t('lbl_match_voorgesteld')}>
-                                  {nearMatches.map((tx: any) => {
-                                    const diff = Math.abs(tx.bedrag) - aangifteBedrag;
-                                    const diffLbl = diff === 0 ? '' : ` (${diff > 0 ? '+' : ''}€${fmt(Math.abs(diff))})`;
-                                    return (
-                                      <option key={txKey(tx)} value={txKey(tx)}>
-                                        {tx.datum} · {tx.tegenpartij||tx.omschrijving||'?'} · {fmt(tx.bedrag)}{diffLbl}
-                                      </option>
-                                    );
-                                  })}
-                                </optgroup>
-                              )}
-                              {otherDebits.length > 0 && (
-                                <optgroup label={t('lbl_overige_transacties')}>
-                                  {otherDebits.map((tx: any) => (
-                                    <option key={txKey(tx)} value={txKey(tx)}>
-                                      {tx.datum} · {tx.tegenpartij||tx.omschrijving||'?'} · {fmt(tx.bedrag)}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                            </select>
-                          </div>
-                        ) : (
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span className="text-xs text-gray-500">{t('msg_geen_banktxn_kandidaat')}</span>
-                            <button type="button" onClick={naarBankImport}
-                              className="text-xs font-medium t-accent-text hover:underline min-h-tap sm:min-h-0">
-                              {t('btn_afschrift_importeren')}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* BTW per tarief (inkoop voorbelasting per geselecteerde periode of jaar) */}
-          {(btwPerTariefAangifte.length > 0 || verlegdAangifte.rubriek4a.netto > 0 || verlegdAangifte.rubriek4b.netto > 0) && (
-            <div className="space-y-4">
-              <div className={card}>
-                <h3 className="text-sm font-semibold text-gray-700 mb-1">
-                  {t('lbl_voorbelasting_per_tarief')} — <span style={{color:'var(--t-accent)'}}>{selectedPeriode ? selectedPeriode.label : t('lbl_aangifte_heel_jaar').replace('{year}', String(aangifteYear))}</span>
-                </h3>
-                <p className="text-xs text-gray-400 mb-4">{t('lbl_gebruik_rubriek_5b')}</p>
-                {(() => {
-                  // Verlegde BTW (rubriek 4a/4b) is óók aftrekbaar als voorbelasting.
-                  // Toon die als aparte rijen zodat het tabeltotaal exact gelijk is
-                  // aan rubriek 5b in de invulhulp hieronder. Bruto = netto: de
-                  // leverancier factureert bij verlegging zonder BTW.
-                  const verlegdRows = [
-                    {rubriek: '4a', ...verlegdAangifte.rubriek4a},
-                    {rubriek: '4b', ...verlegdAangifte.rubriek4b},
-                  ].filter(r => r.netto > 0 || r.btw > 0)
-                  const totNetto = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto,0) + verlegdRows.reduce((s: number,r: any)=>s+r.netto,0)
-                  const totBtw   = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.btw,0)   + verlegdRows.reduce((s: number,r: any)=>s+r.btw,0)
-                  const totBruto = btwPerTariefAangifte.reduce((s: any,r: any)=>s+r.netto+r.btw,0) + verlegdRows.reduce((s: number,r: any)=>s+r.netto,0)
-                  return (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 text-xs text-gray-500">
-                      <th className="py-2 pr-3 text-left font-medium">{t('lbl_btw_tarief')}</th>
-                      <th className="py-2 pr-3 text-right font-medium">{t('lbl_netto_grondslag')}</th>
-                      <th className="py-2 pr-3 text-right font-medium">{t('lbl_btw_bedrag')}</th>
-                      <th className="py-2 text-right font-medium">{t('lbl_bruto')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {btwPerTariefAangifte.map((r: any)=>(
-                      <tr key={r.tarief} className="border-b border-gray-50">
-                        <td className="py-2 pr-3">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${r.tarief===0?'bg-gray-100 text-gray-500':r.tarief===9?'bg-blue-50 text-blue-700':'bg-blue-100 text-blue-800'}`}>
-                            {r.tarief}%
-                          </span>
-                        </td>
-                        <td className="py-2 pr-3 text-right text-gray-700">{fmt(r.netto)}</td>
-                        <td className="py-2 pr-3 text-right font-semibold text-blue-700">{fmt(r.btw)}</td>
-                        <td className="py-2 text-right text-gray-800">{fmt(r.netto+r.btw)}</td>
-                      </tr>
-                    ))}
-                    {verlegdRows.map((r: any)=>(
-                      <tr key={`verlegd-${r.rubriek}`} className="border-b border-gray-50">
-                        <td className="py-2 pr-3">
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700"
-                            title={t('title_verlegd_badge').replace('{rubriek}', r.rubriek).replace('{btw}', fmt(r.btw))}>
-                            ⇄ {t('lbl_btw_verlegd_kort')} {r.rubriek}
-                          </span>
-                        </td>
-                        <td className="py-2 pr-3 text-right text-gray-700">{fmt(r.netto)}</td>
-                        <td className="py-2 pr-3 text-right font-semibold text-blue-700">{fmt(r.btw)}</td>
-                        <td className="py-2 text-right text-gray-800">{fmt(r.netto)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-gray-200">
-                      <td className="py-2 pr-3 text-xs font-semibold text-gray-500">{t('lbl_total')}</td>
-                      <td className="py-2 pr-3 text-right font-bold text-gray-800">{fmt(totNetto)}</td>
-                      <td className="py-2 pr-3 text-right font-bold text-gray-800">{fmt(totBtw)}</td>
-                      <td className="py-2 text-right font-bold text-gray-900">{fmt(totBruto)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-                  )
-                })()}
-              </div>
-
-              {/* Controle door tweede paar ogen — Douane v2.4 §12.4 */}
-              {selectedPeriode && (() => {
-                const periodeKey = `${aangifteYear}-${selectedPeriode.label.replace(/\s+/g, '_')}`
-                const aangifte = (btwAangiftes||[]).find((x: any) => x.periode === periodeKey) || null
-                const reviewer = aangifte?.reviewer ?? 'Elise Kok'
-                const status = aangifte?.controle_status ?? 'open'
-                const bevindingen = aangifte?.bevindingen ?? ''
-                const datum = aangifte?.controle_datum
-                const updateBtw = (fields: any) => {
-                  setBtwAangiftes((prev: any[]) => {
-                    const existing = (prev||[]).find((x: any) => x.periode === periodeKey)
-                    const merged = { ...(existing || { periode: periodeKey, status: 'berekend' }), ...fields }
-                    if (fields.controle_status) merged.controle_datum = new Date().toISOString()
-                    if (existing) return prev.map((x: any) => x.periode === periodeKey ? merged : x)
-                    return [...(prev||[]), merged]
-                  })
-                  if (fields.controle_status) {
-                    logAudit(auditLog, setAuditLog, {
-                      entiteit: 'BTW-aangifte',
-                      entiteit_id: 0,
-                      actie: 'gewijzigd',
-                      omschrijving: `BTW-controle ${fields.controle_status} door ${fields.reviewer || 'reviewer'} — periode ${periodeKey}${fields.bevindingen ? ` (bevindingen: ${fields.bevindingen})` : ''}`,
-                    })
-                  }
-                }
-                return (
-                  <div className={`rounded-xl border p-3 mb-3 text-sm ${
-                    status === 'akkoord' ? 'border-green-200 bg-green-50' :
-                    status === 'opmerkingen' ? 'border-orange-200 bg-orange-50' :
-                    'border-gray-200 bg-gray-50'
-                  }`}>
-                    <div className="text-xs font-semibold text-gray-600 mb-2">
-                      {t('controle_titel_btw')}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">{t('controle_reviewer')}</label>
-                        <input type="text" value={reviewer}
-                          onChange={e => updateBtw({ reviewer: e.target.value })}
-                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-0.5">{t('controle_datum')}</label>
-                        <div className="px-2 py-1 text-sm text-gray-700">
-                          {datum ? new Date(datum).toLocaleString(getLang()) : <span className="text-gray-400">{t('controle_datum_nog_niet')}</span>}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-2">
-                      <label className="block text-xs text-gray-500 mb-0.5">{t('controle_bevindingen')}</label>
-                      <textarea value={bevindingen}
-                        onChange={e => updateBtw({ bevindingen: e.target.value })}
-                        rows={2}
-                        placeholder={t('controle_bevindingen_ph_btw')}
-                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white" />
-                    </div>
-                    <div className="mt-2 flex items-center gap-2 flex-wrap">
-                      <button onClick={() => updateBtw({ reviewer, controle_status: 'akkoord' })}
-                        className="px-3 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700">
-                        {status === 'akkoord' ? t('controle_btn_akkoord_done') : t('controle_btn_akkoord')}
-                      </button>
-                      <button onClick={() => updateBtw({ reviewer, controle_status: 'opmerkingen' })}
-                        className="px-3 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">
-                        {t('controle_btn_opmerkingen')}
-                      </button>
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                        status === 'akkoord' ? 'bg-green-100 text-green-700' :
-                        status === 'opmerkingen' ? 'bg-orange-100 text-orange-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {status === 'akkoord' ? t('controle_status_akkoord') : status === 'opmerkingen' ? t('controle_status_opmerkingen') : t('controle_status_open')}
-                      </span>
-                    </div>
-                  </div>
-                )
-              })()}
-
-              <div className={card + ' bg-blue-50 border-blue-100'}>
-                <h3 className="text-xs font-semibold text-blue-800 mb-1">{t('lbl_btw_aangifte_hulp')}</h3>
-                <p className="text-xs text-blue-600 mb-1">{selectedPeriode ? selectedPeriode.label : t('lbl_aangifte_heel_jaar').replace('{year}', String(aangifteYear))}</p>
-                <p className="text-xs text-blue-400 mb-3">{t('lbl_btw_grondslag_hint')}</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
-                  <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1a')}</div>
-                    <div className="font-bold text-gray-800 text-base">{fmt(omzetBtwPerTarief.hoog.netto)}</div>
-                    <div className="text-xs text-blue-600 font-medium mb-1">{t('lbl_btw')}: {fmt(omzetBtwPerTarief.hoog.btw)}</div>
-                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_1a_hint')}</div>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1b')}</div>
-                    <div className="font-bold text-gray-800 text-base">{fmt(omzetBtwPerTarief.laag.netto)}</div>
-                    <div className="text-xs text-blue-600 font-medium mb-1">{t('lbl_btw')}: {fmt(omzetBtwPerTarief.laag.btw)}</div>
-                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_1b_hint')}</div>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_5b')}</div>
-                    <div className="font-bold text-blue-700 text-base mb-1">{fmt(
-                      (btwPerTariefAangifte as any[]).reduce((s: any, r: any) => s + (r.btw || 0), 0 as number)
-                      + verlegdAangifte.rubriek4a.btw
-                      + verlegdAangifte.rubriek4b.btw
-                    )}</div>
-                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_5b_hint')}</div>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_1d')}</div>
-                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_1d_hint')}</div>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_2a')}</div>
-                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_2a_hint')}</div>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_4a')}</div>
-                    <div className="font-bold text-gray-800 text-base">{fmt(verlegdAangifte.rubriek4a.netto)}</div>
-                    <div className="text-xs text-blue-600 font-medium mb-1">{t('lbl_btw')}: {fmt(verlegdAangifte.rubriek4a.btw)}</div>
-                    {verlegdAangifte.rubriek4a.nulNetto > 0 && (
-                      <div className="text-xs text-orange-600 font-medium mb-1">⚠ {t('warn_rubriek_verlegd_nul').replace('{bedrag}', fmt(verlegdAangifte.rubriek4a.nulNetto))}</div>
-                    )}
-                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_4a_hint')}</div>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 border border-blue-100">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">{t('lbl_rubriek_4b')}</div>
-                    <div className="font-bold text-gray-800 text-base">{fmt(verlegdAangifte.rubriek4b.netto)}</div>
-                    <div className="text-xs text-blue-600 font-medium mb-1">{t('lbl_btw')}: {fmt(verlegdAangifte.rubriek4b.btw)}</div>
-                    {verlegdAangifte.rubriek4b.nulNetto > 0 && (
-                      <div className="text-xs text-orange-600 font-medium mb-1">⚠ {t('warn_rubriek_verlegd_nul').replace('{bedrag}', fmt(verlegdAangifte.rubriek4b.nulNetto))}</div>
-                    )}
-                    <div className="text-xs text-gray-400 italic">{t('lbl_rubriek_4b_hint')}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!wcCreds?.enabled && inkoopFacturen.length === 0 && (
-            <div className={card + ' text-center py-14'}>
-              <div className="text-4xl mb-3 text-gray-300"><Icon n="clipboard" /></div>
-              <p className="text-gray-600 font-medium mb-1">{t('msg_no_aangifte_data')}</p>
-              <p className="text-gray-400 text-sm">{t('msg_no_aangifte_hint')}</p>
-            </div>
-          )}
-        </>);
-      })()}
     </div>
-  );
+  )
 }
 
 export default AangiftesSectie

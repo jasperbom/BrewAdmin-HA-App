@@ -9,8 +9,9 @@ import InventarisatiePage from '../InventarisatiePage'
 // ── Voorraad (Administratie) ────────────────────────────────────────────────
 // De fiscale voorraad op één plek, met AGP-stand | Verloop | Tellingen als
 // segment: de AGP-pagina (wat er nu ligt, per locatie), het voorraadverloop
-// per periode (had geen eigen menuplek) en de inventarisatie. De drie pagina's
-// zelf zijn ongewijzigd en krijgen dezelfde props als voorheen vanuit App.
+// per periode (had geen eigen menuplek) en de inventarisatie. Alle drie
+// waarderen de accijns met dezelfde functie (`accijnsWaardeVoorraad`,
+// utils/agp.ts) en lezen de gedeelde periode van de administratie.
 
 export type VoorraadTab = 'agp' | 'verloop' | 'tellingen'
 

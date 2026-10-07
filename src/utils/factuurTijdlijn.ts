@@ -404,7 +404,12 @@ export function verkoopTijdlijn(f: any, ctx: TijdlijnContext): TijdlijnRegel[] {
     })
   } else {
     const bank = bankBetalingVoor(f.id, 'verkoop', ctx.bankKoppelingen, ctx.bankTransacties)
-    if (bank || f.status === 'betaald') {
+    if (bank && f.status !== 'betaald') {
+      // Gekoppeld aan een bijschrijving terwijl de factuur nog niet op betaald
+      // staat (oude koppeling, of de status is daarna teruggezet): zeggen wat er
+      // is, niet "betaald".
+      voeg({ soort: 'betaald', dag: bank.dag, sleutel: 'ftl_bank_gekoppeld', vars: {}, toon: 'normaal', bank })
+    } else if (bank || f.status === 'betaald') {
       const wcDag = dagEnTijd(f.wc_betaald_datum).dag
       const methode = String(f.wc_betaal_methode || '').trim()
       let sleutel = 'ftl_betaald'

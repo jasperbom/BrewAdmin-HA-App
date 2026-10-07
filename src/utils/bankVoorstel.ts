@@ -375,8 +375,11 @@ export function bankVoorstellen(transacties: any[] | null | undefined, ctx: Voor
 // ── Handmatig koppelen: de kandidaten in de kiezers ─────────────────────────
 // "Koppel aan verkoopfactuur…" e.d. openen een kiezer met zoeken in plaats van
 // een keuzelijst met alle facturen. Hier geen datumgrens en geen score: de
-// gebruiker kiest zelf. Wel: wat al aan een andere transactie hangt doet niet
-// mee (één factuur, één betaling), en wat qua bedrag klopt staat bovenaan.
+// gebruiker kiest zelf. Wat qua bedrag klopt staat bovenaan. Een open factuur
+// die al aan een andere transactie hangt blijft kiesbaar — een deelbetaling in
+// twee keer kon in de oude keuzelijst ook — maar staat achteraan en gemarkeerd
+// (`elders`). Het voorstel zelf kiest zo'n factuur nooit (één factuur, één
+// betaling); een betaalde factuur die al ergens aan hangt doet niet mee.
 
 export type FactuurKiezerSoort = 'verkoop' | 'inkoop' | 'creditnota'
 
@@ -397,9 +400,11 @@ export interface FactuurKiezerRegel {
   klopt: boolean
   betaald: boolean
   naam: string
+  /** Hangt al aan een andere banktransactie (deelbetaling?): achteraan. */
+  elders: boolean
 }
 
-/** Kandidaten voor de factuurkiezer: bedrag klopt eerst, dan nieuwste eerst. */
+/** Kandidaten voor de factuurkiezer: vrije facturen eerst, daarin bedrag klopt eerst, dan nieuwste eerst. */
 export function factuurKiezerKandidaten(
   tx: any, soort: FactuurKiezerSoort, facturen: any[] | null | undefined, opties: FactuurKiezerOpties = {},
 ): FactuurKiezerRegel[] {
@@ -411,18 +416,21 @@ export function factuurKiezerKandidaten(
     : String(f?.leverancier || '')
   const regels: FactuurKiezerRegel[] = []
   for (const f of facturen || []) {
-    if (!f || typeof f !== 'object' || bezet.has(Number(f.id))) continue
+    if (!f || typeof f !== 'object') continue
     const bedrag = toCent(verkoop ? f.bruto : f.totaal_bruto)
     if (soort === 'creditnota' ? bedrag >= 0 : bedrag <= 0) continue
     const betaald = f.status === 'betaald'
     const open = verkoop ? isVerkoopFactuurOpen(f) : !betaald
+    const elders = bezet.has(Number(f.id))
+    if (elders && !open) continue
     if (!open && !(opties.ookBetaald && betaald)) continue
     const n = naam(f)
     if (opties.zoek && !zoekPastKiezer(f, n, Math.abs(bedrag), opties.zoek)) continue
-    regels.push({ factuur: f, id: Number(f.id), bedragCent: Math.abs(bedrag), klopt: Math.abs(bedrag) === txCent, betaald, naam: n })
+    regels.push({ factuur: f, id: Number(f.id), bedragCent: Math.abs(bedrag), klopt: Math.abs(bedrag) === txCent, betaald, naam: n, elders })
   }
   return regels.sort((a, b) =>
-    (a.klopt === b.klopt ? 0 : a.klopt ? -1 : 1)
+    (a.elders === b.elders ? 0 : a.elders ? 1 : -1)
+    || (a.klopt === b.klopt ? 0 : a.klopt ? -1 : 1)
     || String(b.factuur.datum || '').localeCompare(String(a.factuur.datum || ''))
     || b.id - a.id)
 }

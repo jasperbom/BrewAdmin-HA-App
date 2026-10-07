@@ -38,8 +38,12 @@ export interface VerkoopDetailProps {
   primair: DetailKnop | null
   tweede: DetailKnop | null
   meer: DetailKnop[]
+  /** Uitleg onder "Meer" (bijv. waarom mailen niet kan): een title zie je op een telefoon niet. */
+  meerHint?: string
   onSluit: () => void
   terugLabel: string
+  /** Extra klassen op het paneel. */
+  cls?: string
 }
 
 const LINK = 't-accent-text font-medium hover:underline text-left break-words focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] rounded'
@@ -53,7 +57,7 @@ const Rij: React.FC<{ label: string, children: React.ReactNode }> = ({ label, ch
 
 const VerkoopDetail: React.FC<VerkoopDetailProps> = ({
   factuur: f, stand, tijdlijn, klantNaam, onKlant, bestellingLabel, onBestelling, bron, credits, onOpenFactuur,
-  vervaldatum, termijn, betaallink, altNaam, primair, tweede, meer, onSluit, terugLabel,
+  vervaldatum, termijn, betaallink, altNaam, primair, tweede, meer, meerHint, onSluit, terugLabel, cls,
 }) => {
   const c = verkoopCenten(f)
   const nummer = f.factuurnummer || `F-${f.id}`
@@ -65,6 +69,7 @@ const VerkoopDetail: React.FC<VerkoopDetailProps> = ({
       kopExtra={<VerkoopPil stand={stand} />}
       onSluit={onSluit}
       terugLabel={terugLabel}
+      cls={cls}
       acties={primair || tweede ? <ActieBalk primair={primair} tweede={tweede} /> : undefined}
     >
       <div className="grid gap-4">
@@ -135,6 +140,7 @@ const VerkoopDetail: React.FC<VerkoopDetailProps> = ({
           <section>
             <h3 className="text-sm font-semibold text-gray-800 mb-2">{t('fct_meer')}</h3>
             <MeerKnoppen knoppen={meer} label={t('fct_meer')} />
+            {meerHint && <p className="mt-2 text-xs text-gray-500">{meerHint}</p>}
           </section>
         )}
       </div>

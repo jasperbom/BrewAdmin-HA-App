@@ -1,7 +1,7 @@
 import React from 'react'
 import { t } from '../../i18n'
 import { tod, ymd, r2, r3 } from '../../utils/format'
-import { newId, ADDON_BASE, volgendFactuurNummer } from '../../utils/api'
+import { newId, ADDON_BASE, volgendFactuurNummer, inboxStatus } from '../../utils/api'
 import { resolveKlantSnapshot, findLiveKlant } from '../../utils/klant'
 import { betalingstermijnVoor, breweryMetTermijn, vervaldatumTekst, isoDag, INKOOP_ACHTERSTALLIG_DAGEN } from '../../utils/facturen'
 import { logAudit } from '../../utils/audit'
@@ -14,7 +14,7 @@ import { bouwUbl, controleerUbl } from '../../utils/ubl'
 import InkoopFactuurModal from '../../components/InkoopFactuurModal'
 import { registreerScanCorrectie, leerKoppelingen } from '../../utils/scanGeheugen'
 import InkoopInbox from '../../components/InkoopInbox'
-import { InkoopInboxItem, imapActief, inboxFactuurVerwijderd, inboxVerwerkt, telInboxOpen, inboxOpen } from '../../utils/inkoopInbox'
+import { InkoopInboxItem, imapActief, inboxFactuurVerwijderd, inboxVerwerkt, telInboxOpen, inboxOpen, inboxFoutSleutel } from '../../utils/inkoopInbox'
 import { boekMerchMutaties } from '../../utils/merch'
 import { printFactuur, buildFactuurHTML, printHerinnering, buildHerinneringHTML } from '../../components/PakbonExport'
 import MailModal from '../../components/MailModal'
@@ -26,7 +26,7 @@ import { uploadBijlage, uploadFoutSleutel } from '../../utils/bijlage'
 import {
   FACTUUR_STATUS_FILTERS, INKOOP_STATUS_FILTERS, filterVerkoopFacturen, filterInkoopFacturen,
   telVerkoopStatussen, telInkoopStatussen, verkoopTotalen, inkoopTotalen, periodeGeldtVoorStatus,
-  leesFactuurFilter, verkoopCenten, zelfdeLeverancier,
+  leesFactuurFilter, verkoopCenten, inkoopCenten, zelfdeLeverancier,
   type FactuurStatusFilter, type InkoopStatusFilter, type LijstTotalen,
 } from '../../utils/factuurFilter'
 import { periodeBereik, OPEN_BEREIK, STANDAARD_PERIODE } from '../../utils/periode'
@@ -71,18 +71,18 @@ import { verkoopKolommen, verkoopKaart, inkoopKolommen, inkoopKaart } from './fa
 
 type Tab = 'verkoop' | 'inkoop'
 
-/** Vanaf deze breedte passen netto en BTW ook naast een open detail. */
-const RUIM = '(min-width: 1400px)'
-function useRuimBureau(): boolean {
-  const [ok, setOk] = React.useState<boolean>(() => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(RUIM).matches)
+/** Is het venster minstens zo breed? (Naast een open detail is de lijst smaller.) */
+function useMinBreedte(px: number): boolean {
+  const query = `(min-width: ${px}px)`
+  const [ok, setOk] = React.useState<boolean>(() => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(query).matches)
   React.useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return
-    const mq = window.matchMedia(RUIM)
+    const mq = window.matchMedia(query)
     const wissel = () => setOk(mq.matches)
     wissel()
     mq.addEventListener?.('change', wissel)
     return () => mq.removeEventListener?.('change', wissel)
-  }, [])
+  }, [query])
   return ok
 }
 
@@ -104,11 +104,24 @@ const RelatieFilter: React.FC<{
   )
 }
 
-/** De totaalregel onder de filterbalk: aantal, samen, waarvan te laat. */
-const Samenvatting: React.FC<{ tot: LijstTotalen, teLaatTonen: boolean, onTeLaat: () => void, periodeUit: boolean }> = ({ tot, teLaatTonen, onTeLaat, periodeUit }) => (
+/**
+ * De totaalregel onder de filterbalk: aantal, samen, waarvan te laat. Op een
+ * telefoon ook netto en BTW: de totaalrij onder de tabel (voetCellen) is er
+ * alleen op het bureau, en vroeger stonden die twee bedragen ook op de
+ * telefoon (de inkoopkaartjes, de tabelvoet).
+ */
+const Samenvatting: React.FC<{
+  tot: LijstTotalen, teLaatTonen: boolean, onTeLaat: () => void, periodeUit: boolean,
+  smal: boolean, btwLabel: string,
+}> = ({ tot, teLaatTonen, onTeLaat, periodeUit, smal, btwLabel }) => (
   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 px-1" aria-live="polite">
     <span>{tot.aantal === 1 ? t('fct_som_aantal_1') : t('fct_som_aantal').replace('{n}', String(tot.aantal))}</span>
     <span>{t('fct_som_samen')} <b className="text-gray-900 tabular-nums">{fmt(tot.bruto)}</b></span>
+    {smal && tot.aantal > 0 && (
+      <span className="tabular-nums text-gray-500">
+        {t('lbl_netto')} {fmt(tot.netto)} · {btwLabel} {fmt(tot.btw)}
+      </span>
+    )}
     {teLaatTonen && tot.te_laat_aantal > 0 && (
       <button type="button" onClick={onTeLaat}
         className="inline-flex items-center min-h-tap sm:min-h-0 text-red-700 font-medium hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
@@ -116,6 +129,22 @@ const Samenvatting: React.FC<{ tot: LijstTotalen, teLaatTonen: boolean, onTeLaat
       </button>
     )}
     {periodeUit && <span className="text-gray-500">{t('fct_som_periode_uit')}</span>}
+  </div>
+)
+
+/**
+ * Het postvak meldt een fout (verbinding, inlog, map …) terwijl je naar de
+ * inkooplijst kijkt. Vroeger stond de postvakkaart altijd boven die lijst;
+ * nu zit hij achter "Te verwerken", en dan mag een postvak dat niets meer
+ * ophaalt niet stil blijven.
+ */
+const PostvakFout: React.FC<{ tekst: string, onBekijk: () => void }> = ({ tekst, onBekijk }) => (
+  <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm bg-red-50 border border-red-200 text-red-800 rounded-xl px-3 py-2">
+    <span className="min-w-0 break-words">⚠ {t('fct_postvak_fout').replace('{fout}', tekst)}</span>
+    <button type="button" onClick={onBekijk}
+      className="inline-flex items-center min-h-tap sm:min-h-0 font-medium underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
+      {t('fct_postvak_bekijk')}
+    </button>
   </div>
 )
 
@@ -132,7 +161,10 @@ function FacturenSectie() {
     btwPeriodeType, getRolloverInfo, boekInkoopVoorraad, markeerBetaald,
   } = useAdmin()
   const smal = useSmalScherm()
-  const ruim = useRuimBureau()
+  // Naast een open detail: netto en BTW pas vanaf 1600 px, de rij-handeling
+  // pas vanaf 1024 px (daaronder staat hij in het detail zelf).
+  const ruim = useMinBreedte(1600)
+  const breed = useMinBreedte(1024)
 
   // ── Navigatiedoel (dashboard, attentie, klantkaart) ────────────────────────
   // tab = verkoop|inkoop; filter = een status ('open', 'te_laat', 'betaald',
@@ -165,6 +197,9 @@ function FacturenSectie() {
   const [gekozenInkoop, setGekozenInkoop] = React.useState<number | null>(startTab === 'inkoop' ? start.id : null)
   const [periodeKeuze, setPeriodeKeuze, periodeEigen, setPeriodeEigen] = useGedeeldePeriode()
   const bereik = React.useMemo(() => periodeBereik(periodeKeuze, new Date(), periodeEigen), [periodeKeuze, periodeEigen])
+  // Volgorde op factuurdatum: nieuwste eerst, of (zoals vroeger met een klik op
+  // de datumkop van de inkooplijst) oudste eerst.
+  const [oplopend, setOplopend] = React.useState(false)
 
   // Meldingen die vroeger een alert() waren: een balk bovenin die niets blokkeert.
   const [melding, setMelding] = React.useState<string | null>(null)
@@ -823,6 +858,19 @@ function FacturenSectie() {
   const inkoopOpenAantal = React.useMemo(() => telInkoopStatussen(inkoopFacturen, {}, iCtx).open, [inkoopFacturen, iCtx])
   const inboxOpenAantal = telInboxOpen(inkoopInbox)
 
+  // Fout van de laatste ophaalronde van het postvak (`inkoop_inbox_status`;
+  // alleen de server schrijft hem, dus een gewone GET zoals InkoopInbox doet).
+  // Opnieuw lezen bij elke statuswissel: na "Nu ophalen" onder Te verwerken
+  // kan de fout weg zijn.
+  const postvakAan = imapActief(imapCreds)
+  const [postvakFout, setPostvakFout] = React.useState<any>(null)
+  React.useEffect(() => {
+    if (!postvakAan || tab !== 'inkoop') return
+    let weg = false
+    inboxStatus().then((s: any) => { if (!weg) setPostvakFout(s?.fout || null) })
+    return () => { weg = true }
+  }, [postvakAan, tab, statusInkoop])
+
   // Stand per factuur (pil, handeling), één keer per weergave.
   const verkoopStanden = React.useMemo(() => {
     const m = new Map<any, VerkoopStand>()
@@ -927,6 +975,9 @@ function FacturenSectie() {
     return {stand, primair, tweede, meer}
   }
 
+  // De filters geven nieuwste eerst; "oudste eerst" draait dat om (lijst én CSV).
+  const inVolgorde = <T,>(l: T[]): T[] => oplopend ? [...l].reverse() : l
+
   // ── CSV van precies de lijst die je ziet (formule-veilig, utils/csv.ts) ────
   const downloadCsv = (naam: string, rijen: unknown[][]) => {
     const csv = csvTekst(rijen);
@@ -941,7 +992,7 @@ function FacturenSectie() {
   const exportVerkoopCSV = () => {
     const hdr = [t('lbl_date'),t('lbl_invoice'),t('lbl_klant'),t('lbl_description'),t('lbl_quantity'),t('lbl_prijs_per_stuk'),t('lbl_btw_pct'),t('lbl_netto'),t('lbl_btw_bedrag'),t('lbl_bruto_inkoop_incl_btw')];
     const rows: any[] = [];
-    verkoopGetoond.forEach((f: any) => {
+    inVolgorde(verkoopGetoond).forEach((f: any) => {
       const regels: any[] = f.regels || []
       if (!regels.length) {
         // Geen regels (oude of handmatige factuur): één regel met de totalen.
@@ -963,7 +1014,14 @@ function FacturenSectie() {
   const exportInkoopCSV = () => {
     const hdr = [t('lbl_date'),t('lbl_invoice'),t('lbl_supplier'),t('lbl_netto_inkoop_excl_btw'),t('lbl_btw_pct'),t('lbl_btw_bedrag'),t('lbl_bruto_inkoop_incl_btw')];
     const rows: any[] = [];
-    inkoopGetoond.forEach((f: any) => {
+    inVolgorde(inkoopGetoond).forEach((f: any) => {
+      if (!(f.regels||[]).length) {
+        // Geen regels (oude of geïmporteerde factuur): één regel met de totalen,
+        // zoals bij verkoop — anders ontbreekt hij in een export van "precies de lijst".
+        const c = inkoopCenten(f)
+        rows.push([f.datum, f.factuurnummer, f.leverancier, csvBedrag(c.netto), '', csvBedrag(c.btw), csvBedrag(c.bruto)]);
+        return
+      }
       (f.regels||[]).forEach((r: any) => {
         const x = inkoopRegelExport(r);
         rows.push([f.datum, f.factuurnummer, f.leverancier, csvBedrag(x.netto), x.btwPct, csvBedrag(x.btwBedrag), csvBedrag(x.bruto)]);
@@ -978,7 +1036,7 @@ function FacturenSectie() {
   const status: InkoopStatusFilter = isVerkoop ? statusVerkoop : statusInkoop
   const periodeUit = !periodeGeldtVoorStatus(status)
   const postvak = !isVerkoop && statusInkoop === 'te_verwerken'
-  const getoond: any[] = isVerkoop ? verkoopGetoond : inkoopGetoond
+  const getoond: any[] = inVolgorde(isVerkoop ? verkoopGetoond : inkoopGetoond)
   const tot = isVerkoop ? verkoopTot : inkoopTot
   const zoek = isVerkoop ? zoekVerkoop : zoekInkoop
   const setZoek = isVerkoop ? setZoekVerkoop : setZoekInkoop
@@ -1061,6 +1119,21 @@ function FacturenSectie() {
     ? (inkoopFacturen || []).find((f: any) => String(f?.id) === String(gekozenInkoop)) || null : null
   const detailOpen = !!(gekozenVerkoopFactuur || gekozenInkoopFactuur)
 
+  // Bureau: het detail staat onder de filterbalk en is zo hoog als het
+  // scherm; bij het openen schuift de pagina zo ver op dat de actiebalk
+  // onderaan in beeld komt (daarna blijft het detail plakken).
+  const gekozenSleutel = isVerkoop ? gekozenVerkoop : gekozenInkoop
+  React.useEffect(() => {
+    if (smal || !detailOpen || typeof window === 'undefined') return
+    const el = document.querySelector('.factuur-detail') as HTMLElement | null
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const kop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--kopbalk')) || 0
+    const ruimte = r.top - kop - 16
+    const tekort = r.bottom - window.innerHeight
+    if (ruimte > 0 && tekort > 0) window.scrollBy({top: Math.min(ruimte, tekort), behavior: 'smooth'})
+  }, [gekozenSleutel, tab, smal, detailOpen])
+
   const verkoopDetail = (f: any) => {
     const {stand, primair, tweede, meer} = verkoopKnoppen(f)
     const klant = findLiveKlant(f, klanten)
@@ -1099,8 +1172,10 @@ function FacturenSectie() {
         primair={primair}
         tweede={tweede}
         meer={meer}
+        meerHint={!smtpAan ? t('mail_no_smtp') : undefined}
         onSluit={() => setGekozenVerkoop(null)}
         terugLabel={t('nav_facturen')}
+        cls="factuur-detail"
       />
     )
   }
@@ -1124,11 +1199,12 @@ function FacturenSectie() {
         meer={meer}
         onSluit={() => setGekozenInkoop(null)}
         terugLabel={t('nav_facturen')}
+        cls="factuur-detail"
       />
     )
   }
 
-  // Kolommen; naast een open detail op een gewoon bureau zonder netto en BTW.
+  // Kolommen; naast een open detail valt weg wat er niet meer naast past.
   const verkoopOpties = {
     stand: standVan,
     klantNaam: klantNaamVoor,
@@ -1144,8 +1220,19 @@ function FacturenSectie() {
       return s.fase === 'open' || s.fase === 'te_laat' ? {id: 'betaald', label: t('btn_mark_paid'), onClick: () => markeerInkoopBetaald(f.id)} : null
     },
   }
-  const alleKolommen = isVerkoop ? verkoopKolommen(verkoopOpties) : inkoopKolommen(inkoopOpties)
-  const kolommen = detailOpen && !ruim ? alleKolommen.filter(k => !k.breed) : alleKolommen
+  // De kop van de nummerkolom (met de datum eronder) wisselt de volgorde.
+  const volgordeTitel = oplopend ? t('fct_volgorde_oudste') : t('fct_volgorde_nieuwste')
+  const nummerKop = (
+    <button type="button" onClick={() => setOplopend(v => !v)} title={t('fct_volgorde_wissel')}
+      aria-label={`${t('fct_kol_nummer')} · ${volgordeTitel}. ${t('fct_volgorde_wissel')}`}
+      className="inline-flex items-center gap-1 font-medium text-gray-500 hover:text-gray-800 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+      {t('fct_kol_nummer')} <span aria-hidden="true">{oplopend ? '↑' : '↓'}</span>
+    </button>
+  )
+  const alleKolommen = (isVerkoop ? verkoopKolommen(verkoopOpties) : inkoopKolommen(inkoopOpties))
+    .map(k => k.id === 'nummer' ? {...k, kop: nummerKop} : k)
+  const kolommen = !detailOpen ? alleKolommen
+    : alleKolommen.filter(k => (ruim || !k.breed) && (breed || k.id !== 'actie'))
 
   const heeftFacturen = ((isVerkoop ? verkoopFacturen : inkoopFacturen) || []).length > 0
   const filtertIets = status !== 'alles' || !!zoek.trim() || !!relatie || periodeKeuze !== 'alles'
@@ -1220,6 +1307,11 @@ function FacturenSectie() {
         ) : undefined}
       >
         {!postvak && relatieFilter}
+        {/* Telefoon: geen tabelkop om op te klikken, dus de volgorde in het filterpaneel. */}
+        {!postvak && smal && (
+          <RelatieFilter label={t('fct_volgorde')} waarde={oplopend ? 'oud' : ''} onKies={v => setOplopend(v === 'oud')}
+            alle={t('fct_volgorde_nieuwste')} opties={[{v: 'oud', l: t('fct_volgorde_oudste')}]} gestapeld />
+        )}
       </FilterBalk>
 
       {postvak ? (
@@ -1234,8 +1326,11 @@ function FacturenSectie() {
             </LegeStaat>
           )} />
       ) : (<>
-        <Samenvatting tot={tot} teLaatTonen={status !== 'te_laat'} periodeUit={periodeUit && !smal}
-          onTeLaat={() => kiesStatus('te_laat')} />
+        {!isVerkoop && postvakAan && postvakFout && (
+          <PostvakFout tekst={t(inboxFoutSleutel(postvakFout))} onBekijk={() => kiesStatus('te_verwerken')} />
+        )}
+        <Samenvatting tot={tot} teLaatTonen={status !== 'te_laat'} periodeUit={periodeUit}
+          onTeLaat={() => kiesStatus('te_laat')} smal={smal} btwLabel={isVerkoop ? t('lbl_btw') : t('lbl_voorbelasting')} />
         <LijstMetDetail
           lijst={lijst}
           open={detailOpen}

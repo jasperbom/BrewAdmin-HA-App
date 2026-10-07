@@ -827,7 +827,7 @@ export interface AccijnsRecord {
   batch_naam?: string
   batch_nummer?: string
   verpakking_naam?: string
-  // Runtime-velden die AccijnsPage leest (historisch naast *_naam ontstaan)
+  // Runtime-velden die Aangiftes › Accijns leest (historisch naast *_naam ontstaan)
   verpakking_type?: string
   aantal?: number
   liter?: number
@@ -1575,10 +1575,18 @@ export type ControleStatus = 'open' | 'akkoord' | 'opmerkingen'
 
 export interface AangifteControle {
   // Vastlegging tweede-paar-ogen-controle (Douane v2.4 §12.2/§12.4).
-  reviewer?: string                 // naam van controleur (default: Elise Kok)
+  // Wie wat deed is de ingelogde gebruiker (whoami) op dat moment; de
+  // controleur kies je uit het rollenbeheer (of typ je bij geen gebruikers).
+  reviewer?: string                 // naam van de controleur (geen standaardnaam)
   controle_datum?: string           // ISO timestamp van akkoord/opmerkingen
   controle_status?: ControleStatus  // open / akkoord / opmerkingen
   bevindingen?: string              // vrij tekstveld met opmerkingen of 'geen bijzonderheden'
+  berekend_door?: string            // wie de controle aanvroeg ("Vraag controle aan")
+  controle_door?: string            // wie het akkoord/de opmerkingen vastlegde
+  ingediend_door?: string           // wie de aangifte als ingediend markeerde
+  // Controleur = berekenaar/indiener (eenmanszaak): akkoord met "toch akkoord"
+  // en verplichte bevindingen (utils/aangifteStappen.ts, controleBlokkade).
+  zelfde_persoon_akkoord?: boolean
 }
 
 export interface AccijnsAangifte extends AangifteControle {
@@ -1587,6 +1595,7 @@ export interface AccijnsAangifte extends AangifteControle {
   berekend_datum?: string
   ingediend_datum?: string
   betaald_datum?: string
+  bedrag?: number                   // maandtotaal in euro's, vastgelegd bij indienen
 }
 
 // ── NVWA/HACCP Compliance Types ─────────────────────────────────────────────
@@ -2002,12 +2011,27 @@ export interface HaccpInst {
 export type BtwAangifteStatus = 'open' | 'berekend' | 'ingediend' | 'betaald'
 
 export interface BtwAangifte extends AangifteControle {
-  // Sleutel: jaar + kwartaal (bv. '2026-Q1') of jaar + maand bij maandaangifte.
+  // Het controlerecord van een periode. Sleutel = de periodesleutel
+  // ('2026-Q3', '2026-M09'); oude records van een maandaangifte heetten
+  // '<jaar>-<maandnaam in de schermtaal>' en worden bij de volgende
+  // schrijfactie omgezet (utils/aangifteStappen.ts, metBtwControle).
   periode: string
   status: BtwAangifteStatus
   berekend_datum?: string
   ingediend_datum?: string
   betaald_datum?: string
+}
+
+// De indiening van een BTW-periode (in dezelfde key `btw_aangiftes`): een
+// record mét `periodeKey` betekent "ingediend" (geslotenPeriodeSets in
+// utils/btw.ts). Los van het controlerecord hierboven, dat nooit een
+// `periodeKey` krijgt.
+export interface BtwIngediend {
+  id: number
+  periodeKey: string
+  ingediend_datum: string
+  bedrag: number                    // ingediend bedrag in hele euro's; negatief = teruggave
+  ingediend_door?: string
 }
 
 // Waterprofiel van het bronwater (gereedschap: Waterprofiel). Ionen in mg/L,
