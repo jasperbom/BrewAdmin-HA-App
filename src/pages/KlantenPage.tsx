@@ -37,6 +37,8 @@ import { VerkoopPil } from './admin/facturen/FactuurPil'
 import MailModal from '../components/MailModal'
 import Modal from '../components/ui/Modal'
 import { logAudit } from '../utils/audit'
+import { orderNummer } from '../utils/picking'
+import type { GaNaar } from '../utils/route'
 
 export interface KlantenPageProps {
   klanten: any[]
@@ -50,11 +52,11 @@ export interface KlantenPageProps {
   logo?: string | null
   appName?: string
   setPage: (p: string) => void
-  setOpenOrderId: (id: number | null) => void
+  /** Navigatie van de schil: een bestelling openen (in de route), een factuur
+   *  of de facturen van de klant op Facturen (segment/filter/record). */
+  gaNaar: GaNaar
   auditLog: any[]
   setAuditLog: any
-  /** Naar een ander scherm met segment/filter/record (een factuur op Facturen). */
-  gaNaarDoel?: (d: AttentieDoel) => void
   /** `{pagina: 'klanten', id}` = die klant meteen openen (bijv. vanuit het factuurdetail). */
   navDoel?: AttentieDoel | null
   onNavDoelConsumed?: () => void
@@ -105,8 +107,8 @@ const matchOngekoppeldeOrder = (b: any, email: string, naam: string): boolean =>
 const KlantenPage: React.FC<KlantenPageProps> = ({
   klanten, setKlanten, bestellingen, setBestellingen, verkoopFacturen,
   breweryDetails, smtpCreds, factuurLogo=null, logo=null, appName='',
-  setPage, setOpenOrderId, auditLog, setAuditLog,
-  gaNaarDoel, navDoel = null, onNavDoelConsumed,
+  gaNaar, auditLog, setAuditLog,
+  navDoel = null, onNavDoelConsumed,
 }) => {
   const [view, setView] = React.useState<'list'|'detail'>('list')
   const [selectedId, setSelectedId] = React.useState<number|null>(null)
@@ -541,7 +543,9 @@ const KlantenPage: React.FC<KlantenPageProps> = ({
 
   // ── RENDER ────────────────────────────────────────────────────────────────
 
-  const bestelNr = (b: any): string => b.wc_order_nummer ? `WC-${b.wc_order_nummer}` : `M-${b.id}`
+  // Hetzelfde nummer als op de bestelling, de pakbon en in de kopbalk
+  // (utils/picking.ts): een handmatige order heet "M-0015", niet "M-<interne id>".
+  const bestelNr = (b: any): string => orderNummer(b)
   const bestelStatus = (b: any) => (
     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${STATUS_COLORS[b.status] || 'bg-gray-100'}`}>
       {t(`orders_status_${b.status}`, b.status)}
@@ -549,7 +553,7 @@ const KlantenPage: React.FC<KlantenPageProps> = ({
   )
   const bestellingKolommen: LijstKolom<any>[] = [
     { id: 'datum', kop: t('lbl_date'), cel: (b: any) => <span className="text-gray-600 whitespace-nowrap">{fmtD(b.datum)}</span> },
-    { id: 'nr', kop: t('factuur_number'), cel: (b: any) => <span className="font-mono text-xs text-gray-700">{bestelNr(b)}</span> },
+    { id: 'nr', kop: t('lbl_bestelnummer'), cel: (b: any) => <span className="font-mono text-xs text-gray-700">{bestelNr(b)}</span> },
     { id: 'status', kop: t('lbl_status'), cel: bestelStatus },
     { id: 'bruto', kop: t('lbl_bruto'), rechts: true, klasse: 'whitespace-nowrap', cel: (b: any) => <span className="font-semibold">{fmt(orderBruto(b))}</span> },
   ]
@@ -603,8 +607,8 @@ const KlantenPage: React.FC<KlantenPageProps> = ({
           )}
           <div className="ml-auto flex items-center gap-2">
             {selectedId !== null && (
-              <Btn v="secondary" onClick={mailKlant} disabled={!smtpCreds?.enabled || !form.email || !emailValid}
-                title={!smtpCreds?.enabled ? t('mail_no_smtp') : (!form.email ? t('mail_no_recipient') : '')}>
+              <Btn v="secondary" onClick={mailKlant} disabled={!smtpCreds?.enabled || !form.email || !emailValid || !selected?.email}
+                title={!smtpCreds?.enabled ? t('mail_no_smtp') : (!form.email || !selected?.email ? t('mail_no_recipient') : '')}>
                 ✉ {t('klanten_mail_klant')}
               </Btn>
             )}
@@ -763,7 +767,7 @@ const KlantenPage: React.FC<KlantenPageProps> = ({
                     </div>
                   </div>
                 )}
-                onKies={(b: any) => { setOpenOrderId(b.id); setPage('bestellingen') }}
+                onKies={(b: any) => gaNaar({ pagina: 'bestellingen', id: b.id })}
                 rijLabel={(b: any) => `${bestelNr(b)}, ${fmtD(b.datum)}`}
                 label={t('nav_bestellingen')}
                 leeg={<LegeStaat titel={t('klanten_no_orders')} />}
@@ -775,13 +779,13 @@ const KlantenPage: React.FC<KlantenPageProps> = ({
                 <h3 className="text-sm font-semibold text-gray-800">
                   {t('nav_facturen')} ({selectedStats.facturen.length})
                 </h3>
-                {gaNaarDoel && selectedStats.facturen.length > 0 && (
+                {selectedStats.facturen.length > 0 && (
                   <button type="button"
                     onClick={() => {
                       // Alle facturen van de klant, zoals hier: de gedeelde
                       // periode gaat op "alles" (status Alles, filter op de klant).
                       zetGedeeldePeriode('alles')
-                      gaNaarDoel({ pagina: 'facturen', tab: 'verkoop', filter: `klant:${selectedId}` })
+                      gaNaar({ pagina: 'facturen', tab: 'verkoop', filter: `klant:${selectedId}` })
                     }}
                     className="t-accent-text text-sm font-medium hover:underline min-h-tap sm:min-h-0 px-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
                     {t('klanten_facturen_van_klant')}
@@ -804,7 +808,7 @@ const KlantenPage: React.FC<KlantenPageProps> = ({
                     </div>
                   </div>
                 )}
-                onKies={gaNaarDoel ? (f: any) => gaNaarDoel({ pagina: 'facturen', tab: 'verkoop', id: Number(f.id) }) : undefined}
+                onKies={(f: any) => gaNaar({ pagina: 'facturen', tab: 'verkoop', id: Number(f.id) })}
                 rijLabel={(f: any) => `${f.factuurnummer || t('lbl_onbekend')}, ${fmtD(f.datum)}`}
                 label={t('nav_facturen')}
                 leeg={<LegeStaat titel={t('klanten_geen_facturen')} />}

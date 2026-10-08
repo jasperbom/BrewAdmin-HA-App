@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchAfvullingenVoorRegel, orderProductId, telOpenstaandeBestellingen, bestellingenOmTePicken, afvullingHoortBijBierNaam, onGepickteRegels, verzamelPicklijst } from '../picking'
+import { matchAfvullingenVoorRegel, orderProductId, telOpenstaandeBestellingen, bestellingenOmTePicken, afvullingHoortBijBierNaam, onGepickteRegels, verzamelPicklijst, orderNummer, herkomstVanAfvulling, herkomstVanPick } from '../picking'
 
 // Referentiedata: één product "Tripel Phase" met verpakking 033 fles. De SKU
 // is in het verleden gewijzigd van "OUD033-1" naar "TAFL033-1"; de huidige
@@ -323,5 +323,79 @@ describe('verzamelPicklijst — één picklijst over meerdere bestellingen', () 
 
   it('is leeg zonder open orders', () => {
     expect(verzamelPicklijst([], [], {afvullingen, beschikbaar: () => 1, data: {bat}})).toEqual({regels: [], orders: [], totaal: 0})
+  })
+})
+
+describe('orderNummer — het zichtbare nummer van een bestelling', () => {
+  it('toont het WooCommerce-nummer van een webshoporder', () => {
+    expect(orderNummer({ id: 1712345678901, wc_order_nummer: '4321' })).toBe('WC-4321')
+    expect(orderNummer({ id: 3, wc_order_nummer: 4321, bestel_nummer: 'M-0014' })).toBe('WC-4321')
+  })
+
+  it('toont het bestelnummer van een handmatige order, anders M-<id>', () => {
+    expect(orderNummer({ id: 14, bestel_nummer: 'M-0014' })).toBe('M-0014')
+    expect(orderNummer({ id: 14 })).toBe('M-14')
+    expect(orderNummer({ id: 14, wc_order_nummer: '', bestel_nummer: '' })).toBe('M-14')
+    expect(orderNummer({ id: 14, wc_order_nummer: null })).toBe('M-14')
+  })
+
+  it('geeft een lege tekst zonder bestelling', () => {
+    expect(orderNummer(null)).toBe('')
+    expect(orderNummer(undefined)).toBe('')
+    expect(orderNummer({})).toBe('')
+  })
+})
+
+describe('verzamelPicklijst — lotcode per suggestie', () => {
+  const bat = [{id: 1, naam: 'Blond', biernaam: 'Blond', batch_nummer: '2607'}, {id: 2, naam: 'Blond', biernaam: 'Blond', batch_nummer: '#2610'}]
+  const afvullingen = [
+    // Eigen lotcode op de afvulling.
+    {id: 10, batch_id: 1, artikel_sku: 'BL33', verpakking_type: 'fles', hoeveelheid: 5, tht: '2026-12-01', lotcode: 'L2607-B1'},
+    // Geen eigen code: die van de afvulsessie.
+    {id: 11, batch_id: 2, artikel_sku: 'BL33', verpakking_type: 'fles', hoeveelheid: 40, tht: '2027-03-01', sessie_id: 7},
+  ]
+  const bestellingen = [{id: 1, status: 'nieuw', datum: '2026-10-01', klant_naam: 'Jan',
+    regels: [{id: 1, bier_naam: 'Blond', verpakking_type: 'fles', sku: 'BL33', aantal: 12}]}]
+
+  it('neemt de lotcode van de afvulling, anders van de sessie', () => {
+    const lijst = verzamelPicklijst(bestellingen, [], {
+      afvullingen, beschikbaar: (a: any) => Number(a.hoeveelheid), data: {bat},
+      afvulSessies: [{id: 7, lotcode: 'L2610-B1'}],
+    })
+    expect(lijst.regels[0].suggesties.map(s => [s.lotcode, s.batch_nummer, s.aantal])).toEqual([['L2607-B1', '2607', 5], ['L2610-B1', '#2610', 7]])
+  })
+
+  it('zonder sessies: een lege lotcode — nooit het batchnummer als lot', () => {
+    const lijst = verzamelPicklijst(bestellingen, [], {afvullingen, beschikbaar: (a: any) => Number(a.hoeveelheid), data: {bat}})
+    expect(lijst.regels[0].suggesties.map(s => s.lotcode)).toEqual(['L2607-B1', ''])
+  })
+})
+
+describe('herkomstVanAfvulling / herkomstVanPick — lotcode, batch en THT', () => {
+  const batches = [{id: 5, batch_nummer: '#2607'}, {id: 6, batch_nummer: '2608'}]
+  const afvullingen = [
+    {id: 1, batch_id: 5, lotcode: 'L2607-B1', tht: '2027-09-28'},
+    {id: 2, batch_id: 6, sessie_id: 3, tht: '2027-10-01'},
+    {id: 3, batch_id: 6, tht: ''},
+  ]
+  const afvulSessies = [{id: 3, lotcode: 'L2608-B2'}]
+  const data = {afvullingen, batches, afvulSessies}
+
+  it('eigen lotcode, het batchnummer zonder # en de THT', () => {
+    expect(herkomstVanAfvulling(afvullingen[0], data)).toEqual({lotcode: 'L2607-B1', batchId: 5, batchNummer: '2607', tht: '2027-09-28'})
+  })
+  it('zonder eigen code: die van de afvulsessie', () => {
+    expect(herkomstVanAfvulling(afvullingen[1], data).lotcode).toBe('L2608-B2')
+  })
+  it('zonder lotcode en sessie: leeg (geen batchnummer als lot)', () => {
+    expect(herkomstVanAfvulling(afvullingen[2], data)).toEqual({lotcode: '', batchId: 6, batchNummer: '2608', tht: ''})
+  })
+  it('een pick via zijn afvulling; een oude pick zonder afvulling via zijn batch', () => {
+    expect(herkomstVanPick({afvulling_id: 2, batch_id: 6}, data).lotcode).toBe('L2608-B2')
+    expect(herkomstVanPick({afvulling_id: 99, batch_id: 5}, data)).toEqual({lotcode: '', batchId: 5, batchNummer: '2607', tht: ''})
+  })
+  it('batch 0 of onbekend: geen batch-id (geen link naar een batch die er niet is)', () => {
+    expect(herkomstVanPick({afvulling_id: 99, batch_id: 0}, data).batchId).toBeNull()
+    expect(herkomstVanAfvulling(null, data)).toEqual({lotcode: '', batchId: null, batchNummer: '', tht: ''})
   })
 })

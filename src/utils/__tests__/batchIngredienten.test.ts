@@ -35,6 +35,41 @@ describe('ingredientVoorBatchRegel', () => {
   })
 })
 
+// Een regel met een lot hoort bij het ingrediënt van dat lot: "Pilsner Malt"
+// uit Brewfather, afgeboekt van een lot Pilsmout.
+describe('ingredientVoorBatchRegel — via het lot', () => {
+  const lots = [{id: 10, ingredient_id: 1}, {id: '11', ingredient_id: 5}, {id: 12, ingredient_id: 99}]
+
+  it('vindt het ingrediënt van het lot als de naam niet matcht', () => {
+    expect(ingredientVoorBatchRegel({ingredient_naam: 'Pilsner Malt', lot_id: 10}, ingredienten, lots)?.id).toBe(1)
+    expect(ingredientVoorBatchRegel({ingredient_naam: 'Milk sugar', lot_id: '11'}, ingredienten, lots)?.id).toBe(5)
+  })
+
+  it('het lot wint van een toevallige naam-match', () => {
+    expect(ingredientVoorBatchRegel({ingredient_naam: 'Lactose', lot_id: 10}, ingredienten, lots)?.id).toBe(1)
+  })
+
+  it('een gezet en bestaand id wint van het lot', () => {
+    expect(ingredientVoorBatchRegel({ingredient_id: 7, ingredient_naam: 'x', lot_id: 10}, ingredienten, lots)?.id).toBe(7)
+  })
+
+  it('een verdwenen id: het lot mag nog spreken, de naam niet', () => {
+    expect(ingredientVoorBatchRegel({ingredient_id: 99, ingredient_naam: 'Lactose', lot_id: 10}, ingredienten, lots)?.id).toBe(1)
+    expect(ingredientVoorBatchRegel({ingredient_id: 99, ingredient_naam: 'Lactose', lot_id: 77}, ingredienten, lots)).toBeUndefined()
+  })
+
+  it('een onbekend lot of een lot met een verdwenen ingrediënt valt terug op de naam', () => {
+    expect(ingredientVoorBatchRegel({ingredient_naam: 'Lactose', lot_id: 77}, ingredienten, lots)?.id).toBe(5)
+    expect(ingredientVoorBatchRegel({ingredient_naam: 'Lactose', lot_id: 12}, ingredienten, lots)?.id).toBe(5)
+    expect(ingredientVoorBatchRegel({ingredient_naam: 'Lactose', lot_id: ''}, ingredienten, lots)?.id).toBe(5)
+  })
+
+  it('zonder lots precies als vroeger', () => {
+    expect(ingredientVoorBatchRegel({ingredient_naam: 'Pilsner Malt', lot_id: 10}, ingredienten)).toBeUndefined()
+    expect(ingredientVoorBatchRegel({ingredient_naam: 'Pilsner Malt', lot_id: 10}, ingredienten, null)).toBeUndefined()
+  })
+})
+
 describe('afgeboekteRegels', () => {
   it('geeft niets bij een lege lijst of alleen open regels', () => {
     expect(afgeboekteRegels([], 1)).toEqual([])

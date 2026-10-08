@@ -4,6 +4,389 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.98] — 2026-10-08
+
+### Kostensoort wijzigen, ook als de BTW-aangifte al gedaan is
+
+In de winst-en-verliesrekening stond bij "Overige kosten" van alles wat eigenlijk
+een eigen kostensoort heeft (een koelinstallatie, transport). Bij facturen in een
+periode waarvan de BTW-aangifte al was ingediend of betaald kon je dat niet meer
+aanpassen: de hele factuur zat op slot, terwijl de kostensoort geen bedrag en
+geen BTW verandert.
+
+- **Kostensoort wijzigen** in het detail van een inkoopfactuur (Administratie ›
+  Facturen › Inkoop; ook via W&V › Overige kosten › het journaal › de factuur).
+  Per regel kies je de kostensoort; bedragen, BTW-tarief, datum en BTW-periode
+  blijven precies gelijk. Bij een factuur in een afgesloten periode staat de knop
+  op de plek van Bewerken (dat blijft op slot); bij een open periode staat hij
+  onder Meer.
+- **De aangifte verandert niet.** Het journaal krijgt een storno en een
+  herboeking op dezelfde datum en in dezelfde BTW-periode als de oorspronkelijke
+  boeking, ook als je periodetype sindsdien anders is of de factuur was
+  doorgerold. De app controleert vooraf dat de BTW per periode, tarief en soort
+  exact gelijk blijft; klopt het journaal niet met de regels, dan wijzigt er niets
+  en zegt het venster waarom.
+- Ingrediënt- en verpakkingsregels (voorraad) blijven Grondstoffen en
+  Verpakkingsmateriaal. Een factuur zonder regels met een bedrag (oude
+  bankboekingen) wordt als geheel ingedeeld.
+- Het inkoopdetail toont per regel de kostensoort, en het scangeheugen leert de
+  nieuwe indeling: de volgende factuur van die leverancier met dezelfde
+  omschrijving krijgt meteen de juiste kostensoort.
+- Elke herindeling staat in het auditlogboek.
+
+---
+
+## [1.12.97] — 2026-10-08
+
+Productie en Verkoop zijn opnieuw ingericht volgens het opzet
+(`docs/OPZET-PRODUCTIE-VERKOOP.md`), in zeven delen; tegelijk kreeg
+Administratie een nieuwe indeling (1.12.89–1.12.94). Deze versie brengt die
+twee samen.
+
+### Samengevoegd met de nieuwe Administratie
+
+- **Eén navigatie.** `gaNaar` (utils/route.ts: `resolveerDoel`, dan
+  `doelNaarRoute`) is de enige sprongfunctie. De rijen van het
+  Administratie-dashboard, de oude tabbladen van Boekhouding en `agp`,
+  `inventarisatie` en `voorraadverloop` landen op Facturen, Bank, Aangiftes,
+  Voorraad of Rapporten met het juiste segment, ook als oude link of
+  bladwijzer. Een batch, recept, product of bestelling staat in de route; een
+  factuur of klant gaat als eenmalig navigatiedoel naar de pagina.
+- **Een bestelling openen vanuit een factuur of een klant** gaat via de route
+  (`#/verkoop/bestellingen/<id>`), zoals overal; de terugknop brengt je terug.
+- **Factuur maken vóór het ophalen, in de nieuwe bestelling.** Bij een betaalde
+  bestelling die nog niet is opgehaald of verzonden staat "Factuur maken" in
+  het ⋯-menu ("Nu al; de bestelling blijft open"). De kaart in de lijst en de
+  kop van de bestelling tonen dan "Gefactureerd", en de volgende stap heet
+  "Afronden" in plaats van "Factuur maken". Een gefactureerde bestelling krijgt
+  geen regels meer bij of af (de BTW via "BTW corrigeren"); annuleren maakt de
+  creditnota. Lukt het factuur- of creditnotanummer niet, dan staat dat in het
+  venster zelf, niet in een browsermelding.
+- **Klanten:** de bestellingen en facturen van een klant (op de telefoon als
+  kaarten) tonen hetzelfde bestelnummer als de bestelling zelf (`M-0015`).
+- **Het ⋯-menu** schuift bij scrollen met zijn knop mee en klapt omhoog als het
+  eronder niet past; één regel daarvoor, niet twee.
+
+### Productie & Verkoop, deel 7: brouwzaal en batch op de telefoon — het opzet is gebouwd
+
+**Brouwzaal**
+- **Tankkaart** met mini-tank in de bierkleur, tank + product, fase met dagteller,
+  recept, SG (drie decimalen), °C en pH met meetmoment, vergistingsvoortgang en
+  de verwachte afvuldatum ("over tijd" als die voorbij is). De etiketchip staat
+  er alleen als het etiket niet klopt. **Eén knop: de volgende stap** — met ›
+  opent hij de batch op de juiste plek, zonder › voert hij uit (*Meting* opent
+  het meetblad). Op de telefoon één kaart met rijen per tank.
+- **Andere batches**: gepland, brouwend en afgevuld, plus Vergisten/
+  Conditioneren zonder (bestaande) tank, met dezelfde ene knop; *+ Batch* opent
+  het blad *Wat brouw je?*; "Gesloten batches (n) ›".
+- **Vraagt om aandacht** (met de etiketpost naast de afvuldag) en **Komende 14
+  dagen** (brouwdagen, dry hop, verwacht afvullen met etiketchip) in een
+  rechterkolom; tussen 768 en 1279 px eronder, op de telefoon "Vraagt om
+  aandacht" bovenaan. De knoppenrij die de tabs herhaalde is weg.
+
+**Batchpagina**
+- **FaseKop** in plaats van de stappenbalk die op de telefoon zijwaarts scrolde:
+  op het bureau een compacte balk, op de telefoon "Fase 4 van 6 ·
+  Conditioneren" met een lijst van de fases.
+- Kop volgens het opzet: *Batchdossier* (vanaf Brouwen, als tussenrapport) en
+  ⋯ (Printen, Gegevens bewerken; bij Gepland ook Recept opnieuw toepassen en
+  Verwijderen met vijf seconden terugweg — verwijderen kan alleen bij Gepland).
+- Op de telefoon draagt een **vaste actiebalk** onderin de stap van de fase
+  (bijv. "ABV vastzetten · 7,5 % vol"); nooit twee primaire knoppen onderin.
+- Geen browservragen meer op de batchpagina en de brouwzaal (tank verplaatsen,
+  carbonatie, cold crash, ingrediënten, afvulling of batch verwijderen): de
+  bevestiging staat in de knop, een fout als melding op de pagina. Wat er
+  geboekt wordt is ongewijzigd (vergeleken met de vorige versie).
+
+**Documentatie**
+- CLAUDE.md beschrijft de nieuwe schil (tabs, routes, `gaNaar`, detailschermen),
+  de regels voor *Etiket & website* (één bron, één schrijfweg, CCP 3
+  onafhankelijk, ABV vastzetten, energie kcal/kJ, webshop), recepten "in
+  gebruik", de nieuwe utils en componenten, en `producten`/`product_artikelen`
+  in de key-tabel.
+
+**Bewust niet gebouwd of nog open**
+- **Gluten** wordt niet genormaliseerd (zoals CCP 3 altijd deed): een etiket met
+  alleen "gerst" terwijl de ingrediënten "gluten" dragen is rood. Beslissing aan
+  de brouwerij, na toetsing aan het HACCP-handboek.
+- De ABV-poort en de CCP 1-vrijgave worden alleen in de app afgedwongen, niet
+  door de server.
+- Een tankchip in de batchkop blijft staan als die tank niet meer bestaat; een
+  lange biernaam maakt een tankrij op de telefoon hoger.
+- *Picken ›* in het Overzicht opent de bestelling, niet meteen de pickmodal.
+- In het formulier *Nieuwe bestelling* staan nog browsermeldingen.
+- Energie op het gedrukte etiket staat standaard op "niet vermeld"; de website
+  toont de berekende waarde.
+
+### Productie & Verkoop, deel 6: "Wat brouw je?" en de productpagina als knooppunt
+
+**Nieuwe batch: het blad "Wat brouw je?"**
+- Eén blad (venster op het bureau, paneel van onderen op de telefoon) met vijf
+  ingangen: Brouwzaal, Batches, een vrije tank (tank ingevuld), *Brouwen* op
+  een recept, en *Nieuwe batch* op een product (product en huidig recept
+  ingevuld). Het oude planformulier is weg.
+- **Stap 1** begint bij *Jouw producten*: per product het huidige recept, hoe
+  vaak gebrouwen, de laatste brouwdatum of "gepland", en "ingrediënten klaar"
+  of "tekort n". Daarna *Seizoen / uit roulatie*, *Andere recepten in gebruik*,
+  en het hele Brewfather-archief via zoeken. Een oudere versie kies je onder
+  het recept, nooit als losse regel.
+- **Stap 2:** brouwdatum, de tank met zijn status óp die datum (vrij, schoon,
+  vuil; gereserveerd waarschuwt; bezet tot ± datum en een lagertank zijn niet
+  te kiezen), liters en het product (één kandidaat vanzelf, meer kiezen, geen:
+  *Nieuw product* of *Later*).
+- **Vooruitblik op het etiket** vóór de brouwdag: de verwachte alcohol tegen
+  het etiket (met de marge) en de allergenen uit het recept tegen het etiket,
+  met *Etiket bijwerken ›*.
+- *Inplannen* opent de nieuwe batch. Het levert dezelfde batch en batchregels
+  op als het oude formulier (nagelopen). *Recept opnieuw toepassen* gebruikt
+  dezelfde receptkiezer.
+
+**De productpagina als knooppunt**
+- Een **ketenstrook** *Recept › Brouwsels › Etiket › Voorraad › Verkoop*; elk
+  vak springt naar zijn blok. Op het bureau *Maken* en *Verkopen* naast elkaar,
+  op de telefoon een vaste segmentstrook (Voorraad · Etiket · Brouwsels ·
+  Artikelen) met per segment de eigen actie onderin.
+- **Recept:** het huidige recept (vastzetten kan), eerdere recepten, recept
+  koppelen. **Brouwsels:** elke batch klikbaar, ook de lotcodes, met
+  gemiddelden en *Nieuwe batch*. **Etiket:** de etiketkaart, vergeleken met de
+  nieuwste batch. **Voorraad:** per verpakking vrij · AGP · besteld, lotregels
+  met THT, *Uitslaan* per lot en "komt eraan". **Verkoop:** artikelen met marge
+  en *Open bestellingen met dit bier*.
+- **Eén kostprijs per liter** met bron ("uit 2 brouwsels · 553 L afgevuld");
+  de marge per artikel rekent met de echte verpakkingsprijs.
+- De productlijst toont per product de voorraad uit dezelfde telling als
+  Overzicht, kassa en bestellingen, en de etiketstatus.
+- Een tekort toont wat er na uitslaan écht ontbreekt ("tekort 98 · 630 eerst
+  uitslaan") in plaats van het hele bestelde aantal.
+- Uitslaan, rebranden en afboeken boeken hetzelfde als voorheen (nagelopen);
+  W&V en COGS zijn ongewijzigd.
+
+### Productie & Verkoop, deel 5: Etiket bijwerken en de tab Batches
+
+**Etiket bijwerken — één plek, ook voor de webshop**
+- Nieuwe dialoog **Etiket bijwerken** (venster op het bureau, paneel van onderen
+  op de telefoon), te openen vanaf de etiketkaart van de batch, het ⋯-menu van
+  het product, de HACCP-matrix en CCP 3:
+  - *Allergenen op het gedrukte etiket* beginnen bij het huidige etiket, nooit
+    bij de batch — CCP 3 blijft een onafhankelijke controle.
+  - *Getallen*: oud → nieuw uit de referentiebatch, met het oordeel ("binnen
+    ±1,0 % vol: mag blijven staan"); energie *Niet vermeld | Vermeld* (kcal én
+    kJ).
+  - *Etiketversie*: voorstel v3 → v4 met datum; wijzigen allergenen of ABV, dan
+    is een nieuwe versie verplicht ("Ik heb het gedrukte etiket v4 voor me").
+  - Opslaan met auditregel en vijf seconden terugweg.
+- Dit is nu de **enige schrijfweg** voor de allergenen en de versie van het
+  etiket: de HACCP-allergenenmatrix is alleen-lezen met een knop *Etiket
+  bijwerken*, en CCP 3 opent dezelfde dialoog.
+- **Webshop:** staat WooCommerce aan, dan volgt *Ook naar de webshop?* met per
+  artikel het verschil; alleen bierinformatie gaat mee, nooit prijs of
+  voorraad, en nooit automatisch. De app onthoudt bij elke push en pull wat er
+  in de winkel staat, zodat de etiketkaart ziet of de website achterloopt.
+  Allergenen gaan als "Bevat: gerst, tarwe." achter de ingrediëntentekst (en
+  komen er bij ophalen weer af); de Bevat-regel dekt alle etiketversies die nog
+  op voorraad liggen.
+
+**De tab Batches: Lopend · Gesloten · Agenda**
+- **Lopend:** elke batch die niet gesloten is (ook zonder tank), gegroepeerd per
+  fase, met één knop: de volgende stap (*ABV ›*, *Afronden ›*, *Meting*). Een
+  geplande batch waarvan de brouwdag voorbij is, staat als "over tijd".
+- **Gesloten:** het archief per jaar, met zoeken (ook op lotcode) en filters op
+  product en recept.
+- **Agenda:** de brouwagenda (een balk opent de batch) met *Behoefte vs
+  voorraad* via vinkjes; op de telefoon een lijst per tank in plaats van een
+  Gantt.
+- *+ Nieuwe batch* opent het planformulier als venster (het stond onder de
+  agenda). Verwijderen kan alleen bij Gepland, via ⋯, met terugweg.
+- De attentiepost "batches met open taken" opent Batches › Lopend.
+
+### Productie & Verkoop, deel 4: etiket & website, verkoopoverzicht, bestellingen op de telefoon
+
+**Etiket & website in de batch**
+- Nieuwe kaart **Etiket & website** op de batch (Conditioneren zodra de FG
+  gemeten is, Afvullen, en alleen-lezen in Gereed en het batchdossier). Per
+  waarde wat deze batch heeft, met bron, naast wat er nu op het etiket staat en
+  een oordeel:
+  - *Verplicht op het etiket:* alcohol ("7,0 % vol", met de wettelijke marge
+    ±0,5/±1,0 % vol), allergenen met de Bevat-regel ("Moet worden: Bevat:
+    gerst, tarwe"), lotcode en THT per verpakking.
+  - *Voor de website:* bitterheid (berekend, Tinseth), kleur (recept, niet
+    gemeten), energie per 100 ml in kcal én kJ (berekend uit OG/FG),
+    ingrediënten.
+  - Eén statuschip: "Etiket klopt", "Etiket: tarwe ontbreekt", "Etiket nog
+    niet vastgelegd". *Kopieer etiketgegevens* zet alles voor de drukker op het
+    klembord. Op de telefoon een blok van vier tegels; een tik toont de bron.
+- **ABV vastzetten** in Conditioneren: de berekende ABV (Balling, uit OG/FG)
+  of een labwaarde. Verplicht vóór de eerste afvulsessie, net als de CCP 1-
+  vrijgave, omdat accijns en THT-klasse erop rekenen. Batches die al afgevuld
+  of al in een sessie zijn, worden niet geblokkeerd.
+- **CCP 3:** het veld etiketversie begint leeg met "verwacht: v3" ernaast
+  (de versie op de rol in je hand); naast het alcoholvinkje staan de getallen.
+  Nieuwe controles leggen die getallen vast. Allergenen via het lot tellen nu
+  ook in CCP 3, de vrijgave en de HACCP-pagina.
+- Het **batchdossier** toont IBU, EBC en energie met bron, de etiketregels en
+  de getallen bij CCP 3. Gereed toont de vaste brouwkosten met hun bron (alleen
+  tonen, niets wegschrijven).
+- Geen browservragen meer bij de afvulcontrole en de fase-overgangen.
+
+**Verkoop › Overzicht**
+- **Vraagt om aandacht** met nieuwe posten: etiket klopt niet, afgevuld zonder
+  artikel, bier-THT binnen 60 dagen, dubbele SKU. Batchtaken tellen per batch.
+- **Te picken:** wat er besteld is, het bedrag en of het geleverd kan worden
+  ("kan geleverd", "eerst uitslaan", "tekort 12 · komt ± 8-10").
+- **Voorraad en komt eraan:** per product en verpakking (nooit opgeteld), met
+  wat er in de tanks ligt en wanneer het afgevuld wordt. Eén telling, dezelfde
+  als in de kassa. De vaste drempel van 12 is weg.
+
+**Bestellingen op de telefoon**
+- Zoeken en statuschips met tellers; bestellingen als kaarten.
+- Een bestelling heeft één volgende stap onderin (*Picken*, *Markeer
+  verzonden*, *Factuur maken*); de rest in ⋯.
+- Per orderregel "46 vrij · tekort 2" en "Komt eraan: #2609 … ›"; nooit meer
+  "Markeer als merch" voor eigen bier dat in de tank ligt.
+- De **lotcode** staat op de pickregel, de pakbon (Lot · THT · Batch) en de
+  picklijst; er is ook een picklijst per bestelling.
+- Wat er geboekt wordt is ongewijzigd (vergeleken met de vorige versie: geen
+  verschil). Het totaal in lijst en detail is nu gelijk aan de factuur
+  (inclusief statiegeld bij een handmatige order).
+
+### Productie & Verkoop, deel 3: de keten, recepten in gebruik, kassa op de telefoon
+
+**De keten in de batch**
+- **Een nieuwe batch krijgt zijn product.** Hangt het recept aan precies één
+  product (uit roulatie telt mee, gearchiveerd niet), dan koppelt de app het
+  meteen, met "Gekoppeld aan … · Ongedaan maken". Bij meer producten kies je;
+  zonder product kies je *Nieuw product* of *Later*. Ook bij *Recept opnieuw
+  toepassen*.
+- **De batchkop toont de keten**: *Recept · … ›*, *Product · … ›* (één chip per
+  product) en *Tank*, met "gebrouwen … · dag n in …" — in elke fase, klikbaar
+  naar het recept en het product. Zonder product: *Product kiezen*.
+- CCP 3, het afvulformulier en Batchgegevens zetten de producten van het recept
+  bovenaan. Een product dat bij het afvullen ontstaat erft naam, stijl en
+  recept, maar geen ABV en geen allergenen (die zijn etiketgegevens).
+- Overal dezelfde batchtitel.
+
+**Recepten in gebruik**
+- De receptenpagina opent op **In gebruik**, gegroepeerd per product (huidig
+  recept bovenaan, eerdere ingeklapt), met *Zonder product* onderaan. Daarnaast
+  **Archief** (platte lijst, Brewfather-tags als filter, ook "zonder tag") en
+  **Verborgen** ("nog in gebruik bij …"). Zoeken werkt over alles.
+- Per recept via ⋯: *Brouwen*, *Vastpinnen*, *Koppel aan product*, *Verbergen*
+  (met terugweg) — ook met een tik op de telefoon.
+- Het receptdetail toont het product, elke batch die ervan gebrouwen is
+  (klikbaar), het verwachte etiket en de versies. Op de telefoon een eigen
+  scherm met *Brouwen* onderin.
+- *Recept koppelen* op de productpagina gebruikt dezelfde kiezer.
+
+**Kassa op de telefoon**
+- Een vaste **bonbalk** onderin ("6 artikelen · € 48,10", *Bon ›*,
+  *Afrekenen*); de bon opent als paneel van onderen. Op het bureau blijft de
+  indeling zoals hij was.
+- **Eén tegel per product** met de verpakkingen als knoppen en de vrije
+  voorraad per verpakking (nooit flessen en fusten opgeteld). Prijzen incl. BTW
+  voor een particulier, excl. voor een zakelijke klant (alleen weergave).
+- Voorraad in de AGP staat als link "630 in AGP · uitslaan ›"; de kassa
+  verkoopt alleen vrije voorraad. Wat er geboekt wordt is ongewijzigd
+  (vergeleken met de vorige versie: geen verschil).
+
+### Productie & Verkoop, deel 2: snelle winst
+
+**Productie**
+- **Recepten:** de groep "Zonder tag" toont echt de recepten zonder tag; een
+  recept met meer tags staat één keer (met "ook ipa"); zoeken klapt de groepen
+  met treffers open en zegt het als er niets is. Verbergen en tagbeheer zitten
+  in een ⋯-menu en werken ook met een tik op de telefoon. Typen in een hoptijd
+  houdt de focus vast. Op de telefoon staan de ingrediënten van een recept als
+  regels in plaats van een tabel die zijwaarts scrolde, en *Brouwen* past in de
+  kaart.
+- **SG, OG en FG overal met drie decimalen** (Gereed-tegels, brouwzaal,
+  brouwdag, batchdossier).
+- **Brouwzaal "Buiten de tanks"** toont ook een batch in Vergisten of
+  Conditioneren zonder (bestaande) tank, met de reden erbij.
+- **Receptkeuze** bij een nieuwe batch en bij *Recept opnieuw toepassen* laat
+  verborgen recepten, recepten met alleen gearchiveerde tags en versies weg.
+  Geen browservensters meer: de reden staat in het formulier en toepassen
+  bevestig je in de knop.
+- **CCP 3 en het afvulformulier** beginnen op het product van de batch;
+  gearchiveerde producten staan niet meer in de keuze.
+- Batchgegevens kopiëren geen GN-code meer van een product; de kop van de
+  receptkostprijs is weer leesbaar.
+
+**Verkoop**
+- **Productpagina:** kop met *Bewerken* en ⋯ (archiveren, verwijderen); de naam
+  is op de telefoon volledig leesbaar. Product en artikel verwijderen met vijf
+  seconden terugweg in plaats van een browservraag. *Uitslaan (n× in AGP)* is
+  weer een zichtbare knop. Het logboek toont alleen dit product.
+- **Pickmodal:** onder "Lot" de lotcode, het batchnummer apart; meldingen in de
+  modal zelf.
+- **Klanten:** bestellingen met hun echte ordernummer (M-0014).
+- De voorbeeldwaarden in het productformulier (o.a. "67" kcal) zijn weg.
+
+### Productie & Verkoop, deel 1: routes, schil en het rekenfundament
+
+Eerste bouwstap van `docs/OPZET-PRODUCTIE-VERKOOP.md`.
+
+**Zichtbaar in de app**
+- **Brouwzaal en Overzicht zijn echte tabs.** Productie: Brouwzaal · Batches ·
+  Recepten · Ingrediënten · HACCP · Gereedschap. Verkoop: Overzicht · Producten ·
+  Bestellingen · Kassa · Klanten · Statiegeld. De werkruimtetitel is een gewoon
+  label.
+- **Een batch is altijd zijn eigen pagina** (`#/productie/batches/<id>`), ook
+  vanaf een tankkaart; het batchpaneel onder de tanks is weg. Op de telefoon
+  heet de kopbalk naar de batch ("Kadeblond #2609") met één terugknop, en een
+  koud geopende link toont de actuele fase.
+- **Recept, product en bestelling staan in de route**
+  (`#/productie/recepten/<id>`, `#/verkoop/producten/<id>`,
+  `#/verkoop/bestellingen/<id>`): de terugknop van het toestel werkt, herladen
+  blijft op het record en een link is te delen. Oude links (`batchflow`,
+  `planning`, `dashboard/<n>`) landen op de nieuwe plek.
+- **Brewfather-receptsync:** een recept dat uit Brewfather verdwijnt maar nog
+  aan een batch of product hangt (of vastgepind is) blijft bewaard, met de
+  markering "niet meer in Brewfather". Een mislukte Brewfather-pagina breekt de
+  sync af in plaats van recepten als verdwenen te behandelen.
+- Vensters van een vorige bestelling of product sluiten bij het wisselen van
+  record; half ingevulde formulieren gaan niet mee naar de volgende batch.
+
+**Fundament (pure logica met tests, gebruikt door de volgende stappen)**
+- `utils/etiket.ts` — etiket- en websitewaarden met bron: ABV via Balling (ook
+  met suiker na de kook), energie in kcal én kJ (bijlage XIV), de wettelijke
+  ABV-marge, allergenen via het lot, oordeel en statuschip, Bevat-regel,
+  etiketversie, `legEtiketVast` als enige schrijfweg, webshopstand.
+- `utils/productKeten.ts` — de keten recept › batch › product (huidig recept,
+  productvoorstel bij plannen, nieuw product uit een batch, tankstatus op een
+  brouwdatum, batchtitel), met één afleiding van het hoofdrecept van een
+  Brewfather-versie.
+- `utils/receptNaarBatch.ts` — één vertaling recept → batch (nieuwe batch en
+  "Recept opnieuw toepassen" gebruiken hem al, gedrag ongewijzigd).
+- `utils/receptGebruik.ts` — recepten "in gebruik" (vastgepind, lopend, huidig,
+  gekoppeld, recent 18 maanden; verborgen wint).
+- `utils/verkoopOverzicht.ts` — één voorraadtelling per product en verpakking,
+  "komt eraan" en dekking; `utils/volgendeStap.ts` — één volgende stap per
+  batch.
+- Nieuwe velden op bestaande records (geen nieuwe data-keys): o.a.
+  `batch.abv_bron`/`recept_versie_id`, `product.recept_huidig_id`/`kj`/
+  `energie_op_etiket`, `recept.vastgepind`/`niet_in_brewfather`, snapshots op
+  nieuwe CCP 3-controles, `wc.meta_stand` op een artikel.
+
+### Opzet: Productie en Verkoop overzichtelijker
+
+Alleen documentatie, geen wijziging in de app. Nieuw: `docs/OPZET-PRODUCTIE-VERKOOP.md`,
+een kritische doorlichting van de werkruimtes Productie en Verkoop met een opzet
+voor bureau en telefoon (de mockups staan op een apart ontwerpcanvas):
+
+- **De keten recept › batch › product** zichtbaar en klikbaar, en door de app
+  zelf gelegd: een nieuwe batch krijgt het product van zijn recept, CCP 3 en het
+  afvullen beginnen bij dat product.
+- **Etiket & website aan het einde van de batch**: alcohol met de wettelijke
+  marge, allergenen met de Bevat-regel, lotcode en THT, IBU, EBC, energie in kcal
+  én kJ, elk met bron. Etiket bijwerken blijft een bewuste handeling, zodat CCP 3
+  een onafhankelijke controle blijft.
+- **Recepten "in gebruik"**: afgeleid uit batches en producten, met een kiezer
+  "Wat brouw je?" die bij je producten begint.
+- Fasering in losse stappen, te beginnen met de snelle winst (o.a. de groep
+  "Zonder tag" die altijd leeg is).
+
+---
+
 ## [1.12.94] — 2026-10-07
 
 ### Factuur al maken als een betaalde bestelling nog niet is opgehaald

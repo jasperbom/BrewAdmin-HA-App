@@ -1,25 +1,28 @@
 import React from 'react'
-import { t } from '../i18n'
+import { t, getLang } from '../i18n'
 import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
+import { _fetchedKeys } from '../utils/api'
+import LegeStaat from '../components/ui/LegeStaat'
 import WcProductModal from '../components/WcProductModal'
-import { WcVelden, bouwWcPayload, leesWcProduct, wcRegulierePrijsExcl } from '../utils/wcProduct'
+import { WcVelden, bouwWcPayload, leesWcProduct, wcRegulierePrijsExcl, wcArtikelPush, wcMetaStandNaPush, wcMetaUitProduct, wcMetStand, wcVoorraadPayload } from '../utils/wcProduct'
 import {
-  bierInvulVelden, afgeleideBierInfo, bierInfoVoorArtikel,
+  bierInvulVelden, afgeleideBierInfo, bierInfoVoorArtikel, bierInfoWeergave,
 } from '../utils/bierinfo'
 import { crafteryMeta, crafteryLees, crafteryMetaUitWc, CRAFTERY_SLEUTELS } from '../utils/craftery'
 import BierInfoForm from '../components/BierInfoForm'
-import BierInfoWeergave from '../components/BierInfoWeergave'
-import { batchSamenvatting, bierAfwijkingen } from '../utils/batchStats'
+import { batchSamenvatting } from '../utils/batchStats'
 import Sparkline from '../components/Sparkline'
 import { wcFoutMelding } from '../utils/wcFout'
 import { MerchArtikel, volgtVoorraad, merchGereserveerd, merchBeschikbaarVoorWc } from '../utils/merch'
-import { fmt, fmtD, tod, fmtQty } from '../utils/format'
-import { verpakkingKostenPerStuk } from '../utils/verpakkingKosten'
+import { fmt, fmtD, tod, fmtQty, fmtSg } from '../utils/format'
 import Btn from '../components/ui/Btn'
-import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
-import SearchInput from '../components/ui/SearchInput'
+import { RowActie } from '../components/ui/RowActions'
+import BevestigKnop from '../components/ui/BevestigKnop'
+import { useUndo } from '../components/ui/UndoBar'
+import { useMediaQuery, useSmalScherm } from '../components/ui/useSmalScherm'
+import { voorraadLogVanProduct, webshopLogVanProduct } from '../utils/productLogboek'
 import VerplaatsModal from '../components/VerplaatsModal'
 import UitslagModal from '../components/UitslagModal'
 import { logAudit } from '../utils/audit'
@@ -29,60 +32,170 @@ import { rebrandMaxSplitsing, splitsAfvullingVoorRebrand } from '../utils/rebran
 import { agpGereserveerdPerAfvulling } from '../utils/kassa'
 import { beschikbaarVoorAfvulling as beschikbaarNaPicks, beschikbaarPerLocatieNaPicks } from '../utils/beschikbaarheid'
 import { afvullingVerkoopbaar } from '../utils/haccp'
-import { getAgpLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, berekenBatchKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
+import { getAgpLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, accijnsMaandGesloten } from '../utils/calculations'
 import { bouwAfboekingAccijnsRecord } from '../utils/afboeking'
 import { standaardBtwPct } from '../utils/btw'
-import { SkuEigenaar, skuConflicten, vrijeSku, productVoorRegel } from '../utils/sku'
+import { SkuEigenaar, skuConflicten, vrijeSku } from '../utils/sku'
 import { productEbc } from '../utils/bierKleur'
-import BierKleur from '../components/ui/BierKleur'
 import Icon from '../components/ui/Icon'
+import ReceptKiezer from '../components/recept/ReceptKiezer'
+import { useEtiketBijwerken } from '../components/batch/EtiketBijwerken'
+import EtiketKaart from '../components/batch/EtiketKaart'
+import { ETIKET_VELDEN, fmtGetal } from '../utils/etiket'
+import { brouwKosten } from '../utils/brouwKosten'
+import { bestellingStartFilter } from '../utils/bestelling'
+import { koppelReceptAanProduct } from '../utils/receptLijst'
+import { hoofdIdResolver } from '../utils/productKeten'
+import { voorraadPerProduct, komtEraan, dekkingWeken } from '../utils/verkoopOverzicht'
+import type { VerkoopCtx } from '../utils/verkoopOverzicht'
+import {
+  productLijstGroepen, productEtiketOordeel, etiketKopRegel, productRecepten, brouwselsVanProduct, faseDag,
+  openBestellingenVoorProduct, ketenTeksten, bierAfleidingVoorProduct, kostprijsPerStuk, margeVoorPrijs,
+  kostprijsBronTekst,
+} from '../utils/productPagina'
+import ProductLijst from '../components/product/ProductLijst'
+import ProductDetail from '../components/product/ProductDetail'
+import type { ProductSegment } from '../components/product/KetenStrook'
+import type { GaNaar } from '../utils/route'
+import BierInfoKaart from '../components/product/BierInfoKaart'
+import ProductLogboek from '../components/product/ProductLogboek'
+import PaginaMelding from '../components/bestelling/PaginaMelding'
 
-type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
+import {
+  AFBOEKING_REDENEN, VERNIETIGING_STATUS_COLOR, VERNIETIGING_STATUS_LABEL,
+} from '../components/product/afboekingStijl'
+import type { AfboekingReden, VernietigingStatus } from '../components/product/afboekingStijl'
+
 type BijlageRol = 'douane_verklaring' | 'bewijs'
 type Bijlage = { naam: string; bestand: string; rol?: BijlageRol; geupload_op?: string }
-type VernietigingStatus = 'aangevraagd' | 'toegestaan' | 'uitgevoerd'
-
-// i18n-sleutels, geen kant-en-klare tekst: de labels moeten met de taalkeuze
-// meebewegen en worden pas bij het renderen door t() gehaald.
-const VERNIETIGING_STATUS_LABEL: Record<VernietigingStatus, string> = {
-  aangevraagd: 'verlies_vern_status_aangevraagd',
-  toegestaan: 'verlies_vern_status_toegestaan',
-  uitgevoerd: 'verlies_vern_status_uitgevoerd',
-}
-
-const VERNIETIGING_STATUS_COLOR: Record<VernietigingStatus, string> = {
-  aangevraagd: 'bg-yellow-50 text-yellow-700 border border-yellow-200',
-  toegestaan:  'bg-blue-50 text-blue-700 border border-blue-200',
-  uitgevoerd:  'bg-green-50 text-green-700 border border-green-200',
-}
-
-const AFBOEKING_REDENEN: { v: AfboekingReden; lKey: string }[] = [
-  { v: 'vermis',        lKey: 'lbl_afboeking_vermis' },
-  { v: 'vernietiging',  lKey: 'lbl_afboeking_vernietiging' },
-  { v: 'overig',        lKey: 'lbl_afboeking_overig' },
-]
-
-const REDEN_COLORS: Record<AfboekingReden, string> = {
-  vermis:         'text-red-600 bg-red-50',
-  vernietiging:   'text-orange-600 bg-orange-50',
-  overig:         'text-gray-600 bg-gray-100',
-}
 
 // M-1: bijlagen (foto's / PDF) bij bijzondere mutaties via utils/bijlage.ts
 
-function ProductenPage({producten, setProducten, ing=[], productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], setVerplaatsingen=()=>{}, btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[]}: any) {
+// Verwijderen gaat met vijf seconden terugweg (UndoBar) in plaats van een
+// vraag vooraf. Zolang die loopt is het record al uit beeld; pas daarna wordt
+// het echt weggeschreven. Het id van de geplande actie zegt welk record.
+const PRODUCT_UNDO = 'product-verwijder-'
+const ARTIKEL_UNDO = 'artikel-verwijder-'
+
+// Het segment van de telefoon (Voorraad · Etiket · Brouwsels · Artikelen) als
+// je via een link de pagina verlaat (een batch, een recept, een bestelling):
+// komt hetzelfde product daarna terug (de terugknop), dan opent hetzelfde
+// segment weer. Eén keer: daarna begint een product weer bij Voorraad.
+const SEGMENT_TERUG: {productId: number | null, segment: ProductSegment | null} = {productId: null, segment: null};
+const neemTerugSegment = (id: number | null): ProductSegment => {
+  const s = id != null && SEGMENT_TERUG.productId === id ? SEGMENT_TERUG.segment : null;
+  SEGMENT_TERUG.productId = null;
+  SEGMENT_TERUG.segment = null;
+  return s || 'voorraad';
+};
+
+type Setter = (v: any) => void
+
+interface ProductenPageProps {
+  producten: any[]
+  setProducten: Setter
+  ing?: any[]
+  productArtikelen: any[]
+  setProductArtikelen: Setter
+  bat: any[]
+  setBat?: Setter
+  recepten: any[]
+  verpakkingen: any[]
+  onderdelen: any[]
+  av: any[]
+  setAv?: Setter
+  uit: any[]
+  bi: any[]
+  lots: any[]
+  acc: any[]
+  setAcc?: Setter
+  accijnsAangiftes?: any[]
+  bestellingen: any[]
+  bestellingPicks: any[]
+  verkoopFacturen?: any[]
+  artikelen: any[]
+  accijnsInst: any
+  setPage?: (p: string) => void
+  afboekingen: any[]
+  setAfboekingen: Setter
+  log: any[]
+  setLog?: Setter
+  gnCodes?: any[]
+  wcCreds: any
+  setWcCreds?: Setter
+  wcSyncLog?: any[]
+  setWcSyncLog?: Setter
+  auditLog?: any[]
+  setAuditLog?: Setter
+  locaties?: any[]
+  verplaatsingen?: any[]
+  setVerplaatsingen?: Setter
+  btwInst?: any
+  btwTarieven?: number[]
+  merchArtikelen?: any[]
+  receptenVerborgen?: any[]
+  receptenGearchiveerdeTags?: string[]
+  /** Het geopende product uit de route (`#/verkoop/producten/<id>`). */
+  recordId?: string | null
+  onOpenRecord?: (id: number | null, opties?: {vervang?: boolean}) => void
+  /** Naar een recept, batch of de bestellingen (App.tsx). */
+  gaNaar?: GaNaar
+  /** "Nieuwe batch" van dit bier (het blad "Wat brouw je?", F8); zonder: geen knop. */
+  onNieuweBatch?: (opties: {productId: number}) => void
+  /** De voorraadtelling van App.tsx (dezelfde als het Overzicht); anders bouwt de pagina hem zelf. */
+  verkoopCtx?: VerkoopCtx | null
+  /** De inkoopfacturen: de vaste brouwkosten uit de boekhouding in de kostprijs (alleen tonen). */
+  inkoopFacturen?: any[]
+}
+
+// recordId/onOpenRecord: het geopende product staat in de route
+// (`#/verkoop/producten/<id>`, App.tsx) — terug, herladen en een gedeelde link
+// werken. gaNaar is er voor de ketenlinks naar recept, batch en bestellingen.
+function ProductenPage({producten, setProducten, ing=[], productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], setVerplaatsingen=()=>{}, btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[], receptenVerborgen=[], receptenGearchiveerdeTags=[], recordId=null, onOpenRecord, gaNaar, onNieuweBatch, verkoopCtx: verkoopCtxProp = null, inkoopFacturen}: ProductenPageProps) {
   const {useState, useMemo, useEffect, useRef} = React;
-  const [sel, setSel] = useState<number|null>(null);
+  const undo = useUndo();
+  // "Etiket bijwerken" (één dialoog voor de hele app, App.tsx) en de
+  // Bevat-regel die elke push naar de webshop meestuurt.
+  const etiketDienst = useEtiketBijwerken();
+  // Het product of artikel waarvan het verwijderen nog terug kan.
+  const wachtendOp = (prefix: string): number | null => {
+    const id = String(undo.actie?.id || '');
+    return id.startsWith(prefix) ? Number(id.slice(prefix.length)) : null;
+  };
+  const productWeg = wachtendOp(PRODUCT_UNDO);
+  const artikelWeg = wachtendOp(ARTIKEL_UNDO);
+  // Het geopende product: uit de route als de schil die meegeeft, anders
+  // lokaal. `setSel` opent of sluit een product (een history-entry).
+  const [lokaalSel, setLokaalSel] = useState<number|null>(null);
+  const gestuurd = typeof onOpenRecord === 'function';
+  const recordGevraagd = gestuurd && recordId != null && recordId !== '';
+  const routeProduct = recordGevraagd ? (producten||[]).find((p: any) => String(p.id) === String(recordId)) : undefined;
+  const sel: number|null = gestuurd ? (routeProduct ? routeProduct.id : null) : lokaalSel;
+  // Een product in de route dat er niet (meer) is (oude link, verwijderd).
+  const nietGevonden = recordGevraagd && !routeProduct;
+  const setSel = (id: number|null, opties?: {vervang?: boolean}) => {
+    if (gestuurd) onOpenRecord(id, opties); else setLokaalSel(id);
+  };
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState<any>({});
   const [zoek, setZoek] = useState('');
-  const [toonGearchiveerd, setToonGearchiveerd] = useState(false);
   const [msg, setMsg] = useState('');
   const [fotoTab, setFotoTab] = useState(0);
   const [artForm, setArtForm] = useState<any>(null);
   const [receptSelectOpen, setReceptSelectOpen] = useState(false);
   const [batchSelectOpen, setBatchSelectOpen] = useState(false);
-  const [voorraadOpen, setVoorraadOpen] = useState(true);
+  // De receptkiezer van de kaart Recept: een recept koppelen, of een (ander)
+  // recept als huidig vastzetten.
+  const [receptKiezer, setReceptKiezer] = useState<null | 'koppelen' | 'huidig'>(null);
+  // Telefoon: het segment (Voorraad · Etiket · Brouwsels · Artikelen).
+  const [segment, setSegment] = useState<ProductSegment>(() => neemTerugSegment(sel));
+  const [bierInfoOpen, setBierInfoOpen] = useState(false);
+  // Waarom een boeking niet doorging (in plaats van een alert()).
+  const [paginaMelding, setPaginaMelding] = useState('');
+  // Eén omslagpunt met de schil (768 px): daaronder de telefoonindeling.
+  const telefoon = useSmalScherm();
+  // De etiketkaart als tabel vanaf een bureau van 1024 px; smaller de tegels.
+  const breed = useMediaQuery('(min-width: 1024px)');
   const [afboekModal, setAfboekModal] = useState<any>(null);
   const [afboekForm, setAfboekForm] = useState<{
     aantal: string; reden: AfboekingReden; opmerking: string;
@@ -132,21 +245,39 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
 
   const selProduct = useMemo(() => (producten||[]).find((p: any) => p.id === sel), [producten, sel]);
 
-  const filterProducten = (list: any[]) => {
-    if (!zoek.trim()) return list;
-    const q = zoek.toLowerCase();
-    return list.filter((p: any) => (p.naam||'').toLowerCase().includes(q) || (p.stijl||'').toLowerCase().includes(q) || (p.categorie||'').toLowerCase().includes(q));
-  };
+  // Eén voorraadtelling met het Overzicht, de kassa en de bestellingen
+  // (utils/verkoopOverzicht.ts): die van App.tsx als de schil hem meegeeft,
+  // anders dezelfde context uit de props van deze pagina.
+  const vandaag = tod();
+  const eigenVerkoopCtx = useMemo((): VerkoopCtx => ({
+    producten, productArtikelen, artikelen, merchArtikelen, verpakkingen,
+    batches: bat, afvullingen: av, uitleveringen: uit, verplaatsingen, afboekingen, locaties,
+    bestellingen, bestellingPicks, vandaag,
+  }), [producten, productArtikelen, artikelen, merchArtikelen, verpakkingen, bat, av, uit, verplaatsingen,
+    afboekingen, locaties, bestellingen, bestellingPicks, vandaag]);
+  const verkoopCtx: VerkoopCtx = verkoopCtxProp || eigenVerkoopCtx;
 
-  const actieveProducten = useMemo(() => {
-    const list = ((producten||[]) as any[]).filter((p: any) => p.status !== 'gearchiveerd');
-    return filterProducten(list).sort((a: any, b: any) => (a.naam||'').localeCompare(b.naam||''));
-  }, [producten, zoek]);
+  // De administratie achter het etiket: die van de dialoog "Etiket bijwerken"
+  // (App.tsx), anders uit de props van deze pagina.
+  const eigenEtiketData = useMemo(() => ({
+    recepten, batchIngredienten: bi, ingredienten: ing, lots, afvullingen: av, batches: bat, producten,
+    productArtikelen, verpakkingen,
+  }), [recepten, bi, ing, lots, av, bat, producten, productArtikelen, verpakkingen]);
+  const etiketData: any = etiketDienst?.data || eigenEtiketData;
 
-  const gearchiveerdeProducten = useMemo(() => {
-    const list = ((producten||[]) as any[]).filter((p: any) => p.status === 'gearchiveerd');
-    return filterProducten(list).sort((a: any, b: any) => (a.naam||'').localeCompare(b.naam||''));
-  }, [producten, zoek]);
+  // De lijst: per groep (op voorraad, zonder, uit roulatie, gearchiveerd).
+  const lijstGroepen = useMemo(() => productLijstGroepen(producten, verkoopCtx, {zoek, zonder: productWeg}),
+    [producten, verkoopCtx, zoek, productWeg]);
+  const actieveProducten = useMemo(() => [...lijstGroepen.opVoorraad, ...lijstGroepen.zonderVoorraad, ...lijstGroepen.uitRoulatie],
+    [lijstGroepen]);
+  // Het etiketoordeel van elk product (dezelfde chip als de kaart).
+  const etiketOordelen = useMemo(() => {
+    const uit = new Map<number, ReturnType<typeof productEtiketOordeel>>();
+    for (const p of (producten || [])) {
+      if (p && p.status !== 'gearchiveerd') uit.set(p.id, productEtiketOordeel(p, etiketData, t));
+    }
+    return uit;
+  }, [producten, etiketData]);
 
   // Desktop: selecteer bij het openen van de pagina automatisch het eerste
   // actieve product, zodat de rechterkolom niet leeg staat. Mobiel houdt de
@@ -156,31 +287,58 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
   useEffect(() => {
     if (autoSelGedaan.current) return;
     if (typeof window === 'undefined' || window.innerWidth < 768) return;
-    if (sel !== null || editMode) return;
+    if (sel !== null || editMode || recordGevraagd) return;
     if (actieveProducten.length === 0) return;
     autoSelGedaan.current = true;
-    setSel(actieveProducten[0].id);
+    // Vervangen, geen nieuwe history-entry: anders bracht "terug" je naar de
+    // kale lijst, die meteen weer het eerste product koos.
+    setSel(actieveProducten[0].id, {vervang: true});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actieveProducten]);
+  // "Ongedaan maken" na verwijderen: het product staat er nog, dus open het
+  // weer — je komt terug waar je was. Is het verwijderen uitgevoerd, dan is
+  // het product in dezelfde render al weg (UndoBar en opslag wijzigen samen).
+  const vorigeWegRef = useRef<number | null>(productWeg);
+  useEffect(() => {
+    const vorige = vorigeWegRef.current;
+    vorigeWegRef.current = productWeg;
+    if (vorige == null || productWeg != null) return;
+    if ((producten||[]).some((p: any) => Number(p.id) === vorige)) setSel(vorige, {vervang: true});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productWeg]);
+  // Een ander product via de route (terugknop, link): een open artikelformulier
+  // en het bewerkformulier van het vorige product sluiten. Een formulier voor
+  // een nieuw product blijft staan. Ook de vensters van het vorige product
+  // (uitslaan, verplaatsen, afboeken, rebranden, vernietiging, webshopkaart,
+  // recept/batch koppelen) sluiten: ze staan buiten de detailkolom en de
+  // terugknop van het toestel verlaat deze pagina niet meer — anders bleef
+  // zo'n venster openstaan boven de lijst of sprong het open bij het volgende
+  // product.
+  const vorigeSelRef = useRef(sel);
+  useEffect(() => {
+    if (vorigeSelRef.current === sel) return;
+    vorigeSelRef.current = sel;
+    setArtForm(null);
+    if (editMode && form?.id !== sel && (producten||[]).some((p: any) => p.id === form?.id)) setEditMode(false);
+    setUitslagOpen(false);
+    setVerplaatsModal(null);
+    setAfboekModal(null);
+    setRebrandModal(null);
+    setVernietigReviewModal(null);
+    setWcModalArt(null);
+    setReceptSelectOpen(false);
+    setBatchSelectOpen(false);
+    setReceptKiezer(null);
+    // Een ander product begint bij Voorraad (of bij het segment waarvandaan
+    // je via een link wegging, als je terugkomt).
+    setSegment(neemTerugSegment(sel));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel]);
 
   // Voorraad helpers — dezelfde telling als de kassa en de bestellingen
   // (utils/beschikbaarheid.ts).
   const voorraadData = {bestellingPicks, bestellingen, uit, afboekingen, locaties, verplaatsingen} as any;
   const beschikbaarVoorAfvulling = (a: any): number => beschikbaarNaPicks(a, voorraadData);
-
-  const gepicktVoorAfvulling = (a: any): number =>
-    ((bestellingPicks||[]) as any[]).filter((p: any) => {
-      if (p.afvulling_id !== a.id) return false;
-      if (pickUitgeslagen(p)) return false; // zit al in "Uitgeleverd"
-      const b = ((bestellingen||[]) as any[]).find((bs: any) => bs.id === p.bestelling_id);
-      return b && b.status !== 'afgerond' && b.status !== 'geannuleerd';
-    }).reduce((s: number, p: any) => s + Number(p.aantal||0), 0);
-
-  const uitgeleverdVoorAfvulling = (a: any): number =>
-    ((uit||[]) as any[]).filter((u: any) => u.afvulling_id === a.id).reduce((s: number, u: any) => s + Number(u.aantal||0), 0);
-
-  const afgeboektVoorAfvulling = (a: any): number =>
-    ((afboekingen||[]) as any[]).filter((ab: any) => ab.afvulling_id === a.id).reduce((s: number, ab: any) => s + Number(ab.aantal||0), 0);
 
   // Beschikbaar per locatie voor één afvulling: fysieke voorraad per locatie
   // (uit voorraadPerLocatie) minus de actieve picks. Een pick zonder
@@ -218,18 +376,6 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     [producten, productArtikelen, artikelen, merchArtikelen]
   );
 
-  // Reserveringen die bij één product horen: de SKU van de orderregel wijst het
-  // product aan (via de productartikelen of een legacy artikel), anders de
-  // biernaam. Hangt dezelfde SKU aan twee producten, dan beslist de biernaam —
-  // anders reserveert een bestelling op het ene bier ook voorraad van het
-  // andere.
-  const reserveringenVoorProduct = (p: any) => {
-    if (!p) return [];
-    return openReserveringen.filter((r: any) =>
-      productVoorRegel(r.sku || null, r.bier_naam || '', skuData) === p.id
-    );
-  };
-
   // Bestaande dubbele SKU's bij dit product: welke andere artikelen dezelfde
   // SKU al gebruiken. Leeg = niets aan de hand.
   const skuConflictVoor = (art: any): SkuEigenaar[] =>
@@ -250,48 +396,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     );
   };
 
-  // Statistieken per product. Kostprijs/liter komt uit `berekenProductKostprijs`
-  // en gebruikt dezelfde scope als het kostprijsoverzicht op de Batch-pagina:
-  // ingrediënten + utility + verpakking + accijns, gedeeld door werkelijk
-  // afgevulde liters. Het `liter`-veld blijft de som van `liter_vergist` voor
-  // andere statistieken op deze pagina.
-  const productStats = useMemo(() => {
-    const stats: Record<number, {batches: number, liter: number, voorraad: number, uitgeleverd: number, kostprijs: number, kostprijsExclVerpakking: number}> = {};
-    for (const p of (producten||[])) {
-      // Batch-set: batches die direct op het product staan (`b.product_id`) én
-      // batches die via een afvulling aan het product zijn gekoppeld
-      // (`afvulling.product_id`). Bij afvullen wordt het product namelijk op de
-      // afvulling gezet, niet terug op de batch — zonder deze unie telde die
-      // batch niet mee ("0 batches gebrouwen").
-      const avBatchIds = new Set(
-        (av||[]).filter((a: any) => a.product_id === p.id).map((a: any) => a.batch_id)
-      );
-      const pBatches = (bat||[]).filter((b: any) => batchHoortBijProduct(b, p.id) || avBatchIds.has(b.id));
-      const batchIds = new Set(pBatches.map((b: any) => b.id));
-      const totaalLiter = pBatches.reduce((s: number, b: any) => s + Number(b.liter_vergist||0), 0);
-      const pAv = (av||[]).filter((a: any) => a.product_id === p.id || (!a.product_id && batchIds.has(a.batch_id)));
-      // Beschikbaar = fysiek beschikbaar minus zachte reserveringen uit open
-      // (nog niet gepickte) bestellingen.
-      const inBestelling = reserveringenVoorProduct(p).reduce((s: number, r: any) => s + r.aantal, 0);
-      const voorraad = Math.max(0, pAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0) - inBestelling);
-      const uitgeleverd = pAv.reduce((s: number, a: any) => s + uitgeleverdVoorAfvulling(a), 0);
-      const {kostprijs_per_liter, kostprijs_per_liter_excl_verpakking} =
-        berekenProductKostprijs(p.id, bat, bi, lots, av, verpakkingen, onderdelen, acc);
-      stats[p.id] = {batches: pBatches.length, liter: totaalLiter, voorraad, uitgeleverd,
-        kostprijs: kostprijs_per_liter, kostprijsExclVerpakking: kostprijs_per_liter_excl_verpakking || 0};
-    }
-    return stats;
-  }, [producten, bat, av, uit, bi, lots, verpakkingen, onderdelen, acc, bestellingen, bestellingPicks, afboekingen, productArtikelen, artikelen]);
-
-  const selArtikelen = useMemo(() => (productArtikelen||[]).filter((a: any) => a.product_id === sel), [productArtikelen, sel]);
-  const selRecepten = useMemo(() => {
-    if (!selProduct?.recept_ids?.length) return [];
-    return (recepten||[]).filter((r: any) => selProduct.recept_ids.includes(r.id));
-  }, [selProduct, recepten]);
-  const beschikbareRecepten = useMemo(() => {
-    const gekoppeld = new Set(selProduct?.recept_ids || []);
-    return (recepten||[]).filter((r: any) => !gekoppeld.has(r.id));
-  }, [selProduct, recepten]);
+  const selArtikelen = useMemo(() => (productArtikelen||[]).filter((a: any) => a.product_id === sel && a.id !== artikelWeg), [productArtikelen, sel, artikelWeg]);
   // Batches van het geselecteerde product: direct gekoppeld (primair product_id
   // of extra product_ids) én batches die via een afvulling aan dit product zijn
   // gekoppeld (afvulling.product_id, bijv. na een rebrand).
@@ -310,46 +415,22 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
       .sort((a: any, b: any) => String(b.datum||'').localeCompare(String(a.datum||'')) || Number(b.id||0) - Number(a.id||0));
   }, [bat, selBatches, sel]);
 
-  // Voorraad voor geselecteerd product: afvullingen gegroepeerd per verpakkingstype
-  const selVoorraad = useMemo(() => {
+  // De afvullingen van het geopende product: met zijn eigen product_id, of (oud)
+  // zonder product maar uit een batch van dit bier. Eén verzameling voor het
+  // blok Voorraad en het logboek, zodat die nooit iets anders zeggen.
+  const selAv = useMemo(() => {
     if (!sel) return [];
     const batchIds = new Set(selBatches.map((b: any) => b.id));
-    const pAv = (av||[]).filter((a: any) => a.product_id === sel || (!a.product_id && batchIds.has(a.batch_id)));
-    const vTypes = [...new Set(pAv.map((a: any) => a.verpakking_type).filter(Boolean))].sort() as string[];
-    const prodReserveringen = reserveringenVoorProduct(selProduct);
-    return vTypes.map(vt => {
-      const rows = pAv.filter((a: any) => a.verpakking_type === vt);
-      const totAfgevuld = rows.reduce((s: number, a: any) => s + Number(a.hoeveelheid||0), 0);
-      const totGepickt = rows.reduce((s: number, a: any) => s + gepicktVoorAfvulling(a), 0);
-      const totUitgeleverd = rows.reduce((s: number, a: any) => s + uitgeleverdVoorAfvulling(a), 0);
-      const totAfgeboekt = rows.reduce((s: number, a: any) => s + afgeboektVoorAfvulling(a), 0);
-      // Zachte reserveringen uit open bestellingen voor dit verpakkingstype;
-      // regels zonder verpakkingstype worden via hun SKU-artikel geresolved.
-      const totInBestelling = prodReserveringen.filter((r: any) => {
-        const rVt = r.verpakking_type
-          || (r.sku ? ((productArtikelen||[]).find((pa: any) => pa.artikelnummer === r.sku)?.verpakking_type
-            || (artikelen||[]).find((a: any) => a.artikelnummer === r.sku)?.verpakking_type || '') : '');
-        return vpTypeMatch(rVt, vt);
-      }).reduce((s: number, r: any) => s + r.aantal, 0);
-      const totBeschikbaar = Math.max(0, rows.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0) - totInBestelling);
-      // Splitsing onder/buiten schorsing: wat nog in de AGP ligt moet eerst
-      // uitgeslagen worden voordat je het particulier kunt verkopen.
-      let totInAgp = 0, totVrij = 0;
-      for (const a of rows) {
-        const perLoc = beschikbaarPerLocatie(a);
-        for (const [k, n] of Object.entries(perLoc)) {
-          const loc = (locaties||[]).find((l: any) => l.id === Number(k));
-          if (loc?.is_agp) totInAgp += Number(n||0); else totVrij += Number(n||0);
-        }
-      }
-      return {vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totInBestelling, totBeschikbaar, totInAgp, totVrij};
-    });
-  }, [sel, selProduct, selBatches, av, uit, bestellingPicks, bestellingen, afboekingen, productArtikelen, artikelen, verpakkingen, locaties, verplaatsingen]);
+    return (av||[]).filter((a: any) => a.product_id === sel || (!a.product_id && batchIds.has(a.batch_id)));
+  }, [av, sel, selBatches]);
 
-  // Alle afvullingen van het geselecteerde product (over verpakkingstypes heen)
-  // + wat daarvan al voor open bestellingen gepickt is. Voer voor de
-  // uitslag-modal, die zelf de juiste afvullingen kiest.
-  const selAfvullingen = useMemo(() => selVoorraad.flatMap((v: any) => v.rows), [selVoorraad]);
+  // Alle afvullingen van het geselecteerde product met een verpakkingstype, op
+  // type gegroepeerd — voer voor het uitslagvenster, dat zelf de juiste
+  // afvullingen kiest (oudste THT eerst). Dezelfde verzameling als altijd.
+  const selAfvullingen = useMemo(() => {
+    const types = [...new Set(selAv.map((a: any) => a.verpakking_type).filter(Boolean))].sort() as string[];
+    return types.flatMap(vt => selAv.filter((a: any) => a.verpakking_type === vt));
+  }, [selAv]);
   // Wat op de AGP voor open bestellingen vastligt — dezelfde telling als de
   // kassa en de bestellingen. Een pick van een vrije locatie raakt de AGP niet;
   // een pick zonder locatie alleen voor het deel dat niet vrij ligt.
@@ -385,7 +466,20 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     const updated = {...form, naam: form.naam.trim()};
     const exists = (producten||[]).find((p: any) => p.id === form.id);
     if (exists) {
-      setProducten((prev: any[]) => prev.map((p: any) => p.id === form.id ? updated : p));
+      // Wat er op het gedrukte etiket staat (allergenen, versie, energie)
+      // wijzigt alleen in de dialoog "Etiket bijwerken": die velden komen van
+      // het product zoals het nú is, nooit uit dit formulier — anders zette
+      // een formulier dat openstond tijdens het bijwerken het oude etiket
+      // terug. ABV, IBU, EBC en kcal blijven bierinformatie van het formulier.
+      const alleenDialoog = ETIKET_VELDEN.filter(v => !['abv', 'ibu', 'ebc', 'kcal'].includes(v));
+      setProducten((prev: any[]) => prev.map((p: any) => {
+        if (p.id !== form.id) return p;
+        const uit = {...updated};
+        for (const v of alleenDialoog) {
+          if (p[v] === undefined) delete uit[v]; else uit[v] = p[v];
+        }
+        return uit;
+      }));
       logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: form.id, actie: 'gewijzigd', omschrijving: `Product "${updated.naam}" gewijzigd`});
     } else {
       setProducten((prev: any[]) => [...(prev||[]), updated]);
@@ -396,38 +490,52 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     setMsg('');
   };
 
+  // Verwijderen zonder vraag vooraf: het product gaat meteen uit beeld en de
+  // UndoBar biedt vijf seconden "Ongedaan maken"; pas daarna wordt het echt
+  // verwijderd (ook als je intussen naar een andere pagina gaat). Alles wat
+  // daarbij gebeurt hangt aan het id van nú — niet aan wat er over vijf
+  // seconden geselecteerd is.
   const deleteProduct = () => {
+    if (sel == null) return;
+    const id = Number(sel);
+    const naam = selProduct?.naam || t('lbl_naamloos');
     // Afvullingen die aan dit product hangen. Die werden tot 1.12.63 níét
     // opgeruimd: hun `product_id` bleef naar het verdwenen product wijzen, en
     // omdat de productlijsten matchen op "eigen product_id óf (geen
     // product_id én de batch hoort erbij)", vielen ze daarna buiten élk
     // product. De flesjes stonden er nog, maar waren nergens meer te zien —
     // precies het beeld van 1.12.58.
-    const eigenAv = ((av||[]) as any[]).filter((a: any) => Number(a.product_id) === Number(sel));
+    const eigenAv = ((av||[]) as any[]).filter((a: any) => Number(a.product_id) === id);
     const nogVoorraad = eigenAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
-    const vraag = nogVoorraad > 0
-      ? `${t('confirm_product_verwijderen')}\n\n${t('confirm_product_verwijderen_voorraad').replace('{n}', String(nogVoorraad))}`
-      : t('confirm_product_verwijderen');
-    if (!confirm(vraag)) return;
-    logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: sel!, actie: 'verwijderd', omschrijving: `Product "${selProduct?.naam || ''}" verwijderd`});
-    setProducten((prev: any[]) => prev.filter((p: any) => p.id !== sel));
-    setProductArtikelen((prev: any[]) => prev.filter((a: any) => Number(a.product_id) !== Number(sel)));
-    // De koppeling losmaken in plaats van hem laten hangen: de afvulling valt
-    // dan terug op de batch en blijft vindbaar.
-    if (eigenAv.length) {
-      setAv((prev: any[]) => (prev||[]).map((a: any) =>
-        Number(a.product_id) === Number(sel) ? {...a, product_id: undefined} : a));
-    }
-    setBat((prev: any[]) => prev.map((b: any) => {
-      const heeftExtra = (b.product_ids||[]).some((id: any) => Number(id) === Number(sel));
-      if (Number(b.product_id) !== Number(sel) && !heeftExtra) return b;
-      return {
-        ...b,
-        ...(Number(b.product_id) === Number(sel) ? {product_id: undefined} : {}),
-        product_ids: (b.product_ids||[]).filter((id: any) => Number(id) !== Number(sel)),
-      };
-    }));
-    setSel(null);
+    // Ligt er nog voorraad, dan zegt de balk dat die voortaan zonder product
+    // staat — dat was de waarschuwing van de oude vraag vooraf.
+    const label = (nogVoorraad > 0 ? t('undo_product_verwijderd_voorraad') : t('undo_product_verwijderd'))
+      .replace('{naam}', naam).replace('{n}', String(nogVoorraad));
+    undo.plan(`${PRODUCT_UNDO}${id}`, label, () => {
+      logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: id, actie: 'verwijderd', omschrijving: `Product "${selProduct?.naam || ''}" verwijderd`});
+      setProducten((prev: any[]) => (prev||[]).filter((p: any) => Number(p.id) !== id));
+      setProductArtikelen((prev: any[]) => (prev||[]).filter((a: any) => Number(a.product_id) !== id));
+      // De koppeling losmaken in plaats van hem laten hangen: de afvulling valt
+      // dan terug op de batch en blijft vindbaar.
+      if (eigenAv.length) {
+        setAv((prev: any[]) => (prev||[]).map((a: any) =>
+          Number(a.product_id) === id ? {...a, product_id: undefined} : a));
+      }
+      const raaktBatch = (b: any) => Number(b.product_id) === id || (b.product_ids||[]).some((x: any) => Number(x) === id);
+      if (((bat||[]) as any[]).some(raaktBatch)) {
+        setBat((prev: any[]) => (prev||[]).map((b: any) => {
+          if (!raaktBatch(b)) return b;
+          return {
+            ...b,
+            ...(Number(b.product_id) === id ? {product_id: undefined} : {}),
+            product_ids: (b.product_ids||[]).filter((x: any) => Number(x) !== id),
+          };
+        }));
+      }
+    });
+    // Terug naar de lijst; de history-entry van het verwijderde product wordt
+    // vervangen.
+    setSel(null, {vervang: true});
   };
 
   const toggleArchiveer = () => {
@@ -435,6 +543,57 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     setProducten((prev: any[]) => prev.map((p: any) => p.id === sel ? {...p, status: newStatus} : p));
     logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: sel!, actie: 'gewijzigd', omschrijving: `Product "${selProduct?.naam || ''}" status → ${newStatus}`});
   };
+
+  // Uit roulatie (een seizoensbier dat niet meer gebrouwen wordt) of weer erin.
+  const toggleRoulatie = () => {
+    if (sel == null) return;
+    const uitRoulatie = !selProduct?.uit_roulatie;
+    setProducten((prev: any[]) => prev.map((p: any) => p.id === sel ? {...p, uit_roulatie: uitRoulatie} : p));
+    logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: sel, actie: 'gewijzigd',
+      omschrijving: `Product "${selProduct?.naam || ''}" ${uitRoulatie ? 'uit roulatie' : 'weer in roulatie'}`});
+  };
+
+  // ── Het recept van het product (kaart Recept) ─────────────────────────────
+  // Koppelen zet het hoofdrecept in `recept_ids` (nooit een losse versie);
+  // vastzetten zet `recept_huidig_id`, zodat een batch van een ander recept het
+  // huidige recept niet meer verandert. Opheffen = weer afgeleid.
+  const wijzigProduct = (wijziging: (p: any) => any, omschrijving: string) => {
+    if (sel == null) return;
+    setProducten((prev: any[]) => (prev||[]).map((p: any) => p.id === sel ? wijziging(p) : p));
+    logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: sel, actie: 'gewijzigd', omschrijving});
+  };
+  const receptNaam = (id: string | null | undefined) =>
+    (recepten||[]).find((r: any) => String(r.id) === String(id))?.naam || String(id || '');
+  const koppelReceptAanDitProduct = (receptId: string) => {
+    wijzigProduct(p => koppelReceptAanProduct(p, receptId, recepten),
+      `Recept "${receptNaam(receptId)}" gekoppeld aan product "${selProduct?.naam || ''}"`);
+  };
+  const zetHuidigRecept = (receptId: string | null) => {
+    const hoofd = receptId ? hoofdIdResolver(recepten)(receptId) : '';
+    wijzigProduct(p => {
+      if (!hoofd) {
+        const {recept_huidig_id: _weg, ...rest} = p;
+        return rest;
+      }
+      return {...koppelReceptAanProduct(p, hoofd, recepten), recept_huidig_id: hoofd};
+    }, hoofd
+      ? `Recept "${receptNaam(hoofd)}" vastgezet als huidig recept van "${selProduct?.naam || ''}"`
+      : `Huidig recept van "${selProduct?.naam || ''}" niet meer vastgezet`);
+  };
+
+  // ── Links naar de rest van de keten ───────────────────────────────────────
+  // Terug (de knop van het toestel of de kopbalk) komt op hetzelfde segment uit.
+  const naarElders = (doel: Parameters<GaNaar>[0]) => {
+    if (!gaNaar) return;
+    SEGMENT_TERUG.productId = sel;
+    SEGMENT_TERUG.segment = segment;
+    gaNaar(doel);
+  };
+  const openBatch = (id: number) => naarElders({pagina: 'batches', id});
+  const openRecept = (id: string) => naarElders({pagina: 'recepten', id});
+  const openBestelling = (id: number) => naarElders({pagina: 'bestellingen', id});
+  const openBestellingenMetProduct = () =>
+    naarElders({pagina: 'bestellingen', filter: bestellingStartFilter('te_picken', selProduct?.naam || '')});
 
   // Foto upload — de afbeelding wordt vóór opslag verkleind (max 1000px) en als
   // JPEG gecomprimeerd. De ruwe base64 werd anders inline in de `producten`-
@@ -522,15 +681,19 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
   };
 
   // Artikel CRUD
-  const startArtEdit = (art?: any) => {
+  // `verpakkingId`: een nieuw artikel voor deze verpakking ("Artikel maken" op
+  // de etiketkaart, bij een verpakking die al is afgevuld maar geen artikel heeft).
+  const startArtEdit = (art?: any, verpakkingId?: number) => {
     setPrijsInclBtw(false);
     setB2bPrijsInclBtw(false);
     if (art) {
       setArtForm({...art});
     } else {
       // Nieuw artikel krijgt het standaard BTW-tarief uit de instellingen (21% tenzij anders ingesteld).
-      setArtForm({id: newId(productArtikelen), product_id: sel, verpakking_id: '', verpakking_naam: '', verpakking_type: '', inhoud_liter: '', artikelnummer: '', ean: '', verkoopprijs: '', btw_pct: standaardBtwPct(btwInst, btwTarieven), omschrijving: '', wc_push: true});
+      setArtForm({id: newId(productArtikelen), product_id: sel, verpakking_id: verpakkingId ?? '', verpakking_naam: '', verpakking_type: '', inhoud_liter: '', artikelnummer: '', ean: '', verkoopprijs: '', btw_pct: standaardBtwPct(btwInst, btwTarieven), omschrijving: '', wc_push: true});
     }
+    // Op de telefoon staat het formulier in het segment Artikelen.
+    if (telefoon) setSegment('artikelen');
   };
 
   // Dubbele SKU tijdens het invullen: één SKU hoort bij één artikel, anders
@@ -569,56 +732,44 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     setArtForm(null);
   };
 
+  // Een artikel (SKU met prijzen en webshopkaart) verdween met één tik. Nu:
+  // meteen uit beeld, vijf seconden terugweg, daarna echt weg.
   const deleteArtikel = (id: number) => {
     const art = (productArtikelen||[]).find((a: any) => a.id === id);
-    logAudit(auditLog, setAuditLog, {entiteit: 'Artikel', entiteit_id: id, actie: 'verwijderd', omschrijving: `Artikel "${art?.verpakking_naam || art?.artikelnummer || ''}" verwijderd`});
-    setProductArtikelen((prev: any[]) => prev.filter((a: any) => a.id !== id));
+    if (!art) return;
+    if (artForm?.id === id) setArtForm(null);
+    const naam = [art.verpakking_naam, art.artikelnummer].filter(Boolean).join(' · ') || t('lbl_naamloos');
+    undo.plan(`${ARTIKEL_UNDO}${id}`, t('undo_artikel_verwijderd').replace('{naam}', naam), () => {
+      logAudit(auditLog, setAuditLog, {entiteit: 'Artikel', entiteit_id: id, actie: 'verwijderd', omschrijving: `Artikel "${art.verpakking_naam || art.artikelnummer || ''}" verwijderd`});
+      setProductArtikelen((prev: any[]) => (prev||[]).filter((a: any) => a.id !== id));
+    });
   };
 
-  // Marge op een prijs excl. BTW t.o.v. de kostprijs per eenheid.
-  const margeVoorPrijs = (kostprijsPerEenheid: number, prijsExcl: number) =>
-    prijsExcl > 0
-      ? {eur: prijsExcl - kostprijsPerEenheid, pct: ((prijsExcl - kostprijsPerEenheid) / prijsExcl) * 100}
-      : null;
+  // Eén zichtbare actie per artikel (Bewerken); de webshopkaart en
+  // verwijderen staan in het ⋯-menu.
+  const artikelActies = (a: any): {primair: RowActie, acties: RowActie[]} => ({
+    primair: {id: 'bewerken', label: t('btn_edit'), onClick: () => startArtEdit(a)},
+    acties: [
+      ...(wcCreds?.enabled && a.artikelnummer
+        ? [{id: 'webshop', label: t('wc_btn_kaart'), onClick: () => setWcModalArt(a)}]
+        : []),
+      {id: 'verwijderen', label: t('btn_delete'), soort: 'gevaar' as const, onClick: () => deleteArtikel(a.id)},
+    ],
+  });
 
-  /**
-   * Kostprijs van één verpakte eenheid: bier + utilities + accijns per liter
-   * (die schalen mee met de inhoud) plus de échte verpakkingsprijs van déze
-   * verpakking.
-   *
-   * Eerder rekende dit met de kostprijs per liter uit `berekenProductKostprijs`
-   * × inhoud. Daar zit de verpakking van álle verpakkingstypen van de batch in,
-   * uitgesmeerd over het volume — en juist verpakking schaalt niet met liters.
-   * Een batch van 47 flesjes plus één fust van 20 L belastte dat fust zo met
-   * een deel van het glas, de kroonkurken en de etiketten van die flesjes,
-   * terwijl de flesjes juist te goedkoop uitkwamen. Onderling vergelijken van
-   * artikelmarges klopte daardoor niet.
-   */
-  const kostprijsVoorEenheid = (art: any, inhoud: number): number | null => {
-    const stats = productStats[sel!];
-    if (!stats || !inhoud) return null;
-    const vp = (verpakkingen||[]).find((v: any) =>
-      v.id === Number(art?.verpakking_id) || v.naam === art?.verpakking_naam);
-    // Zonder bekende verpakkingskosten valt hij terug op het oude gedrag; dan
-    // is de per-liter-prijs nog steeds de beste schatting die er is.
-    if (stats.kostprijsExclVerpakking > 0 && vp) {
-      return stats.kostprijsExclVerpakking * inhoud + verpakkingKostenPerStuk(vp, onderdelen);
-    }
-    return stats.kostprijs > 0 ? stats.kostprijs * inhoud : null;
-  };
-
-  // Marge-inschatting per artikel. Verkoop- en B2B-prijs staan excl. BTW
-  // opgeslagen (saveArtikel normaliseert).
-  const berekenMarge = (art: any) => {
-    const inhoud = Number(art.inhoud_liter || 0);
-    const kostprijsPerEenheid = kostprijsVoorEenheid(art, inhoud);
-    if (kostprijsPerEenheid == null || kostprijsPerEenheid <= 0) return null;
-    return {
-      kostprijsPerEenheid,
-      consument: margeVoorPrijs(kostprijsPerEenheid, Number(art.verkoopprijs || 0)),
-      b2b: margeVoorPrijs(kostprijsPerEenheid, Number(art.b2b_prijs || 0)),
-    };
-  };
+  // Eén kostprijs per liter van dit bier (opzet hoofdstuk 2, punt 10): uit
+  // `berekenProductKostprijs`, met de afgeleide vaste brouwkosten zoals de
+  // batch ze in "Financieel resultaat" toont — een getal voor het scherm,
+  // nooit in de W&V of de COGS. De kostprijs van één verpakte eenheid is het
+  // bier zonder verpakking × inhoud plus de eigen verpakking van dat artikel
+  // (`kostprijsPerStuk`), nooit prijs-per-liter × inhoud: daarin zit de
+  // verpakking van álle verpakkingen van de batch, uitgesmeerd over de liters.
+  const vasteKosten = useMemo(() => brouwKosten({batches: bat, inkoopFacturen}), [bat, inkoopFacturen]);
+  const selKostprijs = useMemo(() => sel == null ? null
+    : berekenProductKostprijs(sel, bat, bi, lots, av, verpakkingen, onderdelen, acc, {vasteKosten}),
+    [sel, bat, bi, lots, av, verpakkingen, onderdelen, acc, vasteKosten]);
+  const perLiterExclVerpakking = selKostprijs?.kostprijs_per_liter_excl_verpakking || 0;
+  const kostVoorArtikel = (art: any) => kostprijsPerStuk(art, perLiterExclVerpakking, verpakkingen, onderdelen);
 
   // ── Uitslaan / verplaatsen ────────────────────────────────────────────────
   // Uit de AGP naar een eigen locatie is fiscaal een uitslag: er ontstaat op
@@ -655,7 +806,9 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     // Tweede slot naast de modal (periode-lock, datum, voorraad).
     const oordeel = valideerVerplaatsing(invoer, {afv, batch, locaties, uit, verplaatsingen, afboekingen, accijnsInst, accijnsAangiftes, gereserveerd: agpGereserveerd});
     if (!oordeel.ok) {
-      alert(t(VERPLAATS_FOUT_KEYS[oordeel.fout]).replace('{n}', String(oordeel.beschikbaar)).replace('{datum}', fmtD(afv?.datum)));
+      // Een melding op de pagina, geen alert(): het venster sluit, de reden blijft staan.
+      setPaginaMelding(t(VERPLAATS_FOUT_KEYS[oordeel.fout]).replace('{n}', String(oordeel.beschikbaar)).replace('{datum}', fmtD(afv?.datum)));
+      setVerplaatsModal(null);
       return;
     }
     const {nieuweVerpl, totaalAccijns} = boekVerplaatsingen([invoer], [{afv, batch}]);
@@ -672,7 +825,8 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     // Tweede slot naast de modal: de gekozen datum wordt de accijnsdatum.
     const datumFout = uitslagDatumFout(datum, allocaties, {accijnsAangiftes});
     if (datumFout) {
-      alert(t(VERPLAATS_FOUT_KEYS[datumFout]).replace('{datum}', fmtD(laatsteAfvulDatum(allocaties))));
+      setPaginaMelding(t(VERPLAATS_FOUT_KEYS[datumFout]).replace('{datum}', fmtD(laatsteAfvulDatum(allocaties))));
+      setUitslagOpen(false);
       return;
     }
     const agpId = getAgpLocatie(locaties).id;
@@ -691,8 +845,8 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
   };
 
   // Afboeken
-  const openAfboekModal = (a: any, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openAfboekModal = (a: any, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     // Standaard de AGP zolang daar voorraad ligt; anders de locatie met de
     // meeste. Zo hoeft de gebruiker in het normale geval niets te kiezen.
     const perLoc = beschikbaarPerLocatie(a);
@@ -726,8 +880,8 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
       {beschikbaar: beschikbaarVoorAfvulling(a), gereserveerdAgp});
   };
 
-  const openRebrandModal = (a: any, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openRebrandModal = (a: any, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     const beschikbaar = beschikbaarVoorAfvulling(a);
     const standaard = beschikbaar === Number(a.hoeveelheid||0) ? beschikbaar : rebrandSplitsMax(a);
     setRebrandForm({aantal: String(standaard), product_id: '', opmerking: '', toonNieuwProduct: false, nieuwProductNaam: ''});
@@ -1030,8 +1184,12 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
   };
 
   // --- WooCommerce push ---
-  const addWcLog = (type: string, msg: string, details?: string) => {
-    const entry = {id: newId(wcSyncLog||[]), ts: new Date().toISOString(), type, msg, details: details||''};
+  // `productId`: de regel gaat over een artikel van dit bier — dan staat hij
+  // ook in het logboek van dat product (utils/productLogboek.ts). Een
+  // samenvatting van de hele push of pull krijgt er geen.
+  const addWcLog = (type: string, msg: string, details?: string, productId?: number | null) => {
+    const entry = {id: newId(wcSyncLog||[]), ts: new Date().toISOString(), type, msg, details: details||'',
+      ...(productId != null && Number(productId) ? {product_id: Number(productId)} : {})};
     setWcSyncLog((prev: any[]) => [entry, ...(prev||[])].slice(0, 100));
   };
 
@@ -1088,21 +1246,6 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
   const bierProductVelden = bierInvulVelden('product');
   const bierArtikelVelden = bierInvulVelden('artikel');
 
-  // Kostprijs per liter van één batch (ingrediënten, utility, verpakking,
-  // accijns / afgevulde liters). Null zolang er niets afgevuld is: dan is er
-  // geen volume om de kosten over te verdelen.
-  // Volledige opbouw: productiekosten en accijns apart. `accijnsInst` erbij
-  // zorgt dat oude afvullingen zonder uitslag én zonder voorcalc-snapshot toch
-  // een accijnsbedrag krijgen (gemarkeerd als schatting) in plaats van stil
-  // als nul mee te tellen.
-  const kostprijsDetail = (b: any) =>
-    berekenBatchKostprijs(b, bi, lots, av, verpakkingen, onderdelen, acc, accijnsInst);
-
-  const kostprijsVanBatch = (b: any): number | null => {
-    const {kostprijs_per_liter} = kostprijsDetail(b);
-    return kostprijs_per_liter > 0 ? kostprijs_per_liter : null;
-  };
-
   const receptenVoorProduct = (prod: any) => (prod?.recept_ids?.length
     ? (recepten||[]).filter((r: any) => prod.recept_ids.includes(r.id))
     : []);
@@ -1153,10 +1296,13 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
       return {
         ...pa, biernaam: prod?.naam || '', _product_id: pa.product_id,
         _omschrijving: prod?.omschrijving || '',
-        // De bierinformatie, vertaald naar de velden van het webshopthema.
+        // De bierinformatie, vertaald naar de velden van het webshopthema, met
+        // de Bevat-regel van de etiketten die op voorraad liggen achter de
+        // ingrediënten (utils/craftery.ts).
         _themaMeta: themaAan ? crafteryMeta({
           product: prod, artikel: pa,
           inhoudLiter: inhoudVanArtikel(pa), recepten: receptenVoorProduct(prod), ingredienten: ing,
+          bevatRegel: prod && etiketDienst ? etiketDienst.bevatRegel(prod) : null,
         }) : null,
         _pa: true,
       };
@@ -1177,8 +1323,11 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcSyncMsg(t('error_no_woocommerce')); return; }
     setWcSyncing(true); setWcSyncMsg('');
     // Per artikel onthouden wat er gesynct is, zodat de modal en de lijst
-    // laten zien wanneer de winkel voor het laatst is bijgewerkt.
+    // laten zien wanneer de winkel voor het laatst is bijgewerkt — en de
+    // themameta zoals die nu in de winkel staat (`wc.meta_stand`): daarmee
+    // zegt de etiketkaart of de website achterloopt op het etiket.
     const gesynct: Record<number, {wc_id?: number, permalink?: string}> = {};
+    const standen: Record<number, any> = {};
     try {
       let bijgewerkt = 0;
       // Fouten per artikel verzamelen i.p.v. de hele push afbreken: één trage
@@ -1198,17 +1347,13 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
         // wil geen negatieve voorraad, dus daar wordt nul gepusht. Wat voor
         // open orders klaarligt gaat eraf, net als bij bier (utils/merch).
         const beschikbaar = art._merch ? merchBeschikbaarVoorWc(art, merchKlaar) : wcBeschikbaarVoorArt(art);
-        addWcLog('debug', `${naam} → ${beschikbaar}×`, '');
+        // Het bier van deze regel, voor het logboek van dat product.
+        const logProduct = art._merch ? null : art._product_id;
+        addWcLog('debug', `${naam} → ${beschikbaar}×`, '', logProduct);
         try {
-          const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
-          if (!prods?.length) {
-            // Stil overslaan verbergt configuratiefouten — log het zodat de
-            // gebruiker in het WC-logboek ziet welke SKU niet gevonden is.
-            addWcLog('fout', t('msg_wc_sku_onbekend').replace('{sku}', art.artikelnummer).replace('{naam}', naam));
-            mislukt.push(naam);
-            continue;
-          }
-          const body = volledig
+          // Dezelfde push van één artikel als "Naar webshop" na het bijwerken
+          // van een etiket (utils/wcProduct.ts → wcArtikelPush).
+          const r = await wcArtikelPush(art.artikelnummer, (winkel: any) => volledig
             ? bouwWcPayload({
                 velden: {...(art.wc || {}), meta: art._themaMeta || {}},
                 sku: art.artikelnummer,
@@ -1216,23 +1361,38 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                 prijsExcl: art.verkoopprijs, btwPct: art.btw_pct,
                 voorraad: beschikbaar, prijzenInclBtw: wcPrijzenInclBtw,
                 // Ongewijzigde prijzen gaan ongewijzigd terug (geen centverschuiving).
-                winkel: prods[0],
+                winkel,
               })
-            : {stock_quantity: beschikbaar, manage_stock: true};
-          await wcPut(`products/${prods[0].id}`, body);
-          if (volledig && art._pa) gesynct[art.id] = {wc_id: prods[0].id, permalink: prods[0].permalink};
+            // ↑ Push voorraad: alleen de voorraad, de meta blijft onaangeroerd.
+            : wcVoorraadPayload(beschikbaar), {get: wcGet, put: wcPut});
+          if (!r.gevonden) {
+            // Stil overslaan verbergt configuratiefouten — log het zodat de
+            // gebruiker in het WC-logboek ziet welke SKU niet gevonden is.
+            addWcLog('fout', t('msg_wc_sku_onbekend').replace('{sku}', art.artikelnummer).replace('{naam}', naam), '', logProduct);
+            mislukt.push(naam);
+            continue;
+          }
+          if (volledig && art._pa) gesynct[art.id] = {wc_id: r.vooraf.id, permalink: r.vooraf.permalink};
+          // De stand die verstuurd/ontvangen is, ook bij de voorraadpush (de
+          // winkel meldt zijn meta terug; die push verandert hem niet).
+          if (themaAan && art._pa) {
+            const stand = wcMetaStandNaPush({antwoord: r.antwoord, vooraf: r.vooraf, verstuurd: r.body.meta_data, sleutels: CRAFTERY_SLEUTELS});
+            if (stand) standen[art.id] = stand;
+          }
           bijgewerkt++;
         } catch(e: any) {
           mislukt.push(naam);
-          addWcLog('fout', `${naam} — ${wcFoutMelding(e, t)}`, e.message);
+          addWcLog('fout', `${naam} — ${wcFoutMelding(e, t)}`, e.message, logProduct);
         }
       }
       setWcCreds((prev: any) => ({...prev, lastSync: new Date().toISOString()}));
-      if (Object.keys(gesynct).length) {
+      if (Object.keys(gesynct).length || Object.keys(standen).length) {
         const nu = new Date().toISOString();
-        setProductArtikelen((prev: any[]) => prev.map((a: any) => gesynct[a.id]
-          ? {...a, wc: {...(a.wc || {}), ...gesynct[a.id], gesynct: nu}}
-          : a));
+        setProductArtikelen((prev: any[]) => prev.map((a: any) => {
+          if (!gesynct[a.id] && !standen[a.id]) return a;
+          const wc = gesynct[a.id] ? {...(a.wc || {}), ...gesynct[a.id], gesynct: nu} : (a.wc || {});
+          return {...a, wc: wcMetStand(wc, standen[a.id], nu)};
+        }));
       }
       const pushMsg = t('msg_wc_push_result').replace('{n}', String(bijgewerkt));
       // Deels gelukt is geen succes: de melding blijft rood en noemt de
@@ -1264,11 +1424,11 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
    * één keer over te stappen: wat er nu in de webshop staat wordt de lokale
    * startwaarde. Overschrijft alleen het `wc`-blok (de spiegel van de winkel);
    * de eigen prijs wordt alleen ingevuld wanneer die nog leeg is — een
-   * bestaande calculatie mag de webshop niet zomaar overrulen.
+   * bestaande calculatie mag de webshop niet zomaar overrulen. De bevestiging
+   * zit in de knop zelf (BevestigKnop in de kop van de pagina).
    */
   const wcPullAll = async () => {
     if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcSyncMsg(t('error_no_woocommerce')); return; }
-    if (!confirm(t('wc_bevestig_pull_alles'))) return;
     setWcSyncing(true); setWcSyncMsg('');
     const nu = new Date().toISOString();
     const updates: Record<number, any> = {};
@@ -1283,9 +1443,15 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           if (!prods?.length) { onbekend.push(art.artikelnummer); continue; }
           const velden = leesWcProduct(prods[0], {btwPct: art.btw_pct, prijzenInclBtw: wcPrijzenInclBtw, metaSleutels: themaAan ? CRAFTERY_SLEUTELS : []});
           // De themavelden uit de winkel zijn gewoon bierinformatie: vertaal
-          // ze terug naar de velden van het product en het artikel.
+          // ze terug naar de velden van het product en het artikel (zonder de
+          // Bevat-zin achter de ingrediënten: die hoort bij het etiket).
           const {product: bierProduct, artikel: bierArtikel} = crafteryLees(crafteryMetaUitWc(prods[0].meta_data));
-          updates[art.id] = {wc: {...velden, meta: undefined, gepulld: nu}, prijs: prods[0].regular_price, bier: bierArtikel};
+          // De stand die ontvangen is: daarmee zegt de etiketkaart of de
+          // website achterloopt op het etiket (zonder themavelden blijft de
+          // vorige stand staan).
+          const stand = themaAan ? wcMetaUitProduct(prods[0], CRAFTERY_SLEUTELS) : null;
+          const vorigeStand = art.wc?.meta_stand ? {meta_stand: art.wc.meta_stand, meta_stand_op: art.wc.meta_stand_op} : {};
+          updates[art.id] = {wc: wcMetStand({...velden, meta: undefined, gepulld: nu, ...vorigeStand}, stand, nu), prijs: prods[0].regular_price, bier: bierArtikel};
           // Meerdere verpakkingen van hetzelfde bier leveren dezelfde waarden;
           // de eerste die iets zegt telt, zodat de laatste SKU de vorige niet
           // steeds overschrijft.
@@ -1295,7 +1461,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           gevonden++;
         } catch(e: any) {
           onbekend.push(art.artikelnummer);
-          addWcLog('fout', `${art.artikelnummer} — ${wcFoutMelding(e, t)}`, e.message);
+          addWcLog('fout', `${art.artikelnummer} — ${wcFoutMelding(e, t)}`, e.message, art.product_id);
         }
       }
       setProductArtikelen((prev: any[]) => prev.map((a: any) => {
@@ -1332,10 +1498,18 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     setTimeout(() => setWcSyncMsg(''), 6000);
   };
 
-  // --- Logboek data ---
-  const beerLogEntries = [...(log||[])]
-    .filter((l: any) => ['afvullen','uitslaan','verkoop','afboeking','rebrand'].includes(l.type))
-    .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''));
+  // --- Logboek van het geopende product ---
+  // Alleen de mutaties van dít bier, niet die van alle bieren: dezelfde
+  // afvullingen en batches als het blok Voorraad (utils/productLogboek.ts).
+  // Van het webshoplog alleen de regels over zijn artikelen; de samenvattingen
+  // van een hele push of pull staan in het synchronisatielog bij de koppeling.
+  const productLog = useMemo(() => sel == null ? [] : voorraadLogVanProduct(log, {
+    productId: Number(sel),
+    afvullingIds: selAv.map((a: any) => a.id),
+    batchIds: selBatches.map((b: any) => b.id),
+    afvullingen: av,
+  }), [log, sel, selAv, selBatches, av]);
+  const productWcLog = useMemo(() => sel == null ? [] : webshopLogVanProduct(wcSyncLog, Number(sel)), [wcSyncLog, sel]);
 
   const LOG_TYPE_STYLES: Record<string, {icon: React.ReactNode, cls: string, label: string}> = {
     afvullen:  {icon: <Icon n="beer" />, cls:'text-green-700 bg-green-50',  label: t('log_type_afvullen')},
@@ -1347,31 +1521,433 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
   };
 
   const WC_TYPE_STYLES: Record<string, {icon: string, cls: string, label: string}> = {
-    push:  {icon: '↑', cls: 'text-purple-700 bg-purple-50', label: 'WC Push'},
-    pull:  {icon: '↓', cls: 'text-blue-700 bg-blue-50',   label: 'WC Pull'},
-    fout:  {icon: '⚠', cls: 'text-red-700 bg-red-50',     label: 'WC Fout'},
-    debug: {icon: '·', cls: 'text-gray-500 bg-gray-100',  label: 'WC Debug'},
+    push:  {icon: '↑', cls: 'text-purple-700 bg-purple-50', label: t('log_type_wc_push')},
+    pull:  {icon: '↓', cls: 'text-blue-700 bg-blue-50',   label: t('log_type_wc_pull')},
+    fout:  {icon: '⚠', cls: 'text-red-700 bg-red-50',     label: t('log_type_wc_fout')},
+    debug: {icon: '·', cls: 'text-gray-500 bg-gray-100',  label: t('log_type_wc_debug')},
   };
 
   const logCombined = useMemo(() => {
-    const wcEntries = (wcSyncLog || []).map((l: any) => ({
+    const wcEntries = (productWcLog as any[]).map((l: any) => ({
       _src: 'wc' as const, id: l.id, datum: l.ts ? l.ts.slice(0, 10) : '—',
       sortKey: l.ts || '', type: l.type, msg: l.msg, details: l.details,
     }));
-    const voorraadEntries = beerLogEntries.map((l: any) => ({
+    const voorraadEntries = (productLog as any[]).map((l: any) => ({
       _src: 'voorraad' as const, ...l,
       sortKey: (l.datum || '') + (l.id ? String(l.id).padStart(10, '0') : ''),
     }));
     if (logFilter === 'voorraad') return voorraadEntries;
     if (logFilter === 'woocommerce') return wcEntries;
     return [...voorraadEntries, ...wcEntries].sort((a, b) => b.sortKey.localeCompare(a.sortKey));
-  }, [log, wcSyncLog, logFilter]);
+  }, [productLog, productWcLog, logFilter]);
+
+  // Eén weergave per logregel, voor de tabel (bureau) en de lijst (telefoon).
+  const logRijen = logCombined.slice(0, 50).map((l: any) => {
+    if (l._src === 'wc') {
+      const ws = WC_TYPE_STYLES[l.type] || WC_TYPE_STYLES.debug;
+      return {key: `wc-${l.id}`, datum: fmtD(l.datum) || '—', stijl: ws, titel: String(l.msg || ''),
+        sub: String(l.details || ''), vet: false, qty: '—', qtyCls: 'text-gray-400 font-normal'};
+    }
+    const ts = LOG_TYPE_STYLES[l.type] || {icon: '•', cls: 'text-gray-600 bg-gray-100', label: l.type};
+    // `stuks` is de opgeslagen eenheid; in beeld in de gekozen taal.
+    const eenheid = !l.eenheid || l.eenheid === 'stuks' ? t('unit_stuks') : l.eenheid;
+    const qty = l.hoeveelheid != null
+      // Uitgaand (afboeking/verkoop) is een min — behalve een tegenregel met
+      // negatieve hoeveelheid (teruggedraaide pick): die komt juist terug in
+      // de voorraad.
+      ? `${(l.type === 'afboeking' || l.type === 'verkoop') && Number(l.hoeveelheid) >= 0 ? '−' : '+'}${fmtQty(Math.abs(Number(l.hoeveelheid)))} ${eenheid}`
+      : '—';
+    return {key: `v-${l.id}`, datum: fmtD(l.datum) || '—', stijl: ts,
+      titel: `${l.batch_naam || '—'}${l.verpakking_type ? ` · ${l.verpakking_type}` : ''}`,
+      sub: String(l.omschrijving || l.referentie || ''), vet: true, qty,
+      qtyCls: l.type === 'afboeking' ? 'text-red-600' : l.type === 'uitslaan' ? 'text-purple-600' : l.type === 'verkoop' ? 'text-emerald-700' : 'text-green-600'};
+  });
+
+  // Het artikelformulier (nieuw of bewerken): in de kaart Artikelen.
+  const artikelFormulier = artForm ? (
+    <div className="p-3 bg-gray-50 border-b border-gray-200">
+      {/* Eén kolom op mobiel: de velden bleven anders te smal om te bewerken */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div>
+          <label className="text-[11px] text-gray-500">{t('lbl_product_verpakking')}</label>
+          <select value={artForm.verpakking_id||''} onChange={e => setArtForm((f: any) => ({...f, verpakking_id: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input bg-white">
+            <option value="">-</option>
+            {(verpakkingen||[]).map((v: any) => <option key={v.id} value={v.id}>{v.naam} ({v.inhoud_liter}L)</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[11px] text-gray-500">{t('lbl_product_sku')}</label>
+          <input type="text" value={artForm.artikelnummer||''} onChange={e => setArtForm((f: any) => ({...f, artikelnummer: e.target.value}))}
+            className={`w-full border rounded px-2 py-1.5 sm:py-1 text-xs t-input ${artFormConflicten.length ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
+          {/* Eén SKU hoort bij één artikel: hij wijst de orderregel,
+              de picking en de webshop naar dit bier. */}
+          {artFormConflicten.length > 0 && (() => {
+            const vrij = vrijeSku(artForm.artikelnummer, {soort: 'artikel', id: artForm.id, product_id: artForm.product_id ?? sel}, skuData);
+            return (
+              <div className="mt-1 text-[11px] text-red-600">
+                {t('msg_sku_dubbel')
+                  .replace('{sku}', String(artForm.artikelnummer || ''))
+                  .replace('{naam}', artFormConflicten[0].naam || t('lbl_naamloos'))}
+                {vrij && (
+                  <button type="button" onClick={() => setArtForm((f: any) => ({...f, artikelnummer: vrij}))}
+                    className="ml-1 font-medium underline t-accent-text">
+                    {t('btn_sku_gebruik_vrij').replace('{sku}', vrij)}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+        <div>
+          <label className="text-[11px] text-gray-500">{t('lbl_product_ean')}</label>
+          <input type="text" value={artForm.ean||''} onChange={e => setArtForm((f: any) => ({...f, ean: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
+        </div>
+        <div>
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] text-gray-500">{t('lbl_product_prijs')}</label>
+            <button type="button" onClick={() => {
+              const btw = Number(artForm.btw_pct || 0);
+              const prijs = Number(artForm.verkoopprijs || 0);
+              if (prijsInclBtw && prijs > 0) {
+                setArtForm((f: any) => ({...f, verkoopprijs: (prijs / (1 + btw / 100)).toFixed(2)}));
+              } else if (!prijsInclBtw && prijs > 0) {
+                setArtForm((f: any) => ({...f, verkoopprijs: (prijs * (1 + btw / 100)).toFixed(2)}));
+              }
+              setPrijsInclBtw(!prijsInclBtw);
+            }} className="text-[10px] font-medium px-1 rounded" style={{color: 'var(--t-accent)'}}>
+              {prijsInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
+            </button>
+          </div>
+          <input type="number" step="0.01" value={artForm.verkoopprijs||''} onChange={e => setArtForm((f: any) => ({...f, verkoopprijs: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
+        </div>
+        <div>
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] text-gray-500">{t('lbl_product_b2b_prijs')}</label>
+            <button type="button" onClick={() => {
+              const btw = Number(artForm.btw_pct || 0);
+              const prijs = Number(artForm.b2b_prijs || 0);
+              if (b2bPrijsInclBtw && prijs > 0) {
+                setArtForm((f: any) => ({...f, b2b_prijs: (prijs / (1 + btw / 100)).toFixed(2)}));
+              } else if (!b2bPrijsInclBtw && prijs > 0) {
+                setArtForm((f: any) => ({...f, b2b_prijs: (prijs * (1 + btw / 100)).toFixed(2)}));
+              }
+              setB2bPrijsInclBtw(!b2bPrijsInclBtw);
+            }} className="text-[10px] font-medium px-1 rounded" style={{color: 'var(--t-accent)'}}>
+              {b2bPrijsInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
+            </button>
+          </div>
+          <input type="number" step="0.01" value={artForm.b2b_prijs||''} onChange={e => setArtForm((f: any) => ({...f, b2b_prijs: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
+        </div>
+        <div>
+          <label className="text-[11px] text-gray-500">{t('lbl_product_btw')}</label>
+          {/* Keuzelijst i.p.v. vrij getal: op mobiel veel makkelijker te
+              bedienen. Een afwijkend opgeslagen tarief blijft kiesbaar. */}
+          <select value={artForm.btw_pct ?? ''} onChange={e => setArtForm((f: any) => ({...f, btw_pct: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input bg-white">
+            <option value="">-</option>
+            {Array.from(new Set([
+              ...(Array.isArray(btwTarieven) ? btwTarieven.map(Number) : [0, 9, 21]),
+              ...(artForm.btw_pct !== '' && artForm.btw_pct != null ? [Number(artForm.btw_pct)] : []),
+            ].filter((v: number) => Number.isFinite(v)))).sort((a, b) => a - b)
+              .map((pct: number) => <option key={pct} value={pct}>{pct}%</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[11px] text-gray-500">{t('lbl_gn_code')}</label>
+          <select value={artForm.gn_code||''} onChange={e => setArtForm((f: any) => ({...f, gn_code: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input bg-white">
+            <option value="">-</option>
+            {(gnCodes||[]).map((gc: any) => <option key={gc.code} value={gc.code}>{gc.code} — {gc.naam}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[11px] text-gray-500">{t('lbl_product_omschrijving')}</label>
+          <input type="text" value={artForm.omschrijving||''} onChange={e => setArtForm((f: any) => ({...f, omschrijving: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
+        </div>
+        <div className="sm:col-span-3 border-t border-gray-200 pt-2 mt-1">
+          {/* Informatie over déze verpakking: maat/aantal, wat er
+              in een pakket zit, een badge en hoe je hem levert. */}
+          <BierInfoForm
+            velden={bierArtikelVelden}
+            waarden={artForm}
+            onChange={(veld, waarde) => setArtForm((f: any) => ({...f, [veld]: waarde}))}
+            placeholders={afgeleidVoor(selProduct, artForm)}
+          />
+        </div>
+        <div className="sm:col-span-3">
+          <label className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none" title={t('tip_artikel_wc_push')}>
+            <input
+              type="checkbox"
+              className="t-checkbox"
+              checked={artForm.wc_push !== false}
+              onChange={e => setArtForm((f: any) => ({...f, wc_push: e.target.checked}))}
+            />
+            <span>{t('lbl_artikel_wc_push')}</span>
+          </label>
+        </div>
+      </div>
+      {/* Live kostprijs/marge-inschatting tijdens het invullen — de
+          prijsvelden respecteren de incl/excl-BTW-toggles. */}
+      {(() => {
+        if (perLiterExclVerpakking <= 0) {
+          return <p className="mt-2 text-[11px] text-gray-500 italic">{t('msg_geen_kostprijs_bekend')}</p>;
+        }
+        const vp = (verpakkingen||[]).find((v: any) => v.id === Number(artForm.verpakking_id));
+        // Het bier × inhoud plus de eigen verpakking (nooit prijs-per-liter × inhoud).
+        const k = kostVoorArtikel({...artForm, verpakking_id: vp?.id ?? artForm.verpakking_id});
+        if (!k || k.kost <= 0) return null;
+        const btw = Number(artForm.btw_pct || 0);
+        const naarExcl = (val: any, incl: boolean) => {
+          const n = Number(val || 0);
+          return incl && n > 0 ? n / (1 + btw / 100) : n;
+        };
+        const cons = margeVoorPrijs(k.kost, naarExcl(artForm.verkoopprijs, prijsInclBtw));
+        const b2b = margeVoorPrijs(k.kost, naarExcl(artForm.b2b_prijs, b2bPrijsInclBtw));
+        const chip = (label: string, m: {eur: number, pct: number} | null) => m && (
+          <span className={`px-2 py-0.5 rounded-full font-medium ${m.eur >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            {label}: {m.pct.toFixed(0)}% ({fmt(m.eur)})
+          </span>
+        );
+        return (
+          <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px]">
+            <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
+              {t('lbl_kostprijs_stuk')}: {fmt(k.kost)} ({t('product_kost_opbouw')
+                .replace('{inhoud}', fmtQty(k.inhoud, 2))
+                .replace('{perliter}', fmt(perLiterExclVerpakking))
+                .replace('{verpakking}', fmt(k.verpakking))})
+            </span>
+            {chip(t('lbl_product_marge'), cons)}
+            {chip(`${t('lbl_product_marge')} ${t('lbl_b2b')}`, b2b)}
+          </div>
+        );
+      })()}
+      <div className="flex gap-2 mt-2">
+        <Btn onClick={saveArtikel} s="sm" disabled={artFormConflicten.length > 0}>{t('btn_product_opslaan')}</Btn>
+        <Btn onClick={() => setArtForm(null)} s="sm" v="secondary">{t('btn_product_annuleren')}</Btn>
+      </div>
+    </div>
+  ) : null;
+
+  // ── Het detail van het geopende product (components/product/ProductDetail) ──
+  // Voorraad, komt eraan, dekking en open bestellingen: de telling van het
+  // Overzicht. Recept en brouwsels: utils/productKeten.ts. Het etiketoordeel:
+  // dezelfde vergelijking als de kaart.
+  const selVoorraad = useMemo(() => sel == null ? [] : voorraadPerProduct(sel, verkoopCtx), [sel, verkoopCtx]);
+  const selKomt = useMemo(() => sel == null ? [] : komtEraan(sel, verkoopCtx), [sel, verkoopCtx]);
+  const selDekking = useMemo(() => {
+    const uit: Record<string, number | null> = {};
+    if (sel != null) for (const g of selVoorraad) uit[g.sleutel] = dekkingWeken(sel, g.sleutel, verkoopCtx);
+    return uit;
+  }, [sel, selVoorraad, verkoopCtx]);
+  const selOpen = useMemo(() => sel == null ? [] : openBestellingenVoorProduct(sel, verkoopCtx), [sel, verkoopCtx]);
+  const selReceptInfo = useMemo(() => productRecepten(selProduct, bat, recepten), [selProduct, bat, recepten]);
+  const selBrouwsels = useMemo(() => brouwselsVanProduct(selProduct, {
+    ...etiketData, batches: bat, afvullingen: av, afvulSessies: etiketData.afvulSessies, recepten,
+  }), [selProduct, etiketData, bat, av, recepten]);
+  const selTegels = useMemo(() => selKomt.map(k => ({
+    k, dag: faseDag((bat || []).find((b: any) => b.id === k.batchId), {afvullingen: av, statusLog: log, vandaag}),
+  })), [selKomt, bat, av, log, vandaag]);
+  const selWebsite = etiketDienst && selProduct ? etiketDienst.website(selProduct) : null;
+  const selOordeel = useMemo(() => selProduct
+    ? productEtiketOordeel(selProduct, etiketData, t, {websiteAchter: selWebsite?.status === 'achter'})
+    : null, [selProduct, etiketData, selWebsite]);
+  const selBierInfo = useMemo(() => bierInfoWeergave({
+    product: selProduct, ingredienten: ing, afleiding: bierAfleidingVoorProduct(selProduct, etiketData),
+  }), [selProduct, ing, etiketData]);
+  // Lopende vernietigingen van afvullingen die niet meer bij een lot op
+  // voorraad staan (alles is afgeboekt): die moeten nog wel verder te zetten zijn.
+  const lopendeVernietigingen = useMemo(() => {
+    const opVoorraad = new Set(selVoorraad.flatMap(g => g.lots.map(l => l.afvullingId)));
+    const eigen = new Map(selAv.map((a: any) => [a.id, a]));
+    return ((afboekingen || []) as any[])
+      .filter((ab: any) => ab.reden === 'vernietiging' && (ab.vernietiging_status || 'aangevraagd') !== 'uitgevoerd'
+        && eigen.has(ab.afvulling_id) && !opVoorraad.has(ab.afvulling_id))
+      .map((afb: any) => ({afb, afv: eigen.get(afb.afvulling_id)}));
+  }, [afboekingen, selAv, selVoorraad]);
+
+  const bierLeeg = !!selProduct && bierProductVelden.every((f: any) => {
+    const w = selProduct[f.veld];
+    return w === undefined || w === null || w === '' ||
+      (Array.isArray(w) ? w.length === 0 : typeof w === 'boolean' ? !w : String(w).trim() === '');
+  });
+
+  // Wat de brouwsels laten zien: gemiddelden, spreiding en trend van de
+  // gemeten waarden (utils/batchStats.ts). Geen kostprijs: die staat één keer,
+  // met zijn bron, bij de artikelen.
+  const brouwselTrend = (() => {
+    if (selBatches.length < 2) return null;
+    const sam = batchSamenvatting(selBatches);
+    const taal = getLang();
+    // ABV en rendement met een komma ("6,8 %"); SG altijd met drie decimalen ("1.062").
+    const pct = (v: number, dec: number) => `${fmtGetal(v, dec, taal)} %`;
+    const metingen: {label: string, m: any, fmt: (v: number) => string}[] = [
+      {label: t('bier_veld_abv'), m: sam.abv, fmt: v => pct(v, 1)},
+      {label: t('lbl_batch_og'), m: sam.og, fmt: v => fmtSg(v)},
+      {label: t('lbl_batch_fg'), m: sam.fg, fmt: v => fmtSg(v)},
+      {label: t('batch_stat_rendement'), m: sam.rendement, fmt: v => pct(v, 0)},
+    ].filter(r => r.m);
+    if (!metingen.length) return null;
+    return (
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+        <div className="text-xs text-gray-600 mb-1.5">{t('product_brouwsels_gemiddeld').replace('{n}', String(sam.aantal))}</div>
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          {metingen.map(r => {
+            const trend = r.m.trendPct;
+            return (
+              <div key={r.label}>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-sm font-semibold t-accent-text">{r.fmt(r.m.gemiddeld)}</span>
+                  {trend !== null && Math.abs(trend) >= 1 && (
+                    <span className="text-[11px] text-gray-600"
+                      title={t('batch_trend_tip').replace('{vorige}', r.m.vorige != null ? r.fmt(r.m.vorige) : '').replace('{laatste}', r.m.laatste != null ? r.fmt(r.m.laatste) : '')}>
+                      {trend > 0 ? '▲' : '▼'} {Math.abs(trend).toFixed(0)} %
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-[11px] text-gray-600">
+                    {r.label}
+                    {r.m.aantal > 1 && r.m.spreiding > 0 && <span> · {r.fmt(r.m.min)}–{r.fmt(r.m.max)}</span>}
+                  </div>
+                  <Sparkline waarden={r.m.reeks} titel={`${r.label}: ${r.m.reeks.map((v: number) => r.fmt(v)).join(' · ')}`} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  })();
+
+  // Een batch handmatig koppelen (extra product_ids): de keuzelijst in de kaart Brouwsels.
+  const koppelLijst = setBat && batchSelectOpen ? (
+    beschikbareBatches.length > 0 ? (
+      <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto bg-white shadow-sm">
+        {beschikbareBatches.map((b: any) => (
+          <button key={b.id} type="button" onClick={() => koppelBatch(b.id)}
+            className="w-full text-left px-3 py-2 min-h-tap md:min-h-0 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0">
+            <span className="font-medium">{b.naam}</span>
+            {b.batch_nummer && <span className="text-gray-500 ml-2 text-xs">#{b.batch_nummer}</span>}
+            {b.datum && <span className="text-gray-500 ml-2 text-xs">{fmtD(b.datum)}</span>}
+          </button>
+        ))}
+      </div>
+    ) : (
+      <div className="text-xs text-gray-500 py-1">{t('lbl_geen_batches_beschikbaar')}</div>
+    )
+  ) : null;
+
+  const detailProps = selProduct ? {
+    product: selProduct,
+    telefoon,
+    ebc: productEbc(selProduct, recepten),
+    etiketRegel: etiketKopRegel(selProduct, t, getLang()),
+    oordeel: selOordeel,
+    keten: ketenTeksten({
+      recept: selReceptInfo.huidig?.naam || (selReceptInfo.huidigId ? receptNaam(selReceptInfo.huidigId) : null),
+      receptBron: selReceptInfo.bron,
+      brouwsels: selBrouwsels.length,
+      komt: selKomt[0] || null,
+      etiket: selOordeel,
+      voorraad: selVoorraad,
+      artikelen: selArtikelen.length,
+      openBestellingen: selOpen.length,
+    }, t),
+    onBewerken: () => startEdit(selProduct),
+    kopActies: [
+      {id: 'roulatie', label: selProduct.uit_roulatie ? t('product_actie_weer_in_roulatie') : t('product_actie_uit_roulatie'), onClick: toggleRoulatie},
+      {id: 'archiveren', label: selProduct.status === 'gearchiveerd' ? t('btn_restore') : t('btn_product_archiveren'), onClick: toggleArchiveer},
+      {id: 'verwijderen', label: t('btn_product_verwijderen'), soort: 'gevaar' as const, onClick: deleteProduct},
+    ],
+    segment,
+    onSegment: setSegment,
+    etiketKaart: (
+      <EtiketKaart modus="product" product={selProduct} data={etiketData}
+        website={selWebsite ? {[selProduct.id]: selWebsite} : null}
+        onEtiketBijwerken={!telefoon && etiketDienst ? (pid: number | null) => etiketDienst.open({productId: Number(pid ?? selProduct.id)}) : undefined}
+        onNaarWebshop={etiketDienst?.webshopAan ? (pid: number | null) => etiketDienst.open({productId: Number(pid ?? selProduct.id), stap: 'webshop'}) : undefined}
+        onArtikelMaken={(_pid: number, verpakkingId: number) => startArtEdit(undefined, verpakkingId)}
+        bijwerkenInMenu={!telefoon}
+        weergave={telefoon ? 'tegels' : breed ? 'tabel' : 'auto'} />
+    ),
+    onEtiketBijwerken: etiketDienst ? () => etiketDienst.open({productId: Number(selProduct.id)}) : undefined,
+    recepten: selReceptInfo,
+    receptActies: [
+      ...(selReceptInfo.huidigId && selReceptInfo.bron !== 'vastgezet'
+        ? [{id: 'vastzetten', label: t('product_recept_vastzetten'), onClick: () => zetHuidigRecept(selReceptInfo.huidigId)}] : []),
+      ...(selReceptInfo.bron === 'vastgezet'
+        ? [{id: 'losmaken', label: t('product_recept_niet_vast'), onClick: () => zetHuidigRecept(null)}] : []),
+      {id: 'ander', label: t('product_recept_ander_huidig'), onClick: () => setReceptKiezer('huidig')},
+      {id: 'koppelen', label: t('btn_koppel_recept'), onClick: () => setReceptKiezer('koppelen')},
+    ],
+    onOpenRecept: openRecept,
+    onReceptKoppelen: () => setReceptKiezer('koppelen'),
+    brouwsels: selBrouwsels,
+    tegels: selTegels,
+    onOpenBatch: openBatch,
+    onNieuweBatch: onNieuweBatch ? () => onNieuweBatch({productId: Number(selProduct.id)}) : undefined,
+    brouwselActies: setBat ? [{id: 'koppel', label: t('btn_koppel_batch'), onClick: () => setBatchSelectOpen(o => !o)}] : [],
+    brouwselRijActies: (r: any) => r.direct && setBat
+      ? [{id: 'ontkoppel', label: t('btn_ontkoppel_batch'), soort: 'gevaar' as const, onClick: () => ontkoppelBatch(r.batchId)}] : [],
+    koppelLijst,
+    trend: brouwselTrend,
+    voorraad: {
+      voorraad: selVoorraad,
+      afvullingVan: (id: number) => (av || []).find((a: any) => a.id === id) || null,
+      locaties,
+      dekking: selDekking,
+      vandaag,
+      onUitslaan: (afv: any, vanLocatieId: number) => setVerplaatsModal({afv, vanLocatieId}),
+      onVerplaatsen: (afv: any, vanLocatieId: number) => setVerplaatsModal({afv, vanLocatieId}),
+      onRebrand: setAv ? (afv: any) => openRebrandModal(afv) : undefined,
+      onAfboeken: (afv: any) => openAfboekModal(afv),
+      afboekingenVan: (id: number) => ((afboekingen || []) as any[]).filter((ab: any) => ab.afvulling_id === id),
+      onVernietiging: openVernietigReview,
+      lopendeVernietigingen,
+      agpTotaal: agpTotaalProduct,
+      onUitslaanProduct: () => setUitslagOpen(true),
+      productNaam: (id: number) => (producten || []).find((p: any) => p.id === id)?.naam || t('lbl_onbekend'),
+    },
+    artikelen: {
+      artikelen: selArtikelen,
+      perLiter: perLiterExclVerpakking,
+      bron: kostprijsBronTekst(selKostprijs, t),
+      kostPerStuk: kostVoorArtikel,
+      webshopAan: !!wcCreds?.enabled,
+      rijActies: artikelActies,
+      skuBadge: skuDubbelBadge,
+      formulier: artikelFormulier,
+    },
+    onArtikelToevoegen: () => startArtEdit(),
+    artikelFormOpen: !!artForm,
+    openBestellingen: selOpen,
+    onAlleBestellingen: openBestellingenMetProduct,
+    onOpenBestelling: openBestelling,
+    bierInfo: (
+      <BierInfoKaart product={selProduct} weergave={selBierInfo} heeftInfo={!bierLeeg}
+        open={bierInfoOpen} onToggle={() => setBierInfoOpen(o => !o)} onInvullen={() => startEdit(selProduct)} />
+    ),
+    logboek: (productLog.length + productWcLog.length) > 0 ? (
+      <ProductLogboek
+        titel={t('product_logboek_titel').replace('{naam}', selProduct.naam || t('lbl_naamloos'))}
+        aantal={productLog.length + productWcLog.length}
+        open={logboekOpen} onToggle={() => setLogboekOpen(o => !o)}
+        filters={(['alle', 'voorraad', ...(wcCreds?.enabled ? ['woocommerce'] : [])] as string[]).map(f => ({
+          id: f,
+          label: f === 'alle' ? t('orders_filter_alle')
+            : f === 'voorraad' ? t('log_filter_voorraad').replace('{n}', String(productLog.length))
+            : t('log_filter_woocommerce').replace('{n}', String(productWcLog.length)),
+        }))}
+        filter={logFilter} onFilter={(f: string) => setLogFilter(f as any)}
+        rijen={logRijen} />
+    ) : null,
+    vandaag,
+    verpakkingen: verpakkingen || [],
+  } : null;
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div className={`items-center justify-between mb-4 flex-wrap gap-2 ${recordGevraagd ? 'hidden md:flex' : 'flex'}`}>
         <h2 className="text-xl font-bold text-gray-800">{t('title_producten')}</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {wcSyncMsg && <span className={`text-xs font-medium ${wcSyncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcSyncMsg}</span>}
           {wcCreds?.enabled && (<>
             <button onClick={() => wcPushAll(false)} disabled={wcSyncing}
@@ -1384,86 +1960,56 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
               className="wc-btn flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
               {t('btn_wc_push_alles')}
             </button>
-            <Btn onClick={wcPullAll} v="secondary" disabled={wcSyncing} title={t('wc_pull_alles_title')}>
+            {/* Overschrijft de webshopkaarten van alle artikelen: de vraag
+                staat in de knop zelf (geen los bevestigingsvenster). */}
+            <BevestigKnop onBevestig={wcPullAll} v="secondary" disabled={wcSyncing}
+              vraag={t('wc_pull_alles_vraag')} title={t('wc_pull_alles_title')}>
               {t('btn_wc_pull_alles')}
-            </Btn>
+            </BevestigKnop>
           </>)}
-          <Btn onClick={() => startEdit()}>{t('btn_nieuw_product')}</Btn>
+          {/* Op een telefoon is een product in de route een eigen scherm met
+              de naam in de kopbalk: "+ Product" hoort bij de lijst. Anders kwam
+              het formulier voor een nieuw product onder de naam van het open
+              product, en bleef het na "terug" op de lijst staan. */}
+          <Btn onClick={() => startEdit()} cls={recordGevraagd ? 'hidden md:inline-block' : ''}>{t('btn_nieuw_product')}</Btn>
         </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 md:items-start">
-        {/* Productlijst */}
-        <div className={`w-full md:w-60 md:flex-shrink-0${(sel || editMode) ? ' hidden md:block' : ''}`}>
-          <div className="mb-2">
-            <SearchInput value={zoek} onChange={setZoek} placeholder={t('ph_product_zoek')} />
-          </div>
-
-          <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-            <div className="flex justify-between px-3 py-1.5 bg-gray-50 text-xs text-gray-500 border-b">
-              <span>{t('lbl_name')}</span><span>{t('lbl_stock')}</span>
-            </div>
-            {actieveProducten.length === 0 && <div className="p-6 text-center text-gray-400 text-sm">{t('lbl_geen_producten')}</div>}
-            {actieveProducten.map((p: any) => {
-              const stats = productStats[p.id] || {batches: 0, liter: 0, voorraad: 0};
-              return (
-                <div key={p.id} onClick={() => { setSel(p.id); setEditMode(false); setArtForm(null); }}
-                  className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors ${sel === p.id ? 't-sel border-l-2' : ''}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 min-w-0">
-                      <BierKleur ebc={productEbc(p, recepten)} s="md" />
-                      <span className="font-medium text-sm truncate">{p.naam}</span>
-                    </span>
-                    <span className={`text-xs font-semibold flex-shrink-0 ${stats.voorraad > 0 ? 'text-green-600' : 'text-gray-400'}`}>{stats.voorraad}×</span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5 truncate">
-                    {p.stijl || ''}
-                    {p.abv ? `${p.stijl ? ' · ' : ''}${Number(p.abv).toFixed(1)}%` : ''}
-                    {stats.batches ? ` · ${stats.batches === 1 ? t('lbl_n_batches_1') : t('lbl_n_batches_n').replace('{n}', String(stats.batches))}` : ''}
-                  </div>
-                </div>
-              );
-            })}
-            {gearchiveerdeProducten.length > 0 && (
-              <div>
-                <SectionHeader
-                  solid
-                  rounded="full"
-                  open={toonGearchiveerd}
-                  onToggle={() => setToonGearchiveerd(!toonGearchiveerd)}
-                  title={<span className="text-xs font-medium">{t('lbl_product_toon_gearchiveerd')}</span>}
-                  info={gearchiveerdeProducten.length}
-                />
-                {toonGearchiveerd && gearchiveerdeProducten.map((p: any) => {
-                  const stats = productStats[p.id] || {batches: 0, liter: 0, voorraad: 0};
-                  return (
-                    <div key={p.id} onClick={() => { setSel(p.id); setEditMode(false); setArtForm(null); }}
-                      className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors ${sel === p.id ? 't-sel border-l-2' : ''}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-sm text-gray-500 truncate">{p.naam}</span>
-                        <span className="text-xs font-semibold flex-shrink-0 text-gray-400">{stats.voorraad}×</span>
-                      </div>
-                      <div className="text-xs text-gray-400 mt-0.5 truncate">
-                        {p.stijl || ''}
-                        {p.abv ? `${p.stijl ? ' · ' : ''}${Number(p.abv).toFixed(1)}%` : ''}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+        {/* Productlijst: groepen, voorraad per verpakking, etiketchip (components/product). */}
+        <div className={`w-full md:w-60 lg:w-[280px] md:flex-shrink-0${(sel || editMode || nietGevonden) ? ' hidden md:block' : ''}`}>
+          <ProductLijst
+            groepen={lijstGroepen}
+            voorraadVan={(id: number) => voorraadPerProduct(id, verkoopCtx)}
+            etiketVan={(id: number) => etiketOordelen.get(id) ?? null}
+            ebcVan={(p: any) => productEbc(p, recepten)}
+            sel={sel}
+            onKies={(id: number) => { setSel(id); setEditMode(false); setArtForm(null); }}
+            zoek={zoek}
+            onZoek={setZoek}
+            geenProducten={!(producten || []).some((p: any) => p && p.id !== productWeg)}
+          />
         </div>
 
       {/* Rechter kolom: product detail */}
-      <div className={`flex-1 min-w-0${(sel || editMode) ? '' : ' hidden md:block'}`}>
-        {(sel || editMode) && (
+      <div className={`flex-1 min-w-0${(sel || editMode || nietGevonden) ? '' : ' hidden md:block'}`}>
+        {/* Met de route gaat terug via de kopbalk (één terugweg); alleen een
+            formulier voor een nieuw product (geen record in de route) houdt
+            hier zijn eigen terugknop. */}
+        {(gestuurd ? (editMode && !sel) : (sel || editMode)) && (
           <button onClick={() => { setSel(null); setEditMode(false); }}
             className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors">
             {t('btn_back')}
           </button>
         )}
-        {!sel && !editMode && (
+        {nietGevonden && !editMode && (
+          _fetchedKeys.has('producten') ? (
+            <LegeStaat icoon="search" titel={t('route_niet_gevonden_titel')} tekst={t('route_niet_gevonden_product')}>
+              <Btn v="secondary" onClick={() => setSel(null, {vervang: true})}>{t('route_naar_lijst').replace('{lijst}', t('nav_producten'))}</Btn>
+            </LegeStaat>
+          ) : null
+        )}
+        {!sel && !editMode && !nietGevonden && (
           <div className="text-center text-gray-400 text-sm py-16">{actieveProducten.length > 0 ? t('lbl_selecteer_product') : t('lbl_geen_producten')}</div>
         )}
 
@@ -1490,15 +2036,15 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="text-xs font-semibold text-gray-500">{t('lbl_product_abv')}</label>
-                    <input type="number" step="0.1" value={form.abv||''} onChange={e => setForm((f: any) => ({...f, abv: e.target.value}))} placeholder="5.5" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+                    <input type="number" step="0.1" value={form.abv||''} onChange={e => setForm((f: any) => ({...f, abv: e.target.value}))} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-500">{t('lbl_product_ebc')}</label>
-                    <input type="number" step="1" value={form.ebc||''} onChange={e => setForm((f: any) => ({...f, ebc: e.target.value}))} placeholder="12" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+                    <input type="number" step="1" value={form.ebc||''} onChange={e => setForm((f: any) => ({...f, ebc: e.target.value}))} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-500">{t('lbl_product_ibu')}</label>
-                    <input type="number" step="1" value={form.ibu||''} onChange={e => setForm((f: any) => ({...f, ibu: e.target.value}))} placeholder="35" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+                    <input type="number" step="1" value={form.ibu||''} onChange={e => setForm((f: any) => ({...f, ibu: e.target.value}))} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
                   </div>
                 </div>
               </div>
@@ -1538,17 +2084,26 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
               <div>
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-gray-500">{t('lbl_product_recepten')}</label>
-                  <Btn onClick={() => setReceptSelectOpen(!receptSelectOpen)} s="sm" v="ghost">{t('btn_koppel_recept')}</Btn>
+                  <Btn onClick={() => setReceptSelectOpen(true)} s="sm" v="ghost">{t('btn_koppel_recept')}</Btn>
                 </div>
-                {receptSelectOpen && beschikbareRecepten.length > 0 && (
-                  <div className="mt-1 border border-gray-200 rounded-lg max-h-40 overflow-y-auto bg-white shadow-sm">
-                    {beschikbareRecepten.map((r: any) => (
-                      <button key={r.id} onClick={() => koppelRecept(r.id)} className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0">
-                        <span className="font-medium">{r.naam}</span>
-                        {r.stijl && <span className="text-gray-400 ml-2 text-xs">{r.stijl}</span>}
-                      </button>
-                    ))}
-                  </div>
+                {/* De gedeelde receptkiezer (components/recept/ReceptKiezer):
+                    eerst de recepten van je producten, dan de andere in
+                    gebruik, het archief via zoeken; altijd een hoofdrecept,
+                    nooit een losse versie. */}
+                {receptSelectOpen && (
+                  <ReceptKiezer
+                    titel={t('btn_koppel_recept')}
+                    recepten={recepten}
+                    batches={bat}
+                    producten={producten}
+                    verborgen={receptenVerborgen}
+                    gearchiveerdeTags={receptenGearchiveerdeTags}
+                    productId={form.id ?? null}
+                    uitgesloten={form.recept_ids || []}
+                    metVerborgen
+                    onKies={k => koppelRecept(k.receptId)}
+                    onSluit={() => setReceptSelectOpen(false)}
+                  />
                 )}
                 <div className="mt-2 space-y-1">
                   {(form.recept_ids||[]).map((rid: string) => {
@@ -1584,845 +2139,36 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           </div>
         )}
 
-        {/* Product detail (view mode) */}
+        {/* Product detail: de keten van één bier (components/product). */}
         {sel && selProduct && !editMode && (
-          <div className="space-y-4">
-            {/* Header */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <SectionHeader
-                solid
-                title={<span className="flex items-center gap-2">
-                  <BierKleur ebc={productEbc(selProduct, recepten)} s="lg" />
-                  <span>{selProduct.naam}</span>
-                  {selProduct.status === 'gearchiveerd' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20">{t('lbl_product_gearchiveerd')}</span>}
-                </span>}
-                info={<>
-                  <Btn onClick={() => startEdit(selProduct)} s="sm" v="header">{t('btn_bewerken')}</Btn>
-                  <Btn onClick={toggleArchiveer} s="sm" v="header">{selProduct.status === 'gearchiveerd' ? t('btn_product_activeren') : t('btn_product_archiveren')}</Btn>
-                  <Btn onClick={deleteProduct} s="sm" v="header-danger">{t('btn_product_verwijderen')}</Btn>
-                </>}
-              />
-
-              <div className="p-4">
-                <div className="flex gap-4">
-                  {selProduct.afbeeldingen?.length > 0 && (
-                    <div className="flex-shrink-0">
-                      <img src={selProduct.afbeeldingen[fotoTab] || selProduct.afbeeldingen[0]} alt="" className="w-40 h-40 rounded-xl object-cover" />
-                      {selProduct.afbeeldingen.length > 1 && (
-                        <div className="flex gap-1 mt-2 justify-center">
-                          {selProduct.afbeeldingen.map((_: any, i: number) => (
-                            <button key={i} onClick={() => setFotoTab(i)} className={`w-2.5 h-2.5 rounded-full transition-colors ${fotoTab === i ? '' : 'bg-gray-300'}`} style={fotoTab === i ? {backgroundColor: 'var(--t-accent)'} : undefined} />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="flex-1 min-w-0">
-                    {selProduct.categorie && <div className="text-xs text-gray-400 mb-2">{selProduct.categorie}</div>}
-                    {selProduct.omschrijving && <div className="text-sm text-gray-600 mb-3">{selProduct.omschrijving}</div>}
-                    {selProduct.notities && <div className="text-xs text-gray-400 italic">{selProduct.notities}</div>}
-                  </div>
-                </div>
-
-                {/* Het bier zoals het op de webshop staat: de cijfers, het
-                    smaakprofiel, de specs en de tekstblokken. Meteen zichtbaar
-                    — bewerken doe je met de knop rechtsboven. */}
-                <div className="mt-4">
-                  <BierInfoWeergave info={bierInfoVoorArtikel({product: selProduct, recepten: selRecepten, ingredienten: ing})} />
-                </div>
-                {bierProductVelden.every((f: any) => {
-                  const w = selProduct[f.veld];
-                  return w === undefined || w === null || w === '' ||
-                    (Array.isArray(w) ? w.length === 0 : typeof w === 'boolean' ? !w : String(w).trim() === '');
-                }) && (
-                  // Lege staat met de knop erin, niet een zin die uitlegt waar
-                  // de knop staat: dan hoef je niet eerst te lezen wat je moet
-                  // zoeken.
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <p className="text-sm text-gray-500">{t('bier_leeg_titel')}</p>
-                    <Btn onClick={() => startEdit(selProduct)} s="sm" v="secondary">{t('bier_leeg_actie')}</Btn>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Statistieken — alleen zodra er iets te tellen valt. Vijf vakjes
-                met een nul erin zeggen niets en vullen wel een hele rij. */}
-            {(productStats[sel]?.batches || 0) > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              {[
-                {label: t('lbl_product_batches'), value: productStats[sel]?.batches || 0},
-                {label: t('lbl_product_totaal_liter'), value: `${(productStats[sel]?.liter || 0).toFixed(0)} L`},
-                {label: t('lbl_product_voorraad'), value: productStats[sel]?.voorraad || 0},
-                {label: t('lbl_product_uitgeleverd'), value: productStats[sel]?.uitgeleverd || 0},
-                {label: t('lbl_product_kostprijs_liter'), value: productStats[sel]?.kostprijs > 0 ? fmt(productStats[sel].kostprijs) : '-'},
-              ].map((s, i) => (
-                <div key={i} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
-                  <div className="text-xs text-gray-500">{s.label}</div>
-                  <div className="text-lg font-bold mt-1" style={{color: 'var(--t-accent)'}}>{s.value}</div>
-                </div>
-              ))}
-            </div>
-            )}
-
-            {/* Voorraad overzicht */}
-            {selVoorraad.length > 0 && (
-              <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${voorraadOpen?'':'overflow-hidden'}`}>
-                <SectionHeader
-                  open={voorraadOpen}
-                  onToggle={() => setVoorraadOpen(!voorraadOpen)}
-                  rounded={voorraadOpen ? 'top' : 'full'}
-                  title={t('lbl_product_voorraad')}
-                  info={agpTotaalProduct > 0 && (
-                    <button
-                      onClick={e => { e.stopPropagation(); setUitslagOpen(true) }}
-                      className="text-xs px-2.5 py-1 rounded bg-white/20 hover:bg-white/30 text-white font-medium transition-colors whitespace-nowrap">
-                      {t('uitslag_knop')} ({agpTotaalProduct}× {t('uitslag_in_agp')})
-                    </button>
-                  )}
-                />
-                {voorraadOpen && selVoorraad.map(({vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totInBestelling, totBeschikbaar, totInAgp, totVrij}) => (
-                  <div key={vt}>
-                    <div className="px-4 py-2 bg-gray-50 border-b border-t flex flex-wrap items-center justify-between gap-y-1 text-sm">
-                      <span className="font-medium text-gray-700">{vt}</span>
-                      <div className="flex flex-wrap gap-x-3 gap-y-1 justify-end text-xs text-gray-500">
-                        <span className="text-gray-400">{t('voorraad_afgevuld')}: <strong>{totAfgevuld}×</strong></span>
-                        {totInAgp > 0 && <span className="text-purple-600">{t('uitslag_in_agp')}: <strong>{totInAgp}×</strong></span>}
-                        {totVrij > 0 && <span className="text-blue-600">{t('uitslag_vrij')}: <strong>{totVrij}×</strong></span>}
-                        {totGepickt > 0 && <span className="text-orange-500">{t('voorraad_gepickt')}: <strong>{totGepickt}×</strong></span>}
-                        {totInBestelling > 0 && <span className="text-orange-500">{t('voorraad_in_bestelling')}: <strong>{totInBestelling}×</strong></span>}
-                        {totUitgeleverd > 0 && <span className="text-blue-500">{t('voorraad_uitgeleverd')}: <strong>{totUitgeleverd}×</strong></span>}
-                        {totAfgeboekt > 0 && <span className="text-red-400">{t('voorraad_afgeboekt')}: <strong>{totAfgeboekt}×</strong></span>}
-                        <span className={`font-bold ${totBeschikbaar > 0 ? 'text-green-600' : 'text-gray-400'}`}>{t('voorraad_beschikbaar')}: {totBeschikbaar}×</span>
-                      </div>
-                    </div>
-                    {rows.map((a: any) => {
-                      const beschikbaar = beschikbaarVoorAfvulling(a);
-                      const perLoc = beschikbaarPerLocatie(a);
-                      const perLocEntries = Object.entries(perLoc)
-                        .map(([k, n]) => ({locId: Number(k), n: Number(n)}))
-                        .filter(e => e.n > 0)
-                        .sort((x, y) => {
-                          const lx = (locaties||[]).find((l: any) => l.id === x.locId);
-                          const ly = (locaties||[]).find((l: any) => l.id === y.locId);
-                          // Niet-AGP eerst, dan AGP
-                          if (!!lx?.is_agp !== !!ly?.is_agp) return lx?.is_agp ? 1 : -1;
-                          return (lx?.naam || '').localeCompare(ly?.naam || '');
-                        });
-                      const batch = (bat||[]).find((b: any) => b.id === a.batch_id);
-                      const thtDays = a.tht ? Math.ceil((new Date(a.tht).getTime() - new Date().getTime()) / 86400000) : null;
-                      const thtExp = thtDays !== null && thtDays < 0;
-                      const thtSoon = thtDays !== null && thtDays >= 0 && thtDays <= 60;
-                      const afboekLogs = ((afboekingen||[]) as any[]).filter((ab: any) => ab.afvulling_id === a.id);
-                      return (
-                        <div key={a.id} className="px-4 py-3 border-b last:border-b-0">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1 min-w-0">
-                              <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-gray-500">
-                                {batch && <span className="font-medium text-gray-700">{batch.batch_nummer ? `#${batch.batch_nummer}` : batch.naam}</span>}
-                                {a.tht
-                                  ? <span className={thtExp ? 'text-red-600 font-semibold' : thtSoon ? 'text-yellow-600 font-medium' : ''}>
-                                      {t('lbl_tht')}: <strong>{fmtD(a.tht)}</strong>
-                                      {thtExp ? ` ${t('msg_tht_verlopen')}` : thtSoon ? ` (${thtDays}d)` : ''}
-                                    </span>
-                                  : <span className="text-gray-400">{t('lbl_tht')}: —</span>
-                                }
-                                <span className="text-gray-400">{Number(a.inhoud_per_eenheid||0).toFixed(1)} {t('lbl_liter_per_stuk')}</span>
-                                {a.rebrand_van_product_id && a.rebrand_van_product_id !== a.product_id && (
-                                  <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-medium" title={a.rebrand_opmerking || ''}>
-                                    ↪ {t('lbl_rebrand_van').replace('{product}', (producten||[]).find((p: any) => p.id === a.rebrand_van_product_id)?.naam || t('lbl_onbekend'))}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
-                                <span className="text-gray-600">{t('voorraad_afgevuld')}: <strong className="font-semibold text-gray-800">{a.hoeveelheid}×</strong></span>
-                                <span className={`font-bold ${beschikbaar > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                                  {t('msg_n_beschikbaar').replace('{n}', String(beschikbaar))}
-                                </span>
-                              </div>
-                              {perLocEntries.length > 0 && (
-                                <div className="flex flex-wrap items-center gap-1.5 text-xs pt-0.5">
-                                  {perLocEntries.map(e => {
-                                    const loc = (locaties||[]).find((l: any) => l.id === e.locId);
-                                    const isAgp = !!loc?.is_agp;
-                                    // Klikken opent dezelfde verplaats-/uitslagmodal als op de
-                                    // AGP-pagina, met deze afvulling en locatie al ingevuld.
-                                    return (
-                                      <button
-                                        key={e.locId}
-                                        type="button"
-                                        onClick={ev => { ev.stopPropagation(); setVerplaatsModal({afv: a, vanLocatieId: e.locId}) }}
-                                        className={`px-1.5 py-0.5 rounded font-medium transition-colors ${isAgp ? 'bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100' : 'bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100'}`}
-                                        title={isAgp ? t('uitslag_badge_titel_agp') : t('uitslag_badge_titel_vrij')}
-                                      >
-                                        {loc?.naam || t('lbl_onbekend')}: <strong>{e.n}×</strong>
-                                        <span className="ml-1 opacity-60">→</span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                            {beschikbaar > 0 && (
-                              <div className="flex-shrink-0 flex gap-1.5 mt-0.5">
-                                {setAv && (
-                                  <button onClick={e => openRebrandModal(a, e)}
-                                    className="text-xs px-2.5 py-1 rounded border border-blue-200 text-blue-500 hover:bg-blue-50 hover:border-blue-400 transition-colors whitespace-nowrap">
-                                    ↪ {t('btn_rebrand')}
-                                  </button>
-                                )}
-                                <button onClick={e => openAfboekModal(a, e)}
-                                  className="text-xs px-2.5 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 transition-colors whitespace-nowrap">
-                                  − {t('btn_afboeken')}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          {afboekLogs.length > 0 && (
-                            <div className="mt-2 pl-3 border-l-2 border-red-100 space-y-1">
-                              {afboekLogs.map((ab: any) => {
-                                const isVern = ab.reden === 'vernietiging';
-                                const status: VernietigingStatus | undefined = isVern ? (ab.vernietiging_status || 'aangevraagd') : undefined;
-                                const kanVoort = isVern && status && status !== 'uitgevoerd';
-                                return (
-                                  <div key={ab.id} className="flex items-center gap-2 text-xs">
-                                    <span className={`px-1.5 py-0.5 rounded font-medium ${REDEN_COLORS[ab.reden as AfboekingReden] || 'text-gray-500 bg-gray-100'}`}>
-                                      {t(AFBOEKING_REDENEN.find(r => r.v === ab.reden)?.lKey || ab.reden)}
-                                    </span>
-                                    {status && (
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] tracking-wide ${VERNIETIGING_STATUS_COLOR[status]}`} title={t('tooltip_status_per_douane')}>
-                                        {t(VERNIETIGING_STATUS_LABEL[status])}
-                                      </span>
-                                    )}
-                                    <span className="text-red-500 font-semibold">−{ab.aantal}×</span>
-                                    <span className="text-gray-400">{ab.datum}</span>
-                                    {kanVoort && (
-                                      <button
-                                        onClick={() => openVernietigReview(ab)}
-                                        className="ml-auto text-[10px] px-1.5 py-0.5 rounded border border-orange-300 text-orange-600 hover:bg-orange-50">
-                                        {status === 'aangevraagd' ? t('verlies_vern_btn_toestemming') : t('verlies_vern_btn_uitvoeren')}
-                                      </button>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Recepten — pas tonen als er recepten hangen. Een kop met "geen
-                recepten gekoppeld" eronder is alleen omlijsting: koppelen doe
-                je in het productformulier, hier valt niets te doen. */}
-            {selRecepten.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <SectionHeader title={t('lbl_product_recepten')} />
-              <div className="p-3">
-                {selRecepten.map((r: any) => (
-                  <div key={r.id} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
-                    <div>
-                      <span className="text-sm font-medium">{r.naam}</span>
-                      {r.stijl && <span className="text-xs text-gray-400 ml-2">{r.stijl}</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            )}
-
-            {/* Artikelen / SKU's */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <SectionHeader
-                title={t('lbl_product_artikelen')}
-                info={<Btn onClick={() => startArtEdit()} s="sm" v="secondary">{t('btn_artikel_toevoegen')}</Btn>}
-              />
-
-              {artForm && (
-                <div className="p-3 bg-gray-50 border-b border-gray-200">
-                  {/* Eén kolom op mobiel: de velden bleven anders te smal om te bewerken */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[11px] text-gray-500">{t('lbl_product_verpakking')}</label>
-                      <select value={artForm.verpakking_id||''} onChange={e => setArtForm((f: any) => ({...f, verpakking_id: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input bg-white">
-                        <option value="">-</option>
-                        {(verpakkingen||[]).map((v: any) => <option key={v.id} value={v.id}>{v.naam} ({v.inhoud_liter}L)</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">{t('lbl_product_sku')}</label>
-                      <input type="text" value={artForm.artikelnummer||''} onChange={e => setArtForm((f: any) => ({...f, artikelnummer: e.target.value}))}
-                        className={`w-full border rounded px-2 py-1.5 sm:py-1 text-xs t-input ${artFormConflicten.length ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
-                      {/* Eén SKU hoort bij één artikel: hij wijst de orderregel,
-                          de picking en de webshop naar dit bier. */}
-                      {artFormConflicten.length > 0 && (() => {
-                        const vrij = vrijeSku(artForm.artikelnummer, {soort: 'artikel', id: artForm.id, product_id: artForm.product_id ?? sel}, skuData);
-                        return (
-                          <div className="mt-1 text-[11px] text-red-600">
-                            {t('msg_sku_dubbel')
-                              .replace('{sku}', String(artForm.artikelnummer || ''))
-                              .replace('{naam}', artFormConflicten[0].naam || t('lbl_naamloos'))}
-                            {vrij && (
-                              <button type="button" onClick={() => setArtForm((f: any) => ({...f, artikelnummer: vrij}))}
-                                className="ml-1 font-medium underline t-accent-text">
-                                {t('btn_sku_gebruik_vrij').replace('{sku}', vrij)}
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">{t('lbl_product_ean')}</label>
-                      <input type="text" value={artForm.ean||''} onChange={e => setArtForm((f: any) => ({...f, ean: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] text-gray-500">{t('lbl_product_prijs')}</label>
-                        <button type="button" onClick={() => {
-                          const btw = Number(artForm.btw_pct || 0);
-                          const prijs = Number(artForm.verkoopprijs || 0);
-                          if (prijsInclBtw && prijs > 0) {
-                            setArtForm((f: any) => ({...f, verkoopprijs: (prijs / (1 + btw / 100)).toFixed(2)}));
-                          } else if (!prijsInclBtw && prijs > 0) {
-                            setArtForm((f: any) => ({...f, verkoopprijs: (prijs * (1 + btw / 100)).toFixed(2)}));
-                          }
-                          setPrijsInclBtw(!prijsInclBtw);
-                        }} className="text-[10px] font-medium px-1 rounded" style={{color: 'var(--t-accent)'}}>
-                          {prijsInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
-                        </button>
-                      </div>
-                      <input type="number" step="0.01" value={artForm.verkoopprijs||''} onChange={e => setArtForm((f: any) => ({...f, verkoopprijs: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] text-gray-500">{t('lbl_product_b2b_prijs')}</label>
-                        <button type="button" onClick={() => {
-                          const btw = Number(artForm.btw_pct || 0);
-                          const prijs = Number(artForm.b2b_prijs || 0);
-                          if (b2bPrijsInclBtw && prijs > 0) {
-                            setArtForm((f: any) => ({...f, b2b_prijs: (prijs / (1 + btw / 100)).toFixed(2)}));
-                          } else if (!b2bPrijsInclBtw && prijs > 0) {
-                            setArtForm((f: any) => ({...f, b2b_prijs: (prijs * (1 + btw / 100)).toFixed(2)}));
-                          }
-                          setB2bPrijsInclBtw(!b2bPrijsInclBtw);
-                        }} className="text-[10px] font-medium px-1 rounded" style={{color: 'var(--t-accent)'}}>
-                          {b2bPrijsInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
-                        </button>
-                      </div>
-                      <input type="number" step="0.01" value={artForm.b2b_prijs||''} onChange={e => setArtForm((f: any) => ({...f, b2b_prijs: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">{t('lbl_product_btw')}</label>
-                      {/* Keuzelijst i.p.v. vrij getal: op mobiel veel makkelijker te
-                          bedienen. Een afwijkend opgeslagen tarief blijft kiesbaar. */}
-                      <select value={artForm.btw_pct ?? ''} onChange={e => setArtForm((f: any) => ({...f, btw_pct: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input bg-white">
-                        <option value="">-</option>
-                        {Array.from(new Set([
-                          ...(Array.isArray(btwTarieven) ? btwTarieven.map(Number) : [0, 9, 21]),
-                          ...(artForm.btw_pct !== '' && artForm.btw_pct != null ? [Number(artForm.btw_pct)] : []),
-                        ].filter((v: number) => Number.isFinite(v)))).sort((a, b) => a - b)
-                          .map((pct: number) => <option key={pct} value={pct}>{pct}%</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">{t('lbl_gn_code')}</label>
-                      <select value={artForm.gn_code||''} onChange={e => setArtForm((f: any) => ({...f, gn_code: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input bg-white">
-                        <option value="">-</option>
-                        {(gnCodes||[]).map((gc: any) => <option key={gc.code} value={gc.code}>{gc.code} — {gc.naam}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">{t('lbl_product_omschrijving')}</label>
-                      <input type="text" value={artForm.omschrijving||''} onChange={e => setArtForm((f: any) => ({...f, omschrijving: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
-                    </div>
-                    <div className="sm:col-span-3 border-t border-gray-200 pt-2 mt-1">
-                      {/* Informatie over déze verpakking: maat/aantal, wat er
-                          in een pakket zit, een badge en hoe je hem levert. */}
-                      <BierInfoForm
-                        velden={bierArtikelVelden}
-                        waarden={artForm}
-                        onChange={(veld, waarde) => setArtForm((f: any) => ({...f, [veld]: waarde}))}
-                        placeholders={afgeleidVoor(selProduct, artForm)}
-                      />
-                    </div>
-                    <div className="sm:col-span-3">
-                      <label className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none" title={t('tip_artikel_wc_push')}>
-                        <input
-                          type="checkbox"
-                          className="t-checkbox"
-                          checked={artForm.wc_push !== false}
-                          onChange={e => setArtForm((f: any) => ({...f, wc_push: e.target.checked}))}
-                        />
-                        <span>{t('lbl_artikel_wc_push')}</span>
-                      </label>
-                    </div>
-                  </div>
-                  {/* Live kostprijs/marge-inschatting tijdens het invullen — de
-                      prijsvelden respecteren de incl/excl-BTW-toggles. */}
-                  {(() => {
-                    const stats = productStats[sel!];
-                    const vp = (verpakkingen||[]).find((v: any) => v.id === Number(artForm.verpakking_id));
-                    const inhoud = Number(vp?.inhoud_liter ?? artForm.inhoud_liter ?? 0);
-                    if (!stats || stats.kostprijs <= 0) {
-                      return <p className="mt-2 text-[11px] text-gray-400 italic">{t('msg_geen_kostprijs_bekend')}</p>;
-                    }
-                    if (!inhoud) return null;
-                    const kost = kostprijsVoorEenheid({...artForm, verpakking_id: vp?.id ?? artForm.verpakking_id}, inhoud);
-                    if (kost == null || kost <= 0) return null;
-                    const btw = Number(artForm.btw_pct || 0);
-                    const naarExcl = (val: any, incl: boolean) => {
-                      const n = Number(val || 0);
-                      return incl && n > 0 ? n / (1 + btw / 100) : n;
-                    };
-                    const cons = margeVoorPrijs(kost, naarExcl(artForm.verkoopprijs, prijsInclBtw));
-                    const b2b = margeVoorPrijs(kost, naarExcl(artForm.b2b_prijs, b2bPrijsInclBtw));
-                    const chip = (label: string, m: {eur: number, pct: number} | null) => m && (
-                      <span className={`px-2 py-0.5 rounded-full font-medium ${m.eur >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {label}: {m.pct.toFixed(0)}% ({fmt(m.eur)})
-                      </span>
-                    );
-                    return (
-                      <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px]">
-                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
-                          {t('lbl_kostprijs_stuk')}: {fmt(kost)} ({inhoud.toFixed(2)}L × {fmt(stats.kostprijs)}/L)
-                        </span>
-                        {chip(t('lbl_product_marge'), cons)}
-                        {chip(`${t('lbl_product_marge')} ${t('lbl_b2b')}`, b2b)}
-                      </div>
-                    );
-                  })()}
-                  <div className="flex gap-2 mt-2">
-                    <Btn onClick={saveArtikel} s="sm" disabled={artFormConflicten.length > 0}>{t('btn_product_opslaan')}</Btn>
-                    <Btn onClick={() => setArtForm(null)} s="sm" v="secondary">{t('btn_product_annuleren')}</Btn>
-                  </div>
-                </div>
-              )}
-
-              <div className="p-3 overflow-x-auto">
-                {selArtikelen.length === 0 && !artForm && <div className="text-xs text-gray-400 py-2">{t('lbl_geen_product_artikelen')}</div>}
-
-                {/* Mobiel: kaartweergave. De brede tabel liep buiten beeld waardoor
-                    de bewerk-/verwijderknoppen op een telefoon onbereikbaar waren. */}
-                {selArtikelen.length > 0 && (
-                  <div className="sm:hidden space-y-2">
-                    {selArtikelen.map((a: any) => {
-                      const margeInfo = berekenMarge(a);
-                      const wcPushAan = a.wc_push !== false;
-                      const rij = (label: string, waarde: any) => (
-                        <div className="flex justify-between gap-2">
-                          <span className="text-gray-500">{label}</span>
-                          <span className="text-right">{waarde}</span>
-                        </div>
-                      );
-                      return (
-                        <div key={a.id} className="border border-gray-200 rounded-lg p-3 text-xs">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="font-semibold text-gray-800 flex items-center gap-1.5">
-                              <span>{a.verpakking_naam || t('lbl_onbekend')}</span>
-                              {a.artikelnummer && (
-                                <span
-                                  title={wcPushAan ? t('tip_artikel_wc_push_aan') : t('tip_artikel_wc_push_uit')}
-                                  className={`inline-block w-1.5 h-1.5 rounded-full ${wcPushAan ? '' : 'opacity-30'}`}
-                                  style={{backgroundColor: wcPushAan ? '#7f54b3' : '#9ca3af'}}
-                                />
-                              )}
-                            </div>
-                            <div className="flex gap-2 flex-shrink-0">
-                              {wcCreds?.enabled && a.artikelnummer && (
-                                <Btn onClick={() => setWcModalArt(a)} s="sm" v="secondary" title={t('wc_btn_kaart')}>WC</Btn>
-                              )}
-                              <Btn onClick={() => startArtEdit(a)} s="sm" v="secondary">{t('btn_edit')}</Btn>
-                              <Btn onClick={() => deleteArtikel(a.id)} s="sm" v="danger">{t('btn_delete')}</Btn>
-                            </div>
-                          </div>
-                          <div className="mt-2 space-y-1">
-                            {rij(t('lbl_product_sku'), (
-                              <span className="font-mono">
-                                {a.artikelnummer || '-'}
-                                {skuDubbelBadge(a)}
-                              </span>
-                            ))}
-                            {a.gn_code && rij(t('lbl_gn_code'), a.gn_code)}
-                            {rij(t('lbl_product_prijs'), a.verkoopprijs ? fmt(a.verkoopprijs) : '-')}
-                            {rij(t('lbl_product_b2b_prijs'), a.b2b_prijs ? fmt(a.b2b_prijs) : '-')}
-                            {rij(t('lbl_product_btw'), a.btw_pct != null && a.btw_pct !== '' ? `${a.btw_pct}%` : '-')}
-                            {rij(t('lbl_kostprijs_stuk'), margeInfo ? fmt(margeInfo.kostprijsPerEenheid) : '-')}
-                            {margeInfo?.consument && rij(t('lbl_product_marge'), (
-                              <span className={`font-medium ${margeInfo.consument.eur >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                                {margeInfo.consument.pct.toFixed(0)}% ({fmt(margeInfo.consument.eur)})
-                              </span>
-                            ))}
-                            {margeInfo?.b2b && rij(`${t('lbl_product_marge')} ${t('lbl_b2b')}`, (
-                              <span className={`font-medium ${margeInfo.b2b.eur >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                {margeInfo.b2b.pct.toFixed(0)}% ({fmt(margeInfo.b2b.eur)})
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {selArtikelen.length > 0 && (
-                  <table className="w-full text-xs hidden sm:table min-w-[720px] lg:min-w-0">
-                    <thead>
-                      <tr className="text-gray-500 border-b border-gray-100">
-                        <th className="text-left py-1 font-medium">{t('lbl_product_verpakking')}</th>
-                        <th className="text-left py-1 font-medium">{t('lbl_product_sku')}</th>
-                        <th className="text-left py-1 font-medium">{t('lbl_gn_code')}</th>
-                        <th className="text-right py-1 font-medium">{t('lbl_product_prijs')}</th>
-                        <th className="text-right py-1 font-medium">{t('lbl_product_b2b_prijs')}</th>
-                        <th className="text-right py-1 font-medium">{t('lbl_product_btw')}</th>
-                        <th className="text-right py-1 font-medium">{t('lbl_kostprijs_stuk')}</th>
-                        <th className="text-right py-1 font-medium">{t('lbl_product_marge')}</th>
-                        <th className="w-16"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selArtikelen.map((a: any) => {
-                        const margeInfo = berekenMarge(a);
-                        const wcPushAan = a.wc_push !== false;
-                        return (
-                          <tr key={a.id} className="border-b border-gray-50 hover:bg-gray-50">
-                            <td className="py-1.5">
-                              <span className="inline-flex items-center gap-1.5">
-                                <span>{a.verpakking_naam || '-'}</span>
-                                {a.artikelnummer && (
-                                  <span
-                                    title={wcPushAan ? t('tip_artikel_wc_push_aan') : t('tip_artikel_wc_push_uit')}
-                                    className={`inline-block w-1.5 h-1.5 rounded-full ${wcPushAan ? '' : 'opacity-30'}`}
-                                    style={{backgroundColor: wcPushAan ? '#7f54b3' : '#9ca3af'}}
-                                  />
-                                )}
-                              </span>
-                            </td>
-                            <td className="py-1.5 font-mono">{a.artikelnummer || '-'}{skuDubbelBadge(a)}</td>
-                            <td className="py-1.5 text-gray-500">{a.gn_code || '-'}</td>
-                            <td className="py-1.5 text-right">{a.verkoopprijs ? fmt(a.verkoopprijs) : '-'}</td>
-                            <td className="py-1.5 text-right">{a.b2b_prijs ? fmt(a.b2b_prijs) : '-'}</td>
-                            <td className="py-1.5 text-right">{a.btw_pct != null ? `${a.btw_pct}%` : '-'}</td>
-                            <td className="py-1.5 text-right text-gray-600">{margeInfo ? fmt(margeInfo.kostprijsPerEenheid) : '-'}</td>
-                            <td className="py-1.5 text-right">
-                              {margeInfo?.consument ? (
-                                <span className={`font-medium ${margeInfo.consument.eur >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                                  {margeInfo.consument.pct.toFixed(0)}% ({fmt(margeInfo.consument.eur)})
-                                </span>
-                              ) : '-'}
-                              {margeInfo?.b2b && (
-                                <div className={`text-[10px] ${margeInfo.b2b.eur >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                  {t('lbl_b2b')}: {margeInfo.b2b.pct.toFixed(0)}% ({fmt(margeInfo.b2b.eur)})
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-1.5 text-right whitespace-nowrap">
-                              {wcCreds?.enabled && a.artikelnummer && (
-                                <button onClick={() => setWcModalArt(a)} title={t('wc_btn_kaart')}
-                                  className="mr-1.5 text-xs font-semibold align-middle"
-                                  style={{color: '#7f54b3'}}>WC</button>
-                              )}
-                              <button onClick={() => startArtEdit(a)} aria-label={t('btn_edit')} className="text-gray-400 hover:text-gray-600 mr-1">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5 inline">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
-                                </svg>
-                              </button>
-                              <button onClick={() => deleteArtikel(a.id)} aria-label={t('btn_delete')} className="text-red-400 hover:text-red-600">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5 inline">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                                </svg>
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-
-            {/* Batches */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <SectionHeader
-                onToggle={() => setPage && setPage('batchflow')}
-                title={t('lbl_product_batches')}
-                info={selBatches.length}
-              />
-              <div className="p-3">
-                {selBatches.length === 0 && <div className="text-xs text-gray-400 py-2">{t('lbl_geen_batches_gekoppeld')}</div>}
-
-                {/* Wat de brouwsels van dit bier laten zien: hoe vaak, hoeveel
-                    liter en wat er gemeten is. Zo zie je bij het bier of het
-                    ABV op je etiket nog klopt met wat er uit de tank komt. */}
-                {selBatches.length > 0 && (() => {
-                  const sam = batchSamenvatting(selBatches, {kostprijsPerLiter: kostprijsVanBatch});
-                  const afwijkingen = bierAfwijkingen(sam, selProduct);
-                  const metingen: {label: string, m: any, eenheid?: string, dec: number, duurderIsSlecht?: boolean, bij?: string}[] = [
-                    {label: t('bier_veld_abv'), m: sam.abv, eenheid: '%', dec: 1},
-                    {label: t('lbl_batch_og'), m: sam.og, dec: 3},
-                    {label: t('lbl_batch_fg'), m: sam.fg, dec: 3},
-                    {label: t('bier_veld_ebc'), m: sam.kleur, dec: 0},
-                    {label: t('batch_stat_rendement'), m: sam.rendement, eenheid: '%', dec: 0},
-                    {label: t('batch_stat_kostprijs'), m: sam.kostprijs, dec: 2, duurderIsSlecht: true,
-                     bij: t('batch_stat_kostprijs_incl')},
-                  ].filter(r => r.m);
-                  return (
-                    <div className="mb-3 space-y-2">
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-                        <span>{t('batch_stat_aantal').replace('{n}', String(sam.aantal))}</span>
-                        {sam.liters > 0 && <span>{fmtQty(sam.liters)} L {t('batch_stat_gebrouwen')}</span>}
-                        {sam.laatste && <span>{t('batch_stat_laatst')} {fmtD(sam.laatste)}</span>}
-                        {Object.entries(sam.perStatus).map(([status, n]) => (
-                          <span key={status} className="text-gray-400">{n}× {status}</span>
-                        ))}
-                      </div>
-
-                      {metingen.length > 0 && (
-                        <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                          {metingen.map(r => {
-                            // Een stijging is bij kosten slecht nieuws en bij
-                            // rendement juist goed; vandaar `duurderIsSlecht`.
-                            const pct = r.m.trendPct;
-                            const slecht = pct !== null && (r.duurderIsSlecht ? pct > 0 : pct < 0);
-                            return (
-                              <div key={r.label}>
-                                <div className="flex items-baseline gap-1.5">
-                                  <span className="text-sm font-semibold" style={{color: 'var(--t-accent)'}}>
-                                    {r.dec === 2 ? fmt(r.m.gemiddeld) : `${r.m.gemiddeld.toFixed(r.dec)}${r.eenheid || ''}`}
-                                  </span>
-                                  {pct !== null && Math.abs(pct) >= 1 && (
-                                    <span className={`text-[10px] font-medium ${slecht ? 'text-red-600' : 'text-green-600'}`}
-                                      title={t('batch_trend_tip')
-                                        .replace('{vorige}', String(r.m.vorige))
-                                        .replace('{laatste}', String(r.m.laatste))}>
-                                      {pct > 0 ? '▲' : '▼'} {Math.abs(pct).toFixed(0)}%
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <div className="text-[10px] text-gray-400">
-                                    {r.label}
-                                    {r.bij && <span className="normal-case"> · {r.bij}</span>}
-                                    {r.m.aantal > 1 && r.m.spreiding > 0 && (
-                                      <span className="normal-case"> · {r.dec === 2 ? fmt(r.m.min) : r.m.min.toFixed(r.dec)}–{r.dec === 2 ? fmt(r.m.max) : r.m.max.toFixed(r.dec)}</span>
-                                    )}
-                                  </div>
-                                  <Sparkline waarden={r.m.reeks} titel={`${r.label}: ${r.m.reeks.join(' · ')}`} />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Wijkt het etiket af van wat je brouwt? Dan kun je het
-                          in één klik gelijktrekken. */}
-                      {afwijkingen.map(a => (
-                        <div key={a.veld} className="flex flex-wrap items-center gap-2 text-xs rounded-lg bg-orange-50 text-orange-800 px-3 py-2">
-                          <span>
-                            {(a.bier === null ? t('batch_afwijking_leeg') : t('batch_afwijking'))
-                              .replace('{veld}', t(a.veld === 'abv' ? 'bier_veld_abv' : 'bier_veld_ebc'))
-                              .replace('{bier}', a.bier === null ? '' : String(a.bier))
-                              .replace('{gemeten}', String(a.gemeten))}
-                          </span>
-                          <Btn s="sm" v="secondary"
-                            onClick={() => setProducten((prev: any[]) => prev.map((prod: any) =>
-                              prod.id === selProduct.id ? {...prod, [a.veld]: a.gemeten} : prod))}>
-                            {t('batch_afwijking_overnemen')}
-                          </Btn>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
-
-                {selBatches.length > 0 && (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-gray-500 border-b border-gray-100">
-                          <th className="text-left py-1 font-medium">{t('lbl_batch')}</th>
-                          <th className="text-left py-1 font-medium">{t('lbl_datum')}</th>
-                          <th className="text-right py-1 font-medium">L</th>
-                          <th className="text-right py-1 font-medium">{t('lbl_batch_og')}</th>
-                          <th className="text-right py-1 font-medium">{t('lbl_batch_fg')}</th>
-                          <th className="text-right py-1 font-medium">{t('bier_veld_abv')}</th>
-                          <th className="text-right py-1 font-medium">{t('bier_veld_ebc')}</th>
-                          <th className="text-right py-1 font-medium">{t('batch_stat_kostprijs')}</th>
-                          <th className="text-right py-1 font-medium">{t('batch_stat_accijns')}</th>
-                          <th className="text-left py-1 font-medium pl-3">{t('lbl_status')}</th>
-                          <th className="w-6"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selBatches.slice(0, 10).map((b: any) => {
-                          const direct = batchHoortBijProduct(b, sel);
-                          const cel = (w: any, dec: number) => (w === undefined || w === null || w === '')
-                            ? <span className="text-gray-300">–</span>
-                            : Number(w).toFixed(dec);
-                          return (
-                            <tr key={b.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                              <td className="py-1.5">
-                                <span className="font-medium">{b.naam}</span>
-                                {b.batch_nummer && <span className="text-gray-400 ml-1">#{b.batch_nummer}</span>}
-                              </td>
-                              <td className="py-1.5 text-gray-500">{b.datum ? fmtD(b.datum) : '–'}</td>
-                              <td className="py-1.5 text-right">{cel(b.liter_vergist, 0)}</td>
-                              <td className="py-1.5 text-right">{cel(b.OG, 3)}</td>
-                              <td className="py-1.5 text-right">{cel(b.FG, 3)}</td>
-                              <td className="py-1.5 text-right font-medium">{b.ABV ? `${Number(b.ABV).toFixed(1)}%` : <span className="text-gray-300">–</span>}</td>
-                              <td className="py-1.5 text-right">{cel(b.kleur, 0)}</td>
-                              {(() => {
-                                const d = kostprijsDetail(b);
-                                const liter = d.totaal_liter;
-                                const accPerLiter = liter > 0 ? (d.accijns || 0) / liter : 0;
-                                const geschat = d.accijns_bron === 'geschat';
-                                return (
-                                  <>
-                                    <td className="py-1.5 text-right">
-                                      {d.kostprijs_per_liter > 0
-                                        ? <span title={t('batch_kostprijs_opbouw')
-                                            .replace('{prod}', fmt(d.kostprijs_per_liter_excl_accijns || 0))
-                                            .replace('{acc}', fmt(accPerLiter))}>{fmt(d.kostprijs_per_liter)}</span>
-                                        : <span className="text-gray-300">–</span>}
-                                    </td>
-                                    <td className="py-1.5 text-right text-gray-500">
-                                      {accPerLiter > 0
-                                        ? <span className={geschat ? 'italic' : ''}
-                                            title={geschat ? t('batch_accijns_geschat') : ''}>
-                                            {geschat ? '~' : ''}{fmt(accPerLiter)}
-                                          </span>
-                                        : <span className="text-gray-300">–</span>}
-                                    </td>
-                                  </>
-                                );
-                              })()}
-                              <td className="py-1.5 pl-3">
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.status === 'Afgevuld' || b.status === 'Verpakt' || b.status === 'Gesloten' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{b.status}</span>
-                              </td>
-                              <td className="py-1.5 text-right">
-                                {direct && setBat && (
-                                  <button type="button" onClick={() => ontkoppelBatch(b.id)}
-                                    title={t('btn_ontkoppel_batch')}
-                                    className="text-gray-300 hover:text-red-600 px-1 leading-none">✕</button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    {selBatches.length > 10 && <div className="text-xs text-gray-400 text-center py-1">+{selBatches.length - 10}</div>}
-                    {selBatches.slice(0, 10).some((b: any) => kostprijsDetail(b).accijns_bron === 'geschat') && (
-                      <div className="text-[11px] text-gray-400 pt-1">~ {t('batch_accijns_geschat')}</div>
-                    )}
-                  </div>
-                )}
-
-                {/* Batch koppelen */}
-                {setBat && (
-                  <div className="mt-2 pt-2 border-t border-gray-100">
-                    <Btn onClick={() => setBatchSelectOpen(!batchSelectOpen)} s="sm" v="ghost">{t('btn_koppel_batch')}</Btn>
-                    {batchSelectOpen && (beschikbareBatches.length > 0 ? (
-                      <div className="mt-1 border border-gray-200 rounded-lg max-h-40 overflow-y-auto bg-white shadow-sm">
-                        {beschikbareBatches.map((b: any) => (
-                          <button key={b.id} onClick={() => koppelBatch(b.id)} className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0">
-                            <span className="font-medium">{b.naam}</span>
-                            {b.batch_nummer && <span className="text-gray-400 ml-2 text-xs">#{b.batch_nummer}</span>}
-                            {b.datum && <span className="text-gray-400 ml-2 text-xs">{fmtD(b.datum)}</span>}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="mt-1 text-xs text-gray-400 py-1">{t('lbl_geen_batches_beschikbaar')}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <>
+            {paginaMelding && <PaginaMelding tekst={paginaMelding} onSluit={() => setPaginaMelding('')} cls="mb-3" />}
+            {detailProps && <ProductDetail {...detailProps} />}
+          </>
         )}
       </div>
       </div>
 
-      {/* Logboek */}
-      <div className={`mt-4 bg-white rounded-xl border border-gray-200 shadow-sm ${logboekOpen?'':'overflow-hidden'}`}>
-        <SectionHeader
-          open={logboekOpen}
-          onToggle={() => setLogboekOpen(!logboekOpen)}
-          rounded={logboekOpen ? 'top' : 'full'}
-          title={t('tab_logboek')}
-          info={beerLogEntries.length > 0 ? beerLogEntries.length : null}
+      {/* De receptkiezer van de kaart Recept: een recept koppelen, of een
+          (ander) recept als huidig vastzetten. Altijd een hoofdrecept. */}
+      {receptKiezer && selProduct && (
+        <ReceptKiezer
+          titel={receptKiezer === 'huidig' ? t('product_recept_ander_huidig') : t('btn_koppel_recept')}
+          recepten={recepten}
+          batches={bat}
+          producten={producten}
+          verborgen={receptenVerborgen}
+          gearchiveerdeTags={receptenGearchiveerdeTags}
+          productId={selProduct.id}
+          uitgesloten={receptKiezer === 'huidig' ? [selReceptInfo.huidigId] : (selProduct.recept_ids || [])}
+          metVerborgen
+          onKies={k => {
+            if (receptKiezer === 'huidig') zetHuidigRecept(k.receptId); else koppelReceptAanDitProduct(k.receptId);
+            setReceptKiezer(null);
+          }}
+          onSluit={() => setReceptKiezer(null)}
         />
-        {logboekOpen && (
-          <div>
-            <div className="px-3 py-2 bg-gray-50 border-b flex items-center gap-1">
-              {(['alle', 'voorraad', ...(wcCreds?.enabled ? ['woocommerce'] : [])] as const).map(f => (
-                <button key={f} onClick={() => setLogFilter(f as any)}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${logFilter === f ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
-                  {f === 'alle' ? t('orders_filter_alle') : f === 'voorraad' ? t('log_filter_voorraad').replace('{n}', String(beerLogEntries.length)) : t('log_filter_woocommerce').replace('{n}', String((wcSyncLog||[]).length))}
-                </button>
-              ))}
-            </div>
-            {logCombined.length === 0 ? (
-              <div className="p-6 text-center text-gray-400 text-sm">{t('log_no_mutations')}</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium">{t('lbl_date')}</th>
-                    <th className="px-3 py-2 text-left font-medium">{t('lbl_type')}</th>
-                    <th className="px-3 py-2 text-left font-medium">{t('lbl_description')}</th>
-                    <th className="px-3 py-2 text-right font-medium">{t('lbl_quantity')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {logCombined.slice(0, 50).map((l: any) => {
-                    if (l._src === 'wc') {
-                      const ws = WC_TYPE_STYLES[l.type] || WC_TYPE_STYLES.debug;
-                      return (
-                        <tr key={`wc-${l.id}`} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.datum}</td>
-                          <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ws.cls}`}>{ws.icon} {ws.label}</span></td>
-                          <td className="px-3 py-2 text-xs text-gray-600 max-w-[200px]">
-                            <div className="truncate">{l.msg}</div>
-                            {l.details && <div className="text-gray-400 truncate" title={l.details}>{l.details}</div>}
-                          </td>
-                          <td className="px-3 py-2 text-right text-xs text-gray-400">—</td>
-                        </tr>
-                      );
-                    }
-                    const ts = LOG_TYPE_STYLES[l.type] || {icon: '•', cls: 'text-gray-600 bg-gray-100', label: l.type};
-                    const qty = l.hoeveelheid != null
-                      // Uitgaand (afboeking/verkoop) is een min — behalve een
-                      // tegenregel met negatieve hoeveelheid (teruggedraaide
-                      // pick): die komt juist terug in de voorraad.
-                      ? `${(l.type === 'afboeking' || l.type === 'verkoop') && Number(l.hoeveelheid) >= 0 ? '−' : '+'}${fmtQty(Math.abs(Number(l.hoeveelheid)))} ${l.eenheid || t('unit_stuks')}`
-                      : '—';
-                    return (
-                      <tr key={`v-${l.id}`} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.datum || '—'}</td>
-                        <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ts.cls}`}>{ts.icon} {ts.label}</span></td>
-                        <td className="px-3 py-2 text-xs text-gray-600 max-w-[200px]">
-                          <div className="font-medium text-gray-700 truncate">{l.batch_naam || '—'}{l.verpakking_type ? ` · ${l.verpakking_type}` : ''}</div>
-                          {(l.omschrijving || l.referentie) && <div className="text-gray-400 truncate" title={l.omschrijving || l.referentie}>{l.omschrijving || l.referentie}</div>}
-                        </td>
-                        <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.type === 'afboeking' ? 'text-red-600' : l.type === 'uitslaan' ? 'text-purple-600' : l.type === 'verkoop' ? 'text-emerald-700' : 'text-green-600'}`}>{qty}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Volledige WooCommerce-productkaart van één artikel */}
       {wcModalArt && (() => {
@@ -2439,14 +2185,18 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
             voorraad={ctx.voorraad}
             prijzenInclBtw={wcPrijzenInclBtw}
             bierInfo={ctx.bierInfo}
-            themaMeta={themaAan ? crafteryMeta({
-              product: (producten||[]).find((p: any) => p.id === wcModalArt.product_id),
-              artikel: wcModalArt,
-              inhoudLiter: inhoudVanArtikel(wcModalArt),
-              recepten: receptenVoorProduct((producten||[]).find((p: any) => p.id === wcModalArt.product_id)),
-              ingredienten: ing,
-            }) : null}
-            onLog={addWcLog}
+            themaMeta={themaAan ? (() => {
+              const prod = (producten||[]).find((p: any) => p.id === wcModalArt.product_id);
+              return crafteryMeta({
+                product: prod,
+                artikel: wcModalArt,
+                inhoudLiter: inhoudVanArtikel(wcModalArt),
+                recepten: receptenVoorProduct(prod),
+                ingredienten: ing,
+                bevatRegel: prod && etiketDienst ? etiketDienst.bevatRegel(prod) : null,
+              });
+            })() : null}
+            onLog={(type, msg, details) => addWcLog(type, msg, details, wcModalArt.product_id)}
             onOpslaan={(velden) => bewaarWcVelden(wcModalArt.id, velden)}
             onClose={() => setWcModalArt(null)}
           />

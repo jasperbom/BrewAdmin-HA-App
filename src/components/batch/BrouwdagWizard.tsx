@@ -2,7 +2,7 @@ import React from 'react'
 import { t } from '../../i18n'
 import { newId, mapHopGebruik, _fetchedKeys } from '../../utils/api'
 import { logAudit, logAuditVeld } from '../../utils/audit'
-import { tod, r3, fmtD } from '../../utils/format'
+import { tod, r3, fmtD, fmtSg } from '../../utils/format'
 import { convertEenheid } from '../../utils/constants'
 import {
   mashEfficiency, brouwzaalEfficiency, kookVerdampingPct,
@@ -168,6 +168,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   const batchBi = (bi || []).filter(i => i.batch_id === batch.id)
   const [stappenOpen, setStappenOpen] = React.useState<boolean>(true)
   const [hopOpen, setHopOpen] = React.useState<boolean>(true)
+  const [hopMelding, setHopMelding] = React.useState<string | null>(null)
   // Koel-invoer (verweven in de koelstap)
   const [koelForm, setKoelForm] = React.useState<any>({ datum: tod(), start_temp: '', eind_temp: '', duur_min: '', methode: 'plate', opmerking: '' })
 
@@ -208,10 +209,12 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   const syncHopUitRecept = () => {
     if (!setBi || !batchRecept) return
     const receptHops = (batchRecept.hop || []) as any[]
+    // Niets over te nemen: dat staat bij de knop (geen alert()).
     if (receptHops.length === 0) {
-      alert(t('hop_schema_recept_geen_hops'))
+      setHopMelding(t('hop_schema_recept_geen_hops'))
       return
     }
+    setHopMelding(null)
     setBi((prev: any[]) => prev.map(x => {
       if (x.batch_id !== batch.id) return x
       if (String(x.ingredient_type).toLowerCase() !== 'hop') return x
@@ -1031,6 +1034,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                     </table>
                   </div>
                 )}
+                {hopMelding && <div role="alert" className="mt-3 text-xs text-orange-700">{hopMelding}</div>}
                 <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
                   <div className="text-xs text-gray-400 italic flex-1 min-w-0">{t('hop_schema_hint')}</div>
                   <div className="flex gap-2">
@@ -1203,9 +1207,10 @@ const StapRij: React.FC<{
       <div className="flex items-center gap-2 px-3 py-2 text-sm">
         <input type="checkbox" checked={!!stap.voltooid} onChange={onToggle} className="t-checkbox" />
         <span className={`flex-1 ${stap.voltooid ? 'line-through text-gray-500' : ''}`}>{weergave}</span>
-        {stap.doel && <span className="text-xs text-gray-500">{t('brouwdag_doel')}: {stap.doel}</span>}
+        {/* Een SG-doel (de OG-meting) altijd met drie decimalen: "1.060", niet "1.06". */}
+        {stap.doel && <span className="text-xs text-gray-500">{t('brouwdag_doel')}: {stap.doel_eenheid === 'SG' ? fmtSg(stap.doel, stap.doel) : stap.doel}</span>}
         <button onClick={() => setOpen(o => !o)} className="text-xs text-gray-400 hover:text-gray-600">{open ? '−' : '+'}</button>
-        <button onClick={onDelete} className="text-xs text-red-400 hover:text-red-600" title="×">×</button>
+        <button onClick={onDelete} className="text-xs text-red-400 hover:text-red-600" title={t('btn_delete')} aria-label={t('btn_delete')}>×</button>
       </div>
       {open && (
         <div className="px-3 pb-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs border-t pt-2">

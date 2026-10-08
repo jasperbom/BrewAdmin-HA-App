@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 /** Het omslagpunt van de schil (768 px): daaronder is het een telefoon. */
 const SMAL = '(max-width: 767.98px)'
 
-function useMediaQuery(query: string): boolean {
+/** Past de media query nu? Volgt een draai of venstergrootte. */
+export function useMediaQuery(query: string): boolean {
   const [past, setPast] = useState<boolean>(() =>
     typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(query).matches)
   useEffect(() => {

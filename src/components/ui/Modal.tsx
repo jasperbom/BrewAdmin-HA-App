@@ -10,9 +10,11 @@ interface ModalProps {
   wide?: boolean
   ultrawide?: boolean
   hideClose?: boolean
+  /** Een eigen maximale breedte (Tailwind-klasse, bijv. `max-w-[920px]`) in plaats van wide/ultrawide. */
+  breedte?: string
 }
 
-const Modal: React.FC<ModalProps> = ({title, children, onClose, wide=false, ultrawide=false, hideClose=false}) => {
+const Modal: React.FC<ModalProps> = ({title, children, onClose, wide=false, ultrawide=false, hideClose=false, breedte}) => {
   const panelRef = useRef<HTMLDivElement | null>(null)
   const titleId = React.useId()
 
@@ -27,7 +29,7 @@ const Modal: React.FC<ModalProps> = ({title, children, onClose, wide=false, ultr
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`bg-white rounded-2xl shadow-2xl mt-6 sm:mt-10 mb-6 sm:mb-10 w-full ${ultrawide ? 'max-w-7xl' : wide ? 'max-w-2xl' : 'max-w-lg'}`}
+        className={`bg-white rounded-2xl shadow-2xl mt-6 sm:mt-10 mb-6 sm:mb-10 w-full ${breedte || (ultrawide ? 'max-w-7xl' : wide ? 'max-w-2xl' : 'max-w-lg')}`}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b t-border t-panel rounded-t-2xl">
           <h3 id={titleId} className="font-semibold text-gray-800 text-base">{title}</h3>

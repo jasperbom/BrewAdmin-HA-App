@@ -6,6 +6,7 @@ import {
   magAfvullingRegistreren, vrijgegevenBatches,
   verwachteControleMomenten, controleDekking,
   nieuweLotcode, thtHandmatigBlokkade, productVanLaatsteEtiketcontrole,
+  lotcodeVanAfvulling, abvVastgezetBlokkade, magNaarAfvullen,
 } from '../afvulsessie'
 
 const codes = (r: {redenen: Array<{code: string}>}) => r.redenen.map(x => x.code)
@@ -342,5 +343,94 @@ describe('hulpfuncties', () => {
                      {id: 2, naam: 'B', status: 'Conditioneren'}] as any
     const r = vrijgegevenBatches(batches, [vrijgave(1, 2)])
     expect(r.map((b: any) => b.id)).toEqual([2])
+  })
+})
+
+describe('lotcodeVanAfvulling', () => {
+  const sessies = [sessie(1, 9, 1), sessie(2, 9, 2)]
+
+  it('neemt de eigen lotcode van de afvulling', () => {
+    expect(lotcodeVanAfvulling({lotcode: 'L2607-B1', sessie_id: 2}, sessies)).toBe('L2607-B1')
+  })
+
+  it('valt terug op de lotcode van de afvulsessie', () => {
+    expect(lotcodeVanAfvulling({sessie_id: 2}, sessies)).toBe('L9-B2')
+    // Een lege of witte eigen code telt als "geen".
+    expect(lotcodeVanAfvulling({lotcode: '  ', sessie_id: 1}, sessies)).toBe('L9-B1')
+  })
+
+  it('verzint niets: zonder eigen code en zonder (bekende) sessie is er geen lotcode', () => {
+    // Een afvulling van vóór de sessies: het batchnummer is geen lotcode.
+    expect(lotcodeVanAfvulling({}, sessies)).toBe('')
+    expect(lotcodeVanAfvulling({sessie_id: 99}, sessies)).toBe('')
+    expect(lotcodeVanAfvulling({sessie_id: 1}, null)).toBe('')
+    expect(lotcodeVanAfvulling(null, sessies)).toBe('')
+  })
+})
+
+
+describe('de vastgezette ABV vóór de eerste afvulsessie (opzet 5.3)', () => {
+  const geldig = {reiniging_bevestigd: true, verpakking_id: 3}
+  const open = {id: 1, ABV: 6.96, abv_definitief: false}
+  const vast = {id: 1, ABV: 6.96, abv_definitief: true}
+
+  it('blokkeert de eerste sessie zolang de ABV niet is vastgezet', () => {
+    expect(abvVastgezetBlokkade(open, [], [])).toEqual({code: 'abv_niet_vastgezet', i18nKey: 'haccp_blok_abv_niet_vastgezet'})
+    expect(abvVastgezetBlokkade({id: 1}, [], [])?.code).toBe('abv_niet_vastgezet')
+    // Vastgezet zonder waarde telt niet: accijns en THT rekenen met batch.ABV.
+    expect(abvVastgezetBlokkade({id: 1, abv_definitief: true}, [], [])?.code).toBe('abv_niet_vastgezet')
+  })
+
+  it('laat een vastgezette ABV door', () => {
+    expect(abvVastgezetBlokkade(vast, [], [])).toBeNull()
+  })
+
+  it('blokkeert niet met terugwerkende kracht: een batch met een sessie of afvulling gaat door', () => {
+    expect(abvVastgezetBlokkade(open, [sessie(1, 1, 1, 'afgesloten')], [])).toBeNull()
+    expect(abvVastgezetBlokkade(open, [sessie(1, 1, 1, 'afgebroken')], [])).toBeNull()
+    expect(abvVastgezetBlokkade(open, [], [{batch_id: 1}])).toBeNull()
+    // Sessies en afvullingen van een andere batch tellen niet.
+    expect(abvVastgezetBlokkade(open, [sessie(1, 2, 1)], [{batch_id: 2}])?.code).toBe('abv_niet_vastgezet')
+  })
+
+  it('magSessieStarten noemt de ABV als eerste reden, naast CCP 1', () => {
+    const r = magSessieStarten(1, [], geldig, [], {batch: open, afvullingen: []})
+    expect(codes(r)).toEqual(['abv_niet_vastgezet', 'geen_vrijgave'])
+    expect(magSessieStarten(1, [vrijgave(1, 1)], geldig, [], {batch: vast, afvullingen: []}).toegestaan).toBe(true)
+  })
+
+  it('magSessieStarten zonder ABV-gegevens werkt als vanouds', () => {
+    expect(magSessieStarten(1, [vrijgave(1, 1)], geldig, []).toegestaan).toBe(true)
+  })
+
+  it('een tweede verpakking naast een lopende sessie wordt niet alsnog geblokkeerd', () => {
+    const r = magSessieStarten(1, [vrijgave(1, 1)], geldig, [sessie(1, 1, 1, 'open', 7)], {batch: open})
+    expect(r.toegestaan).toBe(true)
+  })
+})
+
+describe('magNaarAfvullen — de knop "Naar afvullen"', () => {
+  const open = {id: 1, ABV: 6.96, abv_definitief: false}
+  const vast = {id: 1, ABV: 6.96, abv_definitief: true}
+
+  it('pas na ABV vastzetten en CCP 1', () => {
+    expect(codes(magNaarAfvullen(open, {vrijgaven: []}))).toEqual(['abv_niet_vastgezet', 'geen_vrijgave'])
+    expect(codes(magNaarAfvullen(vast, {vrijgaven: []}))).toEqual(['geen_vrijgave'])
+    expect(codes(magNaarAfvullen(open, {vrijgaven: [vrijgave(1, 1)]}))).toEqual(['abv_niet_vastgezet'])
+    expect(magNaarAfvullen(vast, {vrijgaven: [vrijgave(1, 1)]}).toegestaan).toBe(true)
+  })
+
+  it('een vrijgave onder afwijking telt als vrijgegeven (het bestaande mechanisme)', () => {
+    const v = {...vrijgave(1, 1), afwijking_id: 9}
+    expect(magNaarAfvullen(vast, {vrijgaven: [v]}).toegestaan).toBe(true)
+  })
+
+  it('een legacy-batch (afgevuld vóór de sessies) gaat door, ook zonder vaste ABV', () => {
+    const afv = [{batch_id: 1}]
+    expect(magNaarAfvullen(open, {vrijgaven: [], afvullingen: afv}).toegestaan).toBe(true)
+  })
+
+  it('een batch die al een sessie had, wacht alleen nog op CCP 1', () => {
+    expect(codes(magNaarAfvullen(open, {vrijgaven: [], sessies: [sessie(1, 1, 1, 'afgesloten')]}))).toEqual(['geen_vrijgave'])
   })
 })

@@ -26,7 +26,12 @@ export interface PlannerOpties {
 }
 
 export class UitgesteldeActiePlanner {
-  private huidige: { actie: GeplandeActie; uitvoeren: () => Promise<unknown> | unknown; timer: unknown } | null = null
+  private huidige: {
+    actie: GeplandeActie
+    uitvoeren: () => Promise<unknown> | unknown
+    terugdraaien?: () => void
+    timer: unknown
+  } | null = null
   private readonly vertraging: number
   private readonly setTimer: (fn: () => void, ms: number) => unknown
   private readonly clearTimer: (h: unknown) => void
@@ -47,22 +52,31 @@ export class UitgesteldeActiePlanner {
    * Plant `uitvoeren` over `vertragingMs`. Een eerder geplande actie wordt
    * eerst uitgevoerd: er loopt nooit meer dan één terugweg tegelijk, anders
    * weet niemand meer wat "Ongedaan maken" ongedaan maakt.
+   *
+   * `terugdraaien` is voor wat de app zélf al deed en de gebruiker meldt met
+   * een terugweg ("Gekoppeld aan Kadeblond · Ongedaan maken"): de handeling is
+   * al gebeurd (`uitvoeren` doet dan meestal niets meer), en "Ongedaan maken"
+   * draait haar terug. Na de vertraging vervalt de terugweg.
    */
-  plan(id: string, label: string, uitvoeren: () => Promise<unknown> | unknown): void {
+  plan(id: string, label: string, uitvoeren: () => Promise<unknown> | unknown, terugdraaien?: () => void): void {
     this.flush()
     const actie = { id, label }
     const timer = this.setTimer(() => this.voerUit(), this.vertraging)
-    this.huidige = { actie, uitvoeren, timer }
+    this.huidige = { actie, uitvoeren, terugdraaien, timer }
     this.onWijziging(actie)
   }
 
-  /** Annuleert de geplande actie; de server is nooit geraakt. */
+  /** Annuleert de geplande actie; de server is nooit geraakt. Was de handeling
+   *  al gebeurd (`terugdraaien`), dan wordt ze nu teruggedraaid. */
   ongedaan(): GeplandeActie | null {
     if (!this.huidige) return null
-    const { actie, timer } = this.huidige
+    const { actie, timer, terugdraaien } = this.huidige
     this.clearTimer(timer)
     this.huidige = null
     this.onWijziging(null)
+    if (terugdraaien) {
+      try { terugdraaien() } catch (e) { this.onFout(e, actie) }
+    }
     return actie
   }
 

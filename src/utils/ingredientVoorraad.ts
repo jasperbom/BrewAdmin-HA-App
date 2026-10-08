@@ -180,3 +180,66 @@ export const receptRegelVoorraad = (
     eenheidMismatch: voorraad.mismatch || regelMismatch,
   }
 }
+
+/**
+ * Het ingrediënt uit de catalogus achter een receptregel: de expliciete
+ * koppeling (`ingredient_id`) gaat voor, anders dezelfde naam (zonder
+ * hoofdletters en spaties eromheen). Null als er geen is.
+ */
+export const ingredientVoorReceptRegel = (regel: any, ingredienten: any[] | null | undefined): any | null => {
+  const lijst = ingredienten || []
+  const id = regel?.ingredient_id
+  if (id != null && id !== '') {
+    const opId = lijst.find((i: any) => i != null && String(i.id) === String(id))
+    if (opId) return opId
+  }
+  const naam = String(regel?.naam ?? '').trim().toLowerCase()
+  if (!naam) return null
+  return lijst.find((i: any) => String(i?.naam ?? '').trim().toLowerCase() === naam) || null
+}
+
+export type ReceptVoorraadStatus = 'klaar' | 'bijna' | 'tekort' | 'onbekend'
+
+export interface ReceptVoorraadOordeel {
+  /**
+   * `klaar` = elke regel op voorraad; `tekort` = minstens één regel zonder
+   * genoeg (en ook niet "bijna"); `bijna` = alleen regels die er deels zijn;
+   * `onbekend` = niets te zeggen (een regel niet gekoppeld of niet om te
+   * rekenen, of een leeg recept).
+   */
+  status: ReceptVoorraadStatus
+  /** Regels met te weinig voorraad (ook "bijna"). */
+  tekort: number
+  /** Regels zonder oordeel. */
+  onbekend: number
+  /** Regels met een hoeveelheid (van alle secties). */
+  regels: number
+}
+
+/**
+ * Kan dit recept nu gebrouwen worden? Eén oordeel over alle regels, met
+ * dezelfde voorraadcheck per regel als de receptenpagina
+ * (`receptRegelVoorraad`) — de stip in de receptenlijst, de chip in het detail
+ * en straks de kiezer bij een nieuwe batch zeggen dus hetzelfde.
+ */
+export const receptVoorraadOordeel = (
+  recept: any | null | undefined,
+  lots: any[] | null | undefined,
+  ingredienten: any[] | null | undefined,
+): ReceptVoorraadOordeel => {
+  const match = (regel: any) => ingredientVoorReceptRegel(regel, ingredienten)
+  const oordelen: ReceptRegelVoorraad[] = []
+  for (const cat of RECEPT_SECTIES) {
+    for (const regel of (recept?.[cat] || [])) {
+      if (!regel) continue
+      oordelen.push(receptRegelVoorraad(regel, recept, lots, match))
+    }
+  }
+  const tekort = oordelen.filter(o => o.ok === false).length
+  const onbekend = oordelen.filter(o => o.ok === null).length
+  const rood = oordelen.some(o => o.ok === false && !o.bijna)
+  const geel = !rood && oordelen.some(o => o.bijna)
+  const klaar = oordelen.length > 0 && oordelen.every(o => o.ok === true)
+  const status: ReceptVoorraadStatus = klaar ? 'klaar' : rood ? 'tekort' : geel ? 'bijna' : 'onbekend'
+  return { status, tekort, onbekend, regels: oordelen.length }
+}

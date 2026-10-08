@@ -77,12 +77,27 @@
 @media (min-width: 768px) {
   :root { --kopbalk: 48px; --onderbalk: 0px; }
 }
+/* Detailscherm (batch, recept, product, bestelling — App.tsx zet
+   `body.schil-detail`): geen onderbalk, dus alleen de safe-area onderin. Vaste
+   actiebalken en de UndoBar rekenen met var(--onderbalk) en staan dan op de
+   onderrand. Alleen in de telefoonindeling; op een bureau is hij al 0. */
+@media (max-width: 767px) {
+  body.schil-detail { --onderbalk: var(--safe-bottom); }
+}
 /* Toetsenbord open (zie components/ui/toetsenbord.ts): de onderbalk is dan
-   toch onbruikbaar en iOS zou hem midden in beeld tillen. */
+   toch onbruikbaar en iOS zou hem midden in beeld tillen. Wint ook van een
+   detailscherm (zelfde specificiteit, later in de cascade). */
 body.kb-open { --onderbalk: 0px; }
 body.kb-open [data-onderbalk] { display: none; }
 /* Inhoud houdt ruimte voor de onderbalk (telefoon) en de rail (bureau). */
 .schil-inhoud { padding-bottom: calc(var(--onderbalk) + 1rem); }
+/* De ActieBalk (components/ui/ActieBalk.tsx) staat op `bottom: var(--onderbalk)`.
+   Op een detailscherm is dat de safe-area: daaronder (de home-indicator) loopt
+   hij wit door, anders schuift de pagina zichtbaar onder de balk door. */
+body.schil-detail .actiebalk::after {
+  content: ''; position: absolute; left: 0; right: 0; top: 100%;
+  height: var(--safe-bottom, 0px); background: #fff;
+}
 /* Vangnet: een pagina die horizontaal overloopt mag de layout-viewport niet
    verbreden — een mobiele browser zoomt dan uit en de vaste balken zakken
    onder de visuele viewport. `clip` snijdt af zonder scroll-container te

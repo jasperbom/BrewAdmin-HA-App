@@ -31,7 +31,6 @@ export interface AdminContextWaarde {
   gaNaarDoel: (d: AttentieDoel) => void
   whoami: AdminGebruiker | null
   setPage: (id: string) => void
-  setOpenOrderId: (id: number | null) => void
   onNaarPostvakInstellingen: () => void
 
   // ── Data uit App (useStore) ───────────────────────────────────────────────

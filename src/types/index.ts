@@ -13,6 +13,8 @@ export interface Ingredient {
   brewfather_id?: string
   brewfather_cat?: string
   bf_props?: Record<string, any>
+  // Allergenen van dit ingrediënt. Ontbrekend = nog niet beoordeeld; een lege
+  // lijst = gecontroleerd, bevat geen allergenen.
   allergenen?: Allergeen[]
   // HACCP: markeert dit ingrediënt als toevoeging ná de afdodingsstap. Stuurt
   // de risicoklasse van de batch (CCP 1) en de THT. Leeg = valt terug op de
@@ -125,6 +127,16 @@ export interface Batch {
   // klikken op "Brouwen" in de Recepten-pagina en blijft staan zodat een
   // geplande batch later via "Sync recept" opnieuw kan worden bijgewerkt.
   recept_id?: string
+  // De gekozen Brewfather-versie van dat recept (`<parent>__v<n>`), als er bij
+  // het plannen een oudere versie is gekozen. `recept_id` blijft altijd het
+  // hoofdrecept, zodat alle lezers van `recept_id` blijven werken.
+  recept_versie_id?: string
+  // ABV vastgezet voor accijns, THT-klasse en etiket ("ABV vastzetten" in
+  // Conditioneren). Een vastgezette ABV overschrijft de Brewfather-sync nooit.
+  abv_definitief?: boolean
+  // Waar `ABV` vandaan komt (zie `utils/etiket.ts`): berekend uit OG/FG,
+  // ingevoerd (labwaarde), Brewfather of het recept (verwacht).
+  abv_bron?: 'berekend' | 'lab' | 'brewfather' | 'recept' | 'handmatig'
   // ── Brouwdag-velden (uitgebreide log-registratie) ───────────────────────────
   brouwdag_voltooid?: boolean
   pre_boil_sg?: number | string
@@ -266,6 +278,9 @@ export interface BatchIngredient {
   lot_id?: string | number
   kosten?: number | string
   afboeken?: boolean
+  // Deze regel is van het lot afgeboekt (voorraad verlaagd). Na afboeken staat
+  // de regel vast: hij verandert niet meer mee met het recept.
+  afgeboekt?: boolean
   // Brouwkundige eigenschappen voor calculaties (uit Brewfather of handmatig):
   // mout: extract_pct (yield in %, default 80); hop: alpha_pct + tijdstip_min
   // (minuten vóór einde koken voor boil, dagen voor dry-hop) + gebruik
@@ -354,6 +369,21 @@ export interface VoorraadLog {
   omschrijving?: string
 }
 
+// Eén regel van het webshoplog (`wc_sync_log`, nieuwste eerst, hooguit 100):
+// een push of pull naar WooCommerce, een fout, of per artikel de voorraad die
+// meeging (`debug`). `product_id` staat op een regel die over één artikel van
+// een bier gaat, zodat het logboek op de productpagina alleen de regels van dát
+// bier toont; een samenvatting van een hele push of pull (en een regel van vóór
+// dit veld) heeft hem niet — die staan in het synchronisatielog bij de koppeling.
+export interface WcSyncLogRegel {
+  id: number
+  ts: string
+  type: 'push' | 'pull' | 'fout' | 'debug'
+  msg: string
+  details?: string
+  product_id?: number
+}
+
 export interface Onderdeel {
   id: number
   naam: string
@@ -402,6 +432,20 @@ export interface Product {
   // `utils/craftery.ts`.
   /** Voedingswaarde per 100 ml. */
   kcal?: string
+  /** Energie per 100 ml in kJ — alleen vastgelegd als hij op het etiket staat. */
+  kj?: string
+  /**
+   * Staat de energie op het gedrukte etiket? `vermeld` = kcal/kJ hierboven
+   * zijn de etiketwaarden; anders (leeg/`niet_vermeld`) volgt de website de
+   * afleiding uit OG/FG (`utils/etiket.ts`).
+   */
+  energie_op_etiket?: 'vermeld' | 'niet_vermeld'
+  /**
+   * Vastgezet huidig recept van dit product. Leeg = afgeleid: het recept van
+   * de nieuwste batch, anders het enige gekoppelde recept
+   * (`huidigReceptVoorProduct` in `utils/productKeten.ts`).
+   */
+  recept_huidig_id?: string
   /** Ingrediëntenlijst; leeg = afgeleid uit het gekoppelde recept. */
   ingredienten?: string
   smaakprofiel?: string
@@ -581,6 +625,12 @@ export interface Recept {
   // brouwhistorie overstemt. Blijven bij een Brewfather-sync behouden.
   kostprijs_overig?: number | string
   kostprijs_verlies_pct?: number | string
+  // Eigen velden van de app (sync-bestendig, zie `RECEPT_EIGEN_VELDEN`):
+  // vastgepind = altijd "in gebruik" (`utils/receptGebruik.ts`);
+  // niet_in_brewfather = het recept verdween uit Brewfather maar wordt nog
+  // ergens naar verwezen, dus de app bewaart het.
+  vastgepind?: boolean
+  niet_in_brewfather?: boolean
 }
 
 export interface ReceptIngredient {
@@ -1941,6 +1991,14 @@ export interface EtiketControle {
   lotcode_ok: boolean
   tht_ok: boolean
   alcohol_ok: boolean
+  // Snapshots bij de controle (vanaf v1.12.90; oudere records hebben ze niet).
+  // De afvuller vult de versie op de rol in die hij in zijn hand heeft; de
+  // verwachte versie is die van het product op dat moment.
+  etiket_versie_gelezen?: string
+  etiket_versie_verwacht?: string
+  abv_batch?: number
+  abv_etiket_verwacht?: number
+  abv_marge?: number
   resultaat: ControleResultaat
   afwijking_id?: number
   capa_id?: number

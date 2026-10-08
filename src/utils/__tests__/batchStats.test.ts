@@ -47,7 +47,6 @@ describe('batchSamenvatting', () => {
     const s = batchSamenvatting(batches)
     expect(s.og?.gemiddeld).toBe(1.068)
     expect(s.fg?.gemiddeld).toBe(1.013)
-    expect(s.kleur?.gemiddeld).toBe(13)
     expect(s.rendement?.gemiddeld).toBe(74)
   })
 
@@ -74,6 +73,47 @@ describe('batchSamenvatting', () => {
 
   it('leest komma-getallen zoals ze soms ingevoerd worden', () => {
     expect(batchSamenvatting([{ABV: '7,4'}]).abv?.gemiddeld).toBe(7.4)
+  })
+})
+
+describe('wat een batch werkelijk meet', () => {
+  it('rekent de ABV uit OG en FG (Balling) als hij niet is ingevuld', () => {
+    // 1.064 → 1.012 is volgens Balling 6,96 % vol; de lineaire formule zou
+    // 6,83 zeggen.
+    const s = batchSamenvatting([{id: 1, datum: '2026-09-15', OG: 1.064, FG: 1.012}])
+    expect(s.abv?.laatste).toBe(7)
+    expect(s.abv?.aantal).toBe(1)
+  })
+
+  it('laat een ingevulde ABV voorgaan op de berekening', () => {
+    const s = batchSamenvatting([{id: 1, OG: 1.064, FG: 1.012, ABV: 6.8}])
+    expect(s.abv?.laatste).toBe(6.8)
+  })
+
+  it('telt een batch zonder ABV en zonder FG niet mee voor het alcoholpercentage', () => {
+    const s = batchSamenvatting([{id: 1, OG: 1.064}, {id: 2, OG: 1.060, FG: 1.010}])
+    expect(s.abv?.aantal).toBe(1)
+  })
+
+  it('leest het rendement uit de brouwdag (brouwzaal_efficiency_pct) vóór het Brewfather-veld', () => {
+    const s = batchSamenvatting([
+      {id: 1, datum: '2026-01-01', brouwzaal_efficiency_pct: 78, brouwzaal_eff: 70},
+      {id: 2, datum: '2026-02-01', brouwzaal_eff: 72},
+    ])
+    expect(s.rendement?.reeks).toEqual([78, 72])
+  })
+
+  it('vat de berekende bitterheid (ibu_berekend) samen', () => {
+    const s = batchSamenvatting([
+      {id: 1, datum: '2026-01-01', ibu_berekend: 24.4},
+      {id: 2, datum: '2026-02-01', ibu_berekend: 22},
+      {id: 3, datum: '2026-03-01'},
+    ])
+    expect(s.ibu).toMatchObject({aantal: 2, gemiddeld: 23, laatste: 22, reeks: [24, 22]})
+  })
+
+  it('geeft de kleur niet als meting: die is een kopie van het recept', () => {
+    expect(batchSamenvatting(batches).kleur).toBeNull()
   })
 })
 
@@ -114,10 +154,10 @@ describe('bierAfwijkingen', () => {
     expect(bierAfwijkingen(s, {abv: 7.2, ebc: 12})).toEqual([])
   })
   it('meldt een veld dat bij het bier nog leeg is', () => {
-    expect(bierAfwijkingen(s, {})).toEqual([
-      {veld: 'abv', bier: null, gemeten: 7.3},
-      {veld: 'ebc', bier: null, gemeten: 13},
-    ])
+    expect(bierAfwijkingen(s, {})).toEqual([{veld: 'abv', bier: null, gemeten: 7.3}])
+  })
+  it('zet de kleur niet tegen het etiket: die komt uit het recept, niet uit een meting', () => {
+    expect(bierAfwijkingen(s, {abv: 7.3, ebc: 40})).toEqual([])
   })
   it('meldt niets zonder metingen', () => {
     expect(bierAfwijkingen(batchSamenvatting([]), {abv: 7})).toEqual([])

@@ -13,6 +13,10 @@ import { totaliseerRegels, inkoopRegelsMetCorrectie } from '../../utils/centen'
 import { bouwUbl, controleerUbl } from '../../utils/ubl'
 import InkoopFactuurModal from '../../components/InkoopFactuurModal'
 import { registreerScanCorrectie, leerKoppelingen } from '../../utils/scanGeheugen'
+import {
+  kanHerindelen, herindeelKostensoorten, kostensoortVerschuivingen, herindelingBoeking, HELE_FACTUUR,
+  type KostensoortWijziging,
+} from '../../utils/kostensoortHerindeling'
 import InkoopInbox from '../../components/InkoopInbox'
 import { InkoopInboxItem, imapActief, inboxFactuurVerwijderd, inboxVerwerkt, telInboxOpen, inboxOpen, inboxFoutSleutel } from '../../utils/inkoopInbox'
 import { boekMerchMutaties } from '../../utils/merch'
@@ -53,6 +57,7 @@ import InkoopDetail from './facturen/InkoopDetail'
 import LosseFactuurModal from './facturen/LosseFactuurModal'
 import AltRekeningKiezer from './facturen/AltRekeningKiezer'
 import PspVerrekenModal from './facturen/PspVerrekenModal'
+import KostensoortBlad from './facturen/KostensoortBlad'
 import UblWaarschuwing from './facturen/UblWaarschuwing'
 import Melding from './facturen/Melding'
 import type { DetailKnop } from './facturen/DetailKnoppen'
@@ -160,10 +165,10 @@ function FacturenSectie() {
   const {
     navDoel, gaNaarDoel, inkoopFacturen, setInkoopFacturen, ing, lots, onderdelen,
     claudeCreds, ingTypes, ingTypeBtw, verkoopFacturen, setVerkoopFacturen, bestellingen,
-    setPage, setOpenOrderId, breweryDetails, factuurLogo, klanten,
+    breweryDetails, factuurLogo, klanten,
     bankKoppelingen, setBankKoppelingen, altRekeningen, auditLog, setAuditLog, kostenSoorten,
     smtpCreds, mollieCreds, appName, logo, mailTemplates, scanCorrecties,
-    setScanCorrecties, setJournaal, merchArtikelen, setMerchArtikelen, merchVoorraadLog,
+    setScanCorrecties, journaal, setJournaal, merchArtikelen, setMerchArtikelen, merchVoorraadLog,
     setMerchVoorraadLog, inkoopInbox, setInkoopInbox, refreshInkoopInbox, imapCreds, onNaarPostvakInstellingen,
     bankTransacties, klantNaamVoor, schuldPerAltRekening, knownLeveranciers, btwBetaaldePerioden, btwIngediendeKeys,
     btwPeriodeType, getRolloverInfo, boekInkoopVoorraad, markeerBetaald, verrekenPspKosten, kostenpostMagVervallen,
@@ -326,6 +331,41 @@ function FacturenSectie() {
     logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:f.id, actie:'gewijzigd',
       omschrijving:`${f.factuurnummer || f.leverancier || ''} verrekend met ${n} PSP-uitbetaling(en)`})
     setPspVerrekenFactuurId(null)
+  }
+
+  // ── Kostensoort wijzigen (utils/kostensoortHerindeling.ts) ─────────────────
+  // Alleen wáár de kosten in de W&V staan, nooit een bedrag of de BTW: dus ook
+  // op een factuur in een ingediende of betaalde BTW-periode, waar het gewone
+  // bewerken op slot zit. Het journaal krijgt een storno + herboeking in
+  // dezelfde periode; het scangeheugen leert de nieuwe indeling.
+  const [kostensoortFactuurId, setKostensoortFactuurId] = React.useState<number|null>(null)
+  const [kostensoortFout, setKostensoortFout] = React.useState('')
+  const openKostensoort = (id: number) => { setKostensoortFout(''); setKostensoortFactuurId(id) }
+  const wijzigKostensoorten = (factuurId: number, wijziging: KostensoortWijziging) => {
+    const oud = (inkoopFacturen || []).find((f: any) => f.id === factuurId)
+    if (!oud) { setKostensoortFactuurId(null); return }
+    const nieuw = herindeelKostensoorten(oud, wijziging)
+    const verschuivingen = kostensoortVerschuivingen(oud, nieuw)
+    if (!verschuivingen.length) { setKostensoortFactuurId(null); return }
+    // Zou de herboeking een bedrag of de BTW veranderen (journaal en regels
+    // lopen uiteen), dan gebeurt er niets — ook niet op de factuur zelf.
+    if (herindelingBoeking(journaal || [], nieuw, btwPeriodeType) === null) {
+      setKostensoortFout(t('fct_kostensoort_journaal_wijkt_af')); return
+    }
+    setInkoopFacturen((prev: any[]) => (prev || []).map((f: any) => f.id === factuurId ? herindeelKostensoorten(f, wijziging) : f))
+    setJournaal((prev: any[]) => {
+      const b = herindelingBoeking(prev || [], nieuw, btwPeriodeType)
+      return b ? voegBoekingToe(voegBoekingToe(prev || [], b.storno), b.herboeking) : (prev || [])
+    })
+    // Het scangeheugen leert de nieuwe indeling, net als bij opslaan — niet
+    // van een correctieregel (handmatige factuurtotalen).
+    const leer = verschuivingen
+      .filter(v => v.index !== HELE_FACTUUR && v.omschrijving && !oud.regels?.[v.index]?.correctie)
+      .map(v => ({tekst: v.omschrijving, soort: 'overig' as const, leverancier: oud.leverancier || undefined, kostensoort: v.naar}))
+    if (leer.length) setScanCorrecties((prev: any) => leerKoppelingen(prev || [], leer))
+    logAudit(auditLog, setAuditLog, {entiteit:'Inkoopfactuur', entiteit_id:factuurId, actie:'gewijzigd',
+      omschrijving:`${oud.leverancier || ''} — ${oud.factuurnummer || ''}: kostensoort ${verschuivingen.map(v => `${v.omschrijving || 'factuur'} ${v.van} → ${v.naar}`).join(', ')}${inkoopVergrendeld(oud) ? ' (BTW-periode afgesloten; bedragen en BTW ongewijzigd)' : ''}`})
+    setKostensoortFactuurId(null)
   }
 
   // ── Bijlage bij een inkoopfactuur toevoegen ─────────────────────────────────
@@ -1036,7 +1076,14 @@ function FacturenSectie() {
   const inkoopKnoppen = (f: any) => {
     const stand = inkoopStand(f, vandaagIso)
     const open = stand.fase === 'open' || stand.fase === 'te_laat'
-    const bewerk: DetailKnop = {id: 'bewerk', label: t('btn_edit'), onClick: () => bewerkInkoop(f)}
+    const slot = inkoopVergrendeld(f)
+    const kostensoort: DetailKnop | null = kanHerindelen(f)
+      ? {id: 'kostensoort', label: t('fct_kostensoort_wijzigen'), onClick: () => openKostensoort(f.id)}
+      : null
+    // In een ingediende of betaalde BTW-periode is bewerken op slot (de
+    // aangifte ligt vast); de kostensoort wijzigen kan wel en komt op die plek.
+    const bewerk: DetailKnop = slot && kostensoort ? kostensoort
+      : {id: 'bewerk', label: t('btn_edit'), onClick: () => bewerkInkoop(f)}
     const betaald: DetailKnop = {id: 'betaald', label: t('btn_mark_paid'), onClick: () => markeerInkoopBetaald(f.id)}
     // De factuur van een PSP: noemt een uitbetalingsverslag hem, dan is
     // verrekenen de handeling — ook als hij al op betaald staat.
@@ -1045,7 +1092,9 @@ function FacturenSectie() {
     const tweede: DetailKnop | null = psp.voorstel ? (open ? betaald : bewerk) : open ? bewerk : null
     const meer: DetailKnop[] = []
     if (psp.kan && !psp.voorstel) meer.push(pspVerrekenKnop(f))
-    if (primair.id !== 'bewerk' && tweede?.id !== 'bewerk') meer.push(bewerk)
+    if (primair.id !== bewerk.id && tweede?.id !== bewerk.id) meer.push(bewerk)
+    // Een open periode: de kostensoort ook los, zonder het hele formulier.
+    if (kostensoort && bewerk !== kostensoort) meer.push(kostensoort)
     // Via een alt-rekening: zolang de factuur nergens aan hangt, ook als hij al
     // met de hand op betaald staat.
     if (inkoopAfrekening(f, bankKoppelingen) === null && (altRekeningen || []).length > 0) {
@@ -1056,7 +1105,6 @@ function FacturenSectie() {
         bevestig: t(f.vorige_stand?.status === 'betaald' ? 'fct_terug_naar_betaald' : 'fct_terug_naar_open'),
         onClick: () => ontkoppelBetaaldViaAlt(f.id)})
     }
-    const slot = inkoopVergrendeld(f)
     meer.push({id: 'verwijder', label: t('btn_delete'), gevaar: true, bevestig: t('err_confirm_delete_inkoop'),
       disabled: slot, title: slot ? t('err_periode_gesloten_mutatie') : undefined, onClick: () => deleteFactuur(f.id)})
     return {stand, primair, tweede, meer}
@@ -1248,7 +1296,7 @@ function FacturenSectie() {
         klantNaam={klantNaamVoor(f)}
         onKlant={klant ? () => gaNaarDoel({pagina: 'klanten', id: Number(klant.id)}) : null}
         bestellingLabel={f.bestelling_id != null ? (bestelling ? bestellingRef(bestelling) : `#${f.bestelling_id}`) : null}
-        onBestelling={bestelling ? () => { setOpenOrderId(f.bestelling_id); setPage('bestellingen') } : null}
+        onBestelling={bestelling ? () => gaNaarDoel({ pagina: 'bestellingen', id: f.bestelling_id }) : null}
         bron={bron}
         credits={credits}
         onOpenFactuur={(id: number) => setGekozenVerkoop(id)}
@@ -1563,6 +1611,18 @@ function FacturenSectie() {
             onKies={(id: number) => { markeerBetaaldViaAlt(betaalViaAltFactuurId!, id); setBetaalViaAltFactuurId(null) }}
             onClose={() => setBetaalViaAltFactuurId(null)}
           />
+        )
+      })()}
+
+      {/* Kostensoort wijzigen — ook in een afgesloten BTW-periode */}
+      {kostensoortFactuurId !== null && (() => {
+        const f = (inkoopFacturen||[]).find((x: any) => x.id === kostensoortFactuurId)
+        if (!f) return null
+        return (
+          <KostensoortBlad key={f.id} factuur={f} kostenSoorten={kostenSoorten || []}
+            vergrendeld={inkoopVergrendeld(f)} fout={kostensoortFout}
+            onOpslaan={(w) => wijzigKostensoorten(f.id, w)}
+            onSluit={() => setKostensoortFactuurId(null)} />
         )
       })()}
 

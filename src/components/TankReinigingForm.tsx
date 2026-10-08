@@ -27,6 +27,8 @@ interface Props {
   // Voorgevulde uitvoerder (de ingelogde HA-gebruiker); blijft bewerkbaar.
   standaardDoor?: string
   onOpgeslagen?: (status: TankReinigingStatus) => void
+  /** Dicht als een gewone (secundaire) knop in plaats van een tekstlink — de ene handeling van een lege tank op de brouwzaal. */
+  knop?: boolean
 }
 
 const leegForm = (door: string) => ({
@@ -35,7 +37,7 @@ const leegForm = (door: string) => ({
 
 const TankReinigingForm: React.FC<Props> = ({
   tankId, tankNaam, tankStatussen, setTankStatussen, tankLog, setTankLog,
-  auditLog, setAuditLog, standaardDoor, onOpgeslagen,
+  auditLog, setAuditLog, standaardDoor, onOpgeslagen, knop = false,
 }) => {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>(leegForm(standaardDoor || ''))
@@ -55,6 +57,14 @@ const TankReinigingForm: React.FC<Props> = ({
     onOpgeslagen?.(form.status)
   }
 
+  if (!open && knop) {
+    return (
+      <button type="button" onClick={() => { setOpen(true); setForm(leegForm(standaardDoor || '')) }}
+        className="inline-flex items-center justify-center px-3 min-h-tap md:min-h-[36px] rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm font-medium text-gray-800 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+        {t('dash_tank_reiniging_vastleggen')}
+      </button>
+    )
+  }
   if (!open) {
     return (
       <button type="button"

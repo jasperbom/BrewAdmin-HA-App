@@ -102,3 +102,66 @@ describe('samenspel met de verschillenlijst', () => {
     expect(verschillen).toEqual([{veld: 'meta:_cf_abv', lokaal: '7,1%', extern: '6,8%'}])
   })
 })
+
+// ── De Bevat-regel achter de ingrediënten (BOUWPLAN: vaste beslissing) ──────
+
+describe('Bevat-regel naar het thema (push)', () => {
+  const recepten = [{mout: [{naam: 'Pilsmout'}, {naam: 'Tarwemout'}], hop: [{naam: 'Saaz'}], gist: [{naam: 'Abdijgist'}]}]
+
+  it('zet "Bevat: …" als laatste zin achter _cf_ingredienten', () => {
+    const meta = crafteryMeta({product: {}, recepten, bevatRegel: 'Bevat: gerst, tarwe.'})
+    expect(meta._cf_ingredienten).toBe('water, gerstemout, tarwemout, hop, gist. Bevat: gerst, tarwe.')
+  })
+
+  it('alleen als de tekst nog geen "Bevat" noemt', () => {
+    const meta = crafteryMeta({product: {ingredienten: 'water, mout, hop. Bevat: gerst.'}, bevatRegel: 'Bevat: gerst, tarwe.'})
+    expect(meta._cf_ingredienten).toBe('water, mout, hop. Bevat: gerst.')
+    expect(crafteryMeta({product: {ingredienten: 'Wasser, Malz. Enthält: Gerste.'}, bevatRegel: 'Bevat: gerst.'})._cf_ingredienten)
+      .toBe('Wasser, Malz. Enthält: Gerste.')
+  })
+
+  it('zonder ingrediëntentekst geen kale Bevat-zin: die zou de tekst in de winkel overschrijven', () => {
+    expect(crafteryMeta({product: {abv: 6.2}, bevatRegel: 'Bevat: gerst.'})).toEqual({_cf_abv: '6,2%'})
+  })
+
+  it('zonder Bevat-regel ongewijzigd, en de rest van de meta blijft gelijk', () => {
+    const zonder = crafteryMeta({product: {abv: 6.2, smaakprofiel: 'Fris'}, recepten})
+    const met = crafteryMeta({product: {abv: 6.2, smaakprofiel: 'Fris'}, recepten, bevatRegel: 'Bevat: gerst.'})
+    expect(zonder._cf_ingredienten).toBe('water, gerstemout, tarwemout, hop, gist')
+    expect({...met, _cf_ingredienten: zonder._cf_ingredienten}).toEqual(zonder)
+    expect(crafteryMeta({product: {ingredienten: 'water, hop'}, bevatRegel: '  '})._cf_ingredienten).toBe('water, hop')
+  })
+
+  it('landt als gewone meta in de payload — geen prijs, geen voorraad', () => {
+    const payload = bouwWcPayload({velden: {meta: crafteryMeta({product: {ingredienten: 'water, hop'}, bevatRegel: 'Bevat: gerst.'})}})
+    expect(payload).toEqual({meta_data: [{key: '_cf_ingredienten', value: 'water, hop. Bevat: gerst.'}]})
+  })
+})
+
+describe('Bevat-regel uit de winkel (pull)', () => {
+  it('haalt de zin eraf, zodat hij niet in het productveld belandt', () => {
+    expect(crafteryLees({_cf_ingredienten: 'water, gerstemout, hop, gist. Bevat: gerst, tarwe.'}).product)
+      .toEqual({ingredienten: 'water, gerstemout, hop, gist'})
+  })
+
+  it('in elk van de vijf talen, en alleen de echte zin met dubbele punt', () => {
+    expect(crafteryLees({_cf_ingredienten: 'water, hops. Contains: barley.'}).product.ingredienten).toBe('water, hops')
+    expect(crafteryLees({_cf_ingredienten: 'eau, houblon. Contient : orge.'}).product.ingredienten).toBe('eau, houblon')
+    expect(crafteryLees({_cf_ingredienten: 'agua, lúpulo. Contiene: cebada.'}).product.ingredienten).toBe('agua, lúpulo')
+    expect(crafteryLees({_cf_ingredienten: 'water, mout (bevat gluten)'}).product.ingredienten).toBe('water, mout (bevat gluten)')
+  })
+
+  it('alleen een Bevat-zin = geen ingrediëntentekst', () => {
+    expect(crafteryLees({_cf_ingredienten: 'Bevat: gerst.'}).product).toEqual({})
+  })
+
+  it('heen en terug: de push zet hem erbij, de pull haalt hem eraf', () => {
+    const product = {ingredienten: 'water, gerstemout, tarwemout, hop, gist'}
+    const meta = crafteryMeta({product, bevatRegel: 'Bevat: gerst, tarwe.'})
+    expect(meta._cf_ingredienten).toContain('Bevat: gerst, tarwe.')
+    expect(crafteryLees(meta).product).toEqual(product)
+    // Nog een keer heen: geen tweede Bevat-zin.
+    expect(crafteryMeta({product: crafteryLees(meta).product, bevatRegel: 'Bevat: gerst, tarwe.'})._cf_ingredienten)
+      .toBe(meta._cf_ingredienten)
+  })
+})

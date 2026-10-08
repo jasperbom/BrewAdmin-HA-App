@@ -1,15 +1,17 @@
 import { describe, it, expect } from 'vitest'
+import { brouwKosten } from '../brouwKosten'
 import {
   accijnsCalc, tariefVoorDatum, accijnsMaandGesloten, berekenWinstVerlies,
   voorraadPerLocatie, ouderdomsAnalyse, berekenBatchKostprijs,
   berekenProductKostprijs, berekenCogs, telThtAlerts, thtAlertLots, laatsteOpenAccijnsMaand,
   openAccijnsMaanden, telOpenAccijnsMaanden,
-  productIdsVoorBatch, batchHoortBijProduct, vrijeTanksMetStatus,
+  productIdsVoorBatch, batchHoortBijProduct, vrijeTanksMetStatus, batchesBuitenTanks,
   tankBezetter, tankReserveringen, tankClaimCheck, isTankBezetStatus,
   markTankVuilBijVertrek, markTankVuilBijVerwijderen,
   registreerTankReiniging, laatsteTankReiniging,
   berekenVoorcalcVoorAfvulling, agpValueAt, agpOverzicht, berekenAccijnsImpact,
   lotKostenVoorRegel, batchRegelKosten, accijnsVoorKostprijs,
+  abvBalling, schatABV, vasteKostenVoorBatch, tankAccijnsWaarde,
 } from '../calculations'
 
 describe('accijnsCalc', () => {
@@ -610,6 +612,34 @@ describe('berekenCogs: verpakking per geleverde eenheid', () => {
 })
 
 describe('berekenProductKostprijs — verdeling naar afgevuld volume per product', () => {
+  it('noemt waar de kostprijs op rust: de batches met liters, en of vaste kosten afgeleid zijn', () => {
+    const batches = [
+      {id: 1, product_id: 9, overige_kosten: 100},
+      {id: 2, product_id: 9},                        // geen kosten: telt niet mee
+      {id: 3, product_id: 8, overige_kosten: 50},    // ander product
+    ]
+    const afvullingen = [
+      {id: 11, batch_id: 1, product_id: 9, inhoud_per_eenheid: 1, hoeveelheid: 100},
+      {id: 12, batch_id: 1, product_id: 9, inhoud_per_eenheid: 20, hoeveelheid: 1},
+      {id: 13, batch_id: 2, product_id: 9, inhoud_per_eenheid: 1, hoeveelheid: 50},
+      {id: 14, batch_id: 3, product_id: 8, inhoud_per_eenheid: 1, hoeveelheid: 50},
+    ]
+    const pk = berekenProductKostprijs(9, batches, [], [], afvullingen, [], [], [])
+    expect(pk.batch_ids).toEqual([1])
+    expect(pk.totaal_liter).toBeCloseTo(120, 9)
+    expect(pk.vaste_kosten_afgeleid).toBe(false)
+    // Met afgeleide vaste kosten (alleen schermen): een post die de batch niet noteert.
+    const afgeleid = brouwKosten({batches: [
+      {id: 5, datum: '2026-05-01', status: 'Gesloten', liter_vergist: 100, electra_kosten: 20},
+      {id: 6, datum: '2026-06-01', status: 'Gesloten', liter_vergist: 100, electra_kosten: 20},
+    ]})
+    const eigen = [{id: 1, product_id: 9, datum: '2026-07-01', status: 'Gesloten', liter_vergist: 100, overige_kosten: 10}]
+    expect(berekenProductKostprijs(9, eigen, [], [], afvullingen.slice(0, 1), [], [], []).vaste_kosten_afgeleid).toBe(false)
+    const met = berekenProductKostprijs(9, eigen, [], [], afvullingen.slice(0, 1), [], [], [], {vasteKosten: afgeleid})
+    expect(met.batch_ids).toEqual([1])
+    expect(met.vaste_kosten_afgeleid).toBe(true)
+  })
+
   it('splitst het batchvolume over de producten van de afvullingen (rebrand)', () => {
     // Eén batch, kostprijs 120 over 53 L. 33 L is als product 8 ge-rebrand;
     // de 20 L-afvulling heeft geen eigen product en valt terug op batch.product_id (9).
@@ -842,6 +872,48 @@ describe('vrijeTanksMetStatus', () => {
   })
 })
 
+describe('batchesBuitenTanks — "Buiten de tanks" op de brouwzaal', () => {
+  const tanks = [{ id: 'FV1' }, { id: 'FV2' }, { id: 'BBT1' }]
+  const batches = [
+    { id: 1, status: 'Gesloten', tank: 'FV1', datum: '2026-05-01' },
+    { id: 2, status: 'Afgevuld', tank: 'FV1', datum: '2026-09-01' },
+    { id: 3, status: 'Gepland', tank: 'FV2', datum: '2026-10-14' },
+    { id: 4, status: 'Brouwen', tank: 'FV2', datum: '2026-10-07' },
+    { id: 5, status: 'Vergisten', tank: 'FV1', datum: '2026-09-30' },     // tankkaart FV1
+    { id: 6, status: 'Conditioneren', tank: 'BBT1', datum: '2026-09-10' }, // tankkaart BBT1
+    { id: 7, status: 'Vergisten', tank: '', datum: '2026-10-01' },         // zonder tank
+    { id: 8, status: 'Conditioneren', tank: 'FV9', datum: '2026-09-20' },  // tank bestaat niet
+    { id: 9, status: 'Vergisten', tank: 'FV1', datum: '2026-10-02' },      // FV1 toont al #5
+    { id: 10, status: 'Verpakt', datum: '2026-08-01' },
+    { id: 11, status: 'Vergisten', datum: '2026-10-03' },                  // geen tank-veld
+  ]
+
+  it('Gepland, Brouwen en Afgevuld/Verpakt — en elke lopende batch zonder tankkaart', () => {
+    const res = batchesBuitenTanks(batches, tanks)
+    expect(res.map(r => r.batch.id)).toEqual([4, 7, 9, 11, 8, 3, 10, 2])
+  })
+
+  it('zegt waarom een batch in Vergisten/Conditioneren geen tankkaart heeft', () => {
+    const reden = Object.fromEntries(batchesBuitenTanks(batches, tanks).map(r => [r.batch.id, r.reden]))
+    expect(reden).toMatchObject({ 7: 'geen_tank', 11: 'geen_tank', 8: 'tank_onbekend', 9: 'tank_gedeeld' })
+    expect(reden[4]).toBeNull()
+    expect(reden[3]).toBeNull()
+  })
+
+  it('een batch met een tankkaart en gesloten batches staan er niet in', () => {
+    const ids = batchesBuitenTanks(batches, tanks).map(r => r.batch.id)
+    expect(ids).not.toContain(5)
+    expect(ids).not.toContain(6)
+    expect(ids).not.toContain(1)
+  })
+
+  it('zonder tanks staat elke lopende batch hier', () => {
+    const res = batchesBuitenTanks(batches, [])
+    expect(res.find(r => r.batch.id === 5)?.reden).toBe('tank_onbekend')
+    expect(batchesBuitenTanks(null, null)).toEqual([])
+  })
+})
+
 describe('tankbezetting: gereserveerd versus bezet', () => {
   const batches = [
     { id: 1, tank: 'T1', status: 'Vergisten', naam: 'IPA' },
@@ -1043,5 +1115,82 @@ describe('laatsteTankReiniging', () => {
   it('geeft null als er nooit gereinigd is', () => {
     expect(laatsteTankReiniging('T3', log)).toBeNull()
     expect(laatsteTankReiniging('T1', null)).toBeNull()
+  })
+})
+
+
+describe('abvBalling en schatABV', () => {
+  it('rekent volgens Balling — dezelfde getallen als de etiketkaart', () => {
+    expect(abvBalling(1.064, 1.012)?.abv.toFixed(2)).toBe('6.96')
+    expect(abvBalling(1.090, 1.018)?.abv.toFixed(2)).toBe('9.76')
+    expect(abvBalling(1.050, 1.010)?.abv.toFixed(2)).toBe('5.32')
+  })
+  it('weigert onzin: FG niet lager dan OG, OG ≤ 1 of > 1,2, FG onder 0,98', () => {
+    expect(abvBalling(1.012, 1.064)).toBeNull()
+    expect(abvBalling(1, 0.99)).toBeNull()
+    expect(abvBalling(1.25, 1.01)).toBeNull()
+    expect(abvBalling(1.05, 0.97)).toBeNull()
+  })
+  it('een heel droog bier (FG onder 1.000) telt het negatieve extract mee', () => {
+    expect(abvBalling(1.050, 0.998)!.abv).toBeGreaterThan(abvBalling(1.050, 1.000)!.abv)
+  })
+  it('schatABV: de vastgezette ABV, anders de gemeten FG (Balling), anders OG − 1.010', () => {
+    expect(schatABV({ABV: 7.1, OG: 1.064, FG: 1.012})).toEqual({abv: 7.1, geschat: false})
+    const metFg = schatABV({OG: 1.064, FG: 1.012})
+    expect(metFg.geschat).toBe(true)
+    expect(metFg.abv.toFixed(2)).toBe('6.96')
+    expect(schatABV({OG: 1.064})).toEqual({abv: (1.064 - 1.010) * 131.25, geschat: true})
+    expect(schatABV({})).toEqual({abv: 0, geschat: true})
+  })
+  it('de accijnswaarde in de tank rekent met die schatting', () => {
+    const b = {id: 1, OG: 1.064, FG: 1.012, liter_vergist: 100}
+    expect(tankAccijnsWaarde(b, []).abv.toFixed(2)).toBe('6.96')
+  })
+})
+
+describe('vaste brouwkosten — alleen voor schermen (opzet hoofdstuk 7)', () => {
+  // Twee eerdere brouwsels noteerden elektra; de energiefactuur staat in de
+  // boekhouding. Batch 3 noteert zelf niets.
+  const batches = [
+    {id: 1, datum: '2026-05-01', status: 'Gesloten', liter_vergist: 300, electra_kosten: 30},
+    {id: 2, datum: '2026-06-01', status: 'Gesloten', liter_vergist: 300, electra_kosten: 36},
+    {id: 3, datum: '2026-07-01', status: 'Gesloten', liter_vergist: 150},
+  ]
+  const facturen = [{datum: '2026-06-15', regels: [{kostensoort: 'Water', netto: 30}]}]
+  const afgeleid = brouwKosten({batches, inkoopFacturen: facturen})
+
+  it('per post: genoteerd op de batch wint, anders de afleiding met zijn bron', () => {
+    const posten = vasteKostenVoorBatch(batches[2], afgeleid)
+    expect(posten.find(p => p.key === 'elektra')).toMatchObject({bron: 'gemeten', geschaald: true, bedrag: 16.5})
+    // € 30 water over de 750 L van het venster: € 0,04/L × 150 L.
+    expect(posten.find(p => p.key === 'water')).toMatchObject({bron: 'boekhouding', geschaald: true, bedrag: 6})
+    expect(posten.find(p => p.key === 'schoonmaak')).toMatchObject({bron: 'geen', bedrag: 0})
+    // Een bewuste 0 op de batch is een overschrijving.
+    expect(vasteKostenVoorBatch({...batches[2], electra_kosten: 0}, afgeleid).find(p => p.key === 'elektra'))
+      .toMatchObject({bron: 'batch', bedrag: 0})
+  })
+
+  it('zonder afleiding: precies de oude optelling van de batchvelden', () => {
+    expect(vasteKostenVoorBatch({electra_kosten: 10, water_kosten: '5'}).map(p => p.bedrag)).toEqual([10, 5, 0, 0])
+  })
+
+  it('berekenBatchKostprijs telt de afleiding alleen mee als je hem meegeeft', () => {
+    const afv = [{id: 1, batch_id: 3, verpakking_type: 'Fust 20L', inhoud_per_eenheid: 20, hoeveelheid: 5}]
+    const zonder = berekenBatchKostprijs(batches[2], [], [], afv, [], [], [])
+    const met = berekenBatchKostprijs(batches[2], [], [], afv, [], [], [], null, afgeleid)
+    expect(zonder.overhead_kosten).toBe(0)
+    expect(met.overhead_kosten).toBeCloseTo(22.5, 9)
+    expect(met.totaal_kosten - zonder.totaal_kosten).toBeCloseTo(22.5, 9)
+    expect(met.overhead_posten?.map(p => p.bron)).toEqual(['gemeten', 'boekhouding', 'geen', 'geen'])
+  })
+
+  it('berekenProductKostprijs geeft de afleiding door, en zonder opties is alles als vanouds', () => {
+    const b = {...batches[2], product_id: 9}
+    const afv = [{id: 1, batch_id: 3, product_id: 9, verpakking_type: 'Fust 20L', inhoud_per_eenheid: 20, hoeveelheid: 5}]
+    const bi = [{batch_id: 3, kosten: 100}]
+    const zonder = berekenProductKostprijs(9, [b], bi, [], afv, [], [], [])
+    const met = berekenProductKostprijs(9, [b], bi, [], afv, [], [], [], {vasteKosten: afgeleid})
+    expect(zonder.kostprijs_per_liter).toBeCloseTo(100 / 100, 9)
+    expect(met.kostprijs_per_liter).toBeCloseTo(122.5 / 100, 9)
   })
 })

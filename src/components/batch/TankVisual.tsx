@@ -10,6 +10,14 @@ interface TankVisualProps {
   fillPct: number
   status?: string
   ebc?: number
+  /** Hoogte in px (standaard 116); de breedte schaalt mee. Een rij op de telefoon gebruikt een mini-tank. */
+  hoogte?: number
+}
+
+/** Breedte en hoogte van de tank-SVG (viewBox 56 × 120, standaard 52 × 116 px). */
+const maat = (hoogte?: number): { width: number; height: number } => {
+  const h = hoogte && hoogte > 0 ? hoogte : 116
+  return { width: Math.round(h * 52 / 116), height: h }
 }
 
 let _tankUidSeq = 0
@@ -20,7 +28,7 @@ let _tankUidSeq = 0
 export { ebcToColor }
 
 // Visuele conische fermentor (SVG)
-export const TankVisual: React.FC<TankVisualProps> = ({ fillPct, status, ebc }) => {
+export const TankVisual: React.FC<TankVisualProps> = ({ fillPct, status, ebc, hoogte }) => {
   const [uid] = useState(() => `t${++_tankUidSeq}`)
   const pct = Math.min(100, Math.max(0, fillPct || 0))
   const colors = ebc && ebc > 0
@@ -45,7 +53,7 @@ export const TankVisual: React.FC<TankVisualProps> = ({ fillPct, status, ebc }) 
   const tankPath = 'M8,16 A6,6 0 0,1 14,10 L42,10 A6,6 0 0,1 48,16 L48,78 L32,104 L24,104 L8,78 Z'
 
   return (
-    <svg width="52" height="116" viewBox="0 0 56 120" className="flex-shrink-0" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))' }}>
+    <svg {...maat(hoogte)} viewBox="0 0 56 120" className="flex-shrink-0" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))' }}>
       <defs>
         <clipPath id={`tc-${uid}`}>
           <path d={tankPath} />
@@ -118,7 +126,7 @@ export const TankVisual: React.FC<TankVisualProps> = ({ fillPct, status, ebc }) 
 }
 
 // Visuele bright tank (SVG) — rechtopstaande drukketel met twee koepels, geen conus
-export const BrightTankVisual: React.FC<TankVisualProps> = ({ fillPct, status, ebc }) => {
+export const BrightTankVisual: React.FC<TankVisualProps> = ({ fillPct, status, ebc, hoogte }) => {
   const [uid] = useState(() => `bt${++_tankUidSeq}`)
   const pct = Math.min(100, Math.max(0, fillPct || 0))
   const colors = ebc && ebc > 0
@@ -140,7 +148,7 @@ export const BrightTankVisual: React.FC<TankVisualProps> = ({ fillPct, status, e
   const tankPath = 'M4,28 A24,14 0 0,1 52,28 L52,96 A24,14 0 0,1 4,96 Z'
 
   return (
-    <svg width="52" height="116" viewBox="0 0 56 120" className="flex-shrink-0" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))' }}>
+    <svg {...maat(hoogte)} viewBox="0 0 56 120" className="flex-shrink-0" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))' }}>
       <defs>
         <clipPath id={`btc-${uid}`}>
           <path d={tankPath} />
@@ -195,7 +203,7 @@ export const BrightTankVisual: React.FC<TankVisualProps> = ({ fillPct, status, e
 }
 
 // Visueel vat (SVG) — van de voorkant gezien, voor status 'barrel'
-export const BarrelVisual: React.FC<TankVisualProps> = ({ fillPct, status, ebc }) => {
+export const BarrelVisual: React.FC<TankVisualProps> = ({ fillPct, status, ebc, hoogte }) => {
   const [uid] = useState(() => `br${++_tankUidSeq}`)
   const pct = Math.min(100, Math.max(0, fillPct || 0))
   const colors = ebc && ebc > 0
@@ -218,7 +226,7 @@ export const BarrelVisual: React.FC<TankVisualProps> = ({ fillPct, status, ebc }
   const liquidTop = (cy + r) - fillH
 
   return (
-    <svg width="52" height="116" viewBox="0 0 56 120" className="flex-shrink-0" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.12))' }}>
+    <svg {...maat(hoogte)} viewBox="0 0 56 120" className="flex-shrink-0" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.12))' }}>
       <defs>
         <clipPath id={`brc-${uid}`}>
           <circle cx={cx} cy={cy} r={r - 2} />

@@ -2,6 +2,8 @@ import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsin
 import { convertEenheid, ZuurMiddel } from './constants'
 import { ymd, tod } from './format'
 import { verpakkingKostenPerStuk, vindVerpakking } from './verpakkingKosten'
+import { KOSTEN_POSTEN, kostenVoorBrouw } from './brouwKosten'
+import type { BrouwKosten, KostenBron } from './brouwKosten'
 import { SkuRefData, skuDubbelzinnig, productVoorRegel, artikelProductId } from './sku'
 
 // ── Gereedschap: pH-correctie ───────────────────────────────────────────────
@@ -542,6 +544,9 @@ export interface ProductKostprijsResult {
   // kostprijs van een batch bestaat.
   ingredienten_kosten?: number
   overhead_kosten?: number
+  /** De vaste kosten per post (elektra, water, schoonmaak, overig), met waar
+   *  het bedrag vandaan komt — zie `vasteKostenVoorBatch`. */
+  overhead_posten?: VasteKostenPost[]
   // Accijns is geen productiekostenpost maar een belasting die pas bij uitslag
   // ontstaat. Hij zit wél in `totaal_kosten` — zo staat het al jaren in het
   // kostprijsoverzicht — maar apart erbij, zodat een scherm hem kan splitsen
@@ -572,9 +577,56 @@ export interface ProductKostprijsResult {
    * Bij meerdere verpakkingstypen wint de zwakste bron.
    */
   accijns_bron?: AccijnsKostprijsBron
+  // ── Herkomst (alleen gevuld door `berekenProductKostprijs`) ────────────────
+  // Waar de kostprijs van een product op rust, zodat een scherm de bron kan
+  // noemen: "uit 4 brouwsels, 1.140 L afgevuld". Rekent niets anders uit.
+  /** De batches waarvan afgevulde liters meetellen (met een bekende kostprijs). */
+  batch_ids?: number[]
+  /** Een van die batches noteert een vaste brouwpost niet zelf en kreeg het
+   *  afgeleide bedrag (`opties.vasteKosten`) — alleen bij schermen. */
+  vaste_kosten_afgeleid?: boolean
 }
 
 export type AccijnsKostprijsBron = 'geboekt' | 'voorcalc' | 'geschat' | 'geen'
+
+/** Eén post van de vaste brouwkosten van een batch. */
+export interface VasteKostenPost {
+  /** `elektra` | `water` | `schoonmaak` | `overig` (KOSTEN_POSTEN in brouwKosten.ts). */
+  key: string
+  /** i18n-sleutel van het label. */
+  label: string
+  bedrag: number
+  /** `batch` = op deze batch genoteerd (ook een bewuste 0); anders de bron
+   *  van het afgeleide bedrag (`gemeten` = gemiddelde van de eigen brouwsels,
+   *  `boekhouding`, `handmatig`, `geen`). */
+  bron: 'batch' | KostenBron
+  /** Het afgeleide bedrag is naar de vergiste liters van deze batch geschaald. */
+  geschaald: boolean
+}
+
+const ingevuld = (v: unknown): boolean => v !== undefined && v !== null && String(v).trim() !== ''
+
+/**
+ * De vaste kosten van één brouwdag (elektra, water, schoonmaak, overig) per
+ * post. Wat de batch zelf noteert (`electra_kosten` en verwanten) wint altijd —
+ * ook een bewust ingevulde 0. Alleen met `afgeleid` (`brouwKosten` uit
+ * brouwKosten.ts: gemeten → boekhouding → handmatig → geen) vult de app een
+ * lege post met het afgeleide bedrag (`kostenVoorBrouw`, geschaald naar de
+ * vergiste liters). Dat is een getal voor schermen: het wordt nooit op de
+ * batch geschreven en de W&V en de COGS rekenen zonder.
+ */
+export const vasteKostenVoorBatch = (b: any, afgeleid?: BrouwKosten | null): VasteKostenPost[] => {
+  const perBrouw = afgeleid ? kostenVoorBrouw(afgeleid, Number(b?.liter_vergist) || 0) : null
+  return KOSTEN_POSTEN.map(def => {
+    const eigen = b?.[def.batchVeld]
+    if (ingevuld(eigen) || !perBrouw) {
+      return {key: def.key, label: def.label, bedrag: Number(eigen || 0) || 0,
+        bron: ingevuld(eigen) ? 'batch' as const : 'geen' as const, geschaald: false}
+    }
+    const p = perBrouw.posten.find(x => x.key === def.key)
+    return {key: def.key, label: def.label, bedrag: p?.bedrag || 0, bron: p?.bron || 'geen', geschaald: !!p?.geschaald}
+  })
+}
 
 // Id's komen als getal én als tekst voor (import, Excel, oude records).
 const zelfdeId = (a: unknown, b: unknown): boolean =>
@@ -730,15 +782,20 @@ export const berekenBatchKostprijs = (
   // van afvullingen die noch een uitslag noch een voorcalc-snapshot hebben
   // (afvullingen van vóór v2.4). Zonder dit argument blijft het gedrag
   // ongewijzigd — de W&V en de COGS mogen niet op een schatting draaien.
-  accijnsInst?: AccijnsInst | null
+  accijnsInst?: AccijnsInst | null,
+  // Optioneel, net zo alleen voor schermen (en het batchdossier, dat hetzelfde
+  // hoort te zeggen als het scherm): de afgeleide vaste brouwkosten
+  // (`brouwKosten` uit brouwKosten.ts). Een post die de batch niet zelf
+  // noteert, krijgt dan het afgeleide bedrag (`vasteKostenVoorBatch`). Nooit
+  // in de W&V of de COGS; zonder dit argument blijft het gedrag ongewijzigd.
+  vasteKosten?: BrouwKosten | null
 ): ProductKostprijsResult => {
   const bAv = (afvullingen||[]).filter((a: any) => zelfdeId(a?.batch_id, b?.id))
   const batchLiter = bAv.reduce((s: number, a: any) =>
     s + Number(a.inhoud_per_eenheid||0) * Number(a.hoeveelheid||0), 0)
 
-  const overheadTotaal =
-    Number(b.electra_kosten || 0) + Number(b.water_kosten || 0) +
-    Number(b.schoonmaak_kosten || 0) + Number(b.overige_kosten || 0)
+  const overheadPosten = vasteKostenVoorBatch(b, vasteKosten)
+  const overheadTotaal = overheadPosten.reduce((s, p) => s + p.bedrag, 0)
   let batchKosten = overheadTotaal
 
   // Ingrediënten: vastgelegde kosten, anders de lotprijs omgerekend naar de
@@ -824,6 +881,7 @@ export const berekenBatchKostprijs = (
     totaal_liter: batchLiter,
     ingredienten_kosten: ingredientenTotaal,
     overhead_kosten: overheadTotaal,
+    overhead_posten: overheadPosten,
     accijns: accijnsTotaal,
     totaal_kosten_excl_accijns: batchKosten - accijnsTotaal,
     kostprijs_per_liter_excl_accijns: batchLiter > 0 ? (batchKosten - accijnsTotaal) / batchLiter : 0,
@@ -849,21 +907,31 @@ export const berekenProductKostprijs = (
   afvullingen?: any[],
   verpakkingen?: any[],
   onderdelen?: any[],
-  accijns?: any[]
+  accijns?: any[],
+  // Optioneel, alleen voor schermen: dezelfde twee schattingen als
+  // `berekenBatchKostprijs` (accijns uit ABV/Plato, afgeleide vaste kosten).
+  // Nooit in de W&V of de COGS; zonder dit argument blijft het gedrag gelijk.
+  opties?: {accijnsInst?: AccijnsInst | null, vasteKosten?: BrouwKosten | null} | null
 ): ProductKostprijsResult => {
   const batchById = new Map((batches||[]).map((b: any) => [b.id, b]))
-  const kplCache = new Map<any, {kpl: number, kplExclVerpakking: number}>()
+  const kplCache = new Map<any, {kpl: number, kplExclVerpakking: number, vastAfgeleid: boolean}>()
   const kplVoorBatch = (b: any) => {
     const gecached = kplCache.get(b.id)
     if (gecached) return gecached
-    const r = berekenBatchKostprijs(b, batchIngredienten, lots, afvullingen, verpakkingen, onderdelen, accijns)
-    const waarde = {kpl: r.kostprijs_per_liter, kplExclVerpakking: r.kostprijs_per_liter_excl_verpakking || 0}
+    const r = berekenBatchKostprijs(b, batchIngredienten, lots, afvullingen, verpakkingen, onderdelen, accijns,
+      opties?.accijnsInst ?? null, opties?.vasteKosten ?? null)
+    const waarde = {
+      kpl: r.kostprijs_per_liter, kplExclVerpakking: r.kostprijs_per_liter_excl_verpakking || 0,
+      vastAfgeleid: (r.overhead_posten || []).some(p => p.bron !== 'batch' && p.bron !== 'geen' && p.bedrag > 0),
+    }
     kplCache.set(b.id, waarde)
     return waarde
   }
   let totaal_kosten = 0
   let totaal_liter = 0
   let totaal_kosten_excl_verpakking = 0
+  const batchIds: number[] = []
+  let vasteKostenAfgeleid = false
 
   for (const a of (afvullingen||[])) {
     const b = batchById.get(a.batch_id)
@@ -874,11 +942,13 @@ export const berekenProductKostprijs = (
     if (effProduct == null || Number(effProduct) !== Number(product_id)) continue
     const liters = Number(a.inhoud_per_eenheid ?? a.inhoud_liter ?? 0) * Number(a.hoeveelheid ?? a.aantal ?? 0)
     if (liters <= 0) continue
-    const {kpl, kplExclVerpakking} = kplVoorBatch(b)
+    const {kpl, kplExclVerpakking, vastAfgeleid} = kplVoorBatch(b)
     if (kpl <= 0) continue
     totaal_kosten += liters * kpl
     totaal_kosten_excl_verpakking += liters * kplExclVerpakking
     totaal_liter += liters
+    if (!batchIds.includes(b.id)) batchIds.push(b.id)
+    if (vastAfgeleid) vasteKostenAfgeleid = true
   }
 
   return {
@@ -886,6 +956,8 @@ export const berekenProductKostprijs = (
     totaal_kosten,
     totaal_liter,
     kostprijs_per_liter_excl_verpakking: totaal_liter > 0 ? totaal_kosten_excl_verpakking / totaal_liter : 0,
+    batch_ids: batchIds,
+    vaste_kosten_afgeleid: vasteKostenAfgeleid,
   }
 }
 
@@ -1485,6 +1557,58 @@ export const vrijeTanksMetStatus = (
     return String(a.tank?.naam || a.tank?.id || '').localeCompare(String(b.tank?.naam || b.tank?.id || ''))
   })
 
+// ── Buiten de tanks ─────────────────────────────────────────────────────────
+// De brouwzaal toont per tank de batch die hem bezet (`tankBezetter`). Wat
+// loopt maar daar geen kaart krijgt, staat onder "Buiten de tanks": Gepland,
+// Brouwen en Afgevuld/Verpakt — en ook een batch in Vergisten of
+// Conditioneren die geen tankkaart heeft. Anders verdween zo'n batch helemaal
+// uit beeld: zonder tank, met een tank die niet (meer) bestaat, of in een tank
+// waarvan de kaart al een andere batch toont. De reden gaat mee, zodat het
+// scherm kan zeggen waarom hij hier staat. Gesloten batches horen in het
+// archief.
+export type BuitenTankReden = 'geen_tank' | 'tank_onbekend' | 'tank_gedeeld'
+
+export interface BuitenTankBatch<B> {
+  batch: B
+  /** Alleen bij Vergisten/Conditioneren: waarom er geen tankkaart is. */
+  reden: BuitenTankReden | null
+}
+
+const BUITEN_TANKS_VOLGORDE: Record<string, number> = {
+  Brouwen: 0, Vergisten: 1, Conditioneren: 2, Gepland: 3, Afgevuld: 4, Verpakt: 4,
+}
+
+export const batchesBuitenTanks = <B extends { id?: unknown; status?: unknown; tank?: unknown; datum?: unknown }>(
+  batches: ReadonlyArray<B | null | undefined> | null | undefined,
+  tanks: ReadonlyArray<{ id?: unknown } | null | undefined> | null | undefined,
+): BuitenTankBatch<B>[] => {
+  const lijst = (batches || []).filter((b): b is B => !!b)
+  const tankLijst = (tanks || []).filter((tk): tk is { id?: unknown } => !!tk && tk.id != null && tk.id !== '')
+  const tankIds = new Set(tankLijst.map(tk => String(tk.id)))
+  // Dezelfde keuze als de tankkaarten: per tank de eerste bezetter, met het
+  // id zoals de tank het heeft.
+  const opKaart = new Set<B>()
+  for (const tk of tankLijst) {
+    const b = tankBezetter(tk.id as string, lijst as any[]) as B | null
+    if (b) opKaart.add(b)
+  }
+  const uit: BuitenTankBatch<B>[] = []
+  for (const b of lijst) {
+    const status = String(b.status ?? '')
+    if (!(status in BUITEN_TANKS_VOLGORDE)) continue
+    if (isTankBezetStatus(status)) {
+      if (opKaart.has(b)) continue
+      const tank = b.tank == null ? '' : String(b.tank)
+      uit.push({ batch: b, reden: !tank ? 'geen_tank' : !tankIds.has(tank) ? 'tank_onbekend' : 'tank_gedeeld' })
+    } else {
+      uit.push({ batch: b, reden: null })
+    }
+  }
+  return uit.sort((a, b) =>
+    (BUITEN_TANKS_VOLGORDE[String(a.batch.status)] - BUITEN_TANKS_VOLGORDE[String(b.batch.status)]) ||
+    String(a.batch.datum ?? '').localeCompare(String(b.batch.datum ?? '')))
+}
+
 // Helpers voor uniforme veld-toegang op afvullingen (oude data kan
 // `aantal`/`inhoud_liter` gebruiken, nieuwe `hoeveelheid`/`inhoud_per_eenheid`).
 const afvAantal = (a: any): number =>
@@ -1492,13 +1616,20 @@ const afvAantal = (a: any): number =>
 const afvInhoud = (a: any): number =>
   Number(a?.inhoud_per_eenheid ?? a?.inhoud_liter ?? 0)
 
-// Schat ABV op basis van OG (target FG = 1.010) als batch.ABV ontbreekt.
-// Formule: ABV ≈ (OG − FG) × 131.25. We hanteren FG = 1.010 als aanname voor
-// bier dat nog vergist of conditioneert.
+// Schat de ABV als batch.ABV ontbreekt. Is de FG gemeten, dan rekent hij die
+// uit volgens Balling (`abvBalling`, dezelfde route als de etiketkaart); anders
+// ABV ≈ (OG − 1.010) × 131,25, met FG = 1.010 als aanname voor bier dat nog
+// vergist. Beide blijven een schatting (`geschat`): pas een vastgezette ABV
+// (batch.ABV) is dat niet.
 export const schatABV = (batch: any): { abv: number; geschat: boolean } => {
   const abv = Number(batch?.ABV)
   if (abv > 0) return { abv, geschat: false }
   const og = Number(batch?.OG)
+  const fg = Number(batch?.FG)
+  if (og > 1.0 && fg > 0) {
+    const balling = abvBalling(og, fg)
+    if (balling) return { abv: balling.abv, geschat: true }
+  }
   if (og > 1.0) {
     const est = (og - 1.010) * 131.25
     if (est > 0) return { abv: est, geschat: true }
@@ -2288,6 +2419,47 @@ export const sgToPlato = (sg: number): number => {
   const s = Number(sg) || 0
   if (s <= 1) return 0
   return (-1 * 616.868) + (1111.14 * s) - (630.272 * s * s) + (135.997 * s * s * s)
+}
+
+// ── Alcohol uit OG/FG volgens Balling ───────────────────────────────────────
+// °Plato zonder de klem van `sgToPlato` onder 1.000: een heel droog bier (FG
+// 0.998) heeft een negatief schijnbaar extract, en dat telt mee in de alcohol.
+// Boven 1.000 is het dezelfde polynoom.
+const platoOnbegrensd = (sg: number): number =>
+  -616.868 + 1111.14 * sg - 630.272 * sg * sg + 135.997 * sg * sg * sg
+
+export interface BallingAbv {
+  /** % vol, onafgerond. */
+  abv: number
+  /** Oorspronkelijk, schijnbaar en echt extract (°P). */
+  oe: number
+  ae: number
+  re: number
+}
+
+/**
+ * Alcohol uit OG en FG volgens Balling: OE = °P(OG), AE = °P(FG),
+ * RE = 0,1808·OE + 0,8192·AE, ABW = (OE − RE) / (2,0665 − 0,010665·OE),
+ * ABV = ABW·FG / 0,7907. De lineaire `(OG − FG) × 131,25` onderschat sterke
+ * bieren (1.090/1.018: 9,45 tegen 9,76) en kan de 10 %-grens voor de THT
+ * laten kantelen.
+ *
+ * De enige implementatie van de formule: de etiketkaart (`abvBerekend` in
+ * etiket.ts, met de suiker na de kook erbij), `schatABV` en de
+ * batchstatistiek rekenen hiermee. Ongeldige invoer (OG ≤ 1 of > 1,2, FG
+ * onder 0,98 of niet lager dan de OG) = null.
+ */
+export const abvBalling = (og: number, fg: number): BallingAbv | null => {
+  const o = Number(og)
+  const f = Number(fg)
+  if (!Number.isFinite(o) || !Number.isFinite(f)) return null
+  if (o <= 1 || o > 1.2 || f < 0.98 || f >= o) return null
+  const oe = platoOnbegrensd(o)
+  const ae = platoOnbegrensd(f)
+  const re = 0.1808 * oe + 0.8192 * ae
+  const abw = (oe - re) / (2.0665 - 0.010665 * oe)
+  const abv = abw * f / 0.7907
+  return abv > 0 && Number.isFinite(abv) ? {abv, oe, ae, re} : null
 }
 
 export const platoToSg = (plato: number): number => {

@@ -23,6 +23,7 @@ import type {
 } from '../types'
 import { DEFAULT_HACCP_INST } from './constants'
 import { ingredientVoorBatchRegel } from './batchIngredienten'
+import type { LotKoppeling } from './batchIngredienten'
 
 // ── Blokkades ───────────────────────────────────────────────────────────────
 // Een blokkade is machineleesbaar (`code`, vastgelegd in de afwijking) én
@@ -69,13 +70,16 @@ export const maakParaaf = (
  *  default die per ingrediënttype is ingesteld. Het ingrediënt wordt gezocht
  *  zoals de batchpagina het doet (id, anders naam): een regel die alleen op
  *  naam gekoppeld is wordt daar gewoon afgeboekt en hoort dus ook hier mee te
- *  tellen. */
+ *  tellen. Met `lots` erbij telt ook het lot van de regel (zie
+ *  `ingredientVoorBatchRegel`). */
 export const toevoegingVoorRegel = (
-  regel: Pick<BatchIngredient, 'ingredient_id' | 'ingredient_type'> & {ingredient_naam?: string | null},
+  regel: Pick<BatchIngredient, 'ingredient_id' | 'ingredient_type'>
+    & {ingredient_naam?: string | null; lot_id?: string | number | null},
   ingredienten: Ingredient[],
-  inst: HaccpInst
+  inst: HaccpInst,
+  lots?: LotKoppeling[] | null,
 ): ToevoegingSoort | null => {
-  const ing = ingredientVoorBatchRegel(regel, ingredienten)
+  const ing = ingredientVoorBatchRegel(regel, ingredienten, lots)
   if (ing?.haccp_toevoeging) return ing.haccp_toevoeging
   const perType = inst.toevoeging_per_ing_type || {}
   const type = regel.ingredient_type || ing?.type || ''
@@ -96,12 +100,15 @@ export interface RisicoResultaat {
 /** Verhoogd risico geldt alleen bij vers fruit, hout en andere ongekookte
  *  toevoegingen. Dry-hop met gedroogde hop telt bewust niet mee: hop is
  *  antimicrobieel, en anders zou vrijwel elke gehopte batch in het
- *  7-dagenregime vallen. */
+ *  7-dagenregime vallen. Met `lots` erbij volgt een regel ook zijn lot —
+ *  dezelfde route als `allergenenUitBatch`, zodat risico en allergenen
+ *  hetzelfde ingrediënt zien. */
 export const risicoVoorBatch = (
   batch: Pick<Batch, 'id' | 'risico_override'> | null | undefined,
   batchIngredienten: BatchIngredient[],
   ingredienten: Ingredient[],
-  instRaw?: Partial<HaccpInst> | null
+  instRaw?: Partial<HaccpInst> | null,
+  lots?: LotKoppeling[] | null,
 ): RisicoResultaat => {
   const inst = haccpInst(instRaw)
   const ongekookt: string[] = []
@@ -109,7 +116,7 @@ export const risicoVoorBatch = (
   if (batch) {
     for (const regel of (batchIngredienten || [])) {
       if (regel.batch_id !== batch.id) continue
-      const soort = toevoegingVoorRegel(regel, ingredienten, inst)
+      const soort = toevoegingVoorRegel(regel, ingredienten, inst, lots)
       if (!soort) continue
       const naam = regel.ingredient_naam || ''
       if (soort === 'ongekookt') {
@@ -578,16 +585,19 @@ const sorteerAllergenen = (xs: Allergeen[]): Allergeen[] =>
 
 /** De allergenen die uit de receptuur van een batch volgen: de vereniging van
  *  de allergenen van alle gebruikte ingrediënten — ook van regels die alleen
- *  op naam aan een ingrediënt hangen (zie `ingredientVoorBatchRegel`). */
+ *  op naam aan een ingrediënt hangen (zie `ingredientVoorBatchRegel`). Met
+ *  `lots` erbij hoort een regel met een lot bij het ingrediënt van dat lot:
+ *  wat er werkelijk in de ketel ging. */
 export const allergenenUitBatch = (
   batchId: number,
   batchIngredienten: BatchIngredient[],
-  ingredienten: Ingredient[]
+  ingredienten: Ingredient[],
+  lots?: LotKoppeling[] | null,
 ): Allergeen[] => {
   const gevonden: Allergeen[] = []
   for (const regel of (batchIngredienten || [])) {
     if (regel.batch_id !== batchId) continue
-    const ing = ingredientVoorBatchRegel(regel, ingredienten)
+    const ing = ingredientVoorBatchRegel(regel, ingredienten, lots)
     for (const a of (ing?.allergenen || [])) gevonden.push(a)
   }
   return sorteerAllergenen(gevonden)

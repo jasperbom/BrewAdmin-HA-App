@@ -24,6 +24,9 @@ interface Props {
   batch: any
   bi: any[]
   ing: any[]
+  /** De lots: een batchregel met een lot hoort bij het ingrediënt van dat lot,
+   *  net als bij CCP 3 en de etiketkaart (risico op ongekookte toevoegingen). */
+  lots?: any[]
   gistMetingen: any[]
   vrijgaven: HaccpVrijgave[]
   setVrijgaven: (fn: any) => void
@@ -38,7 +41,7 @@ interface Props {
 }
 
 const VrijgaveSectie: React.FC<Props> = ({
-  batch, bi, ing, gistMetingen, vrijgaven, setVrijgaven, capa, setCapa,
+  batch, bi, ing, lots, gistMetingen, vrijgaven, setVrijgaven, capa, setCapa,
   afwijkingen, setAfwijkingen, haccpInstellingen, whoami, auditLog, setAuditLog,
 }) => {
   const inst = haccpInst(haccpInstellingen)
@@ -47,8 +50,8 @@ const VrijgaveSectie: React.FC<Props> = ({
   const [afwijkingOpen, setAfwijkingOpen] = React.useState(false)
 
   const risico = React.useMemo(
-    () => risicoVoorBatch(batch, bi || [], ing || [], inst),
-    [batch, bi, ing, haccpInstellingen])
+    () => risicoVoorBatch(batch, bi || [], ing || [], inst, lots),
+    [batch, bi, ing, lots, haccpInstellingen])
 
   const eigenMetingen = React.useMemo(
     () => (gistMetingen || []).filter((m: any) => m.batch_id === batch?.id),

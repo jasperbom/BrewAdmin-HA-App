@@ -98,6 +98,13 @@ export interface WcVelden {
    * blijft onaangeraakt.
    */
   meta?: Record<string, WcMetaWaarde>
+  /**
+   * De `_cf_`-meta zoals die bij de laatste push of pull in de winkel stond,
+   * met het tijdstip. Daarmee zegt de etiketkaart of de website achterloopt
+   * op het product (nooit op de batch in de tank).
+   */
+  meta_stand?: Record<string, WcMetaWaarde>
+  meta_stand_op?: string
 }
 
 /** Een meta-waarde: tekst, getal of een lijstje label/waarde-regels. */
@@ -275,6 +282,100 @@ export function bouwWcPayload(input: WcPayloadInput): Record<string, any> {
   return out
 }
 
+/**
+ * De payload van de dagelijkse voorraadpush (`↑ Push voorraad`): alleen de
+ * voorraad. Geen meta, geen prijs, geen teksten — die push raakt de
+ * productkaart in de winkel niet.
+ */
+export const wcVoorraadPayload = (voorraad: number): Record<string, any> =>
+  ({stock_quantity: Math.max(0, Math.round(Number(voorraad) || 0)), manage_stock: true})
+
+const _metaWaarde = (w: any): WcMetaWaarde =>
+  Array.isArray(w)
+    ? w.map((r: any) => ({label: String(r?.label ?? ''), value: String(r?.value ?? '')}))
+    : (w === null || w === undefined ? '' : String(w))
+
+/**
+ * De meta van een WooCommerce-product, alleen de sleutels die de app beheert
+ * (`sleutels`, bijv. `CRAFTERY_SLEUTELS`). Null als het antwoord geen
+ * `meta_data` heeft — dan weten we niet wat er staat (≠ een lege stand: "er
+ * staat niets").
+ */
+export function wcMetaUitProduct(wcProduct: any, sleutels: string[]): Record<string, WcMetaWaarde> | null {
+  if (!wcProduct || !Array.isArray(wcProduct.meta_data)) return null
+  const uit: Record<string, WcMetaWaarde> = {}
+  for (const m of wcProduct.meta_data) {
+    const key = String(m?.key || '')
+    if (!sleutels.includes(key)) continue
+    uit[key] = _metaWaarde(m?.value)
+  }
+  return uit
+}
+
+/**
+ * De themameta zoals hij na een push in de winkel staat, om als stand op het
+ * artikel te bewaren (`wc.meta_stand`). Wat de winkel terugmeldt is leidend;
+ * meldt het antwoord geen meta, dan de stand van vóór de push met wat er
+ * verstuurd is eroverheen (een push wist niets, dus de rest bleef staan).
+ * Null als er niets over te zeggen is.
+ */
+export function wcMetaStandNaPush(opties: {
+  antwoord?: any
+  vooraf?: any
+  /** De `meta_data` die verstuurd is (`[{key, value}]`). */
+  verstuurd?: Array<{key: string, value: any}> | null
+  sleutels: string[]
+}): Record<string, WcMetaWaarde> | null {
+  const uitAntwoord = wcMetaUitProduct(opties.antwoord, opties.sleutels)
+  if (uitAntwoord) return uitAntwoord
+  const basis = wcMetaUitProduct(opties.vooraf, opties.sleutels)
+  const verstuurd = (opties.verstuurd || []).filter(m => m && opties.sleutels.includes(String(m.key)) && !_leegMeta(m.value))
+  if (!basis && !verstuurd.length) return null
+  const uit: Record<string, WcMetaWaarde> = {...(basis || {})}
+  for (const m of verstuurd) uit[String(m.key)] = _metaWaarde(m.value)
+  return uit
+}
+
+/** Het `wc`-blok van een artikel met de bewaarde webshopstand erbij (`meta_stand`
+ *  + `meta_stand_op`). Zonder stand blijft het blok zoals het was. */
+export const wcMetStand = (
+  wc: WcVelden | null | undefined,
+  stand: Record<string, WcMetaWaarde> | null | undefined,
+  op: string,
+): WcVelden => (stand ? {...(wc || {}), meta_stand: stand, meta_stand_op: op} : {...(wc || {})})
+
+/** Hoe de app met WooCommerce praat (`wcGet`/`wcPut` uit utils/api.ts; in een test een nep). */
+export interface WcVerbinding {
+  get: (pad: string) => Promise<any>
+  put: (pad: string, body: Record<string, any>) => Promise<any>
+}
+
+export type WcArtikelPushUitkomst =
+  | {gevonden: false}
+  | {gevonden: true, vooraf: any, antwoord: any, body: Record<string, any>}
+
+/**
+ * De push van één artikel, zoals de knoppen `↑ Push voorraad` en
+ * `↑ Push alles` hem per artikel doen en "Naar webshop" na het bijwerken van
+ * een etiket: het product op SKU opzoeken, de payload bouwen met wat er nu in
+ * de winkel staat (`bouwBody(winkel)` — zo blijft een ongewijzigde prijs
+ * ongewijzigd) en hem met een PUT bijwerken. Een SKU die de winkel niet kent
+ * geeft `gevonden: false`; een fout van de verbinding gaat door naar de
+ * aanroeper (die meldt hem per artikel).
+ */
+export async function wcArtikelPush(
+  sku: string,
+  bouwBody: (winkel: any) => Record<string, any>,
+  wc: WcVerbinding,
+): Promise<WcArtikelPushUitkomst> {
+  const prods = await wc.get(`products?sku=${encodeURIComponent(sku)}&per_page=1`)
+  if (!Array.isArray(prods) || !prods.length) return {gevonden: false}
+  const vooraf = prods[0]
+  const body = bouwBody(vooraf)
+  const antwoord = await wc.put(`products/${vooraf.id}`, body)
+  return {gevonden: true, vooraf, antwoord, body}
+}
+
 /** Zet een WooCommerce-productantwoord om naar het lokale veldenblok. */
 export function leesWcProduct(
   wc: any,
@@ -317,18 +418,7 @@ export function leesWcProduct(
   // Alleen de meta-sleutels die de app beheert overnemen: de winkel zit vol
   // meta van WooCommerce zelf en van andere plugins, en daar blijven we af.
   const sleutels = opties?.metaSleutels || []
-  if (sleutels.length) {
-    const gevonden: Record<string, WcMetaWaarde> = {}
-    for (const m of (Array.isArray(p.meta_data) ? p.meta_data : [])) {
-      const key = String(m?.key || '')
-      if (!sleutels.includes(key)) continue
-      const w = m?.value
-      gevonden[key] = Array.isArray(w)
-        ? w.map((r: any) => ({label: String(r?.label ?? ''), value: String(r?.value ?? '')}))
-        : (w === null || w === undefined ? '' : String(w))
-    }
-    uit.meta = gevonden
-  }
+  if (sleutels.length) uit.meta = wcMetaUitProduct(p, sleutels) || {}
   return uit
 }
 

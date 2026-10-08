@@ -5,8 +5,10 @@ import { UitgesteldeActiePlanner, GeplandeActie } from '../../utils/undo'
 export interface UndoApi {
   /** Huidige geplande actie (voor de balk); `null` als er niets loopt. */
   actie: GeplandeActie | null
-  /** Plant `uitvoeren` over vijf seconden; toont "label · Ongedaan maken". */
-  plan: (id: string, label: string, uitvoeren: () => Promise<unknown> | unknown) => void
+  /** Plant `uitvoeren` over vijf seconden; toont "label · Ongedaan maken".
+   *  Met `terugdraaien`: de handeling is al gebeurd en "Ongedaan maken" draait
+   *  haar terug (zie utils/undo.ts). */
+  plan: (id: string, label: string, uitvoeren: () => Promise<unknown> | unknown, terugdraaien?: () => void) => void
   ongedaan: () => void
   /** Voert een geplande actie nú uit (vóór een navigatie die de context wist). */
   flush: () => void
@@ -32,7 +34,7 @@ export function useUitgesteldeActie(vertragingMs = 5000, onFout?: (e: unknown, a
   }, [planner])
   return useMemo(() => ({
     actie,
-    plan: (id, label, uitvoeren) => planner.plan(id, label, uitvoeren),
+    plan: (id, label, uitvoeren, terugdraaien) => planner.plan(id, label, uitvoeren, terugdraaien),
     ongedaan: () => planner.ongedaan(),
     flush: () => planner.flush(),
   }), [actie, planner])
@@ -54,14 +56,18 @@ export function useUndo(): UndoApi {
  */
 const UndoBar: React.FC<{ undo: UndoApi }> = ({ undo }) => {
   if (!undo.actie) return null
+  // Boven een vaste ActieBalk (die zet --actiebalk op zijn hoogte), niet over de knop heen.
   return (
     <div
       role="status"
       aria-live="polite"
-      className="fixed left-1/2 -translate-x-1/2 z-[190] max-w-[calc(100vw-2rem)] w-[26rem] flex items-center gap-3 bg-gray-900 text-white rounded-full pl-4 pr-1.5 py-1.5 shadow-xl"
-      style={{ bottom: 'calc(var(--onderbalk, 0px) + 12px)' }}
+      className="fixed left-1/2 -translate-x-1/2 z-[190] max-w-[calc(100vw-2rem)] w-[26rem] flex items-center gap-3 bg-gray-900 text-white rounded-3xl pl-4 pr-1.5 py-1.5 shadow-xl"
+      style={{ bottom: 'calc(var(--onderbalk, 0px) + var(--actiebalk, 0px) + 12px)' }}
     >
-      <span className="flex-1 min-w-0 truncate text-sm">{undo.actie.label}</span>
+      {/* Twee regels in plaats van afkappen: een label zegt soms wat er blijft
+          staan (voorraad zonder product), en dat moet leesbaar zijn. Met één
+          regel blijft het een pil: de ronding past zich aan de hoogte aan. */}
+      <span className="flex-1 min-w-0 line-clamp-2 break-words text-sm leading-snug" title={undo.actie.label}>{undo.actie.label}</span>
       <button
         type="button"
         onClick={undo.ongedaan}

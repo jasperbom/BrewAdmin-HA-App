@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { t } from '../i18n'
+import { t, getLang } from '../i18n'
 import { newId, wcGet, wcPut, wcPost, volgendFactuurNummer, volgendBestelNummer } from '../utils/api'
 import { wcFoutMelding } from '../utils/wcFout'
 import { geslotenPeriodeSets, magFactuurMuteren, standaardBtwPct, artikelBtwPct } from '../utils/btw'
@@ -8,7 +8,7 @@ import {
   bouwOrderFactuur, btwOverzicht, voorafFactuurBlokkade, voorafBlokkadeSleutel, orderFactuurVan,
   factuurIsGecrediteerd, bouwCreditnota,
 } from '../utils/orderFactuur'
-import { fmt, fmtD, tod } from '../utils/format'
+import { fmt, fmtD, fmtWeekdagDatum, tod } from '../utils/format'
 import { voorraadPerLocatie, getAgpLocatie, pickUitgeslagen, accijnsMaandGesloten } from '../utils/calculations'
 import { verkoopUitAgpToegestaan, uitTeSlaan, bouwUitslagBoekingen, uitslagDatumFout, laatsteAfvulDatum, VERPLAATS_FOUT_KEYS } from '../utils/agp'
 import { bouwVerkoopUitleveringen, orderUitgeleverd, pickZonderUitlevering, bouwPickTerugdraaiing, PickTerugdraaiing } from '../utils/uitlevering'
@@ -32,29 +32,62 @@ import { bierInvulVelden, bierInfoVoorArtikel } from '../utils/bierinfo'
 import { htmlToPdfBase64 } from '../utils/pdf'
 import { qrDataUrl } from '../utils/qr'
 import { factuurMailBetaalVars } from '../utils/factuurMail'
-import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding, wcOrderAfgebroken } from '../utils/wcOrderImport'
-import { wcTerugschrijfPlan, wcSyncVelden, wcSyncTeHerhalen, wcSyncDoelVoorStatus, WcSyncDoel } from '../utils/wcTerugschrijven'
+import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding } from '../utils/wcOrderImport'
+import { wcTerugschrijfPlan, wcSyncVelden, WcSyncDoel } from '../utils/wcTerugschrijven'
 import {
-  leveringMailVars, verzendMailVars, leveringOmschrijving, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, afhaalGemistMailVars, bestelLink, afhaalMailKnop, afhaalGemistMailKnop, MailKnop,
+  leveringMailVars, verzendMailVars, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, afhaalGemistMailVars, bestelLink, afhaalMailKnop, afhaalGemistMailKnop, MailKnop,
 } from '../utils/levering'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
-import { totaliseerRegels, centNaarEuro } from '../utils/centen'
+import { totaliseerRegels } from '../utils/centen'
 import { regelBedrag, corrigeerRegelBtw } from '../utils/orderRegel'
-import { matchAfvullingenVoorRegel, bestellingenOmTePicken, verzamelPicklijst } from '../utils/picking'
+import { matchAfvullingenVoorRegel, bestellingenOmTePicken, verzamelPicklijst, orderNummer, orderProductId, onGepickteRegels, herkomstVanPick } from '../utils/picking'
+import type { PickHerkomstData } from '../utils/picking'
+import {
+  bestellingBron, filterBestellingen, statusTellingen, volgendeOrderStap, orderTotalen, leesBestellingStartFilter,
+} from '../utils/bestelling'
+import type { StatusFilter } from '../utils/bestelling'
+import { bestellingLevering, leverLabel } from '../utils/verkoopOverzicht'
+import type { VerkoopCtx, OrderRegelLevering } from '../utils/verkoopOverzicht'
+import { productEbc } from '../utils/bierKleur'
 import type { AttentieDoel } from '../utils/attentie'
+import type { GaNaar, GaNaarOpties } from '../utils/route'
+import { _fetchedKeys } from '../utils/api'
+import LegeStaat from '../components/ui/LegeStaat'
+import SearchInput from '../components/ui/SearchInput'
+import RowActions from '../components/ui/RowActions'
+import type { RowActie } from '../components/ui/RowActions'
+import ActieBalk from '../components/ui/ActieBalk'
+import { useUndo } from '../components/ui/UndoBar'
+import StatusChips from '../components/bestelling/StatusChips'
+import MerchBeheer from '../components/bestelling/MerchBeheer'
+import BestellingKaart from '../components/bestelling/BestellingKaart'
+import OrderRegelKaart from '../components/bestelling/OrderRegelKaart'
+import OrderTotalenBlok from '../components/bestelling/OrderTotalenBlok'
+import OrderLogboek from '../components/bestelling/OrderLogboek'
+import PaginaMelding from '../components/bestelling/PaginaMelding'
+import KomtEraanRegel, { komtEraanTekst } from '../components/bestelling/KomtEraanRegel'
+import { StatusChip, BetaaldBadge, GefactureerdBadge, LeveringBadge, KlantTypeChip, WcSyncBadge } from '../components/bestelling/BestellingBadges'
 import {
   MerchArtikel, MerchMutatie, merchLabel, onthoudMerch, vergeetMerch, verwijderMerch,
-  volgtVoorraad, merchVoorraad, merchVoorraadWaarde, merchLogVoorArtikel,
+  volgtVoorraad, merchVoorraad,
   boekMerchMutaties, merchAfboekingenVoorRegels, merchTekorten, merchGereserveerd, merchBeschikbaarVoorWc,
 } from '../utils/merch'
 import BierKleur from '../components/ui/BierKleur'
 import Icon from '../components/ui/Icon'
+import { lotcodeVanAfvulling } from '../utils/afvulsessie'
+import { batchNummer } from '../utils/productKeten'
+import type { AfvulSessie } from '../types'
 
 interface BestellingenPageProps {
+  /** De gedeelde verkoopcontext uit App.tsx (dezelfde telling als het
+   *  Overzicht en de productpagina); zonder bouwt de pagina een eigen. */
+  verkoopCtx?: VerkoopCtx | null
   bat: any[]
   av: any[]
+  /** Afvulsessies: de lotcode van een afvulling zonder eigen code (pickmodal). */
+  afvulSessies?: AfvulSessie[]
   uit: any[]
   setUit: any
   acc: any[]
@@ -77,8 +110,18 @@ interface BestellingenPageProps {
   log?: any[]
   setLog?: any
   factuurLogo?: string | null
-  openOrderId?: number | null
-  setOpenOrderId?: (id: number | null) => void
+  /** De geopende bestelling uit de route (`#/verkoop/bestellingen/<id>`, App.tsx). */
+  recordId?: string | null
+  /** Een bestelling openen of sluiten = de route wijzigen (een history-entry). */
+  onOpenRecord?: (id: number | null, opties?: GaNaarOpties) => void
+  /** Navigatie van de schil: ketenlinks naar product en batch (F13). */
+  gaNaar?: GaNaar
+  /** Voor "komt eraan" bij een tekort (verwacht verlies, `utils/verkoopOverzicht`). */
+  verliesRegistraties?: any[]
+  /** `planningInst.conditioneren_dagen`: de verwachte afvuldatum van een batch in de tank. */
+  conditionerenDagen?: number | null
+  /** De bierkleur van een regel valt terug op het recept van het product (`productEbc`). */
+  recepten?: any[]
   klanten: any[]
   setKlanten?: any
   auditLog?: any[]
@@ -109,44 +152,22 @@ interface BestellingenPageProps {
   onNavDoelConsumed?: () => void
 }
 
-// Bedrag-in-tabel: bewerkt lokaal en schrijft pas bij verlaten/Enter weg, zodat
-// een halfgetypt bedrag ("7,") niet elke toetsaanslag door de store gaat.
-const MerchGetal: React.FC<{waarde?: number, onSave: (v: number | undefined) => void}> = ({waarde, onSave}) => {
-  const [draft, setDraft] = React.useState(waarde != null ? String(waarde) : '')
-  React.useEffect(() => { setDraft(waarde != null ? String(waarde) : '') }, [waarde])
-  const bewaar = () => {
-    const tekst = draft.trim().replace(',', '.')
-    onSave(tekst === '' ? undefined : (Number(tekst) || 0))
-  }
-  return (
-    <input type="text" inputMode="decimal" value={draft} placeholder="—"
-      onChange={e => setDraft(e.target.value)}
-      onBlur={bewaar}
-      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-      className="w-20 border border-gray-200 rounded px-1.5 py-1 text-sm text-right bg-white t-input outline-none" />
-  )
-}
-
-type StatusFilter = 'alle' | 'te_picken' | 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
-
-const STATUS_COLORS: Record<string, string> = {
-  nieuw: 'bg-blue-100 text-blue-700',
-  bevestigd: 'bg-cyan-100 text-cyan-700',
-  gepickt: 'bg-orange-100 text-orange-700',
-  verzonden: 'bg-purple-100 text-purple-700',
-  afgerond: 'bg-green-100 text-green-700',
-  geannuleerd: 'bg-gray-100 text-gray-500',
-}
+// Een orderregel die met "Verwijderen" uit beeld gaat: vijf seconden terugweg
+// (UndoBar), daarna echt weg.
+const REGEL_UNDO = 'orderregel-weg-'
+// Idem voor een merch-artikel uit de lijst.
+const MERCH_UNDO = 'merch-weg-'
 
 const BestellingenPage: React.FC<BestellingenPageProps> = ({
-  bat, av, uit, setUit, acc, setAcc,
+  bat, av, afvulSessies=[], uit, setUit, acc, setAcc,
   artikelen, verpakkingen=[], bestellingen, setBestellingen,
   bestellingPicks, setBestellingPicks,
   verkoopFacturen, setVerkoopFacturen,
   wcCreds, accijnsInst, breweryDetails, appName='', logo=null,
   factuurCounter, setFactuurCounter=()=>{},
   log=[], setLog=()=>{}, factuurLogo=null,
-  openOrderId=null, setOpenOrderId=()=>{},
+  recordId=null, onOpenRecord, gaNaar,
+  verliesRegistraties=[], conditionerenDagen=null, recepten=[],
   klanten=[],
   auditLog=[], setAuditLog=()=>{},
   producten=[], productArtikelen=[],
@@ -161,33 +182,55 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   merchArtikelen=[], setMerchArtikelen=()=>{},
   merchVoorraadLog=[], setMerchVoorraadLog=()=>{},
   navDoel=null, onNavDoelConsumed=()=>{},
+  verkoopCtx: verkoopCtxProp = null,
 }) => {
-  const [view, setView] = useState<'list' | 'detail'>('list')
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  // De geopende bestelling. De route is de bron (App.tsx): een bestelling
+  // openen of sluiten wijzigt de URL, zodat de terugknop van het toestel, een
+  // herlaad en een gedeelde link werken. Zonder route (losse inbedding) lokaal.
+  const gestuurd = typeof onOpenRecord === 'function'
+  const [lokaalView, setLokaalView] = useState<'list' | 'detail'>('list')
+  const [lokaalId, setLokaalId] = useState<number | null>(null)
+  const routeOrder = gestuurd && recordId != null && recordId !== ''
+    ? (bestellingen || []).find((b: any) => String(b.id) === String(recordId))
+    : undefined
+  const selectedId: number | null = gestuurd ? (routeOrder ? routeOrder.id : null) : lokaalId
+  const view: 'list' | 'detail' = gestuurd ? (recordId != null && recordId !== '' ? 'detail' : 'list') : lokaalView
+  const openOrder = (id: number | null, opties?: GaNaarOpties) => {
+    if (gestuurd) { onOpenRecord!(id, opties); return }
+    setLokaalId(id)
+    setLokaalView(id == null ? 'list' : 'detail')
+  }
   // Ontgrendelt het corrigeren van de BTW op een reeds afgeronde order (past dan
   // ook de gekoppelde verkoopfactuur aan). Bewust expliciet, want normaal is een
   // afgeronde order vergrendeld.
   const [btwCorrectie, setBtwCorrectie] = useState<number | null>(null)
 
-  // Navigate to order when openOrderId is set (e.g. from Administratie → Facturen)
-  React.useEffect(() => {
-    if (openOrderId != null) {
-      const order = bestellingen.find((b: any) => b.id === openOrderId)
-      if (order) {
-        setSelectedId(openOrderId)
-        setView('detail')
-      }
-      setOpenOrderId(null)
-    }
-  }, [openOrderId]) // eslint-disable-line react-hooks/exhaustive-deps
   // Startfilter uit het navigatiedoel (attentie-badge "Bestellingen om te
   // picken" → filter 'te_picken'). App.tsx mount de pagina per navigatie, dus
   // de useState-initializer volstaat; de callback wist alleen het App-signaal.
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>(navDoel?.filter === 'te_picken' ? 'te_picken' : 'alle')
+  // Ook met een zoektekst erachter ("te_picken:Kadeblond"): de productpagina
+  // opent zo de open bestellingen met dat bier.
+  const startFilter = leesBestellingStartFilter(navDoel?.filter)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(startFilter?.status ?? 'alle')
   React.useEffect(() => {
     if (navDoel) onNavDoelConsumed()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // Zoeken in de lijst: ordernummer, klant, bier (utils/bestelling).
+  const [zoek, setZoek] = useState(startFilter?.zoek ?? '')
+  // Een melding op de pagina in plaats van een alert(): een mislukte PDF, een
+  // geblokkeerd printvenster, een periode die op slot zit.
+  const [melding, setMelding] = useState('')
+  // Waarom afronden (de factuur) niet doorging, in de modal zelf; en de
+  // waarschuwing bij een merch-tekort die je eerst bevestigt (geen confirm()).
+  const [afrondFout, setAfrondFout] = useState('')
+  const [merchTekortMelding, setMerchTekortMelding] = useState('')
+  const merchTekortAkkoordRef = useRef(false)
+  // "Picks terugdraaien" vraagt eerst, in een venster (het ⋯-menu kan geen
+  // bevestiging in de knop zelf dragen).
+  const [terugdraaiVraag, setTerugdraaiVraag] = useState(false)
+  const [vrijeRegelFout, setVrijeRegelFout] = useState('')
+  const undo = useUndo()
   // "Te picken" = dezelfde selectie als de attentie-badge en het Verkoop-
   // dashboard (utils/picking.ts): nieuw/bevestigd én nog niet volledig gepickt.
   const omTePickenIds = React.useMemo(
@@ -197,6 +240,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [wcMsg, setWcMsg] = useState('')
   const [showManualModal, setShowManualModal] = useState(false)
   const [showPickModal, setShowPickModal] = useState(false)
+  // Waarom "Bevestigen" in de pickmodal niet doorging: in de modal zelf, naast
+  // de knop, in plaats van een alert().
+  const [pickFout, setPickFout] = useState('')
   const [showAfrondModal, setShowAfrondModal] = useState(false)
   // Leeg = "neem de klant van de order over" (zie bouwVerkoopRecords). Het
   // formulier wordt bij het wisselen van order teruggezet: een geadresseerde
@@ -219,15 +265,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [vrijeRegelForm, setVrijeRegelForm] = useState({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: String(stdBtw)})
   const [showVerzendkostenModal, setShowVerzendkostenModal] = useState(false)
   const [verzendkostenForm, setVerzendkostenForm] = useState({naam: '', prijs_per_stuk: '', btw_pct: '21'})
-  // Beheerlijstje merch-artikelen (verkoop zonder eigen voorraad)
-  const [merchOpen, setMerchOpen] = useState(false)
   // Volledige WooCommerce-productkaart van één merch-artikel.
   const [wcMerchModal, setWcMerchModal] = useState<MerchArtikel | null>(null)
-  const [merchForm, setMerchForm] = useState({sku: '', naam: ''})
-  const [merchLogOpen, setMerchLogOpen] = useState<number | null>(null)
   const emptyMerchMutatie = {merch_id: 0, reden: 'inkoop' as MerchMutatie['reden'], aantal: '', prijs: '', notitie: ''}
   const [merchMutatieForm, setMerchMutatieForm] = useState(emptyMerchMutatie)
   const [showMerchMutatie, setShowMerchMutatie] = useState(false)
+  const [merchMutatieFout, setMerchMutatieFout] = useState('')
 
   // Draft picks state (voor picking modal)
   const [draftPicks, setDraftPicks] = useState<Record<number, Array<{afvulling_id: number, aantal: number, bron_locatie_id?: number | null}>>>({})
@@ -266,85 +309,34 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     resolvedSelectedOrder?.klant_huisnummer, resolvedSelectedOrder?.klant_postcode,
     resolvedSelectedOrder?.klant_stad].filter(Boolean).join(' ')
 
-  // Gefilterde en gesorteerde lijst
-  const filtered = [...(bestellingen||[])]
-    .filter(b => statusFilter === 'alle' || (statusFilter === 'te_picken' ? omTePickenIds.has(b.id) : b.status === statusFilter))
-    .sort((a, b) => b.datum.localeCompare(a.datum))
+  // Lijst: statuschip én zoektekst, nieuwste eerst (utils/bestelling).
+  const filtered = filterBestellingen(bestellingen, {status: statusFilter, zoek, omTePicken: omTePickenIds})
+  const tellingen = statusTellingen(bestellingen, omTePickenIds)
 
-  // Ordertotaal berekenen — cent-exact en met behoud van de autoritatieve
-  // WooCommerce-bedragen (zie utils/orderRegel.ts), zodat een WC-order van
-  // 2× €2,00 als €4,00 verschijnt en niet als €4,01.
-  const orderTotaal = (b: any) =>
-    centNaarEuro((b.regels||[]).reduce((s: number, r: any) => s + regelBedrag(r).bruto_cent, 0))
+  // De totalen van een order zoals de factuur ze krijgt: per regel
+  // `regelBedrag` (cent-exact, met behoud van de autoritatieve WooCommerce-
+  // bedragen — 2× €2,00 blijft €4,00) plus het statiegeld dat de factuur van
+  // een handmatige order erbij krijgt. Lijst, detail en factuur tonen zo
+  // hetzelfde totaal (utils/bestelling → orderTotalen).
+  const totalenVan = (b: any) => orderTotalen(b, verpakkingen || [])
 
-  // Zichtbaar ordernummer. WooCommerce-orders tonen hun WC-nummer; handmatige
-  // orders hun korte, oplopende bestelnummer (server-reeks, bijv. "M-0015").
-  // Oudere handmatige orders zonder bestel_nummer vallen terug op M-<id>.
-  const orderNummer = (b: any): string =>
-    b.wc_order_nummer ? `WC-${b.wc_order_nummer}` : (b.bestel_nummer || `M-${b.id}`)
+  // Zichtbaar ordernummer: `orderNummer` uit utils/picking.ts (ook de
+  // kopbalk van de schil gebruikt hem). De chips (status, betaald, levering,
+  // webshop) staan in components/bestelling/BestellingBadges.tsx.
 
-  // "Betaald"-markering op een WooCommerce-order: het label plus, als
-  // WooCommerce het weet, wanneer en waarmee er betaald is.
-  const betaaldTip = (b: any): string => [
-    b.wc_betaald_datum ? t('orders_betaald_op').replace('{datum}', fmtD(b.wc_betaald_datum)) : t('orders_betaald'),
-    b.wc_betaal_methode || '',
-  ].filter(Boolean).join(' · ')
+  // Eén voorraadtelling voor Verkoop (utils/verkoopOverzicht): kan een
+  // orderregel geleverd worden, en wat komt eraan bij een tekort. Dezelfde
+  // matcher en dezelfde vrije voorraad als de pickmodal.
+  const eigenVerkoopCtx = React.useMemo((): VerkoopCtx => ({
+    producten, productArtikelen, artikelen, merchArtikelen, verpakkingen, batches: bat, afvullingen: av,
+    uitleveringen: uit, verplaatsingen, afboekingen, locaties, bestellingen, bestellingPicks,
+    verliesRegistraties, conditionerenDagen,
+  }), [producten, productArtikelen, artikelen, merchArtikelen, verpakkingen, bat, av, uit, verplaatsingen,
+    afboekingen, locaties, bestellingen, bestellingPicks, verliesRegistraties, conditionerenDagen])
+  const verkoopCtx: VerkoopCtx = verkoopCtxProp || eigenVerkoopCtx
 
-  // In de winkel geannuleerd, mislukt of terugbetaald (utils/wcOrderImport):
-  // dat gaat vóór "betaald" — zo'n order telt nooit als betaald.
-  const BetaaldBadge = ({b}: {b: any}) => wcOrderAfgebroken(b) ? (
-    <span title={t('orders_wc_afgebroken_tip')}
-      className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-      {t('orders_wc_sync_ok').replace('{status}', t(`wc_status_${b.wc_status}`, b.wc_status))}
-    </span>
-  ) : b?.wc_betaald ? (
-    <span title={betaaldTip(b)}
-      className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-      ✓ {t('orders_betaald')}
-    </span>
-  ) : null
-
-  // Afhalen of verzenden (webshoporder). Een afhaalorder zonder gekozen moment
-  // krijgt de oranje "nog te kiezen"-kleur: daar hoort de klant nog iets te
-  // doen, en de bestelbevestiging bevat daarvoor de link.
-  const LeveringBadge = ({b}: {b: any}) => {
-    if (!b?.wc_levering) return null
-    const afhalen = b.wc_levering === 'afhalen'
-    const open = afhalen && !b.wc_afhaalmoment
-    // Rood: het gekozen moment is voorbij en de klant is niet geweest —
-    // daar hoort de afspraak-gemist-mail (utils/levering → afhaalmomentVerstreken).
-    const gemist = afhaalmomentVerstreken(b)
-    return (
-      <span title={leveringOmschrijving(b) + (gemist ? ` (${t('orders_afhaalmoment_verstreken')})` : '')}
-        className={`px-2 py-0.5 rounded-full text-xs font-semibold ${gemist ? 'bg-red-100 text-red-700' : open ? 'bg-orange-100 text-orange-700' : afhalen ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-        <Icon n={afhalen ? 'store' : 'truck'} /> {t(afhalen ? 'orders_levering_afhalen' : 'orders_levering_verzenden')}
-      </span>
-    )
-  }
-
-  // Stand van de winkel: is de status van deze order in WooCommerce
-  // aangekomen? Groen = ja, rood = mislukt (fout als tooltip), plus een knop
-  // om het opnieuw te proberen zolang de winkel achterloopt.
-  const WcSyncBadge = ({b}: {b: any}) => {
-    if (!b?.wc_order_id) return null
-    const opties = wcTerugschrijfOpties(b)
-    if (!opties.enabled) return null
-    const sync = b.wc_sync
-    const herhalen = wcSyncTeHerhalen(b, opties, t)
-    const doel = wcSyncDoelVoorStatus(b.status)
-    const statusLabel = sync?.status ? t(`wc_status_${sync.status}`) : t('orders_wc_sync_notitie')
-    return (<>
-      {sync && (sync.fout
-        ? <span title={sync.fout} className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">{t('orders_wc_sync_fout')}</span>
-        : <span title={fmtD(sync.datum)} className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">{t('orders_wc_sync_ok').replace('{status}', statusLabel)}</span>)}
-      {herhalen && doel && (
-        <button type="button" onClick={() => { void schrijfTerugNaarWc(b, doel) }}
-          className="text-xs underline" style={{color: 'var(--t-accent)'}} title={t('orders_wc_sync_retry_tip')}>
-          ↻ {t('orders_wc_sync_retry')}
-        </button>
-      )}
-    </>)
-  }
+  // Herkomst van een pick (lotcode, batch, THT): pickoverzicht, pakbon, picklijst.
+  const herkomstData: PickHerkomstData = {afvullingen: av, batches: bat, afvulSessies}
 
   // Picks voor een bestelling
   const picksVoorOrder = (bestelling_id: number) =>
@@ -428,16 +420,27 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // met de vrije voorraad buiten de AGP — daaruit wordt verkocht; wat nog in
   // de AGP ligt verschijnt als tekort (eerst uitslaan). Registreren blijft per
   // order.
+  // De lotcode per suggestie komt van de afvulling of haar afvulsessie.
+  const picklijstVoor = (orders: any[]) => verzamelPicklijst(orders as any, bestellingPicks as any, {
+    afvullingen: av || [],
+    beschikbaar: (a: any) => Math.min(beschikbaarVoorAfvulling(a), beschikbaarBuitenAgpVoorAfvulling(a)),
+    data: {bat, artikelen, producten, productArtikelen, verpakkingen},
+    orderRef: orderNummer,
+    isPrive: (b: any) => effectiveKlantType(b) === 'prive',
+    afvulSessies,
+  })
   const printVerzamelPicklijst = () => {
-    const lijst = verzamelPicklijst(bestellingen as any, bestellingPicks as any, {
-      afvullingen: av || [],
-      beschikbaar: (a: any) => Math.min(beschikbaarVoorAfvulling(a), beschikbaarBuitenAgpVoorAfvulling(a)),
-      data: {bat, artikelen, producten, productArtikelen, verpakkingen},
-      orderRef: orderNummer,
-      isPrive: (b: any) => effectiveKlantType(b) === 'prive',
-    })
-    if (!lijst.orders.length) { alert(t('msg_picklijst_leeg')); return }
-    printPicklijst(lijst, breweryDetails || {}, appName, factuurLogo || logo)
+    const lijst = picklijstVoor(bestellingen)
+    if (!lijst.orders.length) { setMelding(t('msg_picklijst_leeg')); return }
+    printPicklijst(lijst, breweryDetails || {}, appName, factuurLogo || logo, {onGeblokkeerd: setMelding})
+  }
+  // Dezelfde picklijst voor één bestelling (⋯ in de bestelling): wat er nog
+  // gepickt moet worden, met uit welk lot je het pakt.
+  const printOrderPicklijst = () => {
+    if (!selectedOrder) return
+    const lijst = picklijstVoor([selectedOrder])
+    if (!lijst.orders.length) { setMelding(t('msg_picklijst_leeg')); return }
+    printPicklijst(lijst, breweryDetails || {}, appName, factuurLogo || logo, {onGeblokkeerd: setMelding})
   }
 
   // Beschikbare bieren voor dropdown (vanuit producten + artikelen fallback)
@@ -461,12 +464,20 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     }
     return (artikelen||[]).find((a: any) => a.biernaam === biernaam && a.verpakking_type === verpakking);
   }
-  // Bierkleur bij een orderregel: dezelfde koppeling regel → product op naam
-  // als hierboven. Geen `recepten`-prop op deze pagina — val terug op het
-  // eigen EBC-veld van het product (zie utils/bierKleur.ts productEbc).
+  // Het product van een orderregel: op SKU, anders op naam — dezelfde
+  // bepaling als de picking (utils/picking → orderProductId, utils/sku).
+  const productIdVoorRegel = (r: any): number | null => {
+    const sku = r?.sku || (r?.artikel_key ? (artikelen||[]).find((a: any) => a.key === r.artikel_key)?.artikelnummer : null) || null
+    return orderProductId(sku, String(r?.bier_naam || ''), {bat, artikelen, producten, productArtikelen, verpakkingen})
+  }
+  // Bierkleur bij een orderregel: het product van de regel, met de kleur van
+  // zijn recept als terugval (utils/bierKleur.ts productEbc).
   const ebcVoorRegel = (r: any): number | null => {
-    const prod = (producten||[]).find((p: any) => p.naam === r?.bier_naam);
-    return prod?.ebc ?? null;
+    const id = productIdVoorRegel(r)
+    const prod = id != null
+      ? (producten||[]).find((p: any) => p.id === id)
+      : (producten||[]).find((p: any) => p.naam === r?.bier_naam)
+    return prod ? productEbc(prod, recepten) : null
   }
 
   // Factuurnummering: server-side via volgendFactuurNummer() (ERP-plan 0.2) —
@@ -720,13 +731,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [uitslagDoel, setUitslagDoel] = useState<{naam: string, afvullingen: any[], aantal: number, terug: 'pick' | 'manual'} | null>(null)
 
   const openUitslagVanuit = (terug: 'pick' | 'manual', naam: string, afvullingen: any[], aantal: number) => {
+    // Vanuit de pickmodal staat de melding in de modal zelf (pickFout).
+    const meld = (tekst: string) => { if (terug === 'pick') setPickFout(tekst); else alert(tekst) }
     // Periode-lock (ERP-plan 0.4): een uitslag boekt accijns op de uitslagdatum.
     if (accijnsMaandGesloten(tod(), accijnsAangiftes || [])) {
-      alert(t('err_accijns_maand_gesloten_boeking')); return
+      meld(t('err_accijns_maand_gesloten_boeking')); return
     }
     if (!(locaties || []).some((l: any) => !l.is_agp)) {
-      alert(t('pos_uitslag_geen_locatie')); return
+      meld(t('pos_uitslag_geen_locatie')); return
     }
+    // Een eerdere melding geldt niet meer na het uitslaan.
+    setPickFout('')
     if (terug === 'pick') setShowPickModal(false)
     else setShowManualModal(false)
     setUitslagDoel({naam, afvullingen, aantal, terug})
@@ -828,12 +843,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // --- Picking opslaan ---
   const savePicks = () => {
     if (!selectedOrder) return
+    setPickFout('')
     // Al uitgeleverd (de modal stond nog open, of een tweede tabblad pickte
     // al): opnieuw picken zou een tweede uitlevering maken terwijl de eerste
-    // blijft staan — de voorraad dubbel afgeboekt. Eerst terugdraaien.
+    // blijft staan — de voorraad dubbel afgeboekt. Eerst terugdraaien. De
+    // melding staat in de modal; opslaan kan niet, alleen sluiten.
     if (orderUitgeleverd(bestellingPicks, selectedOrder.id)) {
-      alert(t('err_picks_al_uitgeleverd'))
-      setShowPickModal(false)
+      setPickFout(t('err_picks_al_uitgeleverd'))
       return
     }
     // Verkopen gaat uit vrije voorraad — voor privé én zakelijk. Wat nog in de
@@ -846,7 +862,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         for (const p of picks as any[]) {
           if (!p.aantal || p.aantal <= 0) continue
           if (p.bron_locatie_id != null && p.bron_locatie_id === agpLoc.id) {
-            alert(t('err_verkoop_geen_agp'))
+            setPickFout(t('err_verkoop_geen_agp'))
             return
           }
         }
@@ -868,7 +884,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         : beschikbaarVoorAfvulling(afvItem, selectedOrder.id)
       if (totaal > beschik) {
         const errKey = zonderAgp ? 'err_verkoop_vrij_ontoereikend' : 'agp_voorraad_ontoereikend'
-        alert(t(errKey).replace('{beschikbaar}', `${beschik}× ${afvItem.verpakking_type||''}`))
+        setPickFout(t(errKey).replace('{beschikbaar}', `${beschik}× ${afvItem.verpakking_type||''}`))
         return
       }
     }
@@ -890,8 +906,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       const beschik = perLoc[Number(locIdStr)] || 0
       if (totaal > beschik) {
         const loc = (locaties||[]).find((l: any) => l.id === Number(locIdStr))
-        alert(t('err_locatie_voorraad_ontoereikend')
-          .replace('{locatie}', loc?.naam || '?')
+        setPickFout(t('err_locatie_voorraad_ontoereikend')
+          .replace('{locatie}', loc?.naam || t('lbl_onbekend'))
           .replace('{beschikbaar}', String(beschik))
           .replace('{verpakking}', afvItem.verpakking_type||''))
         return
@@ -930,7 +946,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       // uitslaan uit de AGP al geboekt (export/intra-EU: onder schorsing).
       const {uitleveringen: nieuweUitleveringen, pickResult, tekort} =
         bouwVerkoopRecords(newPicks, uitleveringForm)
-      if (tekort > 0) { alert(t('err_verkoop_vrij_tekort')); return }
+      if (tekort > 0) { setPickFout(t('err_verkoop_vrij_tekort')); return }
 
       const picksWithIds = newPicks.map((p: any) => {
         const res = pickResult[p.id]
@@ -1085,6 +1101,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const openAfronden = () => {
     afrondBezigRef.current = false
     setAfrondBezig(false)
+    setAfrondFout('')
+    setMerchTekortMelding('')
+    merchTekortAkkoordRef.current = false
     setShowAfrondModal(true)
   }
   const rondeAf = async () => {
@@ -1113,7 +1132,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const bestaandeFactuur = orderFactuurVan(selectedOrder, verkoopFacturen)
     if (!bestaandeFactuur && orderIsGefactureerd(selectedOrder, verkoopFacturen)) { setShowAfrondModal(false); return }
     const picks = picksVoorOrder(selectedOrder.id)
-    if (heeftPickRegels(selectedOrder) && !picks.length) { alert(t('err_order_no_picks')); return }
+    setAfrondFout('')
+    if (heeftPickRegels(selectedOrder) && !picks.length) { setAfrondFout(t('err_order_no_picks')); return }
     const vandaag = tod()
     const pakbonNummer = genPakbonNummer()
     const agpLoc = getAgpLocatie(locaties)
@@ -1134,7 +1154,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         const avItem = (av||[]).find((a: any) => a.id === pick.afvulling_id)
         if (!avItem) continue
         if (pick.bron_locatie_id != null && pick.bron_locatie_id === agpLoc.id) {
-          alert(t('err_verkoop_geen_agp')); return
+          setAfrondFout(t('err_verkoop_geen_agp')); return
         }
         if (pick.bron_locatie_id == null) {
           const voorraad = voorraadPerLocatie(avItem, locaties as any, uit as any, verplaatsingen as any, afboekingen as any)
@@ -1143,7 +1163,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             if (!l.is_agp) buitenAgp += Number(voorraad[l.id] || 0)
           }
           if (buitenAgp < Number(pick.aantal || 0)) {
-            alert(t('err_verkoop_vrij_ontoereikend').replace('{beschikbaar}', `${buitenAgp}× ${avItem.verpakking_type||''}`))
+            setAfrondFout(t('err_verkoop_vrij_ontoereikend').replace('{beschikbaar}', `${buitenAgp}× ${avItem.verpakking_type||''}`))
             return
           }
         }
@@ -1154,9 +1174,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     // mag negatief worden en wijst dan vanzelf op een gemiste inkoop of telling.
     const merchMutaties = merchMutatiesVoorOrder(selectedOrder, '')
     const tekorten = merchTekorten(merchArtikelen, merchMutaties)
-    if (tekorten.length) {
+    // Eerst de waarschuwing in de modal; een tweede klik ("Toch afronden")
+    // gaat door. Dezelfde keuze als het oude confirm()-venster.
+    if (tekorten.length && !merchTekortAkkoordRef.current) {
       const regels = tekorten.map(x => `${merchLabel(x.artikel)}: ${x.gevraagd}× ${t('merch_tekort_gevraagd')}, ${x.voorraad}× ${t('merch_tekort_voorraad')}`).join('\n')
-      if (!confirm(`${t('merch_tekort_waarschuwing')}\n\n${regels}`)) return
+      setMerchTekortMelding(`${t('merch_tekort_waarschuwing')}\n\n${regels}`)
+      merchTekortAkkoordRef.current = true
+      return
     }
 
     // Factuurnummer pas ná alle validaties server-side ophalen (atomair,
@@ -1166,7 +1190,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (bestaandeFactuur) factuurNummer = bestaandeFactuur.factuurnummer || ''
     else {
       try { factuurNummer = await volgendFactuurNummer('factuur') }
-      catch (e) { alert(t('err_factuurnummer_ophalen')); return }
+      catch (e) { setAfrondFout(t('err_factuurnummer_ophalen')); return }
     }
 
     let nieuweUitleveringen: any[] = []
@@ -1285,9 +1309,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [showVoorafModal, setShowVoorafModal] = useState(false)
   const voorafBezigRef = useRef(false)
   const [voorafBezig, setVoorafBezig] = useState(false)
+  // Waarom de factuur niet gemaakt werd (het factuurnummer), in de modal zelf.
+  const [voorafFout, setVoorafFout] = useState('')
   const openVooraf = () => {
     voorafBezigRef.current = false
     setVoorafBezig(false)
+    setVoorafFout('')
     setShowVoorafModal(true)
   }
   const maakFactuurVooraf = async () => {
@@ -1297,10 +1324,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     let gelukt = false
     try {
       const blokkade = voorafFactuurBlokkade(selectedOrder, verkoopFacturen)
-      if (blokkade) { alert(t(voorafBlokkadeSleutel(blokkade))); setShowVoorafModal(false); return }
+      // Kan het niet (meer) — een ander tabblad maakte hem al, de webshop
+      // annuleerde: de modal dicht, de reden op de pagina.
+      if (blokkade) { setShowVoorafModal(false); setMelding(t(voorafBlokkadeSleutel(blokkade))); return }
+      setVoorafFout('')
       let nummer: string
       try { nummer = await volgendFactuurNummer('factuur') }
-      catch (e) { alert(t('err_factuurnummer_ophalen')); return }
+      catch (e) { setVoorafFout(t('err_factuurnummer_ophalen')); return }
       const factuur = bouwOrderFactuur(selectedOrder, {
         id: newId(verkoopFacturen || []), nummer, datum: tod(), klanten, verpakkingen,
         statiegeldOmschrijving: statiegeldLabel,
@@ -1373,7 +1403,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (!selectedOrder) return
     const r = pickTerugdraaiing(selectedOrder)
     if (!r) return
-    if (r.blokkade) { alert(blokkadeTekst(r)); return }
+    if (r.blokkade) { setMelding(blokkadeTekst(r)); return }
     voerTerugdraaiingUit(selectedOrder.id, r)
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       b.id === selectedOrder.id ? {...b, status: 'nieuw'} : b
@@ -1393,10 +1423,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
   const annuleerBezigRef = useRef(false)
   const [annuleerBezig, setAnnuleerBezig] = useState(false)
+  // Waarom annuleren niet doorging (het creditnotanummer), in de modal zelf.
+  const [annuleerFout, setAnnuleerFout] = useState('')
   const annuleerOrder = async () => {
     if (!selectedOrder || annuleerBezigRef.current) return
     annuleerBezigRef.current = true
     setAnnuleerBezig(true)
+    setAnnuleerFout('')
     try {
       // Het creditnotanummer eerst (server-reeks): lukt dat niet, dan wordt
       // er ook niet geannuleerd — anders stond er een factuur zonder order.
@@ -1405,7 +1438,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       if (factuur) {
         let nummer: string
         try { nummer = await volgendFactuurNummer('creditnota') }
-        catch (e) { alert(t('err_factuurnummer_ophalen')); return }
+        catch (e) { setAnnuleerFout(t('err_factuurnummer_ophalen')); return }
         creditnota = bouwCreditnota(factuur, {id: newId(verkoopFacturen || []), nummer, datum: tod()})
       }
       // Gepickt maar nog niet verzonden: het bier ligt er nog, dus terug naar de
@@ -1431,7 +1464,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       void schrijfTerugNaarWc({...selectedOrder, status: 'geannuleerd'}, 'geannuleerd',
         teruggeboekt ? {uitgeslagen: false} : undefined)
       setShowAnnuleerModal(false)
-      setView('list')
+      openOrder(null)
     } finally {
       annuleerBezigRef.current = false
       setAnnuleerBezig(false)
@@ -1441,7 +1474,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const addVrijeRegel = () => {
     if (!selectedOrder) return
     const omschr = vrijeRegelForm.omschrijving.trim()
-    if (!omschr) { alert(t('err_vrije_regel_omschrijving')); return }
+    if (!omschr) { setVrijeRegelFout(t('err_vrije_regel_omschrijving')); return }
+    setVrijeRegelFout('')
     const n = Number(vrijeRegelForm.aantal) || 1
     const p = Number(vrijeRegelForm.prijs_per_stuk) || 0
     const newRegel = {
@@ -1490,13 +1524,20 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setShowVerzendkostenModal(false)
   }
 
-  const removeRegel = (regelId: number) => {
-    if (!selectedOrder) return
-    const regel = (selectedOrder.regels||[]).find((r: any) => r.id === regelId)
-    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:selectedOrder.id, actie:'gewijzigd', omschrijving:`Regel verwijderd: ${regel?.bier_naam||regelId}`})
+  const removeRegel = (orderId: number, regel: any) => {
+    logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:orderId, actie:'gewijzigd', omschrijving:`Regel verwijderd: ${regel?.bier_naam||regel?.id}`})
     setBestellingen((prev: any[]) => prev.map((b: any) =>
-      b.id === selectedOrder.id ? {...b, regels: (b.regels||[]).filter((r: any) => r.id !== regelId)} : b
+      b.id === orderId ? {...b, regels: (b.regels||[]).filter((r: any) => r.id !== regel?.id)} : b
     ))
+  }
+  // Een vrije regel (verzendkosten, korting, merch) verwijderen: meteen uit
+  // beeld, vijf seconden terugweg, daarna echt weg (CLAUDE.md: geen confirm()).
+  const verwijderRegel = (regel: any) => {
+    if (!selectedOrder || !regel) return
+    const orderId = selectedOrder.id
+    undo.plan(`${REGEL_UNDO}${orderId}-${regel.id}`,
+      t('orders_regel_verwijderd').replace('{naam}', String(regel.omschrijving || regel.bier_naam || t('lbl_naamloos'))),
+      () => removeRegel(orderId, regel))
   }
 
   // Herbereken alle afgeleide BTW-velden van een verkoopfactuur uit zijn regels
@@ -1530,7 +1571,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       const periodeType = (btwInst?.periode === 'maand' ? 'maand' : 'kwartaal') as 'maand'|'kwartaal'
       const {ingediend, betaald} = geslotenPeriodeSets(btwAangiftes||[], bankKoppelingen||{})
       if (!magFactuurMuteren(gekoppeld, periodeType, ingediend, betaald)) {
-        alert(t('err_periode_gesloten_mutatie')); return
+        setMelding(t('err_periode_gesloten_mutatie')); return
       }
     }
     const orderRegels = selectedOrder.regels||[]
@@ -1578,7 +1619,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if (!regel) return
     const huidig = regelSoort(regel)
     if (huidig !== 'bier' && huidig !== 'vrij') return
-    if (gepicktVoorRegel(selectedOrder.id, regelId) > 0) { alert(t('err_regel_type_gepickt')); return }
+    if (gepicktVoorRegel(selectedOrder.id, regelId) > 0) { setMelding(t('err_regel_type_gepickt')); return }
     const nieuwType = huidig === 'bier' ? 'vrij' : 'bier'
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       b.id === selectedOrder.id
@@ -1609,8 +1650,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       m.id === id ? {...m, ...patch} : m))
   }
 
+  // Merch uit de lijst halen: meteen uit beeld, vijf seconden terugweg
+  // (UndoBar) in plaats van een confirm(); daarna is het artikel (met zijn
+  // voorraad) weg.
+  const verwijderMerchArtikel = (m: MerchArtikel) => {
+    undo.plan(`${MERCH_UNDO}${m.id}`, t('merch_verwijderd_undo').replace('{artikel}', merchLabel(m)),
+      () => setMerchArtikelen((prev: MerchArtikel[]) => verwijderMerch(prev || [], m.id)))
+  }
+
   const openMerchMutatie = (m: MerchArtikel) => {
     setMerchMutatieForm({...emptyMerchMutatie, merch_id: m.id, prijs: m.inkoopprijs != null ? String(m.inkoopprijs) : ''})
+    setMerchMutatieFout('')
     setShowMerchMutatie(true)
   }
 
@@ -1618,7 +1668,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     const artikel = (merchArtikelen || []).find((m: MerchArtikel) => m.id === merchMutatieForm.merch_id)
     if (!artikel) return
     const ruw = Number(String(merchMutatieForm.aantal).replace(',', '.'))
-    if (!Number.isFinite(ruw)) { alert(t('err_merch_aantal')); return }
+    if (!Number.isFinite(ruw)) { setMerchMutatieFout(t('err_merch_aantal')); return }
+    setMerchMutatieFout('')
     const reden = merchMutatieForm.reden
     // Bij inkoop/retour telt het aantal op, bij een afboeking eraf; een telling
     // en een correctie neemt de gebruiker zoals ingevuld (telling = de stand).
@@ -1651,6 +1702,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const btwOpts = ((btwTarieven && btwTarieven.length ? btwTarieven : [0, 9, 21]))
     .map((p: any) => ({v: String(p), l: `${p}%`}))
 
+  // Herkomst van een afvulling in de pickmodal: de lotcode zoals hij op de
+  // verpakking staat (eigen code, anders die van de afvulsessie) en apart het
+  // batchnummer ("#2607", zoals overal). Tot nu toe stond het batchnummer
+  // onder "Lot"; een afvulling zonder lotcode krijgt nu géén "Lot".
+  const lotEnBatch = (afv: any): {lot: string, batch: string} => {
+    const b = afv ? (bat || []).find((x: any) => x.id === afv.batch_id) : null
+    const nr = batchNummer(b)
+    return {lot: lotcodeVanAfvulling(afv, afvulSessies), batch: nr ? `#${nr}` : ''}
+  }
+
   const openPickModal = () => {
     if (!selectedOrder) return
     // Initialiseer draft picks vanuit bestaande picks (concepten; een order
@@ -1663,6 +1724,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       bestaand[p.regel_id].push({afvulling_id: p.afvulling_id, aantal: p.aantal, bron_locatie_id: p.bron_locatie_id ?? undefined})
     })
     setDraftPicks(bestaand)
+    setPickFout('')
     setShowPickModal(true)
   }
 
@@ -1691,16 +1753,18 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const printOrderPakbon = () => {
     if (!selectedOrder) return
     const orderVoorPakbon = {...resolvedSelectedOrder!, pakbon_datum: pakbonDatumVoor(selectedOrder)}
-    printPakbon(orderVoorPakbon, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
+    printPakbon(orderVoorPakbon, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo,
+      {sessies: afvulSessies, onGeblokkeerd: setMelding})
   }
 
   const printOrderFactuur = () => {
     if (!selectedOrder) return
     const factuur = orderFactuurVan(selectedOrder, verkoopFacturen)
-    if (!factuur) { alert(t('err_no_invoice_for_order')); return }
+    if (!factuur) { setMelding(t('err_no_invoice_for_order')); return }
     // Termijn van de klantkaart (anders de brouwerij): dezelfde vervaldatum
     // als vanuit Administratie → Facturen en als waarmee de te-laat-badge rekent.
-    printFactuur(resolvedSelectedOrder!, factuur, breweryMetTermijn(factuur, klanten, breweryDetails), appName, factuurLogo||logo)
+    printFactuur(resolvedSelectedOrder!, factuur, breweryMetTermijn(factuur, klanten, breweryDetails), appName, factuurLogo||logo,
+      {onGeblokkeerd: setMelding})
   }
 
   // ── Mail-modal state ────────────────────────────────────────────────────
@@ -1724,6 +1788,30 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }>(null)
   const [mailGenerating, setMailGenerating] = React.useState(false)
 
+  // Een andere bestelling of de lijst via de route (de terugknop van het
+  // toestel, een link): een open venster of half ingevuld formulier van de
+  // vorige bestelling gaat niet mee. Sinds de bestelling in de URL staat
+  // blijft deze pagina gemount waar "terug" haar vroeger verliet — zonder dit
+  // stond een open pickvenster (met de concept-picks per regel-id) of de
+  // annuleervraag meteen open bij de volgende bestelling.
+  const vorigeOrderRef = useRef(selectedId)
+  React.useEffect(() => {
+    if (vorigeOrderRef.current === selectedId) return
+    vorigeOrderRef.current = selectedId
+    setShowPickModal(false)
+    setDraftPicks({})
+    setShowAfrondModal(false)
+    setShowAnnuleerModal(false)
+    setShowVrijeRegelModal(false)
+    setShowVerzendkostenModal(false)
+    setVerzondenModal(null)
+    setMailModal(null)
+    setUitslagDoel(d => (d?.terug === 'pick' ? null : d))
+    setBtwCorrectie(null)
+    setMelding('')
+    setTerugdraaiVraag(false)
+  }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Een leeggebleven variabele (geen track & trace, geen leveringstekst) mag
   // geen dubbele witregel achterlaten in de mail.
   const interpolate = (tpl: string, vars: Record<string, string>): string =>
@@ -1743,7 +1831,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setMailGenerating(true)
     try {
       const orderVoorPakbon = {...resolvedSelectedOrder!, pakbon_datum: pakbonDatumVoor(selectedOrder)}
-      const {html, filename} = buildPakbonHTML(orderVoorPakbon, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo)
+      const {html, filename} = buildPakbonHTML(orderVoorPakbon, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo, {sessies: afvulSessies})
       const pdfBase64 = await htmlToPdfBase64(html)
       const pakbonNr = selectedOrder.pakbon_nummer || `P-${selectedOrder.id}`
       const vars = {
@@ -1760,7 +1848,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         kind: 'pakbon',
       })
     } catch (e: any) {
-      alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
+      setMelding(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
     }
     setMailGenerating(false)
   }
@@ -1768,7 +1856,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const mailOrderFactuur = async () => {
     if (!selectedOrder) return
     const factuur = orderFactuurVan(selectedOrder, verkoopFacturen)
-    if (!factuur) { alert(t('err_no_invoice_for_order')); return }
+    if (!factuur) { setMelding(t('err_no_invoice_for_order')); return }
     setMailGenerating(true)
     try {
       // Termijn van de klantkaart (anders de brouwerij) — PDF, {vervaldatum}
@@ -1842,7 +1930,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         regenerateAttachments,
       })
     } catch (e: any) {
-      alert(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
+      setMelding(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
     }
     setMailGenerating(false)
   }
@@ -1935,184 +2023,272 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
   // --- RENDER ---
 
+  // Een bestelling in de route die er niet (meer) is: zeggen, met de weg naar
+  // de lijst. Zolang de bestellingen nog laden: niets.
+  if (view === 'detail' && !selectedOrder && gestuurd) {
+    if (!_fetchedKeys.has('bestellingen')) return null
+    return (
+      <LegeStaat icoon="search" titel={t('route_niet_gevonden_titel')} tekst={t('route_niet_gevonden_bestelling')}>
+        <Btn v="secondary" onClick={() => openOrder(null, { vervang: true })}>{t('route_naar_lijst').replace('{lijst}', t('nav_bestellingen'))}</Btn>
+      </LegeStaat>
+    )
+  }
+
   if (view === 'detail' && selectedOrder) {
     const picks = picksVoorOrder(selectedOrder.id)
-    const totaal = orderTotaal(selectedOrder)
+    const status: string = selectedOrder.status
     const allPicked = (selectedOrder.regels||[]).filter(isPickRegel).every((r: any) => gepicktVoorRegel(selectedOrder.id, r.id) >= r.aantal)
     // Alleen-merch order: niets te picken, dus direct afrondbaar.
     const nietsTePicken = !heeftPickRegels(selectedOrder)
-    const magAfronden = (selectedOrder.status === 'gepickt' && allPicked)
-      || (nietsTePicken && (selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd'))
     // Al bier uitgeleverd? Dan geen "Picken" meer, wel terugdraaien zolang
     // het niet verzonden is (null = niets terug te draaien).
     const uitgeleverd = orderUitgeleverd(bestellingPicks, selectedOrder.id)
     const terugdraaiing = pickTerugdraaiing(selectedOrder)
-    // De factuur: na afronden, of al vooraf zodra de order betaald was. Een
-    // gefactureerde order houdt zijn regels vast (wijzigen = creditnota); de
-    // BTW corrigeren kan via "BTW corrigeren", net als na afronden.
+    // Dezelfde regels als de knoppen altijd volgden (utils/bestelling): wat
+    // mag er, en wat is de ene volgende stap onderin.
+    const {stap, pickbaar, magAfronden} = volgendeOrderStap(selectedOrder, {
+      heeftPickRegels: !nietsTePicken, allesGepickt: allPicked, uitgeleverd,
+    })
+    const open = status !== 'afgerond' && status !== 'geannuleerd'
+    const bewerkbaar = status === 'nieuw' || status === 'bevestigd' || status === 'gepickt'
+    // Kan elke bierregel geleverd worden, en wat komt eraan bij een tekort.
+    const levering = open ? bestellingLevering(selectedOrder, verkoopCtx) : null
+    const leveringPerRegel = new Map<any, OrderRegelLevering>((levering?.regels || []).map(x => [x.regelId, x.levering]))
+    // De factuur: na afronden, of al vooraf zodra de order betaald was
+    // (utils/orderFactuur.ts). Een gefactureerde order houdt zijn regels vast
+    // (wijzigen = creditnota); de BTW corrigeren kan via "BTW corrigeren", net
+    // als na afronden.
     const orderFactuur = orderFactuurVan(selectedOrder, verkoopFacturen)
     const gefactureerd = orderIsGefactureerd(selectedOrder, verkoopFacturen)
     const kanVooraf = voorafFactuurBlokkade(selectedOrder, verkoopFacturen) === null
     const crediteren = teCrediterenFactuur(selectedOrder)
+    const smtp = !!smtpCreds?.enabled
+    const vandaag = tod()
+    const lang = getLang()
+    const productNaamVan = (id: number | null): string =>
+      id == null ? '' : String((producten||[]).find((p: any) => p.id === id)?.naam || '')
+    const naarProduct = gaNaar ? (id: number) => gaNaar({pagina: 'producten', id}) : undefined
+    const naarBatch = gaNaar ? (id: number) => gaNaar({pagina: 'batches', id}) : undefined
+
+    // Een regel die met "Verwijderen" op de UndoBar wacht, staat al niet meer
+    // in beeld (en telt niet meer mee in de totalen).
+    const wachtendeRegel = String(undo.actie?.id || '').startsWith(`${REGEL_UNDO}${selectedOrder.id}-`)
+      ? String(undo.actie!.id).slice(`${REGEL_UNDO}${selectedOrder.id}-`.length) : null
+    const regels = (selectedOrder.regels||[]).filter((r: any) => wachtendeRegel == null || String(r.id) !== wachtendeRegel)
+    const totalen = totalenVan({...selectedOrder, regels})
+    const regelIds = new Set(regels.map((r: any) => r.id))
+    const losPicks = picks.filter((p: any) => !regelIds.has(p.regel_id))
+
+    // ── De ene volgende stap (ActieBalk) ───────────────────────────────────
+    const uitTeSlaanTotaal = (levering?.regels || []).reduce((s, x) => s + x.levering.uitTeSlaan, 0)
+    const pickNodig = levering?.nodig ?? 0
+    const pickKan = levering?.kan ?? 0
+    // Niets vrij en niets in de AGP: picken kan niet — zeggen waarop het wacht.
+    const nietsTePickenNu = stap === 'picken' && levering != null && pickNodig > 0 && pickKan === 0 && uitTeSlaanTotaal === 0
+    const wachtOp = levering?.regels.find(x => x.levering.tekort > 0 && x.levering.komtEraan.length > 0)?.levering || null
+    const stapInfo: string = stap !== 'picken' || !levering ? ''
+      : nietsTePickenNu
+        ? (wachtOp
+          ? t('orders_stap_wacht_op').replace('{batch}', komtEraanTekst(wachtOp.komtEraan[0], productNaamVan(wachtOp.productId), vandaag))
+          : levering.status === 'geen_bier' ? t('orders_stap_niet_herkend') : t('orders_stap_niets_vrij'))
+        : uitTeSlaanTotaal > 0 && pickKan < pickNodig
+          ? t('orders_stap_uitslaan').replace('{n}', String(uitTeSlaanTotaal))
+          : ''
+    // Is de factuur al vooraf gemaakt, dan maakt afronden er geen meer.
+    const afrondLabel = orderFactuur ? t('order_complete') : t('orders_stap_factuur')
+    const stapKnop = stap === 'picken'
+      ? {label: pickNodig > 0 && pickKan < pickNodig
+          ? t('orders_stap_picken_van').replace('{kan}', String(pickKan)).replace('{nodig}', String(pickNodig))
+          : t('orders_stap_picken_n').replace('{n}', String(pickNodig)),
+        onClick: openPickModal}
+      : stap === 'verzenden' ? {label: t('order_mark_shipped'), onClick: markVerzonden}
+      : stap === 'afronden' ? {label: afrondLabel, onClick: openAfronden}
+      : null
+
+    // ── De rest in ⋯: dezelfde handelingen en voorwaarden als de knoppen ───
+    const mailTitel = smtp ? undefined : t('mail_no_smtp')
+    // Zonder mailserver staan de mail-acties uit, met de reden eronder (een
+    // tooltip zie je op een telefoon niet).
+    const mailActie = (id: string, label: string, onClick: () => void, pdf = false): RowActie => ({
+      id, onClick, title: mailTitel, disabled: !smtp || (pdf && mailGenerating),
+      label: smtp ? (pdf && mailGenerating ? t('mail_generating_pdf') : label)
+        : <>{label}<span className="block text-xs text-gray-500">{t('orders_mail_geen_smtp')}</span></>,
+    })
+    // Volgorde: de andere stappen, afdrukken, mailen, regels toevoegen,
+    // terugdraaien en als laatste (rood) annuleren.
+    const acties: RowActie[] = []
+    if (pickbaar && stap !== 'picken') acties.push({id: 'picken', label: t('order_pick'), onClick: openPickModal})
+    if (magAfronden && stap !== 'verzenden') acties.push({id: 'verzonden', label: t('order_mark_shipped'), title: t('tooltip_logistical_status'), onClick: markVerzonden})
+    if ((magAfronden || status === 'verzonden') && stap !== 'afronden') acties.push({id: 'afronden', label: afrondLabel, onClick: openAfronden})
+    // Betaald maar nog niet opgehaald of verzonden: de factuur kan nu al, zodat
+    // de betaling (de uitbetaling van Mollie) eraan te koppelen is; de
+    // bestelling blijft open.
+    if (kanVooraf) acties.push({id: 'factuur_vooraf', label: t('order_factuur_vooraf'), title: t('order_factuur_vooraf_tip'), toelichting: t('orders_factuur_vooraf_kort'), onClick: openVooraf})
+    // De pakbon mag ook vóór (of halverwege) het picken geprint worden: de nog
+    // niet gepickte regels staan er dan zonder lot/THT op en het document
+    // draagt een concept-markering (PakbonExport).
+    if (status !== 'geannuleerd') acties.push({id: 'pakbon', label: t('order_print_pakbon'), title: bewerkbaar && !magAfronden ? t('order_print_pakbon_concept_uitleg') : undefined, onClick: printOrderPakbon})
+    if (pickbaar && (status === 'nieuw' || status === 'bevestigd') && onGepickteRegels(selectedOrder, picks).length > 0) {
+      acties.push({id: 'picklijst', label: t('orders_print_picklijst_order'), onClick: printOrderPicklijst})
+    }
+    if (orderFactuur) acties.push({id: 'factuur', label: t('order_print_factuur'), onClick: printOrderFactuur})
+    if (status === 'nieuw' || status === 'bevestigd') {
+      acties.push(mailActie('mail_bevestiging', status === 'bevestigd' ? t('order_mail_bevestiging_resend') : t('order_mail_bevestiging'), mailOrderBevestiging))
+    }
+    if (magAfronden || status === 'verzonden' || status === 'afgerond') {
+      acties.push(mailActie('mail_pakbon', t('order_mail_pakbon'), mailOrderPakbon, true))
+    }
+    // Een verzonden of open order heeft pas een factuur als hij vooraf gemaakt is.
+    if (orderFactuur && status !== 'geannuleerd') {
+      acties.push(mailActie('mail_factuur', t('order_mail_factuur'), mailOrderFactuur, true))
+    }
+    if ((status === 'verzonden' || status === 'afgerond') && selectedOrder.wc_levering !== 'afhalen') {
+      acties.push(mailActie('mail_verzending', t('order_mail_verzending'), () => mailOrderVerzending()))
+    }
+    // Afhaalklant niet komen opdagen: mail met de link om een nieuw moment te
+    // kiezen. Alleen zolang het gekozen moment voorbij is en de order openstaat.
+    if (afhaalmomentVerstreken(selectedOrder)) {
+      acties.push(mailActie('mail_afhaal_gemist', t('order_mail_afhaal_gemist'), mailOrderAfhaalGemist))
+    }
+    // Gefactureerd: de regels staan vast (ze staan al op de factuur).
+    if (bewerkbaar && !gefactureerd) {
+      acties.push({id: 'verzendkosten', label: t('btn_verzendkosten'), onClick: addVerzendkosten})
+      acties.push({id: 'vrije_regel', label: t('btn_vrije_regel'), onClick: () => { setVrijeRegelForm({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'}); setVrijeRegelFout(''); setShowVrijeRegelModal(true) }})
+    }
+    if (terugdraaiing) acties.push({id: 'terugdraaien', label: t('order_picks_terugdraaien'), title: blokkadeTekst(terugdraaiing) || undefined, onClick: () => setTerugdraaiVraag(true)})
+    if (open) acties.push({id: 'annuleren', label: t('order_cancel'), soort: 'gevaar', onClick: () => { setAnnuleerFout(''); setShowAnnuleerModal(true) }})
+
+    // ── Klant en levering ──────────────────────────────────────────────────
+    // Leest live van de klantkaart (via klant_id of e-mail), zodat een
+    // gewijzigd adres hier en in alle mails meteen klopt; de snapshot op de
+    // order blijft de terugval.
+    const k = resolvedSelectedOrder || selectedOrder
+    const klantNaam = String(k.klant_naam || '').trim()
+    const klantBedrijf = String(k.klant_bedrijf || '').trim()
+    const adres = [
+      [k.klant_straat, k.klant_huisnummer].filter(Boolean).join(' '),
+      [k.klant_postcode, k.klant_stad].filter(Boolean).join(' '),
+    ].filter(Boolean).join(', ')
+    const kType = effectiveKlantType(selectedOrder)
+    // Vóór het picken mag privé/zakelijk nog gecorrigeerd worden (bijv. een
+    // verkeerd gedetecteerde WooCommerce-import); daarna is het bevroren.
+    const kTypeAanpasbaar = (status === 'nieuw' || status === 'bevestigd') && !gefactureerd
+    const afhalen = selectedOrder.wc_levering === 'afhalen'
+    const afhaalUrl = afhalen ? afhaalLink(wcCreds?.storeUrl, selectedOrder.wc_order_id, selectedOrder.wc_order_key) : ''
+    const pd = pakbonDatumVoor(selectedOrder)
+    const infoRegels: Array<[string, React.ReactNode]> = []
+    if (pd && pd !== selectedOrder.datum) infoRegels.push([t('orders_pick_date'), fmtD(pd)])
+    if (selectedOrder.verzend_datum) infoRegels.push([t('factuur_delivery_date'), fmtD(selectedOrder.verzend_datum)])
+    if (selectedOrder.factuur_nummer) infoRegels.push([t('factuur_number'), <span className="font-mono">{selectedOrder.factuur_nummer}</span>])
+    if (selectedOrder.pakbon_nummer) infoRegels.push([t('pakbon_number'), <span className="font-mono">{selectedOrder.pakbon_nummer}</span>])
+    const datumJaar = String(selectedOrder.datum || '').slice(0, 4)
 
     return (
       <div>
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <button onClick={() => setView('list')} className="flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 transition-colors">
+        {/* Kop. Op een telefoon staan het nummer en de terugknop in de
+            kopbalk (één terugweg); op een bureau vervangt de bestelling de
+            lijst, dus daar staan ze hier. */}
+        <div className={`${gestuurd ? 'hidden md:flex' : 'flex'} items-center gap-3 mb-3 flex-wrap`}>
+          <button onClick={() => openOrder(null)} className="flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 transition-colors">
             {t('btn_back')}
           </button>
-          <h2 className="text-xl font-bold text-gray-800">
-            {orderNummer(selectedOrder)}
-          </h2>
-          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[selectedOrder.status]||'bg-gray-100'}`}>
-            {t(`orders_status_${selectedOrder.status}`, selectedOrder.status)}
-          </span>
-          <BetaaldBadge b={selectedOrder} />
-          {orderFactuur && selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd' && (
-            <span title={t('orders_gefactureerd_tip').replace('{nummer}', orderFactuur.factuurnummer || '')}
-              className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
-              <Icon n="receipt" /> {t('orders_gefactureerd')}
+          <h2 className="text-xl font-bold text-gray-800">{orderNummer(selectedOrder)}</h2>
+        </div>
+        <div className="flex items-start gap-2 mb-3">
+          <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1.5 pt-1.5 md:pt-1">
+            <StatusChip status={status} />
+            <span className="text-sm text-gray-600 whitespace-nowrap">
+              {(() => { const bron = bestellingBron(selectedOrder); return t(`orders_bron_${bron}`, bron) })()}
+              {selectedOrder.datum ? ` · ${fmtWeekdagDatum(selectedOrder.datum, {lang, jaar: datumJaar !== vandaag.slice(0, 4)})}` : ''}
             </span>
-          )}
-          <LeveringBadge b={selectedOrder} />
-          <WcSyncBadge b={selectedOrder} />
-          {(() => {
-            const kType = effectiveKlantType(selectedOrder)
-            if (!kType) return null
-            // Vóór het picken mag privé/zakelijk nog gecorrigeerd worden
-            // (bijv. een verkeerd gedetecteerde WooCommerce-import). Daarna is
-            // het type bevroren omdat de AGP-allocatie erop gebaseerd is.
-            const aanpasbaar = (selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd') && !gefactureerd
-            if (!aanpasbaar) return (
-              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${kType === 'zakelijk' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                {t(kType === 'zakelijk' ? 'lbl_zakelijk' : 'lbl_prive')}
-              </span>
-            )
-            return (
-              <div className="inline-flex bg-gray-100 rounded-full p-0.5" title={t('tip_order_klant_type')}>
-                {(['prive', 'zakelijk'] as const).map(kt => (
-                  <button key={kt} type="button"
-                    onClick={() => { if (kt !== kType) wijzigKlantType(kt) }}
-                    className={`px-2 py-0.5 rounded-full text-xs font-semibold transition-colors ${kType === kt
-                      ? (kt === 'zakelijk' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700')
-                      : 'text-gray-400 hover:text-gray-600'}`}>
-                    {t(kt === 'zakelijk' ? 'lbl_zakelijk' : 'lbl_prive')}
-                  </button>
-                ))}
-              </div>
-            )
-          })()}
-          <span className="text-sm text-gray-500 ml-auto">{fmtD(selectedOrder.datum)}</span>
+            <BetaaldBadge b={selectedOrder} />
+            {orderFactuur && <GefactureerdBadge b={selectedOrder} nummer={orderFactuur.factuurnummer || ''} />}
+            <WcSyncBadge b={selectedOrder} opties={wcTerugschrijfOpties(selectedOrder)}
+              onOpnieuw={doel => { void schrijfTerugNaarWc(selectedOrder, doel) }} />
+          </div>
+          <RowActions key={selectedOrder.id} acties={acties} v="kaart" />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          {/* Klantgegevens — leest live van de klantkaart (via klant_id of
-              email-match) zodat een e-mail-/adreswijziging op de klant
-              direct hier en in alle mail-velden zichtbaar is. Snapshot op
-              de order blijft als fallback voor orders zonder match. */}
-          {(() => {
-            const r        = resolvedSelectedOrder || selectedOrder
-            const naam     = r.klant_naam     || ''
-            const bedrijf  = r.klant_bedrijf  || ''
-            const email    = r.klant_email    || ''
-            const straat   = r.klant_straat   || ''
-            const huisnr   = r.klant_huisnummer || ''
-            const postcode = r.klant_postcode || ''
-            const stad     = r.klant_stad     || ''
-            return (
-              <div className="bg-white rounded-xl shadow-card p-4">
-                <div className="text-xs font-semibold text-gray-500 mb-2">{t('orders_klant')}</div>
-                <div className="font-semibold text-gray-800">{naam}</div>
-                {bedrijf && <div className="text-sm text-gray-600">{bedrijf}</div>}
-                {email && <div className="text-sm text-gray-500">{email}</div>}
-                {straat && (
-                  <div className="text-sm text-gray-500 mt-1">
-                    {[straat, huisnr].filter(Boolean).join(' ')}<br/>
-                    {[postcode, stad].filter(Boolean).join(' ')}
-                  </div>
+        <PaginaMelding tekst={melding} onSluit={() => setMelding('')} cls="mb-3" />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4">
+          {/* Klant en levering */}
+          <div className="bg-white rounded-xl shadow-card p-4">
+            <div className="font-semibold text-gray-900 break-words">{klantBedrijf || klantNaam || t('lbl_onbekend')}</div>
+            {klantBedrijf && klantNaam && klantNaam !== klantBedrijf && <div className="text-sm text-gray-600 break-words">{klantNaam}</div>}
+            {adres && <div className="text-sm text-gray-600 mt-0.5 break-words">{adres}</div>}
+            {k.klant_email && <div className="text-sm text-gray-500 break-all">{k.klant_email}</div>}
+            {(selectedOrder.wc_levering || kType) && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                <LeveringBadge b={selectedOrder} />
+                <KlantTypeChip type={kType} onWissel={kTypeAanpasbaar ? wijzigKlantType : undefined} />
+              </div>
+            )}
+            {/* Levering: afhalen (locatie + gekozen moment + de afhaalpagina
+                van de klant) of verzenden (methode, track & trace, wanneer de
+                verzendbevestiging is gemaild). */}
+            {selectedOrder.wc_levering && (
+              <div className="mt-2 space-y-1 text-sm">
+                {afhalen && selectedOrder.wc_afhaal_locatie && <div className="text-gray-600">{selectedOrder.wc_afhaal_locatie}</div>}
+                {!afhalen && selectedOrder.wc_verzendmethode && <div className="text-gray-600">{selectedOrder.wc_verzendmethode}</div>}
+                {afhalen && (() => {
+                  const gemist = afhaalmomentVerstreken(selectedOrder)
+                  return (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-gray-500">{t('orders_afhaalmoment')}</span>
+                      <span className={`text-right ${gemist ? 'text-red-600' : selectedOrder.wc_afhaalmoment ? 'text-gray-800' : 'text-orange-600 italic'}`}>
+                        {selectedOrder.wc_afhaalmoment ? afhaalmomentLabel(selectedOrder.wc_afhaalmoment) : t('orders_afhaalmoment_open')}
+                        {gemist ? ` (${t('orders_afhaalmoment_verstreken')})` : ''}
+                      </span>
+                    </div>
+                  )
+                })()}
+                {afhalen && selectedOrder.afhaal_gemist_datum && (
+                  <div className="text-xs text-red-700">{t('orders_afhaal_gemist_op').replace('{datum}', fmtD(selectedOrder.afhaal_gemist_datum))}</div>
+                )}
+                {afhaalUrl && (
+                  <a href={afhaalUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-xs underline t-accent-text">
+                    {t('orders_afhaal_link')}
+                  </a>
                 )}
               </div>
-            )
-          })()}
-
-          {/* Orderinfo */}
-          <div className="bg-white rounded-xl shadow-card p-4">
-            <div className="text-xs font-semibold text-gray-500 mb-2">Order</div>
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500">{t('orders_date')}</span><span>{fmtD(selectedOrder.datum)}</span></div>
-              {(() => {
-                const pd = pakbonDatumVoor(selectedOrder)
-                return pd && pd !== selectedOrder.datum
-                  ? <div className="flex justify-between"><span className="text-gray-500">{t('orders_pick_date')}</span><span>{fmtD(pd)}</span></div>
-                  : null
-              })()}
-              {selectedOrder.verzend_datum && <div className="flex justify-between"><span className="text-gray-500">{t('factuur_delivery_date')}</span><span>{fmtD(selectedOrder.verzend_datum)}</span></div>}
-              {/* Levering: afhalen (locatie + gekozen moment + de afhaalpagina
-                  van de klant) of verzenden (methode, track & trace, wanneer
-                  de verzendbevestiging is gemaild). */}
-              {selectedOrder.wc_levering && (() => {
-                const afhalen = selectedOrder.wc_levering === 'afhalen'
-                const link = afhalen ? afhaalLink(wcCreds?.storeUrl, selectedOrder.wc_order_id, selectedOrder.wc_order_key) : ''
-                return (<>
-                  <div className="flex justify-between gap-3">
-                    <span className="text-gray-500">{t('orders_levering')}</span>
-                    <span className="text-right">
-                      {t(afhalen ? 'orders_levering_afhalen' : 'orders_levering_verzenden')}
-                      {afhalen && selectedOrder.wc_afhaal_locatie ? ` · ${selectedOrder.wc_afhaal_locatie}` : ''}
-                      {!afhalen && selectedOrder.wc_verzendmethode ? ` · ${selectedOrder.wc_verzendmethode}` : ''}
-                    </span>
-                  </div>
-                  {afhalen && (() => {
-                    const gemist = afhaalmomentVerstreken(selectedOrder)
-                    return (
-                      <div className="flex justify-between gap-3">
-                        <span className="text-gray-500">{t('orders_afhaalmoment')}</span>
-                        <span className={`text-right ${gemist ? 'text-red-600' : selectedOrder.wc_afhaalmoment ? '' : 'text-orange-600 italic'}`}>
-                          {selectedOrder.wc_afhaalmoment ? afhaalmomentLabel(selectedOrder.wc_afhaalmoment) : t('orders_afhaalmoment_open')}
-                          {gemist ? ` (${t('orders_afhaalmoment_verstreken')})` : ''}
-                        </span>
-                      </div>
-                    )
-                  })()}
-                  {afhalen && selectedOrder.afhaal_gemist_datum && (
-                    <div className="text-xs text-red-700">{t('orders_afhaal_gemist_op').replace('{datum}', fmtD(selectedOrder.afhaal_gemist_datum))}</div>
-                  )}
-                  {link && (
-                    <div className="text-right">
-                      <a href={link} target="_blank" rel="noopener noreferrer" className="text-xs underline" style={{color: 'var(--t-accent)'}}>
-                        {t('orders_afhaal_link')}
-                      </a>
-                    </div>
-                  )}
-                </>)
-              })()}
-              {selectedOrder.verzend_tracking && (
-                <div className="flex justify-between gap-3">
-                  <span className="text-gray-500">{t('orders_track')}</span>
-                  {/^https?:\/\//i.test(selectedOrder.verzend_tracking)
-                    ? <a href={selectedOrder.verzend_tracking} target="_blank" rel="noopener noreferrer" className="underline break-all text-right" style={{color: 'var(--t-accent)'}}>{selectedOrder.verzend_tracking}</a>
-                    : <span className="font-mono break-all text-right">{selectedOrder.verzend_tracking}</span>}
-                </div>
-              )}
-              {selectedOrder.verzendbevestiging_datum && (
-                <div className="text-xs text-green-700">{t('orders_verzendbevestiging_op').replace('{datum}', fmtD(selectedOrder.verzendbevestiging_datum))}</div>
-              )}
-              <div className="flex justify-between"><span className="text-gray-500">{t('orders_total')}</span><span className="font-semibold">{fmt(totaal)}</span></div>
-              {selectedOrder.factuur_nummer && <div className="flex justify-between"><span className="text-gray-500">{t('factuur_number')}</span><span className="font-mono">{selectedOrder.factuur_nummer}</span></div>}
-              {selectedOrder.pakbon_nummer && <div className="flex justify-between"><span className="text-gray-500">{t('pakbon_number')}</span><span className="font-mono">{selectedOrder.pakbon_nummer}</span></div>}
-              {selectedOrder.opmerkingen && <div className="pt-1 text-xs text-gray-500 italic">{selectedOrder.opmerkingen}</div>}
-            </div>
+            )}
+            {selectedOrder.verzend_tracking && (
+              <div className="mt-2 flex justify-between gap-3 text-sm">
+                <span className="text-gray-500">{t('orders_track')}</span>
+                {/^https?:\/\//i.test(selectedOrder.verzend_tracking)
+                  ? <a href={selectedOrder.verzend_tracking} target="_blank" rel="noopener noreferrer" className="underline break-all text-right t-accent-text">{selectedOrder.verzend_tracking}</a>
+                  : <span className="font-mono break-all text-right">{selectedOrder.verzend_tracking}</span>}
+              </div>
+            )}
+            {selectedOrder.verzendbevestiging_datum && (
+              <div className="mt-1 text-xs text-green-700">{t('orders_verzendbevestiging_op').replace('{datum}', fmtD(selectedOrder.verzendbevestiging_datum))}</div>
+            )}
           </div>
+
+          {/* Gegevens van de order — alleen wat er is. */}
+          {(infoRegels.length > 0 || selectedOrder.opmerkingen) && (
+            <div className="bg-white rounded-xl shadow-card p-4 space-y-1 text-sm">
+              {infoRegels.map(([label, waarde]) => (
+                <div key={label} className="flex justify-between gap-3">
+                  <span className="text-gray-500">{label}</span><span className="text-right text-gray-800">{waarde}</span>
+                </div>
+              ))}
+              {selectedOrder.opmerkingen && <div className="pt-1 text-xs text-gray-600 italic break-words">{selectedOrder.opmerkingen}</div>}
+            </div>
+          )}
         </div>
 
-        {/* Orderregels */}
+        {/* Regels: per regel wat er vrij ligt, wat eraan komt en (na het
+            picken) de lotcode met THT; daaronder de totalen. */}
         <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
           <SectionHeader
             title={t('orders_lines')}
-            info={gefactureerd && selectedOrder.status !== 'geannuleerd' ? (
-              btwCorrectie === selectedOrder.id
-                ? <button onClick={() => setBtwCorrectie(null)} className="underline hover:text-white">{t('orders_btw_correctie_klaar')}</button>
-                : <button onClick={() => setBtwCorrectie(selectedOrder.id)} className="underline hover:text-white">{t('orders_btw_correctie')}</button>
+            info={gefactureerd && status !== 'geannuleerd' ? (
+              <button type="button" onClick={() => setBtwCorrectie(btwCorrectie === selectedOrder.id ? null : selectedOrder.id)}
+                className="text-xs underline t-accent-text min-h-tap sm:min-h-0">
+                {btwCorrectie === selectedOrder.id ? t('orders_btw_correctie_klaar') : t('orders_btw_correctie')}
+              </button>
             ) : undefined}
           />
           {btwCorrectie === selectedOrder.id && (
@@ -2120,98 +2296,75 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               {t('orders_btw_correctie_hint')}
             </div>
           )}
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-xs text-gray-500 bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left">{t('pakbon_beer')}</th>
-                <th className="px-3 py-2 text-left">{t('pakbon_packaging')}</th>
-                <th className="px-3 py-2 text-right">{t('manual_order_qty')}</th>
-                <th className="px-3 py-2 text-right">{t('manual_order_price')}</th>
-                <th className="px-3 py-2 text-right">{t('manual_order_btw')}</th>
-                <th className="px-3 py-2 text-right">{t('lbl_totaal_excl')}</th>
-                <th className="px-3 py-2 text-center">{t('picking_picked')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {(selectedOrder.regels||[]).map((r: any) => {
-                const gepickt = gepicktVoorRegel(selectedOrder.id, r.id)
-                const volledig = gepickt >= r.aantal
-                const soort = regelSoort(r)
-                const isVrij = soort === 'vrij' || soort === 'verzending' || soort === 'korting'
-                // Gefactureerd (afgerond, of vooraf): de regels staan op de
-                // factuur, dus niet meer weghalen; de BTW alleen via "BTW
-                // corrigeren" — dan gaat de factuur mee (updateRegelBtw).
-                const canDelete = isVrij && !gefactureerd && selectedOrder.status !== 'geannuleerd'
-                const kanRegelWisselen = selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd' && gepickt === 0
-                const isBtwCorrectie = gefactureerd && selectedOrder.status !== 'geannuleerd' && btwCorrectie === selectedOrder.id
-                const canEditBtw = (!gefactureerd && selectedOrder.status !== 'geannuleerd') || isBtwCorrectie
-                return (
-                  <tr key={r.id} className={isVrij ? 'bg-blue-50' : volledig ? 'bg-green-50' : ''}>
-                    <td className="px-3 py-2 font-medium">
-                      {soort === 'bier' && <BierKleur ebc={ebcVoorRegel(r)} s="sm" cls="mr-1.5" />}
-                      {r.bier_naam}
-                      {r.sku && <span className="ml-1 font-mono text-xs text-gray-400">[{r.sku}]</span>}
-                      {soort === 'verzending' && <span className="ml-1 text-xs text-blue-500"><Icon n="truck" /></span>}
-                      {soort === 'vrij' && !r.merch && <span className="ml-1 text-xs text-purple-500">✎</span>}
-                      {r.merch && (
-                        <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-semibold align-middle"
-                          title={t('orders_regel_merch_uitleg')}>
-                          {t('orders_regel_merch')}
-                        </span>
-                      )}
-                      {soort === 'korting' && <span className="ml-1 text-xs font-semibold text-green-600">%</span>}
-                      {r.wc_onbekend && <span className="ml-1 text-xs font-semibold text-orange-500" title={t('orders_regel_onbekend')}>?</span>}
-                      {kanRegelWisselen && (soort === 'bier' || soort === 'vrij') && (
-                        <button
-                          onClick={() => updateRegelType(r.id)}
-                          className="ml-1.5 text-xs text-gray-300 hover:text-gray-600 transition-colors"
-                          title={`${t('orders_regel_type_wissel')} — ${soort === 'bier' ? t('orders_regel_type_vrij') : t('orders_regel_type_bier')}`}
-                        >⇄</button>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-gray-600">{r.verpakking_type}</td>
-                    <td className="px-3 py-2 text-right font-mono">{r.aantal}×</td>
-                    <td className="px-3 py-2 text-right">{fmt(r.prijs_per_stuk)}</td>
-                    <td className="px-3 py-2 text-right">
-                      {canEditBtw ? (
-                        <select
-                          value={String(r.btw_pct)}
-                          onChange={(e) => updateRegelBtw(r.id, Number(e.target.value))}
-                          className="border border-gray-200 rounded px-1.5 py-1 text-sm bg-white t-input outline-none"
-                          title={t('orders_edit_btw')}
-                        >
-                          {btwOpts.some((o: any) => o.v === String(r.btw_pct))
-                            ? null
-                            : <option value={String(r.btw_pct)}>{r.btw_pct}%</option>}
-                          {btwOpts.map((o: any) => <option key={o.v} value={o.v}>{o.l}</option>)}
-                        </select>
-                      ) : `${r.btw_pct}%`}
-                    </td>
-                    <td className="px-3 py-2 text-right font-semibold">{fmt(r.aantal * r.prijs_per_stuk)}</td>
-                    <td className="px-3 py-2 text-center">
-                      {canDelete
-                        ? <button onClick={() => removeRegel(r.id)} className="text-gray-300 hover:text-red-500 transition-colors text-xs" title={t('btn_delete')}>✕</button>
-                        : isVrij ? <span className="text-xs text-blue-400">—</span>
-                        : <span className={`text-xs font-semibold ${volledig ? 'text-green-600' : gepickt > 0 ? 'text-orange-500' : 'text-gray-400'}`}>{gepickt}/{r.aantal}</span>
-                      }
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-          </div>
-          {/* Vastloper-detector: pickregels waarvoor geen enkele afvulling in
-              aanmerking komt. Dat is precies het merch-geval —
-              zonder deze uitweg blijft de order eeuwig op 'nieuw' staan omdat
-              afronden om picks vraagt die nooit kunnen bestaan. */}
+          <ul className="divide-y divide-gray-100">
+            {regels.map((r: any) => {
+              const gepickt = gepicktVoorRegel(selectedOrder.id, r.id)
+              const soort = regelSoort(r)
+              const isVrij = soort === 'vrij' || soort === 'verzending' || soort === 'korting'
+              const lev = soort === 'bier' ? leveringPerRegel.get(r.id) || null : null
+              const productId = soort === 'bier' ? (lev?.productId ?? productIdVoorRegel(r)) : null
+              const kanRegelWisselen = open && gepickt === 0
+              // Gefactureerd (afgerond, of vooraf): de regels staan op de
+              // factuur, dus niet meer weghalen; de BTW alleen via "BTW
+              // corrigeren" — dan gaat de factuur mee (updateRegelBtw).
+              const isBtwCorrectie = gefactureerd && status !== 'geannuleerd' && btwCorrectie === selectedOrder.id
+              const canEditBtw = (open && !gefactureerd) || isBtwCorrectie
+              const regelActies: RowActie[] = []
+              if (kanRegelWisselen && (soort === 'bier' || soort === 'vrij')) {
+                regelActies.push({
+                  id: 'wissel',
+                  label: soort === 'bier' ? t('orders_regel_naar_vrij') : t('orders_regel_naar_bier'),
+                  title: t('orders_regel_type_wissel'),
+                  onClick: () => updateRegelType(r.id),
+                })
+              }
+              // Het BTW-tarief van de regel (bijv. een webshopimport op 9 % die 21 %
+              // moet zijn): in het menu, net als de andere regelacties.
+              if (canEditBtw) {
+                for (const o of btwOpts) {
+                  if (o.v === String(r.btw_pct)) continue
+                  regelActies.push({id: `btw-${o.v}`, label: t('orders_btw_naar').replace('{pct}', o.v), title: t('orders_edit_btw'), onClick: () => updateRegelBtw(r.id, Number(o.v))})
+                }
+              }
+              if (isVrij && open && !gefactureerd) regelActies.push({id: 'verwijder', label: t('btn_delete'), soort: 'gevaar', onClick: () => verwijderRegel(r)})
+              return (
+                <OrderRegelKaart
+                  key={r.id}
+                  regel={r}
+                  soort={soort}
+                  ebc={soort === 'bier' ? ebcVoorRegel(r) : null}
+                  productId={productId}
+                  productNaam={productNaamVan(productId) || String(r.bier_naam || '')}
+                  onProduct={naarProduct}
+                  netto={regelBedrag(r).netto}
+                  gepickt={gepickt}
+                  levering={lev}
+                  vandaag={vandaag}
+                  picks={picks.filter((p: any) => p.regel_id === r.id)
+                    .map((p: any) => ({id: p.id, aantal: Number(p.aantal) || 0, herkomst: herkomstVanPick(p, herkomstData)}))}
+                  onBatch={naarBatch}
+                  acties={regelActies}
+                />
+              )
+            })}
+            {/* Picks waarvan de regel er niet meer is: niet stil laten verdwijnen. */}
+            {losPicks.length > 0 && (
+              <OrderRegelKaart
+                regel={{omschrijving: t('orders_picks_los'), aantal: losPicks.reduce((s: number, p: any) => s + (Number(p.aantal) || 0), 0), btw_pct: 0, prijs_per_stuk: 0}}
+                soort="vrij" ebc={null} productId={null} productNaam="" netto={0} gepickt={0} vandaag={vandaag}
+                picks={losPicks.map((p: any) => ({id: p.id, aantal: Number(p.aantal) || 0, herkomst: herkomstVanPick(p, herkomstData)}))}
+                onBatch={naarBatch} acties={[]}
+              />
+            )}
+          </ul>
+          {/* Een regel die bij géén eigen bier hoort en waar niets voor te
+              picken is (utils/verkoopOverzicht → merchVoorstel): zonder deze
+              uitweg blijft de order eeuwig openstaan. Nooit voor een regel
+              waarvan het bier herkend is — ook niet als het alleen nog in de
+              tank ligt (daar staat "Komt eraan"). */}
           {(() => {
-            if (selectedOrder.status === 'afgerond' || selectedOrder.status === 'geannuleerd') return null
-            const vast = (selectedOrder.regels||[]).filter((r: any) =>
-              isPickRegel(r) &&
-              gepicktVoorRegel(selectedOrder.id, r.id) === 0 &&
-              getAvailableAfvullingen(r.bier_naam, r.verpakking_type, selectedOrder.id, null, r.artikel_key, r.sku).length === 0)
+            if (!open) return null
+            const vast = regels.filter((r: any) => isPickRegel(r) && leveringPerRegel.get(r.id)?.merchVoorstel)
             if (!vast.length) return null
             return (
               <div className="px-4 py-3 bg-purple-50 border-t border-purple-100 space-y-2">
@@ -2221,178 +2374,50 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 {vast.map((r: any) => (
                   <div key={r.id} className="flex items-center gap-2 flex-wrap text-xs text-purple-900">
                     <span className="font-medium">{r.omschrijving || r.bier_naam}</span>
-                    {r.sku && <span className="font-mono text-purple-500">[{r.sku}]</span>}
-                    <button
-                      onClick={() => {
-                        if (!confirm(t('picking_merch_bevestig').replace('{artikel}', r.omschrijving || r.bier_naam))) return
-                        updateRegelType(r.id, true)
-                      }}
-                      className="px-2 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors">
+                    {r.sku && <span className="font-mono text-purple-600">[{r.sku}]</span>}
+                    <BevestigKnop s="sm" v="secondary" vraag={t('picking_merch_vraag')}
+                      onBevestig={() => updateRegelType(r.id, true)}>
                       {t('picking_merch_knop')}
-                    </button>
+                    </BevestigKnop>
                   </div>
                 ))}
               </div>
             )
           })()}
+          <OrderTotalenBlok totalen={totalen} />
         </div>
 
-        {/* Picks overzicht (na picking) */}
-        {picks.length > 0 && (
-          <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
-            <SectionHeader title={t('picking_title')} />
-            <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-gray-500 bg-gray-50">
-                <tr>
-                  <th className="px-3 py-2 text-left">{t('pakbon_batch')}</th>
-                  <th className="px-3 py-2 text-left">{t('pakbon_packaging')}</th>
-                  <th className="px-3 py-2 text-left">{t('pakbon_tht')}</th>
-                  <th className="px-3 py-2 text-right">{t('pakbon_qty')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {picks.map((p: any) => {
-                  const avItem = (av||[]).find((a: any) => a.id === p.afvulling_id)
-                  const batch = bat.find((b: any) => b.id === p.batch_id)
-                  return (
-                    <tr key={p.id}>
-                      <td className="px-3 py-2 text-gray-700">{batch?.naam}{batch?.batch_nummer ? ` #${batch.batch_nummer}` : ''}</td>
-                      <td className="px-3 py-2 text-gray-600">{avItem?.verpakking_type}</td>
-                      <td className="px-3 py-2 text-gray-500">{avItem?.tht ? fmtD(avItem.tht) : '—'}</td>
-                      <td className="px-3 py-2 text-right font-mono">{p.aantal}×</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            </div>
-          </div>
+        <OrderLogboek auditLog={auditLog} bestellingId={selectedOrder.id} />
+
+        {/* De ene volgende stap, vast onderin; de rest staat in ⋯. */}
+        {stapKnop && (
+          <ActieBalk
+            label={stapKnop.label}
+            onClick={stapKnop.onClick}
+            v={stap === 'afronden' ? 'green' : 'primary'}
+            disabled={nietsTePickenNu}
+            title={nietsTePickenNu ? stapInfo : undefined}
+            info={stapInfo || undefined}
+          />
         )}
 
-        {/* Actieknoppen */}
-        <div className="flex flex-wrap gap-2">
-          {/* Opnieuw picken over een uitgeleverde pick heen maakte een tweede
-              uitlevering (de voorraad dubbel af). Is er al uitgeleverd, dan
-              eerst terugdraaien — daarna is het weer een concept. */}
-          {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && !nietsTePicken && !uitgeleverd && (
-            <Btn v="blue" onClick={openPickModal}>{t('order_pick')}</Btn>
-          )}
-          {terugdraaiing && (
-            <BevestigKnop v="secondary" vraag={t('order_picks_terugdraaien_vraag')} onBevestig={draaiPicksTerug}
-              disabled={!!terugdraaiing.blokkade} title={blokkadeTekst(terugdraaiing)}>
-              {t('order_picks_terugdraaien')}
-            </BevestigKnop>
-          )}
-          {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && (<>
-            {/* Gefactureerd: de regels staan vast (ze staan al op de factuur). */}
-            {!gefactureerd && (<>
-              <Btn v="secondary" onClick={() => { setVrijeRegelForm({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'}); setShowVrijeRegelModal(true) }}>
-                + {t('btn_vrije_regel')}
-              </Btn>
-              <Btn v="secondary" onClick={addVerzendkosten}><Icon n="truck" /> {t('btn_verzendkosten')}</Btn>
-            </>)}
-            {/* De pakbon mag ook vóór (of halverwege) het picken geprint worden:
-                de nog niet gepickte regels staan er dan zonder batch/THT op
-                en het document draagt een concept-markering (PakbonExport). */}
-            <Btn v="secondary" onClick={printOrderPakbon} title={!magAfronden ? t('order_print_pakbon_concept_uitleg') : ''}><Icon n="printer" /> {t('order_print_pakbon')}</Btn>
-          </>)}
-          {/* Betaald maar nog niet opgehaald of verzonden: de factuur kan nu al,
-              zodat de betaling (de uitbetaling van Mollie) eraan te koppelen is. */}
-          {kanVooraf && (
-            <Btn v="secondary" onClick={openVooraf} title={t('order_factuur_vooraf_tip')}><Icon n="receipt" /> {t('order_factuur_vooraf')}</Btn>
-          )}
-          {orderFactuur && (selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd' || selectedOrder.status === 'gepickt') && (<>
-            <Btn v="secondary" onClick={printOrderFactuur}><Icon n="printer" /> {t('order_print_factuur')}</Btn>
-            <Btn v="secondary" onClick={mailOrderFactuur} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-              {mailGenerating ? t('mail_generating_pdf') : '✉ ' + t('order_mail_factuur')}
-            </Btn>
-          </>)}
-          {magAfronden && (<>
-            <Btn v="secondary" onClick={mailOrderPakbon} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-              {mailGenerating ? t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}
-            </Btn>
-            <Btn v="secondary" onClick={markVerzonden} title={t('tooltip_logistical_status')}><Icon n="package" /> {t('order_mark_shipped')}</Btn>
-            <Btn v="green" onClick={openAfronden}>{t('order_complete')}</Btn>
-          </>)}
-          {selectedOrder.status === 'verzonden' && (
-            <Btn v="green" onClick={openAfronden}>{t('order_complete')}</Btn>
-          )}
-          {(selectedOrder.status === 'afgerond' || selectedOrder.status === 'verzonden') && (<>
-            <Btn v="secondary" onClick={printOrderPakbon}><Icon n="printer" /> {t('order_print_pakbon')}</Btn>
-            {/* Een verzonden order heeft pas een factuur als hij vooraf gemaakt is. */}
-            {orderFactuur && (
-              <Btn v="secondary" onClick={printOrderFactuur}><Icon n="printer" /> {t('order_print_factuur')}</Btn>
-            )}
-            <Btn v="secondary" onClick={mailOrderPakbon} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-              {mailGenerating ? t('mail_generating_pdf') : '✉ ' + t('order_mail_pakbon')}
-            </Btn>
-            {orderFactuur && (
-              <Btn v="secondary" onClick={mailOrderFactuur} disabled={!smtpCreds?.enabled || mailGenerating} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-                {mailGenerating ? t('mail_generating_pdf') : '✉ ' + t('order_mail_factuur')}
-              </Btn>
-            )}
-            {selectedOrder.wc_levering !== 'afhalen' && (
-              <Btn v="secondary" onClick={() => mailOrderVerzending()} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-                <Icon n="package" /> {t('order_mail_verzending')}
-              </Btn>
-            )}
-          </>)}
-          {(selectedOrder.status === 'nieuw' || selectedOrder.status === 'bevestigd') && (
-            <Btn v="secondary" onClick={mailOrderBevestiging} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-              ✉ {selectedOrder.status === 'bevestigd' ? t('order_mail_bevestiging_resend') : t('order_mail_bevestiging')}
-            </Btn>
-          )}
-          {/* Afhaalklant niet komen opdagen: mail met de link om een nieuw
-              moment te kiezen. Alleen zolang het gekozen moment voorbij is en
-              de order nog openstaat. */}
-          {afhaalmomentVerstreken(selectedOrder) && (
-            <Btn v="secondary" onClick={mailOrderAfhaalGemist} disabled={!smtpCreds?.enabled} title={!smtpCreds?.enabled ? t('mail_no_smtp') : ''}>
-              <Icon n="store" /> {t('order_mail_afhaal_gemist')}
-            </Btn>
-          )}
-          {selectedOrder.status !== 'afgerond' && selectedOrder.status !== 'geannuleerd' && (
-            <Btn v="danger" onClick={() => setShowAnnuleerModal(true)}>{t('order_cancel')}</Btn>
-          )}
-        </div>
-
-        {/* Logboekje — chronologisch overzicht van wat er met deze order gebeurd is.
-            Leest direct uit de globale auditLog, gefilterd op entiteit/id. */}
-        {(() => {
-          const entries = (auditLog || [])
-            .filter((e: any) => e.entiteit === 'Bestelling' && e.entiteit_id === selectedOrder.id)
-            .sort((a: any, b: any) => (b.timestamp || '').localeCompare(a.timestamp || ''))
-          if (entries.length === 0) return null
-          return (
-            <div className="bg-white rounded-xl shadow-card mt-4 overflow-hidden">
-              <SectionHeader title={t('orders_logboek')} info={entries.length} />
-              <ol className="divide-y divide-gray-100">
-                {entries.map((e: any) => {
-                  const ts = e.timestamp ? new Date(e.timestamp) : null
-                  const tsLabel = ts ? ts.toLocaleString('nl-NL', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : ''
-                  const dot =
-                    e.actie === 'aangemaakt' ? 'bg-blue-500'   :
-                    e.actie === 'verwijderd' ? 'bg-red-500'    :
-                    e.actie === 'ingelogd'   ? 'bg-gray-400'   :
-                                                ''
-                  return (
-                    <li key={e.id} className="px-5 py-2.5 flex items-start gap-3">
-                      <span className={`inline-block w-2 h-2 mt-1.5 rounded-full ${dot} flex-shrink-0`}
-                        style={dot ? undefined : {backgroundColor: 'var(--t-accent)'}} aria-hidden="true" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-gray-800">{e.omschrijving || t(`audit_actie_${e.actie}`, e.actie)}</div>
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {tsLabel}
-                          {e.gebruiker && <span className="ml-2">· {e.gebruiker}</span>}
-                        </div>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ol>
+        {/* Picks terugdraaien: eerst vragen (het ⋯-menu kan geen bevestiging
+            in de knop dragen). Een geblokkeerde terugdraaiing zegt waarom. */}
+        {terugdraaiVraag && terugdraaiing && (
+          <Modal title={t('order_picks_terugdraaien')} onClose={() => setTerugdraaiVraag(false)}>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                {terugdraaiing.blokkade ? blokkadeTekst(terugdraaiing) : t('order_picks_terugdraaien_vraag')}
+              </p>
+              <div className="flex justify-end gap-2">
+                <Btn v="secondary" onClick={() => setTerugdraaiVraag(false)}>{t('btn_cancel')}</Btn>
+                <Btn v="danger" disabled={!!terugdraaiing.blokkade} onClick={() => { setTerugdraaiVraag(false); draaiPicksTerug() }}>
+                  {t('order_picks_terugdraaien')}
+                </Btn>
+              </div>
             </div>
-          )
-        })()}
+          </Modal>
+        )}
 
         {mailModal && (
           <MailModal
@@ -2498,9 +2523,19 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   </>
                 )}
               </div>
+              {merchTekortMelding && (
+                <div role="alert" className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800 whitespace-pre-line">
+                  {merchTekortMelding}
+                </div>
+              )}
+              {afrondFout && (
+                <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {afrondFout}
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 <Btn v="secondary" onClick={() => setShowAfrondModal(false)} disabled={afrondBezig}>{t('btn_cancel')}</Btn>
-                <Btn v="green" onClick={rondeAf} disabled={afrondBezig}>{t('order_complete')}</Btn>
+                <Btn v="green" onClick={rondeAf} disabled={afrondBezig}>{merchTekortMelding ? t('orders_toch_afronden') : t('order_complete')}</Btn>
               </div>
             </div>
           </Modal>
@@ -2564,20 +2599,25 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 const {vrij: vrijRegel, agp: agpRegel} = zonderAgp ? vrijEnAgp(allAfvullingen, selectedOrder.id) : {vrij: 0, agp: 0}
                 const uitslaanNodig = zonderAgp ? uitTeSlaan(resterend, Math.max(0, vrijRegel - totaalGepickt), agpRegel) : 0
                 const alleenInAgp = zonderAgp && afvullingen.length === 0 && agpRegel > 0
+                const levRegel = leveringPerRegel.get(r.id) || null
 
                 return (
                   <div key={r.id} className="border rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-gray-800 flex items-center gap-1.5">
+                    {/* Naam en tellers mogen onder elkaar vallen; een SKU of
+                        een teller breekt nooit midden in een woord. */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-2">
+                      <span className="min-w-0 font-semibold text-gray-800 flex items-center gap-1.5">
                         <BierKleur ebc={ebcVoorRegel(r)} s="sm" />
-                        {r.bier_naam} – {r.verpakking_type}{r.sku && <span className="ml-1 font-mono text-xs font-normal text-gray-400">[{r.sku}]</span>}
+                        <span className="min-w-0">
+                          {r.bier_naam} – {r.verpakking_type}{r.sku && <span className="ml-1 font-mono text-xs font-normal text-gray-400 whitespace-nowrap">[{r.sku}]</span>}
+                        </span>
                       </span>
-                      <div className="flex gap-3 text-xs">
-                        <span className="text-gray-500">{t('picking_needed')}: <strong>{r.aantal}×</strong></span>
-                        <span className={totaalGepickt >= r.aantal ? 'text-green-600 font-semibold' : 'text-orange-500 font-semibold'}>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                        <span className="text-gray-500 whitespace-nowrap">{t('picking_needed')}: <strong>{r.aantal}×</strong></span>
+                        <span className={`whitespace-nowrap ${totaalGepickt >= r.aantal ? 'text-green-600 font-semibold' : 'text-orange-500 font-semibold'}`}>
                           {t('picking_picked')}: {totaalGepickt}×
                         </span>
-                        {resterend > 0 && <span className="text-red-500">{t('picking_remaining')}: {resterend}×</span>}
+                        {resterend > 0 && <span className="text-red-500 whitespace-nowrap">{t('picking_remaining')}: {resterend}×</span>}
                       </div>
                     </div>
 
@@ -2592,6 +2632,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         ? beschikbaarBuitenAgpVoorAfvulling(avItem||{}, selectedOrder.id)
                         : beschikbaarVoorAfvulling(avItem||{}, selectedOrder.id)) + Number(dp.aantal||0)
                       const locLabel = avItem ? voorraadPerLocLabel(avItem) : ''
+                      const herkomst = lotEnBatch(avItem)
                       const perLoc = avItem ? beschikbaarPerLocatieVoorAfvulling(avItem, selectedOrder.id) : {}
                       const locOpties = (locaties||[])
                         .filter((l: any) => (perLoc[l.id] || 0) + (dp.bron_locatie_id === l.id ? Number(dp.aantal||0) : 0) > 0)
@@ -2599,13 +2640,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         .filter((l: any) => !zonderAgp || !l.is_agp)
                       return (
                         <div key={idx} className="mt-1 text-sm">
+                          {/* Telefoon: de herkomst over de hele breedte, de
+                              locatiekeuze en het aantal eronder. */}
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="flex-1 min-w-0 text-gray-600">
+                            <span className="w-full sm:w-auto sm:flex-1 min-w-0 text-gray-600">
                               <span className="font-medium text-gray-800">{avArt?.biernaam || avBatch?.naam}</span>
-                              {avArt?.artikelnummer && <span className="font-mono text-xs text-gray-500 ml-1">[{avArt.artikelnummer}]</span>}
+                              {avArt?.artikelnummer && <span className="font-mono text-xs text-gray-500 ml-1 whitespace-nowrap">[{avArt.artikelnummer}]</span>}
                               {' · '}{avItem?.verpakking_type}
                               {' · '}{t('lbl_tht')}: {avItem?.tht ? fmtD(avItem.tht) : '—'}
-                              {avBatch?.batch_nummer && <span className="text-xs text-gray-400"> · {t('lbl_lot')} {avBatch.batch_nummer}</span>}
+                              {/* Eigen regel: de lotcode onder "Lot" (zoals op
+                                  de verpakking), het batchnummer onder "Batch". */}
+                              {(herkomst.lot || herkomst.batch) && (
+                                <span className="block text-xs text-gray-500">
+                                  {herkomst.lot && <>{t('picking_lot')} <span className="font-mono text-gray-700">{herkomst.lot}</span></>}
+                                  {herkomst.lot && herkomst.batch && ' · '}
+                                  {herkomst.batch && <>{t('picking_batch')} {herkomst.batch}</>}
+                                </span>
+                              )}
                             </span>
                             {(locaties||[]).length > 1 && (
                               <select value={dp.bron_locatie_id ?? ''}
@@ -2638,10 +2689,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                                 })
                               }}
                               className="w-16 border border-gray-300 rounded px-1 py-0.5 text-sm text-center" />
-                            <button onClick={() => setDraftPicks(prev => {
+                            <button type="button" onClick={() => setDraftPicks(prev => {
                               const list = (prev[r.id]||[]).filter((_: any, i: number) => i !== idx)
                               return {...prev, [r.id]: list}
-                            })} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                            })} title={t('btn_delete')} aria-label={t('btn_delete')}
+                              className="text-red-400 hover:text-red-600 text-xs">✕</button>
                           </div>
                           {locLabel && <div className="text-xs text-gray-400 ml-1">{t('picking_voorraad_per_locatie')}: {locLabel}</div>}
                         </div>
@@ -2664,7 +2716,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                             [r.id]: [...(prev[r.id]||[]), {afvulling_id: avId, aantal}]
                           }))
                           e.target.value = ''
-                        }} className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm bg-white" defaultValue="">
+                        }} className="flex-1 min-w-0 w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white" defaultValue="">
                           <option value="">+ {t('picking_afvulling_toevoegen')}</option>
                           {afvullingen.map((a: any) => {
                             const avBatch = bat.find((b: any) => b.id === a.batch_id)
@@ -2675,9 +2727,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                               ? beschikbaarBuitenAgpVoorAfvulling(a, selectedOrder.id)
                               : beschikbaarVoorAfvulling(a, selectedOrder.id)
                             const locLabel = voorraadPerLocLabel(a)
+                            const herkomst = lotEnBatch(a)
                             return (
                               <option key={a.id} value={a.id}>
-                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · {t('lbl_tht')}: {a.tht ? fmtD(a.tht) : '—'}{avBatch?.batch_nummer ? ` · ${t('lbl_lot')} ${avBatch.batch_nummer}` : ''} · {t('picking_x_beschikbaar').replace('{n}', String(beschik))}{locLabel ? ` · ${locLabel}` : ''}
+                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · {t('lbl_tht')}: {a.tht ? fmtD(a.tht) : '—'}{herkomst.lot ? ` · ${t('picking_lot')} ${herkomst.lot}` : ''}{herkomst.batch ? ` · ${t('picking_batch')} ${herkomst.batch}` : ''} · {t('picking_x_beschikbaar').replace('{n}', String(beschik))}{locLabel ? ` · ${locLabel}` : ''}
                               </option>
                             )
                           })}
@@ -2696,26 +2749,29 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       </div>
                     )}
                     {resterend > 0 && afvullingen.length === 0 && !alleenInAgp && (
-                      <div className="mt-2 text-xs text-red-500">{t('err_no_stock_available').replace('{bier}', r.bier_naam).replace('{verpakking}', r.verpakking_type)}{r.sku ? ` · SKU: ${r.sku}` : ''}</div>
+                      <div className="mt-2 text-xs text-red-600">{t('err_no_stock_available').replace('{bier}', r.bier_naam).replace('{verpakking}', r.verpakking_type)}{r.sku ? ` · ${t('wc_veld_sku')}: ${r.sku}` : ''}</div>
+                    )}
+                    {/* Herkend bier zonder voorraad: wat er in de tank ligt. */}
+                    {resterend > 0 && afvullingen.length === 0 && !alleenInAgp && levRegel?.komtEraan[0] && (
+                      <KomtEraanRegel k={levRegel.komtEraan[0]} productNaam={productNaamVan(levRegel.productId) || r.bier_naam}
+                        vandaag={vandaag} />
                     )}
                     {/* Uitweg voor merch: dit artikel komt niet uit
                         de eigen voorraad, dus picken kan nooit lukken. Eén klik
                         zet de regel om naar een vrije (factuur-)regel én
-                        onthoudt het artikel voor volgende imports. */}
-                    {resterend > 0 && afvullingen.length === 0 && !alleenInAgp && gepicktVoorRegel(selectedOrder.id, r.id) === 0 && (
-                      <div className="mt-2 flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-2">
-                        <div className="flex-1 text-[11px] text-purple-800">
+                        onthoudt het artikel voor volgende imports. Alleen voor
+                        een regel die bij géén eigen bier hoort (merchVoorstel). */}
+                    {resterend > 0 && afvullingen.length === 0 && !alleenInAgp && gepicktVoorRegel(selectedOrder.id, r.id) === 0 && levRegel?.merchVoorstel && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-2">
+                        <div className="flex-1 min-w-[12rem] text-[11px] text-purple-800">
                           <div className="font-semibold">{t('picking_merch_titel')}</div>
                           <div>{t('picking_merch_uitleg')}</div>
                         </div>
-                        <button
-                          onClick={() => {
-                            if (!confirm(t('picking_merch_bevestig').replace('{artikel}', r.omschrijving || r.bier_naam))) return
-                            updateRegelType(r.id, true)
-                          }}
-                          className="shrink-0 px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold transition-colors">
+                        {/* De bevestiging zit in de knop zelf, geen los venster. */}
+                        <BevestigKnop s="sm" v="secondary" vraag={t('picking_merch_vraag')}
+                          onBevestig={() => updateRegelType(r.id, true)}>
                           {t('picking_merch_knop')}
-                        </button>
+                        </BevestigKnop>
                       </div>
                     )}
                   </div>
@@ -2723,6 +2779,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               })}
             </div>
 
+            {pickFout && (
+              <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {pickFout}
+              </div>
+            )}
             <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
               <Btn v="secondary" onClick={() => setShowPickModal(false)}>{t('btn_cancel')}</Btn>
               <Btn onClick={savePicks}>{t('picking_confirm')}</Btn>
@@ -2770,7 +2831,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
         {/* Annuleer bevestiging */}
         {showAnnuleerModal && (
-          <Modal title={t('order_cancel')} onClose={() => setShowAnnuleerModal(false)}>
+          <Modal title={t('order_cancel')} onClose={() => { if (!annuleerBezig) setShowAnnuleerModal(false) }}>
             <div className="space-y-4">
               {/* Wat er met het bier gebeurt: gepickt = terug naar de voorraad;
                   verzonden (of niet automatisch terug te draaien) = blijft
@@ -2790,6 +2851,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     .replace('{nummer}', crediteren.factuurnummer || '')
                     .replace('{bedrag}', fmt(Number(crediteren.bruto || 0)))}
                 </p>
+              )}
+              {annuleerFout && (
+                <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{annuleerFout}</div>
               )}
               <div className="flex justify-end gap-2">
                 <Btn v="secondary" onClick={() => setShowAnnuleerModal(false)} disabled={annuleerBezig}>{t('btn_cancel')}</Btn>
@@ -2816,8 +2880,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">{t('orders_total')}</span>
-                <span className="font-semibold">{fmt(totaal)}</span>
+                <span className="font-semibold">{fmt(totalen.bruto)}</span>
               </div>
+              {voorafFout && (
+                <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{voorafFout}</div>
+              )}
               <div className="flex justify-end gap-2">
                 <Btn v="secondary" onClick={() => setShowVoorafModal(false)} disabled={voorafBezig}>{t('btn_cancel')}</Btn>
                 <Btn onClick={maakFactuurVooraf} disabled={voorafBezig}>{t('order_factuur_vooraf_bevestig')}</Btn>
@@ -2848,6 +2915,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   <Inp type="number" value={vrijeRegelForm.btw_pct} onChange={(v: string) => setVrijeRegelForm(f => ({...f, btw_pct: v}))} placeholder="21" />
                 </div>
               </div>
+              {vrijeRegelFout && (
+                <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{vrijeRegelFout}</div>
+              )}
               <div className="flex justify-end gap-2 pt-1 border-t">
                 <Btn v="secondary" onClick={() => setShowVrijeRegelModal(false)}>{t('btn_cancel')}</Btn>
                 <Btn onClick={addVrijeRegel}>{t('btn_add')}</Btn>
@@ -2886,22 +2956,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   // --- LIJST VIEW ---
+  // Op een telefoon één rij: zoeken en ⋯ (nieuw, importeren, picklijst); op
+  // een bureau de knoppen naast de titel. Daaronder de statuschips.
+  const lijstActies: RowActie[] = [
+    {id: 'nieuw', label: t('orders_new'), onClick: openManualOrder},
+    ...(wcCreds?.enabled ? [{id: 'wc_import', label: wcImporting ? t('wc_importing') : t('orders_import_wc'), disabled: wcImporting, onClick: importWcOrders}] : []),
+    ...(omTePickenIds.size > 0 ? [{id: 'picklijst', label: `${t('order_print_picklijst')} (${omTePickenIds.size})`, title: t('order_print_picklijst_uitleg'), onClick: printVerzamelPicklijst}] : []),
+  ]
   return (
     <div>
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="flex items-center gap-1 flex-wrap">
-          <h2 className="text-xl font-bold text-gray-800 mr-4">{t('orders_title')}</h2>
-          {(['alle','te_picken','nieuw','bevestigd','gepickt','verzonden','afgerond','geannuleerd'] as StatusFilter[]).map(s => {
-            const count = s === 'alle' ? 0 : s === 'te_picken' ? omTePickenIds.size : (bestellingen||[]).filter(b => b.status === s).length
-            return (
-              <button key={s} onClick={() => setStatusFilter(s)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${statusFilter===s ? 't-tab font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                {t(`orders_filter_${s}`, s)}
-                {count > 0 && <span className="ml-1 opacity-70">({count})</span>}
-              </button>
-            )
-          })}
-        </div>
+      <div className="hidden md:flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="text-xl font-bold text-gray-800">{t('orders_title')}</h2>
         <div className="flex items-center gap-2 flex-wrap">
           {wcCreds?.enabled && (
             <button onClick={importWcOrders} disabled={wcImporting}
@@ -2909,7 +2974,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               {wcImporting ? t('wc_importing') : t('orders_import_wc')}
             </button>
           )}
-          {wcMsg && <span className={`text-xs font-medium ${wcMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcMsg}</span>}
           {omTePickenIds.size > 0 && (
             <Btn v="secondary" onClick={printVerzamelPicklijst} title={t('order_print_picklijst_uitleg')}>
               <Icon n="printer" /> {t('order_print_picklijst')} ({omTePickenIds.size})
@@ -2918,159 +2982,70 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           <Btn onClick={openManualOrder}>{t('orders_new')}</Btn>
         </div>
       </div>
+      <div className="flex items-center gap-2 mb-2">
+        <div className="flex-1 min-w-0 md:max-w-md">
+          <SearchInput value={zoek} onChange={setZoek} placeholder={t('orders_zoek_ph')} />
+        </div>
+        <RowActions acties={lijstActies} v="kaart" cls="md:hidden" />
+      </div>
+      <div className="mb-3">
+        <StatusChips waarde={statusFilter} tellingen={tellingen} onKies={setStatusFilter} />
+      </div>
+      {wcMsg && (
+        <div role="status" className={`mb-3 text-sm font-medium ${wcMsg.startsWith('✓') ? 'text-green-700' : 'text-red-600'}`}>{wcMsg}</div>
+      )}
+      <PaginaMelding tekst={melding} onSluit={() => setMelding('')} cls="mb-3" />
+
+      {filtered.length === 0 && (
+        zoek.trim() ? (
+          <LegeStaat icoon="search" titel={t('orders_zoek_geen')} tekst={t('orders_zoek_geen_tekst').replace('{zoek}', zoek.trim())}>
+            <Btn v="secondary" onClick={() => setZoek('')}>{t('orders_zoek_wissen')}</Btn>
+          </LegeStaat>
+        ) : statusFilter !== 'alle' ? (
+          <LegeStaat titel={t('msg_no_orders_status').replace('{status}', t(`orders_filter_${statusFilter}`, statusFilter))}>
+            {tellingen.alle > 0 && <Btn v="secondary" onClick={() => setStatusFilter('alle')}>{t('orders_filter_alle_tonen')}</Btn>}
+          </LegeStaat>
+        ) : (
+          <LegeStaat titel={t('orders_leeg_titel')}>
+            <Btn onClick={openManualOrder}>{t('orders_new')}</Btn>
+            {wcCreds?.enabled && (
+              <button onClick={importWcOrders} disabled={wcImporting}
+                className="wc-btn px-3 py-1.5 min-h-tap sm:min-h-0 rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
+                {wcImporting ? t('wc_importing') : t('orders_import_wc')}
+              </button>
+            )}
+          </LegeStaat>
+        )
+      )}
+
+      <div className="space-y-2.5">
+        {filtered.map((b: any) => {
+          const gepickt = picksVoorOrder(b.id).reduce((s: number, p: any) => s + (Number(p.aantal) || 0), 0)
+          // Alleen voor een order die nog gepickt wordt: kan hij geleverd worden?
+          const lev = omTePickenIds.has(b.id) ? leverLabel(bestellingLevering(b, verkoopCtx)) : null
+          return (
+            <BestellingKaart key={b.id} b={b} totaal={totalenVan(b).bruto} klantType={effectiveKlantType(b)}
+              gepickt={gepickt} levering={lev} onOpen={() => openOrder(b.id)} />
+          )
+        })}
+      </div>
 
       {/* Merch-artikelen: wat de brouwerij verkoopt maar niet zelf levert.
           Staat hier omdat de lijst tijdens het orderwerk ontstaat — elke
           "markeer als merch" op een orderregel komt hierin. */}
       {(wcCreds?.enabled || (merchArtikelen||[]).length > 0) && (
-        <div className="bg-white rounded-xl shadow-card mb-4 overflow-hidden">
-          <SectionHeader
-            title={t('merch_titel')}
-            open={merchOpen}
-            onToggle={() => setMerchOpen(o => !o)}
-            info={(() => {
-              const waarde = merchVoorraadWaarde(merchArtikelen)
-              return waarde > 0
-                ? `${(merchArtikelen||[]).length} · ${t('merch_voorraadwaarde')} ${fmt(waarde)}`
-                : `${(merchArtikelen||[]).length}`
-            })()}
-          />
-          {merchOpen && (
-            <div className="p-4 space-y-3">
-              <p className="text-xs text-gray-500">{t('merch_uitleg')}</p>
-              {(merchArtikelen||[]).length === 0
-                ? <p className="text-sm text-gray-400 italic">{t('merch_leeg')}</p>
-                : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="text-xs text-gray-500 bg-gray-50">
-                        <tr>
-                          <th className="px-3 py-2 text-left">{t('merch_naam')}</th>
-                          <th className="px-3 py-2 text-center" title={t('merch_voorraad_volgen_tip')}>{t('merch_voorraad_volgen')}</th>
-                          <th className="px-3 py-2 text-right">{t('merch_voorraad')}</th>
-                          <th className="px-3 py-2 text-right">{t('merch_inkoopprijs')}</th>
-                          <th className="px-3 py-2 text-right">{t('merch_verkoopprijs')}</th>
-                          <th className="px-3 py-2 text-right">{t('manual_order_btw')}</th>
-                          {wcCreds?.enabled && <th className="px-3 py-2 text-center" title={t('merch_wc_push_tip')}>WC</th>}
-                          <th className="px-3 py-2 text-right"></th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {(merchArtikelen||[]).map((m: MerchArtikel) => {
-                          const volgt = volgtVoorraad(m)
-                          const mutaties = merchLogVoorArtikel(merchVoorraadLog, m.id)
-                          return (
-                            <React.Fragment key={m.id}>
-                              <tr className={volgt && merchVoorraad(m) <= 0 ? 'bg-red-50' : ''}>
-                                <td className="px-3 py-2">
-                                  <span className="font-medium">{m.naam || m.sku}</span>
-                                  {m.sku && m.naam && <span className="ml-1 font-mono text-xs text-gray-400">[{m.sku}]</span>}
-                                </td>
-                                <td className="px-3 py-2 text-center">
-                                  <input type="checkbox" checked={volgt}
-                                    onChange={e => wijzigMerch(m.id, {voorraad_volgen: e.target.checked})}
-                                    className="w-4 h-4 rounded border-gray-300 t-checkbox" />
-                                </td>
-                                <td className="px-3 py-2 text-right">
-                                  {volgt
-                                    ? <span className={`font-mono font-semibold ${merchVoorraad(m) <= 0 ? 'text-red-600' : 'text-gray-700'}`}>{merchVoorraad(m)}×</span>
-                                    : <span className="text-xs text-gray-400">{t('merch_geen_voorraad')}</span>}
-                                </td>
-                                <td className="px-3 py-2 text-right">
-                                  {volgt ? <MerchGetal waarde={m.inkoopprijs} onSave={(v) => wijzigMerch(m.id, {inkoopprijs: v})} /> : <span className="text-gray-300">—</span>}
-                                </td>
-                                <td className="px-3 py-2 text-right">
-                                  <MerchGetal waarde={m.verkoopprijs} onSave={(v) => wijzigMerch(m.id, {verkoopprijs: v})} />
-                                </td>
-                                <td className="px-3 py-2 text-right">
-                                  <select value={String(m.btw_pct ?? stdBtw)}
-                                    onChange={e => wijzigMerch(m.id, {btw_pct: Number(e.target.value)})}
-                                    className="border border-gray-200 rounded px-1.5 py-1 text-sm bg-white t-input outline-none">
-                                    {btwOpts.map((o: any) => <option key={o.v} value={o.v}>{o.l}</option>)}
-                                  </select>
-                                </td>
-                                {wcCreds?.enabled && (
-                                  <td className="px-3 py-2 text-center">
-                                    <input type="checkbox" checked={volgt && m.wc_push !== false} disabled={!volgt}
-                                      title={t('merch_wc_push_tip')}
-                                      onChange={e => wijzigMerch(m.id, {wc_push: e.target.checked})}
-                                      className="w-4 h-4 rounded border-gray-300 t-checkbox disabled:opacity-30" />
-                                  </td>
-                                )}
-                                <td className="px-3 py-2 text-right whitespace-nowrap">
-                                  {wcCreds?.enabled && (m.sku || m.naam) && (
-                                    <button onClick={() => setWcMerchModal(m)} title={t('wc_btn_kaart')}
-                                      className="mr-1.5 text-xs font-semibold align-middle"
-                                      style={{color: '#7f54b3'}}>WC</button>
-                                  )}
-                                  {volgt && (
-                                    <button onClick={() => openMerchMutatie(m)}
-                                      title={t('merch_mutatie_titel')}
-                                      className="px-2 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold transition-colors">
-                                      {t('merch_mutatie_knop')}
-                                    </button>
-                                  )}
-                                  {mutaties.length > 0 && (
-                                    <button onClick={() => setMerchLogOpen(v => v === m.id ? null : m.id)}
-                                      title={t('merch_log_titel')}
-                                      className="ml-1.5 text-gray-300 hover:text-gray-600 transition-colors">☰</button>
-                                  )}
-                                  <button
-                                    onClick={() => {
-                                      if (!confirm(t('merch_verwijder_bevestig').replace('{artikel}', merchLabel(m)))) return
-                                      setMerchArtikelen((prev: MerchArtikel[]) => verwijderMerch(prev || [], m.id))
-                                    }}
-                                    title={t('btn_delete')}
-                                    className="ml-1.5 text-gray-300 hover:text-red-500 transition-colors text-xs">✕</button>
-                                </td>
-                              </tr>
-                              {merchLogOpen === m.id && (
-                                <tr className="bg-gray-50">
-                                  <td colSpan={wcCreds?.enabled ? 8 : 7} className="px-3 py-2">
-                                    <div className="text-xs font-semibold text-gray-500 mb-1">{t('merch_log_titel')}</div>
-                                    <div className="space-y-0.5 max-h-48 overflow-y-auto">
-                                      {mutaties.map((r: MerchMutatie) => (
-                                        <div key={r.id} className="flex items-center gap-2 text-xs text-gray-600">
-                                          <span className="text-gray-400 w-20 flex-shrink-0">{fmtD(r.datum)}</span>
-                                          <span className={`font-mono font-semibold w-12 text-right ${r.aantal < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                            {r.aantal > 0 ? '+' : ''}{r.aantal}
-                                          </span>
-                                          <span className="w-24 flex-shrink-0">{t(`merch_reden_${r.reden}`)}</span>
-                                          <span className="text-gray-400 flex-1 truncate">{r.referentie || r.omschrijving || ''}</span>
-                                          <span className="text-gray-400 font-mono">→ {r.stand}×</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </React.Fragment>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              <div className="flex flex-wrap items-end gap-2 pt-1 border-t border-gray-100">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('merch_sku')}</label>
-                  <Inp value={merchForm.sku} onChange={(v: string) => setMerchForm(f => ({...f, sku: v}))} placeholder={t('ph_merch_sku')} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">{t('merch_naam')}</label>
-                  <Inp value={merchForm.naam} onChange={(v: string) => setMerchForm(f => ({...f, naam: v}))} placeholder={t('ph_merch_naam')} />
-                </div>
-                <Btn v="secondary" onClick={() => {
-                  const sku = merchForm.sku.trim()
-                  const naam = merchForm.naam.trim()
-                  if (!sku && !naam) { alert(t('err_merch_leeg')); return }
-                  setMerchArtikelen((prev: MerchArtikel[]) => onthoudMerch(prev || [], {sku, naam, datum: tod()}))
-                  setMerchForm({sku: '', naam: ''})
-                }}>{t('btn_add')}</Btn>
-              </div>
-            </div>
-          )}
-        </div>
+        <MerchBeheer
+          merchArtikelen={(merchArtikelen || []).filter((m: MerchArtikel) => undo.actie?.id !== `${MERCH_UNDO}${m?.id}`)}
+          merchVoorraadLog={merchVoorraadLog || []}
+          wcAan={!!wcCreds?.enabled}
+          btwOpts={btwOpts}
+          stdBtw={stdBtw}
+          onWijzig={wijzigMerch}
+          onMutatie={openMerchMutatie}
+          onWc={(m: MerchArtikel) => setWcMerchModal(m)}
+          onVoegToe={({sku, naam}) => setMerchArtikelen((prev: MerchArtikel[]) => onthoudMerch(prev || [], {sku, naam, datum: tod()}))}
+          onVerwijder={verwijderMerchArtikel}
+        />
       )}
 
       {/* Merch heeft geen bier erboven: alle themavelden horen hier bij het
@@ -3132,6 +3107,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 <Inp value={merchMutatieForm.notitie}
                   onChange={(v: string) => setMerchMutatieForm(f => ({...f, notitie: v}))} placeholder={t('ph_merch_notitie')} />
               </div>
+              {merchMutatieFout && (
+                <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{merchMutatieFout}</div>
+              )}
               <div className="flex justify-end gap-2 pt-1 border-t">
                 <Btn v="secondary" onClick={() => setShowMerchMutatie(false)}>{t('btn_cancel')}</Btn>
                 <Btn onClick={bewaarMerchMutatie}>{t('btn_save')}</Btn>
@@ -3140,56 +3118,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
           </Modal>
         )
       })()}
-
-      {filtered.length === 0 && (
-        <div className="bg-white rounded-xl shadow-card p-8 text-center text-gray-400">
-          {statusFilter === 'alle' ? t('msg_no_orders') : t('msg_no_orders_status').replace('{status}', t(`orders_filter_${statusFilter}`, statusFilter))}
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {filtered.map((b: any) => {
-          const totaal = orderTotaal(b)
-          const picks = picksVoorOrder(b.id)
-          const orderNr = orderNummer(b)
-          const kType = effectiveKlantType(b)
-          return (
-            <div key={b.id} onClick={() => { setSelectedId(b.id); setView('detail') }}
-              className="bg-white rounded-xl shadow-card p-4 cursor-pointer hover:shadow-md transition-shadow flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="font-mono text-sm font-semibold text-gray-700">{orderNr}</span>
-                <div>
-                  <div className="font-medium text-gray-800 flex items-center gap-2">
-                    <span>{b.klant_naam}</span>
-                    {kType && (
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${kType === 'zakelijk' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                        {t(kType === 'zakelijk' ? 'lbl_zakelijk' : 'lbl_prive')}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-500">{fmtD(b.datum)} · {(b.regels||[]).length === 1 ? t('lbl_n_regels_1') : t('lbl_n_regels_n').replace('{n}', String((b.regels||[]).length))}</div>
-                </div>
-              </div>
-              <div className="flex items-center flex-wrap gap-3">
-                {picks.length > 0 && <span className="text-xs text-gray-400">{t('msg_stuks_gepickt').replace('{n}', String(picks.reduce((s: number, p: any) => s+p.aantal,0)))}</span>}
-                <BetaaldBadge b={b} />
-                {/* Vooraf gefactureerd, nog niet afgerond (niet opgehaald of verzonden). */}
-                {b.factuur_id != null && b.status !== 'afgerond' && b.status !== 'geannuleerd' && (
-                  <span title={t('orders_gefactureerd_tip').replace('{nummer}', b.factuur_nummer || '')}
-                    className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
-                    <Icon n="receipt" /> {t('orders_gefactureerd')}
-                  </span>
-                )}
-                <LeveringBadge b={b} />
-                <span className="font-semibold text-gray-800">{fmt(totaal)}</span>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[b.status]||'bg-gray-100'}`}>
-                  {t(`orders_status_${b.status}`, b.status)}
-                </span>
-              </div>
-            </div>
-          )
-        })}
-      </div>
 
       {/* Handmatige order modal */}
       {showManualModal && (

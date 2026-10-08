@@ -10,6 +10,10 @@ interface SectionHeaderProps {
       onderwerp van de pagina zelf (de productkaart, het formulier) — niet voor
       elke sectie: gestapelde gekleurde balken maken alles even belangrijk. */
   solid?: boolean
+  /** De titel loopt door over meerdere regels in plaats van af te kappen. Voor
+      een naam die je helemaal moet kunnen lezen (het product van de pagina):
+      naast de knoppen bleef daar op een telefoon anders "Ha" van over. */
+  wrap?: boolean
   cls?: string
 }
 
@@ -20,6 +24,7 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({
   info,
   rounded = 'top',
   solid = false,
+  wrap = false,
   cls = '',
 }) => {
   const round = rounded === 'full' ? 'rounded-xl' : 'rounded-t-xl'
@@ -43,7 +48,7 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({
           <path fillRule="evenodd" d="M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 10 8.22 6.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
         </svg>
       )}
-      <span className="truncate">{title}</span>
+      <span className={wrap ? 'min-w-0 break-words' : 'truncate'}>{title}</span>
     </span>
   )
   return (

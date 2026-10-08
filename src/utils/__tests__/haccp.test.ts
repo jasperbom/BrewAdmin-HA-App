@@ -77,6 +77,14 @@ describe('risicoclassificatie', () => {
     expect(r.klasse).toBe('standaard')
   })
 
+  it('volgt met de lots erbij ook het lot van een regel (zelfde route als de allergenen)', () => {
+    const regels = [regel(1, 1), regel(1, 3, {ingredient_id: null, ingredient_naam: 'Strawberries', lot_id: 7})]
+    expect(risicoVoorBatch({id: 1}, regels, ingredienten).klasse).toBe('standaard')
+    const r = risicoVoorBatch({id: 1}, regels, ingredienten, null, [{id: 7, ingredient_id: 3}])
+    expect(r.klasse).toBe('verhoogd')
+    expect(r.ongekookt).toEqual(['Strawberries'])
+  })
+
   it('ziet vers fruit ook als de regel alleen op naam gekoppeld is', () => {
     const rij = regel(1, 3, {ingredient_id: null, ingredient_naam: 'verse aardbei'})
     const r = risicoVoorBatch({id: 1}, [regel(1, 1), rij], ingredienten)
@@ -504,6 +512,16 @@ describe('allergenen (CCP 3)', () => {
     const a = allergenenUitBatch(1,
       [regel(1, 1), regel(1, 5, {ingredient_id: null, ingredient_naam: 'lactose'})], ingredienten)
     expect(a).toEqual(['gerst', 'gluten', 'lactose'])
+  })
+
+  // Brewfather noemt hem "Wheat Malt", de catalogus "Tarwemout": zonder id
+  // en zonder naam-match hangt de regel alleen via het afgeboekte lot aan het
+  // ingrediënt. Met de lots erbij ziet CCP 3 de tarwe.
+  it('volgt het lot van een regel als je de lots meegeeft', () => {
+    const regels = [regel(1, 1), regel(1, 6, {ingredient_id: null, ingredient_naam: 'Wheat Malt', lot_id: 40})]
+    const lots = [{id: 40, ingredient_id: 6}]
+    expect(allergenenUitBatch(1, regels, ingredienten)).toEqual(['gerst', 'gluten'])
+    expect(allergenenUitBatch(1, regels, ingredienten, lots)).toEqual(['gerst', 'gluten', 'tarwe'])
   })
 
   it('laat een gezet id winnen van een afwijkende naam en negeert een onbekende naam', () => {

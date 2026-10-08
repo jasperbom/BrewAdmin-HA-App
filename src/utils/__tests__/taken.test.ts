@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   faseUitInhoud, schoonTakenOp, DUBBELE_BROUWDAG_CHECK_KEYS,
-  telOpenstaandeBatchTaken, openstaandeBatchTaken, isSchoonmaakTaakAchterstallig, telAchterstalligeSchoonmaakTaken,
+  telOpenstaandeBatchTaken, telBatchesMetOpenTaken, openstaandeBatchTaken, isSchoonmaakTaakAchterstallig, telAchterstalligeSchoonmaakTaken,
   deactiveerStandaardMetingen, STANDAARD_METING_LABELS,
 } from '../taken'
 
@@ -167,6 +167,18 @@ describe('telOpenstaandeBatchTaken', () => {
     expect(r.map(x => x.batch.id)).toEqual([1])
     expect(r[0].taken.map((it: any) => it.id)).toEqual([2, 1])
     expect(telOpenstaandeBatchTaken(batches, items, groepen)).toBe(2)
+  })
+
+  it('telBatchesMetOpenTaken telt batches, geen vinkjes (de badge en de attentiepost)', () => {
+    const batches = [
+      { id: 1, status: 'Brouwen', taken_checks: {} },          // twee open vinkjes
+      { id: 2, status: 'Vergisten', taken_checks: {} },        // één open vinkje
+      { id: 3, status: 'Brouwen', taken_checks: { 1: true, 2: true } }, // alles af
+      { id: 4, status: 'Gesloten', taken_checks: {} },
+    ]
+    expect(telOpenstaandeBatchTaken(batches, takenItems, takenGroepen)).toBe(3)
+    expect(telBatchesMetOpenTaken(batches, takenItems, takenGroepen)).toBe(2)
+    expect(telBatchesMetOpenTaken([], [], [])).toBe(0)
   })
 })
 

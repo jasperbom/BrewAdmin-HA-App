@@ -1,6 +1,7 @@
 import React from 'react'
 import { t } from '../../i18n'
 import { AttentiePost } from '../../utils/attentie'
+import { attentieLabel } from '../../utils/attentieTekst'
 
 interface AttentieBadgeProps {
   /** Titel boven de uitklap — de naam van de werkruimte. */
@@ -29,7 +30,7 @@ const AttentieBadge: React.FC<AttentieBadgeProps> = ({
   const totaal = posten.reduce((s, p) => s + p.aantal, 0)
   if (totaal <= 0) return null
 
-  const samenvatting = posten.map(p => `${p.aantal}× ${t(p.sleutel)}`).join(' · ')
+  const samenvatting = posten.map(p => `${p.aantal}× ${attentieLabel(p, t)}`).join(' · ')
   const rect = knopRef.current?.getBoundingClientRect()
 
   return (
@@ -62,7 +63,7 @@ const AttentieBadge: React.FC<AttentieBadgeProps> = ({
                   onClick={() => { onSluit(); onGaNaar(p) }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors border-b border-white/5 last:border-b-0">
                   <span className="bg-orange-700 text-white text-xs rounded-full px-1 min-w-[1.15rem] h-[1.15rem] flex items-center justify-center leading-none font-bold flex-shrink-0">{p.aantal}</span>
-                  <span className="flex-1">{t(p.sleutel)}</span>
+                  <span className="flex-1">{attentieLabel(p, t)}</span>
                   <span className="text-white/40 text-xs">›</span>
                 </button>
               ))}

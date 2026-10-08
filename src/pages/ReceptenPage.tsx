@@ -1,119 +1,290 @@
 import React from 'react'
 import { t } from '../i18n'
-import { fmtD } from '../utils/format'
-import { bfGetRecipesWithVersions } from '../utils/api'
+import { fmtD, tod } from '../utils/format'
+import { bfGetRecipesWithVersions, _fetchedKeys } from '../utils/api'
 import Btn from '../components/ui/Btn'
-import SearchInput from '../components/ui/SearchInput'
-import ReceptKostprijs from '../components/ReceptKostprijs'
+import LegeStaat from '../components/ui/LegeStaat'
+import { useUndo } from '../components/ui/UndoBar'
+import type { RowActie } from '../components/ui/RowActions'
+import type { ReceptSectie } from '../components/recept/IngredientSectie'
+import ReceptLijst, { type ReceptRijContext } from '../components/recept/ReceptLijst'
+import ReceptDetail from '../components/recept/ReceptDetail'
+import ProductKiezer from '../components/recept/ProductKiezer'
 import { logAudit, logAuditVeld } from '../utils/audit'
-import { ingredientenVoorType } from '../utils/ingTypes'
-import { receptRegelVoorraad } from '../utils/ingredientVoorraad'
 import { voegReceptSyncSamen, pasReceptRegelAan, wisLokaal } from '../utils/receptSync'
-import Icon from '../components/ui/Icon'
+import { receptGebruik, gebruikIndex, tellingen, type ReceptGebruik } from '../utils/receptGebruik'
+import {
+  segmentVan, zichtbaarheidUndoId, zichtbaarheidUitUndoId, pasZichtbaarheidToe, koppelReceptAanProduct,
+  laatsteReceptSync, RECEPT_SYNC_AUDIT,
+  type ReceptSegment, type ReceptZichtbaarheid,
+} from '../utils/receptLijst'
+import { receptVoorraadOordeel, type ReceptVoorraadOordeel } from '../utils/ingredientVoorraad'
+import type { VerkoopCtx } from '../utils/verkoopOverzicht'
+import type { GaNaar, GaNaarOpties } from '../utils/route'
+import type { NieuweBatchVerzoek } from '../utils/nieuweBatch'
 
-function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopFacturen=[], verpakkingen=[], onderdelen=[], accijnsInst=null, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[], setAuditLog=()=>{}}: any) {
-  const {useState} = React;
-  const [sel, setSel]         = useState(null);
-  const [syncing, setSyncing] = useState(false);
-  const [msg, setMsg]         = useState('');
-  const [zoek, setZoek]       = useState('');
-  const [verborgenOpen, setVerborgenOpen] = useState(false);
-  const [gearchiveerdTagsOpen, setGearchiveerdTagsOpen] = useState(false);
-  const [versiesOpen, setVersiesOpen] = useState<Record<string, boolean>>({});
-  const toggleGroep = (tag: any) => setGeslotenGroepen((prev: any) =>
-    prev.includes(tag) ? prev.filter((t: any)=>t!==tag) : [...prev, tag]
-  );
-  const toggleTagArchief = (tag: any, e: any) => {
-    e.stopPropagation();
-    setGearchiveerdeTags((prev: any) => prev.includes(tag) ? prev.filter((t: any)=>t!==tag) : [...prev, tag]);
-  };
-  const moveTag = (tag: any, dir: any, allTags: any, e: any) => {
-    e.stopPropagation();
-    setTagVolgorde(() => {
-      const ordered = [...new Set([...tagVolgorde, ...allTags])].filter((t: any) => allTags.includes(t));
-      const idx = ordered.indexOf(tag);
-      if (idx === -1) return tagVolgorde;
-      const next = [...ordered];
-      if (dir === 'up' && idx > 0)              [next[idx-1], next[idx]] = [next[idx], next[idx-1]];
-      else if (dir === 'down' && idx < next.length-1) [next[idx+1], next[idx]] = [next[idx], next[idx+1]];
-      return next;
-    });
-  };
+// Recepten "in gebruik" (docs/OPZET-PRODUCTIE-VERKOOP.md, hoofdstuk 6).
+//
+// Links de lijst — Segment In gebruik · Archief · Verborgen, zoeken over alle
+// drie — rechts (telefoon: een eigen scherm) het detail met de
+// verbindingsblokken naar product, batches, etiket en versies. Het geopende
+// recept staat in de route (`#/productie/recepten/<id>`, App.tsx): terug,
+// herladen en een gedeelde link werken.
+//
+// De status per recept komt uit utils/receptGebruik.ts, de indeling van de
+// lijst uit utils/receptLijst.ts; de onderdelen staan in components/recept/,
+// buiten deze render (typen in de hoptijd houdt de focus).
 
-  const toggleVerbergen = (id: any, e: any) => {
-    e.stopPropagation();
-    setVerborgen((prev: any) => prev.includes(id) ? prev.filter((x: any)=>x!==id) : [...prev, id]);
-    if (sel === id) setSel(null);
-  };
+export interface ReceptenPageProps {
+  ing: any[]
+  lots: any[]
+  bat?: any[]
+  producten?: any[]
+  setProducten?: (fn: (prev: any[]) => any[]) => void
+  av?: any[]
+  afvulSessies?: any[]
+  uit?: any[]
+  verplaatsingen?: any[]
+  afboekingen?: any[]
+  locaties?: any[]
+  bestellingen?: any[]
+  bestellingPicks?: any[]
+  productArtikelen?: any[]
+  artikelen?: any[]
+  verliesRegistraties?: any[]
+  inkoopFacturen?: any[]
+  verpakkingen?: any[]
+  onderdelen?: any[]
+  accijnsInst?: any
+  bfCreds: any
+  recepten: any[]
+  setRecepten: (fn: any) => void
+  verborgen: any[]
+  setVerborgen: (fn: any) => void
+  gearchiveerdeTags: string[]
+  setGearchiveerdeTags: (fn: any) => void
+  tagVolgorde?: string[]
+  setPage?: (p: string) => void
+  /** Het blad "Wat brouw je?" (App.tsx → openNieuweBatch): *Brouwen* op een recept. */
+  onNieuweBatch?: (verzoek?: NieuweBatchVerzoek) => void
+  auditLog?: any[]
+  setAuditLog?: (fn: any) => void
+  recordId?: string | null
+  onOpenRecord?: (id: string | number | null, opties?: GaNaarOpties) => void
+  gaNaar?: GaNaar
+}
+
+function ReceptenPage({
+  ing, lots, bat = [], producten = [], setProducten, av = [], afvulSessies = [], uit = [], verplaatsingen = [],
+  afboekingen = [], locaties = [], bestellingen = [], bestellingPicks = [], productArtikelen = [], artikelen = [],
+  verliesRegistraties = [], inkoopFacturen = [], verpakkingen = [], onderdelen = [], accijnsInst = null, bfCreds,
+  recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde = [],
+  onNieuweBatch, auditLog = [], setAuditLog = () => {}, recordId = null, onOpenRecord, gaNaar,
+}: ReceptenPageProps) {
+  const { useState, useMemo } = React
+  const undo = useUndo()
+  const vandaag = tod()
+
+  // Het geopende recept: uit de route als de schil die meegeeft, anders lokaal.
+  // Id's worden als tekst vergeleken (een Brewfather-id is tekst, de route ook).
+  const [lokaalSel, setLokaalSel] = useState<string | null>(null)
+  const gestuurd = typeof onOpenRecord === 'function'
+  const sel: string | null = gestuurd ? (recordId == null || recordId === '' ? null : String(recordId)) : lokaalSel
+  // `opties.vervang`: de history-entry vervangen (een recept dat niet bestaat
+  // hoort niet terug te komen onder "terug").
+  const setSel = (v: string | null, opties?: { vervang?: boolean }) => {
+    const id = v == null || v === '' ? null : String(v)
+    if (gestuurd) onOpenRecord!(id, opties); else setLokaalSel(id)
+  }
+
+  const [segment, setSegment] = useState<ReceptSegment>('in_gebruik')
+  const [zoek, setZoek] = useState('')
+  const [tag, setTag] = useState<string | null>(null)
+  const [koppelVoor, setKoppelVoor] = useState<ReceptGebruik<any> | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [msg, setMsg] = useState('')
+  // Korte melding na vastpinnen of koppelen: het recept verhuist dan soms van
+  // segment, en dat moet je zien.
+  const [melding, setMelding] = useState('')
+  React.useEffect(() => {
+    if (!melding) return
+    const h = setTimeout(() => setMelding(''), 6000)
+    return () => clearTimeout(h)
+  }, [melding])
+
+  // Verbergen en tonen gaan met vijf seconden terugweg (UndoBar): zolang die
+  // loopt laat de lijst al zien wat er gaat gebeuren; pas daarna wordt het
+  // weggeschreven.
+  const wachtend = zichtbaarheidUitUndoId(undo.actie?.id)
+  const stand = useMemo(
+    () => pasZichtbaarheidToe({ verborgen, gearchiveerdeTags }, wachtend),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [verborgen, gearchiveerdeTags, undo.actie?.id])
+  const gebruik = useMemo(() => receptGebruik({
+    recepten: recepten || [], batches: bat || [], producten: producten || [],
+    verborgen: stand.verborgen, gearchiveerdeTags: stand.gearchiveerdeTags, vandaag,
+  }), [recepten, bat, producten, stand, vandaag])
+  const index = useMemo(() => gebruikIndex(gebruik), [gebruik])
+  const telling = useMemo(() => tellingen(gebruik), [gebruik])
+
+  const selRec = sel == null ? undefined : (recepten || []).find((r: any) => String(r.id) === sel)
+  const selG = sel == null ? null : (index.get(sel) || null)
+
+  // Een ander recept openen begint bovenaan het detail (de pagina blijft
+  // staan, dus anders opende het op de scrollhoogte van de lijst). Terug naar
+  // de lijst niet: dan zet de browser de lijst terug waar je was.
+  const vorigeSel = React.useRef(sel)
+  React.useEffect(() => {
+    if (sel != null && sel !== vorigeSel.current && typeof window !== 'undefined') window.scrollTo({ top: 0 })
+    vorigeSel.current = sel
+  }, [sel])
+
+  // Een gedeelde link of herlaad op een recept: het segment van dat recept,
+  // één keer — daarna kiest de gebruiker (verbergen verplaatst het open recept
+  // naar Verborgen zonder dat de lijst meespringt).
+  const segmentGezet = React.useRef(false)
+  React.useEffect(() => {
+    if (segmentGezet.current || !_fetchedKeys.has('recepten')) return
+    segmentGezet.current = true
+    if (selG) setSegment(segmentVan(selG))
+  }, [selG])
+
+  // De voorraadstip in In gebruik: per recept één oordeel over alle regels.
+  const voorraadPer = useMemo(() => {
+    const m = new Map<string, ReceptVoorraadOordeel>()
+    if (segment !== 'in_gebruik') return m
+    for (const g of gebruik) if (g.inGebruik) m.set(g.id, receptVoorraadOordeel(g.recept, lots, ing))
+    return m
+  }, [gebruik, lots, ing, segment])
+
+  const verkoopCtx = useMemo((): VerkoopCtx => ({
+    producten, productArtikelen, artikelen, verpakkingen, batches: bat, afvullingen: av, uitleveringen: uit,
+    verplaatsingen, afboekingen, locaties, bestellingen, bestellingPicks,
+  }), [producten, productArtikelen, artikelen, verpakkingen, bat, av, uit, verplaatsingen, afboekingen, locaties, bestellingen, bestellingPicks])
+
+  // ── Handelingen ───────────────────────────────────────────────────────────
+
+  // *Brouwen* opent het blad "Wat brouw je?" boven de receptenpagina, met het
+  // recept (en zo het product) ingevuld; vanuit een versie die versie. Na
+  // Inplannen opent de nieuwe batch.
+  const kanBrouwen = !!onNieuweBatch
+  const brouwen = (g: ReceptGebruik<any>, versieId?: string | null) => {
+    if (!onNieuweBatch) return
+    onNieuweBatch(versieId ? { receptId: g.id, versieId } : { receptId: g.id })
+  }
+
+  const zetVastgepind = (g: ReceptGebruik<any>, aan: boolean) => {
+    setRecepten((prev: any[]) => (prev || []).map((r: any) => String(r.id) === g.id ? { ...r, vastgepind: aan } : r))
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Recept', entiteit_id: 0, actie: 'gewijzigd',
+      velden: { vastgepind: { oud: g.vastgepind, nieuw: aan } },
+      omschrijving: `${g.naam || g.id}: ${aan ? 'vastgepind' : 'losgemaakt'}`,
+    })
+    setMelding((aan ? t('recept_melding_vastgepind') : t('recept_melding_losgemaakt')).replace('{recept}', g.naam || t('lbl_naamloos')))
+  }
+
+  const planZichtbaarheid = (a: ReceptZichtbaarheid, label: string, omschrijving: string) => {
+    undo.plan(zichtbaarheidUndoId(a), label, () => {
+      if (a.soort === 'tag_terug' || a.soort === 'tag_archiveren') {
+        setGearchiveerdeTags((prev: any) => pasZichtbaarheidToe({ gearchiveerdeTags: prev || [] }, a).gearchiveerdeTags)
+      } else {
+        setVerborgen((prev: any) => pasZichtbaarheidToe({ verborgen: prev || [] }, a).verborgen)
+      }
+      logAudit(auditLog, setAuditLog, { entiteit: 'Recept', entiteit_id: 0, actie: 'gewijzigd', omschrijving })
+    })
+  }
+
+  // Een tag archiveren: alle recepten met alleen gearchiveerde tags gaan naar
+  // Verborgen — ook als ze in gebruik zijn (verborgen wint), dus dat zegt de
+  // terugweg erbij.
+  const tagArchiveren = (tag: string) => {
+    const geraakt = gebruik.filter(g => g.inGebruik && g.tags.includes(tag) &&
+      g.tags.every(x => x === tag || stand.gearchiveerdeTags.includes(x))).length
+    const label = (geraakt > 0
+      ? t('recept_undo_tag_gearchiveerd_in_gebruik').replace('{n}', String(geraakt))
+      : t('recept_undo_tag_gearchiveerd')).replace('{tag}', tag)
+    planZichtbaarheid({ soort: 'tag_archiveren', tag }, label, `Tag ${tag}: gearchiveerd`)
+    setTag(null)
+  }
+
+  const koppel = (g: ReceptGebruik<any>, productId: number) => {
+    const product = (producten || []).find((p: any) => Number(p.id) === productId)
+    if (!product || !setProducten) return
+    setProducten((prev: any[]) => (prev || []).map((p: any) => Number(p.id) === productId ? koppelReceptAanProduct(p, g.id, recepten) : p))
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Product', entiteit_id: productId, actie: 'gewijzigd',
+      omschrijving: `${product.naam || productId}: recept ${g.naam || g.id} gekoppeld`,
+    })
+    setMelding(t('recept_melding_gekoppeld').replace('{recept}', g.naam || t('lbl_naamloos')).replace('{product}', product.naam || t('lbl_naamloos')))
+  }
+
+  /** Het ⋯-menu van een recept, in de lijst en in de kop van het detail. */
+  const actiesVoor = (g: ReceptGebruik<any>, _ctx?: ReceptRijContext, metBrouwen = true): RowActie[] => {
+    const naam = g.naam || t('lbl_naamloos')
+    const acties: RowActie[] = []
+    if (metBrouwen && kanBrouwen) acties.push({ id: 'brouwen', label: t('btn_brouwen'), onClick: () => brouwen(g) })
+    // Vastpinnen haalt een recept naar In gebruik — behalve een verborgen
+    // recept (verborgen wint): daar eerst Tonen. Losmaken kan altijd.
+    if (g.vastgepind) acties.push({ id: 'losmaken', label: t('recept_actie_losmaken'), onClick: () => zetVastgepind(g, false) })
+    else if (g.status !== 'verborgen') acties.push({ id: 'vastpinnen', label: t('recept_actie_vastpinnen'), onClick: () => zetVastgepind(g, true) })
+    if (setProducten) acties.push({ id: 'koppel', label: t('recept_actie_koppel'), onClick: () => setKoppelVoor(g) })
+    const tagsGearchiveerd = g.tags.length > 0 && g.tags.every(x => stand.gearchiveerdeTags.includes(x))
+    if (g.status !== 'verborgen') {
+      acties.push({ id: 'verbergen', label: t('btn_hide'), onClick: () => planZichtbaarheid(
+        { soort: 'verbergen', id: g.id }, t('recept_undo_verborgen').replace('{recept}', naam), `${naam}: verborgen`) })
+    } else {
+      if (g.verborgenReden === 'lijst') {
+        acties.push({ id: 'tonen', label: t('recept_actie_tonen'), onClick: () => planZichtbaarheid(
+          { soort: 'tonen', id: g.id }, t('recept_undo_getoond').replace('{recept}', naam), `${naam}: weer zichtbaar`) })
+      }
+      if (tagsGearchiveerd) {
+        for (const x of g.tags) {
+          acties.push({ id: `tag-${x}`, label: t('recept_actie_tag_terug').replace('{tag}', x), onClick: () => planZichtbaarheid(
+            { soort: 'tag_terug', tag: x }, t('recept_undo_tag_terug').replace('{tag}', x), `Tag ${x}: teruggezet`) })
+        }
+      }
+    }
+    return acties
+  }
+
+  // ── Brewfather-sync ───────────────────────────────────────────────────────
 
   const runSync = async () => {
     if (!bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) {
-      setMsg('⚠ ' + t('settings_brewfather_section')); return;
+      setMsg('⚠ ' + t('settings_brewfather_section')); return
     }
-    setSyncing(true); setMsg('');
+    setSyncing(true); setMsg('')
     try {
-      const { recepten: recs, versionsSupported, totalVersions } = await bfGetRecipesWithVersions();
-      // Brewfather is leidend, maar de eigen velden (vaste kosten, verlies-%),
-      // de koppeling aan een voorraadingrediënt (ingredient_id) en een in de
-      // app gecorrigeerd hopschema (`_lokaal`) blijven staan — zie
+      const { recepten: recs, versionsSupported, totalVersions } = await bfGetRecipesWithVersions()
+      // Brewfather is leidend, maar de eigen velden (vaste kosten, verlies-%,
+      // vastgepind), de koppeling aan een voorraadingrediënt (ingredient_id),
+      // een in de app gecorrigeerd hopschema (`_lokaal`) en een recept waar een
+      // batch of product nog naar verwijst blijven staan — zie
       // utils/receptSync.ts.
-      const { recepten: merged, behouden } = voegReceptSyncSamen(recepten, recs);
-      setRecepten(merged);
-      const parentCount = recs.filter((r: any) => r.is_huidige !== false).length;
+      const { recepten: merged, behouden, bewaard } = voegReceptSyncSamen(recepten, recs, { batches: bat, producten })
+      setRecepten(merged)
+      const parentCount = recs.filter((r: any) => r.is_huidige !== false).length
+      // Het begin van deze regel (`RECEPT_SYNC_AUDIT`) is ook "Laatste sync" in de kop.
       const auditMsg = (versionsSupported
-        ? `Brewfather sync: ${parentCount} recepten (+${totalVersions} versies)`
-        : `Brewfather sync: ${parentCount} recepten`)
-        + (behouden > 0 ? `, ${behouden} lokale aanpassingen behouden` : '');
-      logAudit(auditLog, setAuditLog, {entiteit:'Recept', entiteit_id:0, actie:'gewijzigd', omschrijving: auditMsg})
-      const key = versionsSupported ? 'msg_bf_sync_with_versions' : 'msg_bf_sync_no_versions';
+        ? `${RECEPT_SYNC_AUDIT}: ${parentCount} recepten (+${totalVersions} versies)`
+        : `${RECEPT_SYNC_AUDIT}: ${parentCount} recepten`)
+        + (behouden > 0 ? `, ${behouden} lokale aanpassingen behouden` : '')
+        + (bewaard > 0 ? `, ${bewaard} recepten niet meer in Brewfather maar nog in gebruik bewaard` : '')
+      logAudit(auditLog, setAuditLog, { entiteit: 'Recept', entiteit_id: 0, actie: 'gewijzigd', omschrijving: auditMsg })
+      const key = versionsSupported ? 'msg_bf_sync_with_versions' : 'msg_bf_sync_no_versions'
       setMsg(t(key).replace('{n}', String(parentCount)).replace('{v}', String(totalVersions))
-        + (behouden > 0 ? ' ' + t('msg_bf_sync_lokaal_behouden').replace('{n}', String(behouden)) : ''));
-    } catch(e: any) { setMsg(t('msg_bf_sync_failed').replace('{msg}', e.message||String(e))); }
-    setSyncing(false);
-  };
+        + (behouden > 0 ? ' ' + t('msg_bf_sync_lokaal_behouden').replace('{n}', String(behouden)) : '')
+        + (bewaard > 0 ? ' ' + t('msg_bf_sync_bewaard').replace('{n}', String(bewaard)) : ''))
+    } catch (e: any) { setMsg(t('msg_bf_sync_failed').replace('{msg}', e.message || String(e))) }
+    setSyncing(false)
+  }
 
-  // Splits huidige recepten (working versions) van versie-snapshots.
-  // Oude data zonder is_huidige-flag wordt als huidige behandeld (backward compat).
-  const huidige = recepten.filter((r: any) => r.is_huidige !== false);
-  const versiesPerParent: Record<string, any[]> = {};
-  recepten.filter((r: any) => r.is_huidige === false).forEach((v: any) => {
-    if (!v.parent_id) return;
-    (versiesPerParent[v.parent_id] ||= []).push(v);
-  });
-  const gefilterd = huidige.filter((r: any) =>
-    !zoek || r.naam.toLowerCase().includes(zoek.toLowerCase()) || (r.stijl||'').toLowerCase().includes(zoek.toLowerCase())
-  );
-  const zichtbaar     = gefilterd.filter((r: any) => !verborgen.includes(r.id));
-  const verborgenLijst = huidige.filter((r: any) => verborgen.includes(r.id));
-  const selRec = recepten.find((r: any) => r.id === sel);
-
-  // Type van een recipe-sectie naar het ingredient.type in de catalogus.
-  const CAT_TO_TYPE: Record<string, string> = {mout:'Mout', hop:'Hop', gist:'Gist', overig:'Overig'};
-
-  // Vindt het matchende ingredient voor een receptregel: expliciete koppeling
-  // via ingredient_id heeft voorrang boven naam-match.
-  const findIngMatch = (item: any) => {
-    if (item?.ingredient_id != null) {
-      const m = ing.find((i: any) => i.id === item.ingredient_id);
-      if (m) return m;
-    }
-    if (item?.naam) {
-      return ing.find((i: any) => i.naam.toLowerCase() === String(item.naam).toLowerCase()) || null;
-    }
-    return null;
-  };
-
-  // Voorraadcheck per receptregel (utils/ingredientVoorraad.ts): elk lot wordt
-  // omgerekend naar de eenheid van de regel (hop in het recept in g, het lot
-  // in kg), en met `recept` erbij tellen alle regels die naar hetzelfde
-  // ingredient verwijzen samen, zodat een ingredient over meerdere regels
-  // gespreid niet vals groen wordt.
-  const checkStock = (item: any, recept?: any) => receptRegelVoorraad(item, recept, lots, findIngMatch);
+  // ── Het recept zelf (eigen velden, hopschema) ─────────────────────────────
 
   // Wijzig eigen velden op het geselecteerde recept (bijv. de vaste kosten per
   // brouw). Blijft bij een Brewfather-sync behouden — zie `runSync`.
-  const updateRecept = (patch: any) => {
-    if (!selRec) return;
+  const updateRecept = (patch: Record<string, unknown>) => {
+    if (!selRec) return
     // Het recept is de basis voor de allergenenvergelijking bij de
     // etiketcontrole; wijzigingen horen dus terug te vinden te zijn. Deze
     // velden slaan tijdens het typen op, dus samengevoegd tot één regel.
@@ -121,539 +292,170 @@ function ReceptenPage({ing, lots, bat=[], av=[], verliesRegistraties=[], inkoopF
       logAuditVeld(setAuditLog, {
         entiteit: 'Recept', entiteit_id: selRec.id, veld,
         oud: (selRec as any)[veld], nieuw: waarde, context: selRec.naam || '',
-      });
+      })
     }
-    setRecepten((prev: any[]) => prev.map((r: any) => r.id === selRec.id ? { ...r, ...patch } : r));
-  };
+    setRecepten((prev: any[]) => prev.map((r: any) => r.id === selRec.id ? { ...r, ...patch } : r))
+  }
 
   // Wijzig een enkele ingredient-entry in het geselecteerde recept.
   // cat = 'mout'|'hop'|'gist'|'overig'; idx = index binnen die array.
-  const updateReceptIng = (cat: string, idx: number, patch: any) => {
-    if (!selRec) return;
-    const huidig = (selRec as any)[cat]?.[idx] || {};
+  const updateReceptIng = (cat: ReceptSectie, idx: number, patch: Record<string, unknown>) => {
+    if (!selRec) return
+    const huidig = (selRec as any)[cat]?.[idx] || {}
     for (const [veld, waarde] of Object.entries(patch)) {
       logAuditVeld(setAuditLog, {
         entiteit: 'Recept', entiteit_id: selRec.id, veld: `${cat}/${huidig.naam || idx}/${veld}`,
         oud: huidig[veld], nieuw: waarde, context: selRec.naam || '',
-      });
+      })
     }
     setRecepten((prev: any[]) => prev.map((r: any) => {
-      if (r.id !== selRec.id) return r;
-      const list = [...(r[cat] || [])];
-      if (!list[idx]) return r;
+      if (r.id !== selRec.id) return r
+      const list = [...(r[cat] || [])]
+      if (!list[idx]) return r
       // Gebruik/tijd die hier gecorrigeerd worden, blijven bij een
       // Brewfather-sync staan (`_lokaal`, utils/receptSync.ts).
-      list[idx] = pasReceptRegelAan(list[idx], patch);
-      return { ...r, [cat]: list };
-    }));
-  };
+      list[idx] = pasReceptRegelAan(list[idx], patch)
+      return { ...r, [cat]: list }
+    }))
+  }
 
   // Brewfather weer leidend maken voor deze regel: de lokale markering weg,
   // de volgende sync zet gebruik/tijd terug naar de waarde uit Brewfather.
-  const wisLokaleAanpassing = (cat: string, idx: number) => {
-    if (!selRec) return;
-    const huidig = (selRec as any)[cat]?.[idx] || {};
-    logAudit(auditLog, setAuditLog, {entiteit:'Recept', entiteit_id:selRec.id, actie:'gewijzigd',
-      omschrijving:`${selRec.naam || ''}: ${cat}/${huidig.naam || idx} volgt Brewfather weer`});
+  const wisLokaleAanpassing = (cat: ReceptSectie, idx: number) => {
+    if (!selRec) return
+    const huidig = (selRec as any)[cat]?.[idx] || {}
+    logAudit(auditLog, setAuditLog, { entiteit: 'Recept', entiteit_id: 0, actie: 'gewijzigd',
+      omschrijving: `${selRec.naam || ''}: ${cat}/${huidig.naam || idx} volgt Brewfather weer` })
     setRecepten((prev: any[]) => prev.map((r: any) => {
-      if (r.id !== selRec.id) return r;
-      const list = [...(r[cat] || [])];
-      if (!list[idx]) return r;
-      list[idx] = wisLokaal(list[idx]);
-      return { ...r, [cat]: list };
-    }));
-  };
+      if (r.id !== selRec.id) return r
+      const list = [...(r[cat] || [])]
+      if (!list[idx]) return r
+      list[idx] = wisLokaal(list[idx])
+      return { ...r, [cat]: list }
+    }))
+  }
 
-  // Lijst van beschikbare ingredienten voor een receptregel. Het type van de
-  // regel zelf gaat voor op de sectie: een kandijsuiker in de moutlijst
-  // (Brewfather zet suiker bij de fermentables) hoort bij de suikers. Verwante
-  // typen blijven kiesbaar (zie `verwanteIngTypes`), zodat ook een recept dat
-  // nog niet opnieuw gesynct is aan het juiste ingredient te koppelen is.
-  const ingOptions = (cat: string, item?: any): any[] =>
-    ingredientenVoorType(ing, item?.ingredient_type || CAT_TO_TYPE[cat]);
+  // ── Weergave ──────────────────────────────────────────────────────────────
 
-  const IngRow = ({item, cat, idx, readOnly}: any) => {
-    const {ok, bijna, totaal, ingLots, ingMatch, totaalNodig, gedeeld, eenheidMismatch} = checkStock(item, selRec);
-    const [open, setOpen] = useState(false);
-    const [editKoppel, setEditKoppel] = useState(false);
-    const dot = ok===null ? <span className="text-gray-300">●</span>
-              : ok        ? <span className="text-green-500">●</span>
-              : bijna     ? <span className="text-yellow-500">●</span>
-                          : <span className="text-red-500">●</span>;
-    const explicit = item.ingredient_id != null && ingMatch;
-    const koppelCel = (
-      <>
-        {editKoppel && !readOnly ? (
-          <select autoFocus value={item.ingredient_id ?? ''}
-            onClick={(e: any) => e.stopPropagation()}
-            onBlur={() => setEditKoppel(false)}
-            onChange={(e: any) => {
-              const v = e.target.value;
-              updateReceptIng(cat, idx, { ingredient_id: v === '' ? null : Number(v) });
-              setEditKoppel(false);
-            }}
-            className="text-xs border rounded px-1 py-0.5 bg-white">
-            <option value="">{t('recipe_link_auto')}</option>
-            {ingOptions(cat, item).map((i: any) => (
-              <option key={i.id} value={i.id}>{i.naam}{i.fabrikant ? ` (${i.fabrikant})` : ''}</option>
-            ))}
-          </select>
-        ) : ingMatch ? (
-          <span onClick={(e: any) => { e.stopPropagation(); if (!readOnly) setEditKoppel(true); }}
-            className={`text-xs px-1.5 py-0.5 rounded ${readOnly?'':'cursor-pointer hover:bg-gray-100'} ${explicit?'bg-blue-50 text-blue-700':'text-gray-500'}`}
-            title={readOnly ? '' : t('recipe_link_edit')}>
-            {explicit && <span className="mr-1"><Icon n="link" /></span>}{ingMatch.naam}
-          </span>
-        ) : (
-          <button onClick={(e: any) => { e.stopPropagation(); if (!readOnly) setEditKoppel(true); }}
-            disabled={readOnly}
-            className={`text-xs px-1.5 py-0.5 rounded ${readOnly?'text-gray-300':'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>
-            {t('recipe_link_none')}
-          </button>
-        )}
-      </>
-    );
-    return (
-      <>
-        <tr className={`border-b border-gray-100 ${ingLots.length>0?'cursor-pointer hover:bg-gray-50':''}`}
-            onClick={()=>ingLots.length>0&&setOpen((o: any)=>!o)}>
-          <td className="px-3 py-2 text-sm text-gray-800">{item.naam}</td>
-          <td className="px-3 py-2 text-sm text-left">{koppelCel}</td>
-          <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap"
-              title={gedeeld ? t('recipe_total_in_recipe').replace('{n}', Number(totaalNodig).toLocaleString('nl-NL',{maximumFractionDigits:3})).replace('{u}', String(item.eenheid||'')) : ''}>
-            {Number(item.hoeveelheid||0).toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
-            {gedeeld && (
-              <span className="ml-1 text-xs text-gray-400">
-                ({t('recipe_total_short')}: {Number(totaalNodig).toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid})
-              </span>
-            )}
-          </td>
-          <td className="px-3 py-2 text-xs text-gray-400">
-            {cat === 'hop' && !readOnly ? (
-              <div className="flex items-center gap-1" onClick={(e: any) => e.stopPropagation()}>
-                <select value={String(item.gebruik || 'boil').toLowerCase()}
-                  onChange={(e: any) => {
-                    const g = e.target.value
-                    updateReceptIng('hop', idx, { gebruik: g, tijdEenheid: g === 'dry hop' ? 'day' : 'min' })
-                  }}
-                  className="border border-gray-200 rounded px-1 py-0.5 text-xs t-input">
-                  <option value="boil">{t('hop_gebruik_boil')}</option>
-                  <option value="whirlpool">{t('hop_gebruik_whirlpool')}</option>
-                  <option value="dry hop">{t('hop_gebruik_dryhop')}</option>
-                  <option value="mash">{t('hop_gebruik_mash')}</option>
-                </select>
-                <input type="number" step="1" min="0" value={item.tijd ?? ''}
-                  onChange={(e: any) => updateReceptIng('hop', idx, { tijd: e.target.value === '' ? '' : Number(e.target.value) })}
-                  className="w-14 border border-gray-200 rounded px-1 py-0.5 text-right t-input"
-                  placeholder="—" />
-                <span className="text-gray-300">{String(item.gebruik || '').toLowerCase() === 'dry hop' ? t('lbl_dagen') : t('lbl_minuten')}</span>
-                {Array.isArray(item._lokaal) && item._lokaal.length > 0 && (
-                  <button type="button" onClick={() => wisLokaleAanpassing('hop', idx)}
-                    className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 hover:bg-blue-100"
-                    title={t('recipe_lokaal_title')}>{t('recipe_lokaal')}</button>
-                )}
-              </div>
-            ) : (
-              <>
-                {/* Wijkt het type van de regel af van de sectie (suiker in de
-                    moutlijst), toon dat dan — anders lijkt het mout. */}
-                {item.ingredient_type && item.ingredient_type !== CAT_TO_TYPE[cat]
-                  ? <span className="text-gray-500">{t('ing_type_' + String(item.ingredient_type).toLowerCase())}</span>
-                  : (item.gebruik || '')}
-                {item.tijd != null && item.tijd !== '' ? <span className="ml-1 text-gray-300">· {item.tijd} {item.tijdEenheid === 'day' ? t('lbl_dagen') : t('lbl_minuten')}</span> : null}
-              </>
-            )}
-          </td>
-          <td className="px-3 py-2 text-sm text-right whitespace-nowrap">
-            {ok!==null
-              ? <span className={ok?'text-green-600':bijna?'text-yellow-600':'text-red-600'}
-                  title={eenheidMismatch ? t('recipe_unit_mismatch') : undefined}>
-                  {eenheidMismatch && '⚠ '}{totaal.toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
-                </span>
-              : eenheidMismatch
-                ? <span className="text-gray-500 text-xs" title={t('recipe_unit_mismatch')}>
-                    ⚠ {totaal.toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
-                  </span>
-                : <span className="text-gray-300 text-xs">—</span>}
-          </td>
-          <td className="px-3 py-2 text-center">{dot}</td>
-          <td className="px-3 py-2 text-xs text-gray-300 text-center">{ingLots.length>0?(open?'▲':'▼'):''}</td>
-        </tr>
-        {open && ingLots.map((l: any)=>(
-          <tr key={l.id} className="bg-orange-50 text-xs border-b border-orange-100">
-            <td className="pl-6 pr-3 py-1.5 text-gray-500">
-              <span className="font-mono text-gray-700">{l.lotnummer||'—'}</span>
-              {l.leverancier&&<span className="text-gray-400 ml-2">({l.leverancier})</span>}
-            </td>
-            <td className="px-3 py-1.5"></td>
-            <td className="px-3 py-1.5 text-right font-medium text-gray-700 whitespace-nowrap">
-              {Number(l.hoeveelheid||0).toLocaleString('nl-NL',{maximumFractionDigits:3})} {l.eenheid}
-            </td>
-            <td className="px-3 py-1.5 text-gray-400">{l.aankoop_datum?fmtD(l.aankoop_datum):''}</td>
-            <td className="px-3 py-1.5 whitespace-nowrap" colSpan={3}>
-              {t('lbl_tht')}: {l.houdbaarheid
-                ? <span className={`font-medium ${new Date(l.houdbaarheid)<new Date()?'text-red-600':'text-gray-700'}`}>{fmtD(l.houdbaarheid)}</span>
-                : <span className="text-gray-300">—</span>}
-            </td>
-          </tr>
-        ))}
-      </>
-    );
-  };
-
-  const IngSection = ({titel, items, cat}: any) => {
-    if (!items?.length) return null;
-    const stocks = items.map((i: any)=>checkStock(i, selRec));
-    const anyRed = stocks.some((s: any)=>s.ok===false&&!s.bijna);
-    const anyYellow = stocks.some((s: any)=>s.bijna);
-    const allGreen = stocks.length>0 && stocks.every((s: any)=>s.ok===true);
-    const badge = anyRed   ? <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{t('recipe_badge_tekort')}</span>
-                : anyYellow? <span className="text-xs bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">{t('recipe_badge_bijna')}</span>
-                : allGreen ? <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">{t('recipe_badge_beschikbaar')}</span>
-                : null;
-    const readOnly = selRec?.is_huidige === false;
-    return (
-      <div className="mb-5">
-        <div className="flex items-center gap-2 mb-1.5">
-          <h4 className="text-sm font-semibold text-gray-700">{titel}</h4>
-          {badge}
-        </div>
-        <div className="rounded-lg border border-gray-200 overflow-x-auto">
-          <table className="w-full min-w-[640px]">
-            <thead>
-              <tr className="bg-gray-50 text-xs text-gray-400">
-                <th className="px-3 py-2 text-left font-medium">{t('log_ingredient')}</th>
-                <th className="px-3 py-2 text-left font-medium">{t('recipe_linked_to')}</th>
-                <th className="px-3 py-2 text-right font-medium">{t('recipe_needed')}</th>
-                <th className="px-3 py-2 text-left font-medium">{t('recipe_use')}</th>
-                <th className="px-3 py-2 text-right font-medium">{t('stock_available')}</th>
-                <th className="px-3 py-2 text-center font-medium w-8">●</th>
-                <th className="px-3 py-2 w-6"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item: any,i: any)=><IngRow key={i} item={item} cat={cat} idx={i} readOnly={readOnly}/>)}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  };
-
-  const cardStocks = (r: any) => [
-    ...r.mout.map((i: any)=>checkStock(i, r)),
-    ...r.hop.map((i: any)=>checkStock(i, r)),
-    ...r.gist.map((i: any)=>checkStock(i, r)),
-    ...r.overig.map((i: any)=>checkStock(i, r)),
-  ];
-  const allStock   = selRec ? cardStocks(selRec) : [];
-  const overallOk  = allStock.length>0 && allStock.every((s: any)=>s.ok===true);
-  const overallRed = allStock.some((s: any)=>s.ok===false&&!s.bijna);
-  const overallYel = !overallRed && allStock.some((s: any)=>s.bijna);
+  const laatsteSync = useMemo(() => laatsteReceptSync(auditLog), [auditLog])
+  const syncTekst = [
+    laatsteSync ? t('recept_laatste_sync').replace('{wanneer}', `${fmtD(laatsteSync)} ${new Date(laatsteSync).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`) : '',
+    telling.totaal > 0 ? t('recept_aantal_recepten').replace('{n}', String(telling.totaal)) : '',
+  ].filter(Boolean).join(' · ')
+  const naarProduct = (id: number) => gaNaar?.({ pagina: 'producten', id })
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-gray-800">{t('nav_recepten')}</h2>
-        <div className="flex items-center gap-3">
-          {msg && <span className={`text-sm ${msg.startsWith('✓')?'text-green-600':'text-orange-600'}`}>{msg}</span>}
-          <Btn onClick={runSync} disabled={syncing||!bfCreds?.enabled}
-            cls={!bfCreds?.enabled?'opacity-50 cursor-not-allowed':''}>
-            {syncing?t('recipe_syncing'):t('recipe_sync_brewfather')}
-          </Btn>
+      {/* Op een telefoon is een open recept een eigen scherm: dan geen paginakop. */}
+      <div className={`mb-4 ${sel ? 'hidden md:block' : ''}`}>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900">{t('nav_recepten')}</h2>
+          <div className="flex items-center gap-3 min-w-0">
+            {syncTekst && <span className="hidden sm:inline text-sm text-gray-500 truncate">{syncTekst}</span>}
+            <Btn v="secondary" onClick={runSync} disabled={syncing || !bfCreds?.enabled}>
+              {syncing ? t('recipe_syncing') : t('recipe_sync_brewfather')}
+            </Btn>
+          </div>
         </div>
+        {syncTekst && <p className="sm:hidden text-xs text-gray-500 mt-1">{syncTekst}</p>}
+        {/* De syncmelding op een eigen regel: naast de knop kneep een lange
+            melding (bewaarde recepten) op een telefoon de titel af. */}
+        {msg && <p className={`mt-2 text-sm md:text-right break-words ${msg.startsWith('✓') ? 'text-green-600' : 'text-orange-600'}`}>{msg}</p>}
       </div>
-      <div className="flex flex-col md:flex-row gap-4 md:items-start">
-        {/* Lijst */}
-        <div className={`w-full md:w-60 md:flex-shrink-0${sel?' hidden md:block':''}`}>
-          <div className="mb-2">
-            <SearchInput placeholder={t('search_recipe')} value={zoek} onChange={setZoek} />
-          </div>
-          <div className="bg-white rounded-xl shadow-card overflow-hidden">
-          <div className="flex justify-between px-3 py-1.5 bg-gray-50 text-xs text-gray-500 border-b">
-            <span>{t('lbl_name')}</span><span>{t('lbl_stock')}</span>
-          </div>
-          {zichtbaar.length===0 && verborgenLijst.length===0 && (
-            <div className="text-center text-gray-400 text-xs py-8">
-              {recepten.length===0 ? t('recipe_no_recipes') : t('recipe_no_results')}
-            </div>
-          )}
-          {(()=>{
-            const RecepKaart = ({r}: any) => {
-              const stocks = cardStocks(r);
-              const anyRed  = stocks.some((s: any)=>s.ok===false&&!s.bijna);
-              const anyYel  = stocks.some((s: any)=>s.bijna);
-              const allGreen= stocks.length>0 && stocks.every((s: any)=>s.ok===true);
-              const versies = versiesPerParent[r.id] || [];
-              const open = !!versiesOpen[r.id];
-              return (
-                <>
-                  <div onClick={()=>setSel((s: any)=>s===r.id?null:r.id)}
-                    className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors group ${sel===r.id?'t-sel border-l-2':''}`}>
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="font-medium text-sm truncate">{r.naam}</span>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {versies.length > 0 && (
-                          <button onClick={(e: any)=>{e.stopPropagation(); setVersiesOpen((o: any)=>({...o, [r.id]: !o[r.id]}));}}
-                            className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full hover:bg-blue-200 transition-colors"
-                            title={t('recipe_versions_count').replace('{n}', String(versies.length))}>
-                            {versies.length + 1}v {open?'▲':'▼'}
-                          </button>
-                        )}
-                        <button onClick={(e: any)=>toggleVerbergen(r.id,e)}
-                          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-gray-500 text-xs leading-none px-0.5 transition-opacity"
-                          title={t('btn_hide')}>✕</button>
-                      </div>
-                    </div>
-                    {r.stijl&&<div className="text-xs text-gray-500 mt-0.5 truncate">{r.stijl}</div>}
-                    <div className="flex gap-2 mt-0.5 text-xs text-gray-400">
-                      {r.batch_size?<span>{r.batch_size}L</span>:null}
-                      {r.ABV?<span>{Number(r.ABV).toFixed(1)}%</span>:null}
-                    </div>
-                  </div>
-                  {open && versies.map((v: any) => (
-                    <div key={v.id} onClick={()=>setSel((s: any)=>s===v.id?null:v.id)}
-                      className={`pl-6 pr-3 py-1.5 border-b cursor-pointer t-hover transition-colors text-xs ${sel===v.id?'t-sel border-l-2':''}`}>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-blue-600 font-medium">{v.versie}</span>
-                        <span className="text-gray-600 truncate flex-1">{v.naam}</span>
-                        {v.versie_datum && <span className="text-gray-300 flex-shrink-0">{fmtD(v.versie_datum)}</span>}
-                      </div>
-                    </div>
-                  ))}
-                </>
-              );
-            };
-            const allTagsRaw = [...new Set(zichtbaar.flatMap((r: any)=>r.tags||[]))];
-            const sortedTags = [...new Set([...tagVolgorde, ...allTagsRaw])].filter((tg: any) => allTagsRaw.includes(tg));
-            const activeTags = sortedTags.filter((tg: any) => !gearchiveerdeTags.includes(tg));
-            const archiefTags = sortedTags.filter((tg: any) => gearchiveerdeTags.includes(tg));
-            const metTag    = (tag: any) => zichtbaar.filter((r: any)=>(r.tags||[]).includes(tag));
-            const zonderTag = zichtbaar.filter((r: any)=>!r.tags||r.tags.length===0);
-            const TagGroep = ({tag, gearchiveerd}: any) => {
-              const items  = metTag(tag);
-              const gesloten = geslotenGroepen.includes(tag);
-              const stocks = items.flatMap((r: any)=>cardStocks(r));
-              const anyRed   = stocks.some((s: any)=>s.ok===false&&!s.bijna);
-              const allGreen = stocks.length>0 && stocks.every((s: any)=>s.ok===true);
-              const idxInActive = activeTags.indexOf(tag);
-              return (
-                <div>
-                  <div className="flex items-center group/tag bg-gray-50 border-b px-3 py-1.5 hover:bg-gray-100">
-                    <button onClick={()=>toggleGroep(tag)}
-                      className="flex-1 flex items-center justify-between text-xs font-medium text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <span className="text-gray-400 inline-block" style={{transition:'transform 150ms ease',transform:gesloten?'none':'rotate(90deg)'}}>▶</span>
-                        <span>{tag}</span>
-                        <span className="font-normal text-gray-400">({items.length})</span>
-                      </span>
-                    </button>
-                    {!gearchiveerd && (
-                      <span className="opacity-0 group-hover/tag:opacity-100 flex transition-opacity flex-shrink-0">
-                        <button onClick={(e: any)=>moveTag(tag,'up',activeTags,e)} disabled={idxInActive===0}
-                          className="px-1 text-gray-300 hover:text-gray-600 text-xs disabled:opacity-20"
-                          title={t('btn_up')}>▴</button>
-                        <button onClick={(e: any)=>moveTag(tag,'down',activeTags,e)} disabled={idxInActive===activeTags.length-1}
-                          className="px-1 text-gray-300 hover:text-gray-600 text-xs disabled:opacity-20"
-                          title={t('btn_down')}>▾</button>
-                      </span>
-                    )}
-                    <button onClick={(e: any)=>toggleTagArchief(tag,e)}
-                      className="opacity-0 group-hover/tag:opacity-100 ml-0.5 px-1 text-gray-300 hover:text-gray-500 text-xs transition-opacity flex-shrink-0"
-                      title={gearchiveerd?t('btn_tag_restore'):t('btn_tag_archive')}>
-                      {gearchiveerd?'↩':'↓'}
-                    </button>
-                  </div>
-                  {!gesloten&&items.map((r: any)=><RecepKaart key={r.id} r={r}/>)}
-                </div>
-              );
-            };
-            return (
-              <div>
-                {activeTags.length > 0
-                  ? activeTags.map((tag: any)=><TagGroep key={tag} tag={tag} gearchiveerd={false}/>)
-                  : zichtbaar.filter((r: any)=>!r.tags||r.tags.every((tg: any)=>!gearchiveerdeTags.includes(tg))).map((r: any)=><RecepKaart key={r.id} r={r}/>)
-                }
-                {zonderTag.length>0 && activeTags.length>0 && (
-                  <TagGroep tag={t('lbl_without_tag')} gearchiveerd={false}/>
-                )}
-                {archiefTags.length>0 && (
-                  <div className="border-t">
-                    <button onClick={()=>setGearchiveerdTagsOpen((o: any)=>!o)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
-                      <span className="text-gray-400 text-sm">{gearchiveerdTagsOpen?'▼':'▶'}</span>
-                      <span>{t('lbl_archived_tags')} ({archiefTags.length})</span>
-                    </button>
-                    {gearchiveerdTagsOpen&&archiefTags.map((tag: any)=><TagGroep key={tag} tag={tag} gearchiveerd={true}/>)}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-          {verborgenLijst.length>0&&(
-            <div className="border-t">
-              <button onClick={()=>setVerborgenOpen((o: any)=>!o)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
-                <span className="text-gray-400 text-sm">{verborgenOpen?'▼':'▶'}</span>
-                <span>{t('lbl_hidden')} ({verborgenLijst.length})</span>
-              </button>
-              {verborgenOpen&&verborgenLijst.map((r: any)=>(
-                <div key={r.id} onClick={()=>setSel((s: any)=>s===r.id?null:r.id)}
-                  className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors group opacity-60 hover:opacity-100 ${sel===r.id?'t-sel border-l-2':''}`}>
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-medium text-sm truncate">{r.naam}</span>
-                    <button onClick={(e: any)=>toggleVerbergen(r.id,e)}
-                      className="text-gray-400 hover:text-green-600 text-xs leading-none px-0.5 transition-colors flex-shrink-0"
-                      title={t('btn_restore')}>↩</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          </div>{/* /bg-white recept card */}
+      {/* Buiten de kop: ook op het detailscherm van een telefoon (zonder kop)
+          te zien na vastpinnen of koppelen vanuit ⋯. */}
+      <p role="status" className={`text-sm text-gray-700 break-words ${!melding ? 'sr-only' : sel ? 'mb-3 md:-mt-2' : '-mt-2 mb-3'}`}>{melding}</p>
+
+      <div className="flex flex-col md:flex-row gap-4 lg:gap-6 md:items-start">
+        {/* Lijst: op het bureau een eigen scrollkolom naast het detail. */}
+        <div className={`w-full md:w-72 lg:w-[360px] md:flex-shrink-0 md:sticky md:top-[calc(var(--kopbalk)+1rem)] md:max-h-[calc(100vh-var(--kopbalk)-2rem)] md:overflow-y-auto md:overscroll-contain md:pr-1 ${sel ? 'hidden md:block' : ''}`}>
+          <ReceptLijst
+            gebruik={gebruik}
+            telling={telling}
+            producten={producten || []}
+            recepten={recepten || []}
+            segment={segment}
+            onSegment={s => setSegment(s)}
+            zoek={zoek}
+            onZoek={setZoek}
+            tag={tag}
+            onTag={setTag}
+            tagVolgorde={tagVolgorde || []}
+            onTagArchiveren={tagArchiveren}
+            geselecteerdId={selG?.id ?? null}
+            onOpen={id => setSel(id)}
+            actiesVoor={actiesVoor}
+            voorraadVoor={g => voorraadPer.get(g.id) || null}
+            onProduct={naarProduct}
+            vandaag={vandaag}
+            geenRecepten={(recepten || []).length === 0}
+            onSync={bfCreds?.enabled && !syncing ? runSync : undefined}
+          />
         </div>
-        {/* Detail */}
-        {selRec ? (<>
-          <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors" onClick={()=>setSel(null)}>{t('btn_back')}</button>
-          <div className="flex-1 bg-white rounded-xl shadow-card p-4 min-w-0">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div>
-                <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2 flex-wrap">
-                  <span>{selRec.naam}</span>
-                  {selRec.is_huidige === false ? (
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-normal">
-                      {selRec.versie || t('recipe_version_snapshot')}
-                    </span>
-                  ) : (versiesPerParent[selRec.id]?.length > 0 && (
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-normal">
-                      {t('recipe_version_current')}
-                    </span>
-                  ))}
-                </h3>
-                {selRec.stijl&&<div className="text-sm text-gray-500 mt-0.5">{selRec.stijl}</div>}
-                {selRec.auteur&&<div className="text-xs text-gray-400 mt-0.5">{t('recipe_door').replace('{auteur}', selRec.auteur)}</div>}
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <div className={`text-sm font-medium px-3 py-1.5 rounded-full whitespace-nowrap ${overallOk?'bg-green-100 text-green-700':overallRed?'bg-red-100 text-red-700':overallYel?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-500'}`}>
-                  {overallOk?t('recept_klaar_brouwen'):overallRed?t('recept_tekort'):overallYel?t('recept_controleer'):t('recept_onbekend_voorraad')}
-                </div>
-                {selRec.is_huidige === false && (
-                  <span className="text-xs text-gray-400 italic whitespace-nowrap">{t('recipe_version_readonly')}</span>
-                )}
-                {setPage && setPreNieuwBatch && selRec.is_huidige !== false && (
-                  <Btn s="sm" v="primary" onClick={() => {
-                    // Alleen het recept voorselecteren: maakNieuweBatch in
-                    // BatchFlowPage bouwt de batch (verwacht_*, liters, kleur,
-                    // profielen) en de ingrediëntregels zelf uit het recept op.
-                    setPreNieuwBatch({ recept_id: selRec.id, naam: selRec.naam })
-                    setPage('batchflow')
-                  }}>{t('btn_brouwen')}</Btn>
-                )}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-4">
-              {[{l:'Batch',v:selRec.batch_size?`${selRec.batch_size} L`:'—'},
-                {l:'OG',  v:selRec.OG?Number(selRec.OG).toFixed(3):'—'},
-                {l:'FG',  v:selRec.FG?Number(selRec.FG).toFixed(3):'—'},
-                {l:'ABV', v:selRec.ABV?`${Number(selRec.ABV).toFixed(1)}%`:'—'},
-                {l:'IBU', v:selRec.IBU?String(selRec.IBU):'—'},
-                {l:t('recipe_kleur'), v:selRec.kleur?`${selRec.kleur} EBC`:'—'},
-                {l:t('recipe_kooktijd'), v:selRec.kooktijd?`${selRec.kooktijd} min`:'—'},
-                {l:t('recipe_kook_volume'), v:selRec.kook_volume?`${selRec.kook_volume} L`:'—'},
-              ].map((s: any)=>(
-                <div key={s.l} className="bg-gray-50 rounded-lg p-3 text-center">
-                  <div className="text-xs text-gray-400 mb-0.5">{s.l}</div>
-                  <div className="text-lg font-bold text-gray-800">{s.v}</div>
-                </div>
-              ))}
-            </div>
-            {selRec.maischprofiel && selRec.maischprofiel.length > 0 && (
-              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                <div className="text-xs font-semibold text-gray-400 mb-2">{t('recipe_mash_profile')}</div>
-                <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-gray-400 border-b">
-                      <th className="text-left pb-1 font-medium">{t('recipe_step_name')}</th>
-                      <th className="text-right pb-1 font-medium">{t('recipe_step_temp')}</th>
-                      <th className="text-right pb-1 font-medium">{t('recipe_step_time')}</th>
-                      <th className="text-right pb-1 font-medium">{t('recipe_step_ramp')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selRec.maischprofiel.map((s: any, i: number) => (
-                      <tr key={i} className="border-b border-gray-100 last:border-0">
-                        <td className="py-1 text-gray-700">{s.naam || s.type || t('lbl_stap_n').replace('{n}', String(i+1))}</td>
-                        <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
-                        <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} min` : '—'}</td>
-                        <td className="py-1 text-right text-gray-700">{s.rampTijd ? `${s.rampTijd} min` : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
-              </div>
-            )}
-            <ReceptKostprijs
+
+        {/* Detail: op een telefoon een eigen scherm (kopbalk met terug). */}
+        <div className={`flex-1 min-w-0 ${sel ? '' : 'hidden md:block'}`}>
+          {selRec ? (
+            // Per recept een vers detail: uitgeklapte kaarten en lotregels van
+            // het vorige recept gaan niet mee.
+            <ReceptDetail
+              key={String(selRec.id)}
               recept={selRec}
-              ingredienten={ing}
-              lots={lots}
-              batches={bat}
-              afvullingen={av}
+              gebruik={selG}
+              recepten={recepten || []}
+              producten={producten || []}
+              batches={bat || []}
+              ingredienten={ing || []}
+              lots={lots || []}
+              afvullingen={av || []}
+              afvulSessies={afvulSessies || []}
               verliesRegistraties={verliesRegistraties}
               inkoopFacturen={inkoopFacturen}
               verpakkingen={verpakkingen}
               onderdelen={onderdelen}
               accijnsInst={accijnsInst}
-              readOnly={selRec.is_huidige === false}
+              verkoopCtx={verkoopCtx}
+              acties={selG ? actiesVoor(selG, undefined, false) : []}
+              onBrouwen={kanBrouwen && selG
+                ? () => brouwen(selG, selRec.is_huidige === false || selRec.parent_id ? String(selRec.id) : null)
+                : undefined}
+              onKoppel={() => selG && setKoppelVoor(selG)}
+              onOpenRecept={id => setSel(id)}
+              onOpenBatch={id => gaNaar?.({ pagina: 'batches', id })}
+              onOpenProduct={naarProduct}
               onWijzig={updateRecept}
+              onWijzigRegel={updateReceptIng}
+              onWisLokaal={wisLokaleAanpassing}
             />
-            <IngSection titel={t('recipe_section_grains')} items={selRec.mout}   cat="mout"/>
-            <IngSection titel={t('recipe_section_hops')}   items={selRec.hop}    cat="hop"/>
-            <IngSection titel={t('recipe_section_yeast')}  items={selRec.gist}   cat="gist"/>
-            <IngSection titel={t('recipe_section_other')}  items={selRec.overig} cat="overig"/>
-            {selRec.vergistingsprofiel && selRec.vergistingsprofiel.length > 0 && (
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                <div className="text-xs font-semibold text-gray-400 mb-2">{t('recipe_ferm_profile')}</div>
-                <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-gray-400 border-b">
-                      <th className="text-left pb-1 font-medium">{t('recipe_step_name')}</th>
-                      <th className="text-right pb-1 font-medium">{t('recipe_step_temp')}</th>
-                      <th className="text-right pb-1 font-medium">{t('recipe_step_time')}</th>
-                      <th className="text-right pb-1 font-medium">{t('recipe_step_ramp')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selRec.vergistingsprofiel.map((s: any, i: number) => (
-                      <tr key={i} className="border-b border-gray-100 last:border-0">
-                        <td className="py-1 text-gray-700">{s.type || t('lbl_stap_n').replace('{n}', String(i+1))}</td>
-                        <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
-                        <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} d` : '—'}</td>
-                        <td className="py-1 text-right text-gray-700">{s.ramp ? `${s.ramp} u` : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
-              </div>
-            )}
-            {selRec.notities&&(
-              <div className="mt-2 p-4 bg-gray-50 rounded-lg">
-                <div className="text-xs font-semibold text-gray-400 mb-1">{t('lbl_notes')}</div>
-                <div className="text-sm text-gray-700 whitespace-pre-wrap">{selRec.notities}</div>
-              </div>
-            )}
-          </div>
-        </>):(
-          <div className="flex-1 flex items-center justify-center text-gray-300 text-sm py-24 bg-white rounded-xl shadow-card">
-            {t('msg_select_recept')}
-          </div>
-        )}
+          ) : sel != null ? (
+            // Een recept in de route dat er niet (meer) is: zeggen, met de weg
+            // naar de lijst. Zolang de recepten nog laden: niets.
+            _fetchedKeys.has('recepten') ? (
+              <LegeStaat cls="flex-1" icoon="search" titel={t('route_niet_gevonden_titel')} tekst={t('route_niet_gevonden_recept')}>
+                <Btn v="secondary" onClick={() => setSel(null, { vervang: true })}>{t('route_naar_lijst').replace('{lijst}', t('nav_recepten'))}</Btn>
+              </LegeStaat>
+            ) : null
+          ) : (
+            <div className="flex items-center justify-center text-gray-400 text-sm py-24 bg-white rounded-xl border border-gray-100 shadow-card">
+              {t('msg_select_recept')}
+            </div>
+          )}
+        </div>
       </div>
+
+      {koppelVoor && (
+        <ProductKiezer
+          onderwerp={koppelVoor.naam || t('lbl_naamloos')}
+          producten={producten || []}
+          recepten={recepten || []}
+          gekoppeld={koppelVoor.producten.map(r => r.productId)}
+          onKies={pid => { koppel(koppelVoor, pid); setKoppelVoor(null) }}
+          onSluit={() => setKoppelVoor(null)}
+          onNaarProducten={gaNaar ? () => { setKoppelVoor(null); gaNaar({ pagina: 'producten' }) } : undefined}
+        />
+      )}
     </div>
-  );
+  )
 }
 
 export default ReceptenPage

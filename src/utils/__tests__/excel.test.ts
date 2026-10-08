@@ -176,6 +176,41 @@ describe('Excel backup round-trip (ERP 0.8 / 3.1)', () => {
     expect(uit.recepten_gesloten_groepen).toEqual([])
   })
 
+  it('bewaart vastgepind en niet_in_brewfather op een recept (recepten in gebruik)', () => {
+    const recepten = [
+      {id: 'abc', naam: 'Kadeblond v4', tags: ['Blond'], vastgepind: true, niet_in_brewfather: true},
+      {id: 'abc__v2', naam: 'Kadeblond v4', parent_id: 'abc', is_huidige: false},
+      {id: 'xyz', naam: 'Rauchbier test', vastgepind: false},
+    ]
+    const uit = roundTrip({recepten})
+    expect(uit.recepten).toEqual(recepten)
+    expect(uit.recepten[0].vastgepind).toBe(true)
+    expect(uit.recepten[0].niet_in_brewfather).toBe(true)
+    expect(uit.recepten[2].vastgepind).toBe(false)
+    expect('vastgepind' in uit.recepten[1]).toBe(false)
+  })
+
+  it('bewaart het etiket van een product en de webshopstand van een artikel (Etiket bijwerken)', () => {
+    const producten = [
+      {id: 10, naam: 'Kadeblond', abv: 7, allergenen: ['gluten', 'gerst', 'tarwe'], etiket_versie: 'v4',
+        etiket_bijgewerkt: '2026-10-07', energie_op_etiket: 'vermeld', kcal: '60', kj: '249'},
+      // "Geen allergenen" is een lege lijst, iets anders dan "nog niet vastgelegd".
+      {id: 11, naam: 'Sluiswit', allergenen: [], etiket_versie: 'v1'},
+      {id: 12, naam: 'Nieuw'},
+    ]
+    const product_artikelen = [
+      {id: 101, product_id: 10, artikelnummer: 'KB-33', wc: {wc_id: 77, gesynct: '2026-10-07T10:00:00Z',
+        meta_stand: {_cf_abv: '7,0%', _cf_ingredienten: 'water, gerstemout, tarwemout, hop, gist. Bevat: gerst, tarwe.',
+          _cf_extra_specs: [{label: 'Gist', value: 'Abdij'}]},
+        meta_stand_op: '2026-10-07T10:00:00Z'}},
+    ]
+    const uit = roundTrip({producten, product_artikelen})
+    expect(uit.producten).toEqual(producten)
+    expect(Array.isArray(uit.producten[1].allergenen)).toBe(true)
+    expect('allergenen' in uit.producten[2]).toBe(false)
+    expect(uit.product_artikelen).toEqual(product_artikelen)
+  })
+
   it('herstelt losse waarden uit een oudere, kapotte backup (één kolom per teken)', () => {
     const wb = bouwBackupWerkboek({})
     wb.Sheets.ReceptenTags = XLSX.utils.json_to_sheet([

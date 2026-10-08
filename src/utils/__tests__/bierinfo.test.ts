@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   BIER_VELDEN, BIER_GROEPEN, bierVelden, bierInvulVelden,
-  bierInhoud, bierIngredienten, afgeleideBierInfo, bierInfoVoorArtikel, bierWeergaveVelden,
+  bierInhoud, bierIngredienten, afgeleideBierInfo, bierInfoVoorArtikel, bierWeergaveVelden, bierInfoWeergave,
 } from '../bierinfo'
 
 describe('velddefinities', () => {
@@ -28,6 +28,9 @@ describe('velddefinities', () => {
     expect(invul).toContain('kcal')
     expect(invul).toContain('smaakprofiel')
     expect(bierInvulVelden('artikel').map(v => v.veld)).not.toContain('inhoud')
+  })
+  it('zet geen voorbeeldgetal in het kcal-veld — dat las als een ingevulde waarde', () => {
+    expect(BIER_VELDEN.find(v => v.veld === 'kcal')?.placeholder).toBeUndefined()
   })
 })
 
@@ -215,5 +218,56 @@ describe('bierInfoVoorArtikel', () => {
   })
   it('negeert velden die geen bierinformatie zijn', () => {
     expect(bierInfoVoorArtikel({product: {naam: 'Tripel Phase', verkoopprijs: 3.31}})).toEqual({})
+  })
+})
+
+describe('bierInfoWeergave — het bier op de productpagina', () => {
+  // De regels van de referentiebatch (`batchRegelsAlsRecept`): pils- en tarwemout, hop, gist.
+  const referentieRegels = {
+    mout: [{naam: 'Pilsmout', ingredient_type: 'Mout'}, {naam: 'Tarwemout', ingredient_type: 'Mout'}],
+    hop: [{naam: 'Saaz'}], gist: [{naam: 'BE-256'}], overig: [],
+  }
+  const energie = {kcal: 60, kj: 249, bron: 'berekend'}
+
+  it('kcal uit de referentiebatch ("berekend"); het productveld telt alleen bij "Vermeld"', () => {
+    const w = bierInfoWeergave({product: {kcal: '55', abv: 6.2}, afleiding: {energie}})
+    expect(w.info.kcal).toBe('60')
+    expect(w.herkomst.kcal).toBe('berekend')
+    const vermeld = bierInfoWeergave({product: {kcal: '55', energie_op_etiket: 'vermeld'}, afleiding: {energie}})
+    expect(vermeld.info.kcal).toBe('55')
+    expect(vermeld.herkomst.kcal).toBeUndefined()
+    // Vermeld maar (nog) leeg: dan de afleiding — een leeg veld drukt niets weg.
+    expect(bierInfoWeergave({product: {energie_op_etiket: 'vermeld'}, afleiding: {energie}}).info.kcal).toBe('60')
+    // Een verwachte energie (uit het recept) heet zo.
+    expect(bierInfoWeergave({product: {}, afleiding: {energie: {kcal: 58, bron: 'verwacht'}}}).herkomst.kcal).toBe('verwacht')
+    // Onbekend: geen kcal.
+    expect(bierInfoWeergave({product: {}, afleiding: {energie: {kcal: null, bron: 'geen'}}}).info.kcal).toBeUndefined()
+  })
+
+  it('de ingrediënten van wat er gebrouwen is, niet de vereniging van alle gekoppelde recepten', () => {
+    const recepten = [
+      {mout: [{naam: 'Pilsmout'}], hop: [{naam: 'Saaz'}], gist: [{naam: 'X'}]},
+      {mout: [{naam: 'Havervlokken', ingredient_type: 'Mout'}], hop: [], gist: []},
+    ]
+    const w = bierInfoWeergave({product: {}, afleiding: {referentieRegels}})
+    expect(w.info.ingredienten).toBe('water, gerstemout, tarwemout, hop, gist')
+    expect(w.herkomst.ingredienten).toBe('batch')
+    // De push blijft alleen productwaarden en de gekoppelde recepten lezen (opzet 5.6).
+    expect(afgeleideBierInfo({product: {}, recepten}).ingredienten).toBe('water, gerstemout, havermout, hop, gist')
+  })
+
+  it('zonder referentiebatch: het huidige recept; een eigen tekst bij het product wint altijd', () => {
+    const w = bierInfoWeergave({product: {}, afleiding: {huidigRecept: {mout: [{naam: 'Pilsmout'}], hop: [{naam: 'Saaz'}], gist: []}}})
+    expect(w.info.ingredienten).toBe('water, gerstemout, hop')
+    expect(w.herkomst.ingredienten).toBe('recept')
+    const eigen = bierInfoWeergave({product: {ingredienten: 'water, mout, hop, gist'}, afleiding: {referentieRegels}})
+    expect(eigen.info.ingredienten).toBe('water, mout, hop, gist')
+    expect(eigen.herkomst.ingredienten).toBeUndefined()
+  })
+
+  it('verder dezelfde lagen als bierInfoVoorArtikel: afgeleid → bier → verpakking', () => {
+    const w = bierInfoWeergave({product: {abv: 6.2, stijl: 'Blond', serveertip: 'Tulp'}, artikel: {badge: 'Nieuw'}, inhoudLiter: 0.33})
+    expect(w.info).toMatchObject({abv: '6,2%', stijl: 'Blond', serveertip: 'Tulp', badge: 'Nieuw', inhoud: '33cl'})
+    expect(w.herkomst).toEqual({})
   })
 })

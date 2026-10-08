@@ -35,6 +35,15 @@ export const fmtDatumDoc = (d: string | undefined | null): string => {
 export const fmtQty = (v: any, max = 3): string =>
   Number(v || 0).toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: max })
 
+// Soortelijk gewicht (SG, OG, FG) altijd met drie decimalen en een punt, zoals
+// een brouwer hem afleest: "1.064", nooit "1.06" of "1,064". Leeg, nul of
+// onleesbaar wordt `leeg` (standaard een liggend streepje).
+export const fmtSg = (v: any, leeg = '—'): string => {
+  if (v === null || v === undefined || String(v).trim() === '') return leeg
+  const n = typeof v === 'number' ? v : Number(String(v).trim().replace(',', '.'))
+  return Number.isFinite(n) && n > 0 ? n.toFixed(3) : leeg
+}
+
 // Wiskundige afrondingen — gebruik bij opslag van bedragen/hoeveelheden om
 // drift door float-arithmetic te voorkomen.
 export const r2 = (n: any): number => Math.round(Number(n || 0) * 100) / 100
@@ -46,6 +55,35 @@ export const fmtD = (d: any): string => {
   // Accepteer zowel YYYY-MM-DD als volledige ISO-timestamps (bv. cold_crash_datum)
   const date = s.includes('T') ? new Date(s) : new Date(s + 'T12:00:00')
   return isNaN(date.getTime()) ? '' : date.toLocaleDateString('nl-NL')
+}
+
+// Dag en maand zonder jaar en zonder voorloopnul, zoals de overzichten een
+// datum dichtbij noemen: "16-10". Met `tijd` ook het uur ("7-10 09:15", lokale
+// tijd van een ISO-tijdstempel). Leeg of onleesbaar = ''.
+export const fmtDagMaand = (d: unknown, opties: { tijd?: boolean } = {}): string => {
+  if (d === null || d === undefined || d === '') return ''
+  const s = String(d)
+  const date = s.includes('T') ? new Date(s) : new Date(s + 'T12:00:00')
+  if (isNaN(date.getTime())) return ''
+  const dm = `${date.getDate()}-${date.getMonth() + 1}`
+  if (!opties.tijd) return dm
+  return `${dm} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+// Datum met de dag van de week ervoor, zoals de schermen hem noemen: "di
+// 15-9-2026", of zonder jaar "vr 16-10". Het weekdagwoord volgt de taal
+// (`lang`: nl/en/de/fr/es); de datum zelf blijft d-m-jjjj, net als `fmtD`
+// overal in de app. Leeg of onleesbaar = ''.
+const _WEEKDAG_LOCALE: Record<string, string> = { nl: 'nl-NL', en: 'en-GB', de: 'de-DE', fr: 'fr-FR', es: 'es-ES' }
+export const fmtWeekdagDatum = (d: unknown, opties: { jaar?: boolean; lang?: string } = {}): string => {
+  if (d === null || d === undefined || d === '') return ''
+  const s = String(d)
+  const date = s.includes('T') ? new Date(s) : new Date(s + 'T12:00:00')
+  if (isNaN(date.getTime())) return ''
+  const locale = _WEEKDAG_LOCALE[opties.lang || 'nl'] || _WEEKDAG_LOCALE.nl
+  const dag = date.toLocaleDateString(locale, { weekday: 'short' })
+  const dm = `${date.getDate()}-${date.getMonth() + 1}`
+  return `${dag} ${opties.jaar === false ? dm : `${dm}-${date.getFullYear()}`}`
 }
 
 // YYYY-MM-DD volgens de LOKALE tijdzone (niet UTC). Vermijdt off-by-one

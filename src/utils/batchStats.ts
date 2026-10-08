@@ -1,13 +1,19 @@
 // Wat de batches over een bier zeggen.
 //
 // Van elk brouwsel legt de app metingen vast: het startsoortelijk gewicht, het
-// eindgewicht, het alcoholpercentage, de kleur en het brouwzaalrendement. Per
-// batch staan die op de batchpagina, maar bij het bier wil je het geheel zien:
-// hoe vaak heb ik dit gebrouwen, hoeveel liter, en hoe consistent komt het
-// eruit? Dat is precies wat je nodig hebt om te beoordelen of het ABV dat je
-// op het etiket en in de webshop zet nog klopt.
+// eindgewicht, het alcoholpercentage, de berekende bitterheid en het
+// brouwzaalrendement. Per batch staan die op de batchpagina, maar bij het bier
+// wil je het geheel zien: hoe vaak heb ik dit gebrouwen, hoeveel liter, en hoe
+// consistent komt het eruit? Dat is precies wat je nodig hebt om te beoordelen
+// of het ABV dat je op het etiket en in de webshop zet nog klopt.
+//
+// De kleur is géén meting: de EBC van een batch is een kopie van het recept
+// (er is geen gemeten-EBC-veld), dus een gemiddelde daarvan zegt niets over
+// wat er gebrouwen is en hoort niet tegen het etiket te worden gezet.
 //
 // Puur rekenwerk: geen React, geen opslag.
+
+import { abvBerekend } from './etiket'
 
 /** Eén gemeten grootheid over meerdere batches. */
 export interface BatchMeting {
@@ -42,10 +48,18 @@ export interface BatchSamenvatting {
   laatste: string
   /** Aantal batches per status, bijv. {Afgevuld: 3, 'Aan het gisten': 1}. */
   perStatus: Record<string, number>
+  /** De ABV van de batch; zonder ingevulde ABV berekend uit de gemeten OG/FG
+   *  volgens Balling (`abvBerekend`, dezelfde route als de etiketkaart). */
   abv: BatchMeting | null
   og: BatchMeting | null
   fg: BatchMeting | null
+  /** Bitterheid berekend op de brouwdag (Tinseth, `ibu_berekend`). */
+  ibu: BatchMeting | null
+  /** Altijd null: de kleur van een batch komt uit het recept en is geen
+   *  meting (blijft staan zodat bestaande lezers niet breken). */
   kleur: BatchMeting | null
+  /** Brouwzaalrendement: het in de app gemeten `brouwzaal_efficiency_pct`,
+   *  anders het Brewfather-veld `brouwzaal_eff`. */
   rendement: BatchMeting | null
   /**
    * Kostprijs per liter, alleen wanneer de aanroeper hem kan berekenen (die
@@ -123,26 +137,37 @@ export function batchSamenvatting(
     if (status) perStatus[status] = (perStatus[status] || 0) + 1
   }
 
+  // Afgeleide grootheden via een tijdelijk veld, zodat `meting` één
+  // implementatie blijft.
+  const afgeleid = opDatum.map(b => ({
+    // Een ingevulde ABV (vastgezet, lab, Brewfather) gaat voor; anders de
+    // berekening uit de gemeten OG/FG.
+    _abv: (getal(b?.ABV) ?? 0) > 0 ? getal(b?.ABV) : (abvBerekend(b?.OG, b?.FG)?.abv ?? null),
+    // Het in de app gemeten rendement gaat voor het Brewfather-veld.
+    _rendement: getal(b?.brouwzaal_efficiency_pct) ?? getal(b?.brouwzaal_eff),
+  }))
+
   return {
     aantal: lijst.length,
     liters: rond(lijst.reduce((s, b) => s + (getal(b?.liter_vergist) ?? 0), 0), 1),
     eerste: datums[0] || '',
     laatste: datums[datums.length - 1] || '',
     perStatus,
-    abv:       meting(opDatum, 'ABV', 1),
+    abv:       meting(afgeleid, '_abv', 1),
     og:        meting(opDatum, 'OG', 3),
     fg:        meting(opDatum, 'FG', 3),
-    kleur:     meting(opDatum, 'kleur', 0),
-    rendement: meting(opDatum, 'brouwzaal_eff', 0),
+    ibu:       meting(opDatum, 'ibu_berekend', 0),
+    kleur:     null,
+    rendement: meting(afgeleid, '_rendement', 0),
     kostprijs: opties?.kostprijsPerLiter
-      // Via een tijdelijk veld, zodat `meting` één implementatie blijft.
       ? meting(opDatum.map(b => ({_kpl: opties.kostprijsPerLiter!(b) || null})), '_kpl', 2)
       : null,
   }
 }
 
 export interface BierAfwijking {
-  /** Veld op het product (`abv` of `ebc`). */
+  /** Veld op het product. Alleen nog `abv`: de kleur is geen meting (zie
+   *  boven), `ebc` blijft in het type voor bestaande lezers. */
   veld: 'abv' | 'ebc'
   /** Wat er nu bij het bier staat (leeg = nog niets ingevuld). */
   bier: number | null
@@ -156,7 +181,8 @@ export interface BierAfwijking {
  * laatste drie batches gemiddelden 7,4%".
  *
  * Een klein verschil is normaal (elke brouw wijkt iets af), dus pas vanaf een
- * marge melden: 0,2 %vol voor het alcoholpercentage en 2 EBC voor de kleur.
+ * marge melden: 0,2 %vol voor het alcoholpercentage. De kleur niet: die komt
+ * uit het recept, er valt niets gebrouwens mee te vergelijken.
  */
 export function bierAfwijkingen(
   samenvatting: BatchSamenvatting,
@@ -174,6 +200,5 @@ export function bierAfwijkingen(
   }
 
   check('abv', samenvatting.abv, 0.2, 1)
-  check('ebc', samenvatting.kleur, 2, 0)
   return uit
 }

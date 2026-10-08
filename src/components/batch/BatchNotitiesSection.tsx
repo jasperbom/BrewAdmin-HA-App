@@ -3,6 +3,7 @@ import { t } from '../../i18n'
 import { newId } from '../../utils/api'
 import { fmtD } from '../../utils/format'
 import Btn from '../ui/Btn'
+import BevestigKnop from '../ui/BevestigKnop'
 import SectionHeader from '../ui/SectionHeader'
 import type { BatchNotitie, Batch } from '../../types'
 
@@ -34,8 +35,8 @@ const BatchNotitiesSection: React.FC<Props> = ({batch, notities, setNotities, op
     setTekst('')
   }
 
+  // De vraag zit in de knop (BevestigKnop), geen confirm().
   const deleteRij = (id: number) => {
-    if (!confirm(t('batch_notitie_confirm_delete'))) return
     setNotities((prev: any[]) => (prev || []).filter(n => n.id !== id))
   }
 
@@ -76,8 +77,8 @@ const BatchNotitiesSection: React.FC<Props> = ({batch, notities, setNotities, op
                     <div className="text-xs text-gray-400">{fmtTs(n.ts)}</div>
                     <div className="text-sm text-gray-700 whitespace-pre-wrap break-words">{n.tekst}</div>
                   </div>
-                  <button onClick={() => deleteRij(n.id)}
-                    className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none flex-shrink-0">×</button>
+                  <BevestigKnop v="ghost" s="sm" vraag={t('batch_notitie_confirm_delete')} onBevestig={() => deleteRij(n.id)}
+                    title={t('btn_delete')} cls="text-gray-400 hover:text-red-500 flex-shrink-0 min-w-[40px] sm:min-w-0">✕</BevestigKnop>
                 </div>
               ))}
             </div>

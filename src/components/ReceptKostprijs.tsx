@@ -144,10 +144,12 @@ const ReceptKostprijs: React.FC<ReceptKostprijsProps> = ({
         title={t('recipe_cost_title')}
         open={open}
         onToggle={() => setOpen(o => !o)}
+        // De kop is niet solid (wit): het getal in donkere tekst, anders is het
+        // belangrijkste cijfer onzichtbaar zolang de sectie dicht staat.
         info={eenheid
-          ? <span className="font-semibold text-white">{eur3(eenheid.totaal)} <span className="font-normal">/{eenheidNaam}</span></span>
+          ? <span className="font-semibold text-gray-800">{eur3(eenheid.totaal)} <span className="font-normal text-gray-500">/{eenheidNaam}</span></span>
           : perLiter !== null
-            ? <span className="font-semibold text-white">{eur3(perLiter)} {t('recipe_cost_per_liter_short')}</span>
+            ? <span className="font-semibold text-gray-800">{eur3(perLiter)} <span className="font-normal text-gray-500">{t('recipe_cost_per_liter_short')}</span></span>
             : <span>{t('recipe_cost_unknown')}</span>}
       />
       {open && (
@@ -378,16 +380,17 @@ const ReceptKostprijs: React.FC<ReceptKostprijsProps> = ({
             </div>
           )}
 
-          {/* De regels */}
+          {/* De regels. Op een telefoon zonder prijs per eenheid en aandeel:
+              drie kolommen passen, vijf scrolden zijwaarts. */}
           <div className="rounded-lg border border-gray-200 overflow-x-auto">
-            <table className="w-full min-w-[520px] text-sm">
+            <table className="w-full sm:min-w-[520px] text-sm">
               <thead>
                 <tr className="bg-gray-50 text-xs text-gray-400">
                   <th className="px-3 py-2 text-left font-medium">{t('log_ingredient')}</th>
                   <th className="px-3 py-2 text-right font-medium">{t('recipe_needed')}</th>
-                  <th className="px-3 py-2 text-right font-medium">{t('recipe_cost_unit_price')}</th>
+                  <th className="hidden sm:table-cell px-3 py-2 text-right font-medium">{t('recipe_cost_unit_price')}</th>
                   <th className="px-3 py-2 text-right font-medium">{t('recipe_cost_amount')}</th>
-                  <th className="px-3 py-2 text-right font-medium">{t('recipe_cost_share')}</th>
+                  <th className="hidden sm:table-cell px-3 py-2 text-right font-medium">{t('recipe_cost_share')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -404,7 +407,7 @@ const ReceptKostprijs: React.FC<ReceptKostprijsProps> = ({
                     <td className="px-3 py-1.5 text-right text-gray-600 whitespace-nowrap">
                       {fmtQty(r.hoeveelheid)} {r.eenheid}
                     </td>
-                    <td className="px-3 py-1.5 text-right text-gray-500 whitespace-nowrap">
+                    <td className="hidden sm:table-cell px-3 py-1.5 text-right text-gray-500 whitespace-nowrap">
                       {r.prijsPerEenheid !== null ? `${eur3(r.prijsPerEenheid)}/${r.eenheid}` : '—'}
                     </td>
                     <td className="px-3 py-1.5 text-right whitespace-nowrap">
@@ -412,7 +415,7 @@ const ReceptKostprijs: React.FC<ReceptKostprijsProps> = ({
                         ? <span className="font-medium text-gray-800">{fmt(r.kosten)}</span>
                         : <span className="text-orange-500 text-xs">{t('recipe_cost_no_price')}</span>}
                     </td>
-                    <td className="px-3 py-1.5 text-right text-xs text-gray-400">
+                    <td className="hidden sm:table-cell px-3 py-1.5 text-right text-xs text-gray-400">
                       {r.kosten !== null && k.ingredientKosten > 0
                         ? `${Math.round((r.kosten / k.ingredientKosten) * 100)}%` : ''}
                     </td>
@@ -423,52 +426,58 @@ const ReceptKostprijs: React.FC<ReceptKostprijsProps> = ({
                   tot de ingrediënten, daarna komen de kosten eromheen erbij. */}
               <tfoot>
                 <tr className="text-xs border-t border-gray-200">
-                  <td className="px-3 py-1.5 text-gray-500" colSpan={3}>{t('recipe_cost_subtotal_ingredients')}</td>
+                  <td className="px-3 py-1.5 text-gray-500" colSpan={2}>{t('recipe_cost_subtotal_ingredients')}</td>
+                  <td className="hidden sm:table-cell"></td>
                   <td className="px-3 py-1.5 text-right font-medium text-gray-700">{fmt(k.ingredientKosten)}</td>
-                  <td className="px-3 py-1.5"></td>
+                  <td className="hidden sm:table-cell px-3 py-1.5"></td>
                 </tr>
                 {k.overigeKosten > 0 && (
                   <tr className="text-xs">
-                    <td className="px-3 py-1.5 text-gray-500" colSpan={3}>{t('recipe_cost_other_input')}</td>
+                    <td className="px-3 py-1.5 text-gray-500" colSpan={2}>{t('recipe_cost_other_input')}</td>
+                    <td className="hidden sm:table-cell"></td>
                     <td className="px-3 py-1.5 text-right font-medium text-gray-700">{fmt(k.overigeKosten)}</td>
-                    <td className="px-3 py-1.5"></td>
+                    <td className="hidden sm:table-cell px-3 py-1.5"></td>
                   </tr>
                 )}
                 {k.verpakkingKosten > 0 && (
                   <tr className="text-xs">
-                    <td className="px-3 py-1.5 text-gray-500" colSpan={3}>
+                    <td className="px-3 py-1.5 text-gray-500" colSpan={2}>
                       {t('recipe_cost_packaging')}
                       {/* Per liter, niet per fles: er past zelden een rond
                           aantal flessen in een brouw. */}
                       <span className="text-gray-400"> · {fmtQty(k.litersNaVerlies, 1)} L × {eur3(ref.kostenPerLiter)}</span>
                     </td>
+                    <td className="hidden sm:table-cell"></td>
                     <td className="px-3 py-1.5 text-right font-medium text-gray-700">{fmt(k.verpakkingKosten)}</td>
-                    <td className="px-3 py-1.5"></td>
+                    <td className="hidden sm:table-cell px-3 py-1.5"></td>
                   </tr>
                 )}
                 <tr className={k.accijns > 0 ? 'text-sm' : 'bg-gray-50 text-sm'}>
-                  <td className="px-3 py-2 font-semibold text-gray-700" colSpan={3}>
+                  <td className="px-3 py-2 font-semibold text-gray-700" colSpan={2}>
                     {k.accijns > 0 ? t('recipe_cost_title') : t('lbl_total')}
                   </td>
+                  <td className="hidden sm:table-cell"></td>
                   <td className={`px-3 py-2 text-right ${k.accijns > 0 ? 'font-semibold text-gray-700' : 'font-bold text-gray-800'}`}>
                     {fmt(k.totaal)}
                   </td>
-                  <td className="px-3 py-2"></td>
+                  <td className="hidden sm:table-cell px-3 py-2"></td>
                 </tr>
                 {k.accijns > 0 && (
                   <>
                     <tr className="text-xs">
-                      <td className="px-3 py-1.5 text-gray-500" colSpan={3}>
+                      <td className="px-3 py-1.5 text-gray-500" colSpan={2}>
                         {t('recipe_cost_excise')}
                         <span className="text-gray-400"> · {fmtQty(k.litersNaVerlies, 1)} L × {eur3(acc.perLiter)}</span>
                       </td>
+                      <td className="hidden sm:table-cell"></td>
                       <td className="px-3 py-1.5 text-right font-medium text-gray-700">{fmt(k.accijns)}</td>
-                      <td className="px-3 py-1.5"></td>
+                      <td className="hidden sm:table-cell px-3 py-1.5"></td>
                     </tr>
                     <tr className="bg-gray-50 text-sm">
-                      <td className="px-3 py-2 font-semibold text-gray-700" colSpan={3}>{t('recipe_cost_total_incl_excise')}</td>
+                      <td className="px-3 py-2 font-semibold text-gray-700" colSpan={2}>{t('recipe_cost_total_incl_excise')}</td>
+                      <td className="hidden sm:table-cell"></td>
                       <td className="px-3 py-2 text-right font-bold text-gray-800">{fmt(k.totaalMetAccijns)}</td>
-                      <td className="px-3 py-2"></td>
+                      <td className="hidden sm:table-cell px-3 py-2"></td>
                     </tr>
                   </>
                 )}
