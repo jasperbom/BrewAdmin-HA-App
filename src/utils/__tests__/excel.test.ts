@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import * as XLSX from 'xlsx'
 import { bouwBackupWerkboek, parseBackupWerkboek, voegToeOpId, APPEND_ONLY_KEYS, herstelPrimitieveLijst } from '../excel'
+import { txKey } from '../bank'
 
 // Round-trip zoals de app hem doet: werkboek bouwen → naar xlsx-bytes
 // schrijven → terug inlezen → parsen. Dit vangt zowel de sheet-indeling als
@@ -278,6 +279,40 @@ describe('postvak met inkoopfacturen (inkoop_inbox)', () => {
     wb.SheetNames = wb.SheetNames.filter(n => n !== 'InkoopInbox')
     const oud = parseBackupWerkboek(XLSX.read(XLSX.write(wb, {bookType: 'xlsx', type: 'array'}), {type: 'array'}))
     expect(oud.inkoop_inbox).toBeUndefined()
+  })
+})
+
+describe('bewaarde bankafschriften (bank_transacties / bank_afschriften)', () => {
+  it('gaan mee in de backup en komen terug met dezelfde koppelsleutel', () => {
+    const transacties = [
+      { id: 1759240000000101, afschrift_id: 1759240000000100, iban: 'NL12INGB0001234567', datum: '2026-09-25',
+        type: 'D', bedrag: 158.05, referentie: 'FE1209', tegenpartij: 'Fermentis', omschrijving: 'Factuur FE-1209',
+        gekoppeldFactuurId: null, gekoppeldInkoopId: 42, autoGematcht: true, matchAmbigu: false },
+      { id: 1759240000000102, afschrift_id: 1759240000000100, iban: 'NL12INGB0001234567', datum: '2026-09-30',
+        type: 'C', bedrag: 212.4, referentie: '', tegenpartij: 'Stichting Mollie Payments',
+        omschrijving: 'Uitbetaling st.2026093000', gekoppeldFactuurId: null, gekoppeldInkoopId: null,
+        gekoppeldPspFactuurIds: [7, 8, 9], pspHerkend: false, storno: true },
+    ]
+    const afschriften = [
+      { id: 1759240000000100, iban: 'NL12INGB0001234567', referentie: 'DEKADE2026-10', afschriftNr: '00042',
+        beginsaldo: 3200, eindsaldo: 4520.76, van: '2026-09-24', tot: '2026-10-02',
+        geimporteerd_op: '2026-10-07T09:00:00.000Z', aantal: 5, nieuw: 5, overgeslagen: 0,
+        transactie_ids: [1759240000000101, 1759240000000102], vorig_eindsaldo: null },
+    ]
+    const uit = roundTrip({ bank_transacties: transacties, bank_afschriften: afschriften })
+    expect(uit.bank_transacties).toEqual(transacties)
+    expect(uit.bank_afschriften).toEqual(afschriften)
+    // het afschriftnummer blijft tekst (voorloopnullen), het bedrag een getal
+    expect(uit.bank_afschriften[0].afschriftNr).toBe('00042')
+    expect(uit.bank_transacties[0].bedrag).toBe(158.05)
+    expect(uit.bank_transacties.map(txKey)).toEqual(transacties.map(txKey))
+    // een backup van vóór het bewaren kent de tabbladen niet: dan blijft de bestaande lijst staan
+    const wb = bouwBackupWerkboek({ klanten: [] })
+    for (const n of ['BankTransacties', 'BankAfschriften']) delete wb.Sheets[n]
+    wb.SheetNames = wb.SheetNames.filter(n => n !== 'BankTransacties' && n !== 'BankAfschriften')
+    const oud = parseBackupWerkboek(XLSX.read(XLSX.write(wb, {bookType: 'xlsx', type: 'array'}), {type: 'array'}))
+    expect(oud.bank_transacties).toBeUndefined()
+    expect(oud.bank_afschriften).toBeUndefined()
   })
 })
 

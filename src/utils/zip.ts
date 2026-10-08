@@ -1,6 +1,7 @@
-// Minimale ZIP-schrijver (STORE, geen compressie). Verhuisd uit
+// Minimale ZIP-schrijver (STORE, geen compressie). Verhuisd uit de oude
 // BoekhoudingPage (ERP-plan 3.5) — puur en dus testbaar. Gebruikt voor de
-// alles-in-één rapportexport (CSV's + factuurbijlagen in één download).
+// alles-in-één export op Administratie → Rapporten (CSV's + factuurbijlagen
+// in één download, pages/admin/rapporten/exportZip.ts).
 
 const _crcTbl = (() => {
   const t = new Uint32Array(256)

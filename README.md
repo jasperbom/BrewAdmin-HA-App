@@ -54,19 +54,29 @@ Products, articles and SKUs, with what each beer costs and what it earns.
 
 ## Administration
 
+Five places — Invoices, Bank, Returns, Stock and Reports — with one filter bar
+and a period that stays put as you move between them. What needs attention
+(open, overdue, to process, to match) is never hidden by the period, and the
+overview lists exactly what the badge counts.
+
 Excise stock (AGP) per location, with the duty value of what is in the tanks and
 what is packaged.
 
 ![Excise stock per location](docs/screenshots/agp.png)
 
 - Excise calculated on release, per month declared and tracked to payment
+- VAT and excise returns in the same steps: calculated, checked by a second
+  person, filed and paid, with the journal behind it
 - Purchase invoices scanned by Claude AI: supplier, date, number and lines
-- Forward a purchase invoice to a mailbox of your own and the PDF waits on the
-  Purchases tab, ready to scan and book (read-only IMAP, nothing is booked by itself)
-- VAT return per quarter or month, with the journal behind it
-- Bank reconciliation from MT940, including payment service provider payouts
+- Forward a purchase invoice to a mailbox of your own and the PDF waits under
+  Invoices › Purchases as "to process", ready to scan and book (read-only IMAP,
+  nothing is booked by itself)
+- Bank statements from MT940 are kept; the bank is a work queue with one
+  suggested match per transaction, including payment service provider payouts
 - Sales invoices as PDF or as UBL/PEPPOL e-invoice, with an optional Mollie
-  payment link
+  payment link, and a timeline of what happened to each invoice
+- Profit and loss and revenue per item (both comparable with last year), the
+  balance sheet and open items on a reference date, and the journal per day book
 - Stock counts, stock flow reports and a referential health check
 
 ## On a phone

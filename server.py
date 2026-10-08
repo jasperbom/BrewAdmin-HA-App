@@ -1912,6 +1912,7 @@ _KEY_TYPES = {
         'brouwdag_stappen', 'water_addities', 'water_profielen',
         'water_doelprofielen', 'hop_addities', 'dry_hops', 'koel_logs',
         'batch_notities', 'kapitaal_boekingen', 'alt_rekeningen',
+        'bank_transacties', 'bank_afschriften',
         'inventarisaties', 'audit_log', 'accijns_aangiftes', 'btw_aangiftes',
         'journaal', 'jaarafsluitingen',
         'producten', 'product_artikelen', 'haccp_schoonmaak_taken',
@@ -2925,6 +2926,7 @@ _BEHEER_KEYS = frozenset((
 _FINANCIELE_KEYS = frozenset((
     'inkoop_facturen', 'verkoop_facturen', 'scan_correcties', 'journaal',
     'inkoop_inbox', 'jaarafsluitingen', 'bank_saldi', 'bank_koppelingen',
+    'bank_transacties', 'bank_afschriften',
     'kapitaal_boekingen', 'accijns', 'accijns_aangiftes',
     'accijns_instellingen', 'btw_aangiftes', 'btw_instellingen',
     'btw_tarieven', 'ing_type_btw', 'alt_rekeningen', 'kosten_soorten',
@@ -4179,7 +4181,7 @@ def _website_loop(interval: float = 60.0) -> None:
 # De brouwer stuurt een inkoopfactuur door naar een eigen postvak. BrewAdmin is
 # niet publiek bereikbaar en kan dus geen mail *ontvangen*; de server haalt de
 # PDF-bijlagen daarom zelf uit dat postvak (IMAP) en zet ze als `nieuw` in
-# `inkoop_inbox`. Daar wachten ze op de tab Inkoop tot iemand ze verwerkt:
+# `inkoop_inbox`. Daar wachten ze op Facturen → Inkoop tot iemand ze verwerkt:
 # openen, scannen, boeken. Hier wordt niets geboekt.
 #
 # Alleen lezen. Het postvak gaat met EXAMINE (readonly) open: berichten worden
@@ -5830,19 +5832,21 @@ def _cold_crash_tick() -> None:
 def _bijlage_in_gebruik(filename: str) -> str | None:
     """Naam van de data-key die nog naar deze bijlage verwijst, of None.
     Kijkt naar `bijlage.bestand` (inkoopfactuur, item in het postvak met
-    facturen per e-mail), `bijlagen[].bestand` (afboeking,
+    facturen per e-mail), `verslag.bestand` (het uitbetalingsverslag van een
+    PSP bij een banktransactie), `bijlagen[].bestand` (afboeking,
     verliesregistratie, vernietiging) en `etiket_fotos[].bestand` (de foto's
     van het etiket bij een ingrediëntlot: bewijs voor traceerbaarheid)."""
-    for key in ('inkoop_facturen', 'inkoop_inbox', 'afboekingen', 'verlies_registraties', 'lots'):
+    for key in ('inkoop_facturen', 'inkoop_inbox', 'afboekingen', 'verlies_registraties', 'lots', 'bank_transacties'):
         rijen = _read_json(key, [])
         if not isinstance(rijen, list):
             continue
         for rij in rijen:
             if not isinstance(rij, dict):
                 continue
-            een = rij.get('bijlage')
-            if isinstance(een, dict) and een.get('bestand') == filename:
-                return key
+            for veld in ('bijlage', 'verslag'):
+                een = rij.get(veld)
+                if isinstance(een, dict) and een.get('bestand') == filename:
+                    return key
             for veld in ('bijlagen', 'etiket_fotos'):
                 lijst = rij.get(veld)
                 if not isinstance(lijst, list):

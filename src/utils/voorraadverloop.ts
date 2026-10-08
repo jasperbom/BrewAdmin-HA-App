@@ -15,6 +15,7 @@
 
 import { verkoopUitAgpToegestaan } from './agp'
 import { afboekingAccijnsplichtig } from './afboeking'
+import { periodeBereik, dagenInMaand, isIsoDatum, type Bereik, type EigenPeriode, type PeriodeKeuze } from './periode'
 
 export interface GereedProductRij {
   key: string
@@ -34,6 +35,9 @@ export interface GereedProductRij {
   voorcalcPerEenheid: number
   accijnsTeBetalen: number
   accijnsLatentEind: number
+  /** Minstens één afvulling van deze regel heeft geen bevroren voorcalculatie:
+   * de accijns is (deels) geschat. Alleen gevuld met `voorcalcBron`. */
+  accijnsGeschat?: boolean
 }
 
 export interface GereedProductInvoer {
@@ -49,6 +53,9 @@ export interface GereedProductInvoer {
   tot: string
   /** Bevroren voorcalculatie accijns per eenheid van een afvulling. */
   voorcalcVoorAfvulling: (afv: any) => number
+  /** Waar die waarde op rust (`accijnsWaardeVoorraad` in utils/agp.ts); zet
+   * `accijnsGeschat` op de regel. Optioneel: zonder blijft de regel zoals hij was. */
+  voorcalcBron?: (afv: any) => 'voorcalc' | 'geschat'
 }
 
 const inRange = (datum: unknown, van: string, tot: string): boolean => {
@@ -209,16 +216,91 @@ export const berekenGereedProductVerloop = (inv: GereedProductInvoer): GereedPro
     const voorcalcPerEenheid = totaalEenheden > 0 ? totaalVc / totaalEenheden : 0
     const accijnsLatentEind = voorcalcPerEenheid * Math.max(0, agpEind)
 
-    rows.push({
+    const rij: GereedProductRij = {
       key, batch_naam, verpakking_naam, gn_code,
       beginvoorraad, productie, binnenland, export: exportUit,
       bijzMutaties, eindvoorraad,
       agpBegin, agpUitgeslagen, agpEind,
       voorcalcPerEenheid, accijnsTeBetalen, accijnsLatentEind,
-    })
+    }
+    if (inv.voorcalcBron) rij.accijnsGeschat = eigenAv.some((a: any) => inv.voorcalcBron?.(a) === 'geschat')
+    rows.push(rij)
   })
 
   return rows.sort((a, b) =>
     String(a.batch_naam || '').localeCompare(String(b.batch_naam || '')) ||
     String(a.verpakking_naam || '').localeCompare(String(b.verpakking_naam || '')))
+}
+
+// ── De periodestapper van het voorraadverloop ──────────────────────────────
+// Het verloop houdt zijn eigen stapper (maand/kwartaal/jaar, vorige/volgende):
+// een Douane-overzicht gaat altijd over een hele kalenderperiode. Bij het
+// openen neemt hij de gedeelde periode van de administratie over, als die
+// precies zo'n periode is (deze maand, vorig kwartaal, dit jaar … of eigen
+// datums die samen één maand, kwartaal of jaar beslaan). Anders: deze maand.
+
+export type VerloopPeriodeType = 'maand' | 'kwartaal' | 'jaar'
+
+export interface VerloopStapper {
+  type: VerloopPeriodeType
+  jaar: number
+  /** Maand 1–12, kwartaal 1–4; bij een jaar altijd 1. */
+  periode: number
+}
+
+const pad2 = (n: number): string => String(n).padStart(2, '0')
+
+/** Het datumbereik (beide grenzen inclusief) van een stand van de stapper. */
+export const bereikVanStapper = (s: VerloopStapper): { van: string; tot: string } => {
+  if (s.type === 'jaar') return { van: `${s.jaar}-01-01`, tot: `${s.jaar}-12-31` }
+  if (s.type === 'kwartaal') {
+    const eerste = (s.periode - 1) * 3 + 1
+    const laatste = eerste + 2
+    return { van: `${s.jaar}-${pad2(eerste)}-01`, tot: `${s.jaar}-${pad2(laatste)}-${pad2(dagenInMaand(s.jaar, laatste))}` }
+  }
+  return { van: `${s.jaar}-${pad2(s.periode)}-01`, tot: `${s.jaar}-${pad2(s.periode)}-${pad2(dagenInMaand(s.jaar, s.periode))}` }
+}
+
+/** Is dit bereik precies één kalendermaand, -kwartaal of -jaar? Anders null. */
+export const stapperUitBereik = (bereik: Bereik): VerloopStapper | null => {
+  const { van, tot } = bereik
+  if (!isIsoDatum(van) || !isIsoDatum(tot) || van.slice(8, 10) !== '01') return null
+  const jaar = Number(van.slice(0, 4))
+  const maand = Number(van.slice(5, 7))
+  if (tot.slice(0, 4) !== van.slice(0, 4)) return null
+  const kandidaten: VerloopStapper[] = [
+    { type: 'maand', jaar, periode: maand },
+    ...(maand % 3 === 1 ? [{ type: 'kwartaal' as const, jaar, periode: (maand - 1) / 3 + 1 }] : []),
+    ...(maand === 1 ? [{ type: 'jaar' as const, jaar, periode: 1 }] : []),
+  ]
+  return kandidaten.find(k => bereikVanStapper(k).tot === tot) || null
+}
+
+/** De stapper bij een gedeelde periodekeuze, of null als die niet past
+ * (alles, of eigen datums die geen hele maand/kwartaal/jaar zijn). */
+export const stapperUitPeriode = (
+  keuze: PeriodeKeuze,
+  vandaag: Date,
+  eigen?: EigenPeriode | null
+): VerloopStapper | null => {
+  if (keuze === 'alles') return null
+  return stapperUitBereik(periodeBereik(keuze, vandaag, eigen))
+}
+
+/** Een stap terug (−1) of vooruit (+1); over de jaargrens heen. */
+export const stapVerloop = (s: VerloopStapper, richting: -1 | 1): VerloopStapper => {
+  const max = s.type === 'maand' ? 12 : s.type === 'kwartaal' ? 4 : 1
+  const p = s.periode + richting
+  if (p < 1) return { ...s, jaar: s.jaar - 1, periode: max }
+  if (p > max) return { ...s, jaar: s.jaar + 1, periode: 1 }
+  return { ...s, periode: p }
+}
+
+/** Wissel van soort met behoud van het moment: maart → Q1 → het jaar, en terug
+ * naar de eerste maand van het kwartaal/jaar. */
+export const wisselVerloopType = (s: VerloopStapper, type: VerloopPeriodeType): VerloopStapper => {
+  const eersteMaand = s.type === 'maand' ? s.periode : s.type === 'kwartaal' ? (s.periode - 1) * 3 + 1 : 1
+  if (type === 'maand') return { type, jaar: s.jaar, periode: eersteMaand }
+  if (type === 'kwartaal') return { type, jaar: s.jaar, periode: Math.ceil(eersteMaand / 3) }
+  return { type, jaar: s.jaar, periode: 1 }
 }

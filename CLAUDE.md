@@ -32,7 +32,18 @@ BrewAdmin-HA-App/
 │   │   │                   # Ook: `ActieBalk` (één volgende stap vast onderin, `bottom: var(--onderbalk)`,
 │   │   │                   # zet `--actiebalk` voor de UndoBar), `AttentieKaart` ("Vraagt om aandacht"),
 │   │   │                   # `Segment`, `Onderblad`, `Blad` (Modal op het bureau, Onderblad op de
-│   │   │                   # telefoon), `EtiketAllergenen`, `useBreedte`
+│   │   │                   # telefoon), `EtiketAllergenen`, `useBreedte`.
+│   │   │                   # De lijstpagina's van Administratie (zie "Administratie — patronen"):
+│   │   │                   # `FilterBalk` (zoeken met "/" als sneltoets, `StatusChips` met aantallen,
+│   │   │                   # `PeriodeKiezer`, extra filters als kinderen; telefoon: zoeken + knop
+│   │   │                   # Filter met het aantal actieve filters → paneel van onderen),
+│   │   │                   # `ResponsiveLijst` (tabel op het bureau, één kaart = één tapdoel op de
+│   │   │                   # telefoon; een knop ín een kaart krijgt `KAART_INTERACTIEF`; `breed`-kolommen
+│   │   │                   # pas vanaf 1024 px), `DetailPaneel` + `LijstMetDetail` (detail naast de lijst,
+│   │   │                   # 320/380 px; telefoon: eigen scherm z-[150] met terugknop en vaste actiebalk —
+│   │   │                   # boven de onderbalk, onder UndoBar en Modal) en `useGedeeldePeriode`
+│   │   │                   # (`useGedeeldBereik`, `zetGedeeldePeriode`: één periode voor de hele werkruimte,
+│   │   │                   # sessionStorage `brewadmin_admin_periode`, standaard dit jaar)
 │   │   ├── InkoopFactuurModal.tsx  # Inkoop boeken: het werkblad (bureau: factuur naast de boeking; telefoon:
 │   │   │                           # wissel Factuur | Boeking, regel in een paneel van onderen). Alle regels in
 │   │   │                           # één lijst, factuurscan, etiketfoto's, totaalcontrole, "Bij opslaan". Geeft
@@ -46,7 +57,7 @@ BrewAdmin-HA-App/
 │   │   │                           # knijpen, markering van de open regel), RegelLijst, RegelEditor, LotVelden
 │   │   │                           # (meer lots per regel), EtiketFotos, LotEtiket (etiketfoto bij een bestaand
 │   │   │                           # lot, lotvenster Ingrediënten), ItemKiezer, InkoopTotalen, Onderblad, Segment
-│   │   ├── InkoopInbox.tsx         # Tab Inkoop → "Ontvangen per e-mail": de wachtrij met doorgestuurde PDF-facturen
+│   │   ├── InkoopInbox.tsx         # Facturen › Inkoop → status "Te verwerken": de wachtrij met doorgestuurde PDF-facturen
 │   │   ├── InkoopMailInstellingen.tsx # Instellingen → Koppelingen → Facturen per e-mail (`imap_creds`, test, status)
 │   │   ├── BatchRapportExport.tsx  # Batchdossier → print-HTML / printvenster / PDF-download
 │   │   └── PakbonExport.tsx        # Pakbon, picklijst, factuur, herinnering. Deelt
@@ -71,11 +82,59 @@ BrewAdmin-HA-App/
 │   │   ├── bestelling/             # Bestellingen: kaarten, statuschips, orderregels met "komt eraan", merchbeheer
 │   │   ├── kassa/                  # Kassa: tegels per product, bonbalk + bon (onderblad onder `lg`), klant
 │   ├── pages/              # Feature pages (one per domain)
+│   │   ├── AdministratieDashboard.tsx # Overzicht van Administratie: de rijen van `beslissingen()` (App rekent
+│   │   │                   # ze één keer uit, `adminRijen` — dezelfde lijst als de badge) + vier tegels
+│   │   │                   # (`overzichtCijfers`) die Facturen openen met dezelfde filter en periode
+│   │   ├── AgpPage.tsx, VoorraadverloopPage.tsx, InventarisatiePage.tsx # De drie segmenten van Voorraad
+│   │   │                   # (AGP-stand | Verloop | Tellingen); eigen props, geen AdminContext
+│   │   └── admin/          # Werkruimte Administratie (v1.12.89/90): vervangt BoekhoudingPage, RapportenPage
+│   │       │               # en AccijnsPage. Een sectie houdt zijn eigen formulieren, filters en modals;
+│   │       │               # zelfstandige onderdelen staan in de submap met dezelfde naam
+│   │       ├── AdministratiePage.tsx # Container van Facturen, Bank, Aangiftes en Rapporten (`sectie`): de
+│   │       │               # props uit App, plus wat meer dan één sectie nodig heeft (BTW-rollover,
+│   │       │               # alt-rekeningschuld, BTW-/accijnsbetaling (ont)koppelen, `markeerBetaald`,
+│   │       │               # `bankTransacties` met de vlaggen uit `herstelKoppelingVlaggen`, en de
+│   │       │               # PSP-kostenverrekening: `verrekenPspKosten`, `werkVerrekendeFacturenBij`,
+│   │       │               # `kostenpostMagVervallen` — Bank én Facturen). Wist het
+│   │       │               # navigatiedoel na het mounten (`onNavDoelConsumed`)
+│   │       ├── adminContext.ts # `AdminContextWaarde` + `useAdmin()`. Wordt iets later gedeeld, dan verhuist
+│   │       │               # het naar AdministratiePage en komt het hier bij — geen tweede kopie in een sectie
+│   │       ├── FacturenSectie.tsx # Verkoop | Inkoop: filterbalk, lijst, detail, postvak als status
+│   │       │               # "Te verwerken", CSV van precies de gefilterde lijst
+│   │       ├── facturen/   # VerkoopDetail/InkoopDetail, Tijdlijn ("Gebeurd"), FactuurPil, DetailKnoppen
+│   │       │               # (één primaire knop + "Meer"), lijsten (kolommen + telefoonkaarten),
+│   │       │               # LosseFactuurModal, AltRekeningKiezer, UblWaarschuwing, Melding (i.p.v. alert()),
+│   │       │               # PspVerrekenModal (de factuur van Mollie e.d. verrekenen met de uitbetalingen)
+│   │       ├── BankSectie.tsx # Werkwachtrij Te koppelen | Gekoppeld | Alles: rekeningkeuze, saldo,
+│   │       │               # aansluitregel, één voorstel + één knop per transactie, import en afschriften
+│   │       ├── bank/       # Aansluiting, AfschriftenModal (lijst + verwijderen met terugweg),
+│   │       │               # FactuurKiezer (zoeken i.p.v. keuzelijst), KeuzeModal (periode/maand/rekening),
+│   │       │               # TransactieModal ("Wat is deze transactie?"), PspModal (uitsplitsen: verslag +
+│   │       │               # facturen + kosten verrekenen/factuur volgt/kostenpost), VerslagBlok (het
+│   │       │               # uitbetalingsverslag en de factuur per regel; "Factuur maken" voor een betaalde
+│   │       │               # bestelling die nog geen factuur heeft), verslagLezen (eerst de tekstlaag,
+│   │       │               # anders Claude: scan, foto's, onbekende opmaak), KapitaalModal, bankTekst
+│   │       ├── AangiftesSectie.tsx # BTW | Accijns: periodelijst met stappen, detail met invulhulp,
+│   │       │               # controle, indienen en betaling; webshopverkopen ophalen
+│   │       ├── aangiftes/  # PeriodeLijst (één component voor beide), BtwRubrieken, AccijnsBoekingen,
+│   │       │               # ControleBlok (vier ogen), BetalingBlok, onderdelen (stappenbalk, pil),
+│   │       │               # useRollenConfig (`gebruikers_rollen` met een gewone GET, geen useStore)
+│   │       ├── RapportenSectie.tsx # Periodebalk + rapportmenu (bureau ≥ 1024 px links, anders een
+│   │       │               # keuzelijst); onthoudt rapport, vergelijking en journaalfilter in sessionStorage
+│   │       ├── rapporten/  # WinstVerlies, MargeKostprijs, Balans (peildatum, jaarafsluiting, alt-schuld),
+│   │       │               # OpenstaandePosten, OmzetPerArtikel, Journaal, exportZip ("Alles exporteren"),
+│   │       │               # hulp (`useCsvExport`: elk rapport registreert zijn eigen CSV)
+│   │       ├── VoorraadPage.tsx # Segment AGP-stand | Verloop | Tellingen rond de drie pagina's hierboven
+│   │       └── voorraad/   # LocatiesModal, Melding (rode regel i.p.v. alert())
 │   ├── utils/
 │   │   ├── api.ts          # API client & state management
-│   │   ├── route.ts        # Hash-routing van de schil: werkruimte/pagina/batch ↔ `#/…`, PAGINA_WERKRUIMTE, isDetailRoute
+│   │   ├── route.ts        # Hash-routing van de schil: werkruimte/pagina/batch ↔ `#/…`, PAGINA_WERKRUIMTE, isDetailRoute;
+│   │   │                   # `PAGINA_ALIAS` + `resolveerDoel`: oude pagina-id's (`boekhouding` + tabblad, `agp`,
+│   │   │                   # `inventarisatie`, `voorraadverloop`) landen op de plek waar het onderdeel nu staat
 │   │   ├── kleurContrast.ts # WCAG-luminantie/contrast; `afgeleideThemaKleuren` maakt het accent donkerder tot het als tekst (4,5:1) en rand (3:1) leesbaar is
 │   │   ├── undo.ts         # `UitgesteldeActiePlanner`: terugweg van vijf seconden i.p.v. confirm() (UI: components/ui/UndoBar.tsx)
+│   │   ├── menuPositie.ts  # Waar het ⋯-menu van RowActions komt: onder de knop, anders erboven, anders aan de
+│   │   │                   # kant met de meeste ruimte (met maximale hoogte); altijd binnen het venster
 │   │   ├── rollen.ts       # Rollentabel hoofdletterongevoelig (zoals HA gebruikersnamen vergelijkt):
 │   │   │                   # spiegel van `_rol_uit_tabel`/`_rollen_lockout` in server.py voor het rollenbeheer
 │   │   ├── geheimen.ts     # Sentinel `__SECRET__` alleen bij een ongewijzigde bestemming (storeUrl;
@@ -147,7 +206,19 @@ BrewAdmin-HA-App/
 │   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
 │   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
 │   │   ├── balans.ts       # Balansposten uit het journaal: `btwPositieCent` = nog af te dragen
-│   │   │                   # BTW (verkoop − voorbelasting) over de niet-afgerekende periodes
+│   │   │                   # BTW (verkoop − voorbelasting) over de niet-afgerekende periodes;
+│   │   │                   # `btwAfgerekendOp`/`btwPositieOp` = hetzelfde op een peildatum (journaalregels
+│   │   │                   # t/m die dag, afgerekend = betaling of nihil-aangifte op of vóór die dag)
+│   │   ├── rapporten.ts    # Rapporten: menu (`RAPPORT_GROEPEN`; oude tabbladen `ouderdom`/`omzet_cat`/
+│   │   │                   # `transacties` via `leesRapport`), W&V van boven naar beneden (`wvOpbouw`:
+│   │   │                   # omzet − grondstoffen − verpakking = brutomarge − overige kosten − accijns =
+│   │   │                   # netto; een test bewaakt dat het optelt tot `nettowinst`), `peildatumVoor`
+│   │   │                   # (einde periode, nooit na vandaag) + `balansOp`/`openVerkoopOp`/`openInkoopOp`
+│   │   │                   # (open zoals `facturen.ts`, plus betaald ná de peildatum), `liquideMiddelenOp`
+│   │   │                   # (laatste bewaarde afschrift t/m de peildatum, of beginsaldo + transacties als
+│   │   │                   # de peildatum er midden in valt; anders `bank_saldi`), openstaande posten
+│   │   │                   # (`ouderdomsAnalyse`), omzet per artikel, journaal met dagboekfilter +
+│   │   │                   # kapitaalboekingen als losse regels, `csvProcent`
 │   │   ├── tankbewaking.ts # Bewaking tanktemperatuur: getoetst aan het wérkelijke setpoint van de
 │   │   │                   # gekoppelde koeling (key `tank_setpoints`, terugval = vergistings-
 │   │   │                   # schema/cold-crash), tolerantieband, instelruimte na een setpoint-/
@@ -158,7 +229,12 @@ BrewAdmin-HA-App/
 │   │   ├── agp.ts          # Verplaatsen/uitslaan uit de AGP (verplaatsing + accijns), uitslag op
 │   │   │                   # productniveau (FEFO) en `bouwUitslagBoekingen` (gedeeld door kassa en
 │   │   │                   # bestellingen); `verkoopUitAgpToegestaan` = de regel "verkoop nooit
-│   │   │                   # rechtstreeks uit de AGP, behalve export/intra-EU"
+│   │   │                   # rechtstreeks uit de AGP, behalve export/intra-EU". Eén accijnswaardering
+│   │   │                   # van wat er ligt (`accijnsWaardeVoorraad`: de bevroren voorcalculatie van de
+│   │   │                   # afvulling, anders `geschat` tegen het tarief van de peildatum) voor AGP-stand,
+│   │   │                   # Verloop én Tellingen — boekt niets; `agpWaardeOpDag`/`gemAgpWaardeInPeriode`
+│   │   │                   # (de gemiddelden op de tegel), `uitgeslagenAccijnsStatus` (betaald/open uit de
+│   │   │                   # echte accijnsrecords, niet meer altijd "betaald"), `filterVerplaatsingen`
 │   │   ├── uitlevering.ts  # Verkoop → uitleveringen (kassa én bestellingen): vrije voorraad eerst,
 │   │   │                   # nooit uit de AGP (behalve export/intra-EU), nooit accijns.
 │   │   │                   # `bouwPickTerugdraaiing`: picks van een nog niet verzonden order
@@ -261,26 +337,109 @@ BrewAdmin-HA-App/
 │   │   ├── bierKleur.ts    # EBC → bierkleur (één tabel voor tank-SVG, productlijst, kassa,
 │   │   │                   # orderregels, tankkaarten): `productEbc`/`batchEbc` (eigen veld →
 │   │   │                   # product → recept), `tekstKleurOp`. Component: ui/BierKleur.tsx
-│   │   ├── beslissingen.ts # Administratie-dashboard: één beslissing per rij (urgentie te_laat/
-│   │   │                   # klopt_niet/wacht_op_jou/deadline, bedrag, actie + doel) uit de
-│   │   │                   # bestaande selecties in facturen/btw/calculations — nooit een eigen
-│   │   │                   # sommetje; de Rapporten-pagina is de andere ingang (terugkijken)
+│   │   ├── beslissingen.ts # Administratie-dashboard: één rij per ding dat je afhandelt (elke vervallen
+│   │   │                   # verkoop-/achterstallige inkoopfactuur, elke open BTW-periode, elke open
+│   │   │                   # accijnsmaand, elke rekening waarvan het laatste afschrift niet aansluit;
+│   │   │                   # het postvak en de te koppelen banktransacties elk één rij). Per rij `soort`,
+│   │   │                   # urgentie (te_laat/klopt_niet/wacht_op_jou/deadline; een BTW-periode of
+│   │   │                   # accijnsmaand voorbij zijn uiterste datum = te_laat), bedrag, actie en een
+│   │   │                   # doel dat het ding zelf opent (factuur-`id`, periodesleutel, maand). Uit de
+│   │   │                   # bestaande selecties in facturen/btw/calculations/bank/factuurFilter — nooit
+│   │   │                   # een eigen sommetje. `overzichtCijfers`: de vier tegels met dezelfde filter-
+│   │   │                   # en totaalfuncties als Facturen; `beslissingenPerPagina`
 │   │   ├── attentie.ts     # Attentieposten per werkruimte (badge op de werkruimte-knop + de
 │   │   │                   # "Vraagt om aandacht"-lijst op de dashboards): per post een id,
-│   │   │                   # i18n-sleutel, aantal en navigatiedoel (pagina + tab/filter). De
+│   │   │                   # i18n-sleutel, aantal en navigatiedoel (pagina + tab/filter/`id`/`actie`). De
 │   │   │                   # tellingen zelf leven in taken/calculations/picking/btw/facturen —
 │   │   │                   # een nieuw aandachtspunt = een post hier, nooit een los sommetje in
-│   │   │                   # App.tsx of een dashboard
+│   │   │                   # App.tsx of een dashboard. Administratie = `adminPosten(beslissingen)`:
+│   │   │                   # de rijen per soort gebundeld, dus werkruimte-badge = aantal dashboardrijen
+│   │   │                   # = som van de menubadges; wijst een post één rij aan, dan neemt hij dat doel
 │   │   ├── facturen.ts     # Vervallen verkoopfacturen (factuurdatum + betalingstermijn klant →
 │   │   │                   # brouwerij → 14 dagen, dagen te laat) en achterstallige
 │   │   │                   # inkoopfacturen (onbetaald > `INKOOP_ACHTERSTALLIG_DAGEN`); gedeeld
-│   │   │                   # door de badge, het Administratie-dashboard en de boekhoudpagina.
+│   │   │                   # door de badge, het Administratie-dashboard, Facturen en Rapporten.
+│   │   │                   # `isVerkoopFactuurOpen` is dé definitie van "open" (geen creditnota's) —
+│   │   │                   # ook voor debiteuren op de balans en de openstaande posten.
 │   │   │                   # `breweryMetTermijn`/`vervaldatumTekst`: geef díe mee aan élke
-│   │   │                   # factuur-, herinnerings- en mailopbouw (Boekhouding, Bestellingen,
+│   │   │                   # factuur-, herinnerings- en mailopbouw (Facturen, Bestellingen,
 │   │   │                   # kassa) — nooit een eigen `?? 14`, anders noemt het document een
 │   │   │                   # andere vervaldatum dan de badge
+│   │   ├── orderFactuur.ts # De verkoopfactuur van een bestelling (`bouwOrderFactuur`: afronden, "Factuur maken"
+│   │   │                   # en Bank) en de creditnota bij annuleren (`bouwCreditnota`). Een betaalde webshoporder
+│   │   │                   # kan zijn factuur al vóór het ophalen of verzenden krijgen (`voorafFactuurBlokkade`:
+│   │   │                   # betaald, niet afgebroken, nog geen factuur — picken hoeft niet); afronden maakt dan
+│   │   │                   # geen tweede en de regels liggen vast. `orderFactuurVan` (via `factuur_id`, anders
+│   │   │                   # `bestelling_id`), `teFacturerenUitVerslag` (bestellingen zonder factuur in een
+│   │   │                   # PSP-uitbetaling: uitkomst `geen_factuur` van `koppelPspVerslag`)
+│   │   ├── factuurFilter.ts # Filterregels van Facturen: status (`open`/`te_laat`/`betaald`/`credit`/
+│   │   │                   # `alles`, Inkoop ook `te_verwerken` = het postvak), `periodeGeldtVoorStatus`
+│   │   │                   # (niet bij Open/Te laat/Te verwerken), zoeken (`zoekPast`: nummer, relatie,
+│   │   │                   # omschrijving, bedrag — "496,10" vindt € 496,10), klant/leverancier,
+│   │   │                   # chiptellingen en de totaalregel in centen; `leesFactuurFilter` leest
+│   │   │                   # `navDoel.filter` (status, `klant:<id>`, `leverancier:<naam>`). Hergebruikt de
+│   │   │                   # selecties van `facturen.ts` letterlijk — geen tweede definitie van "open"
+│   │   ├── factuurTijdlijn.ts # Het factuurdetail: statuspil (`verkoopStand`/`inkoopStand`), volgende
+│   │   │                   # herinnering, de ene handeling die bij de stand past (`verkoopPrimaireActie`),
+│   │   │                   # de bijschrijving uit `bank_koppelingen` (ook binnen een PSP-uitbetaling,
+│   │   │                   # `bankBetalingVoor`) en de tijdlijn "Gebeurd" (`verkoopTijdlijn`)
+│   │   ├── klantFacturen.ts # Welke verkoopfacturen bij een klant horen (live klantkaart, ook via het
+│   │   │                   # e-mailadres — dezelfde regel als de filter `klant:<id>`) en welke klanten
+│   │   │                   # een écht vervallen factuur hebben (de oranje stip op Verkoop › Klanten)
+│   │   ├── periode.ts      # Eén periodekeuze voor de administratie (deze/vorige maand, dit/vorig kwartaal,
+│   │   │                   # dit/vorig jaar, alles, eigen datums): `periodeBereik` (hele kalenderperiodes,
+│   │   │                   # lokale dagen — nooit `toISOString()`), `inBereik`, `begrensOpVandaag` +
+│   │   │                   # `vergelijkBereik` (dezelfde dagen vorig jaar); teksten als i18n-sleutel.
+│   │   │                   # UI: `ui/PeriodeKiezer`, gedeelde stand `ui/useGedeeldePeriode`
+│   │   ├── bank.ts         # MT940 (`parseMT940`, ook begin-/einddatum), matching (`besteMatch`,
+│   │   │                   # PSP-kandidaten), `saldoControle`, `txKey` (de enige definitie: sleutel van
+│   │   │                   # `bank_koppelingen`). Bewaarde afschriften: `bouwBankImport` (samenvoegen
+│   │   │                   # zonder dubbelen, geteld per txKey), `herstelKoppelingVlaggen` (de gekoppeld*-
+│   │   │                   # vlaggen altijd opnieuw uit `bank_koppelingen`), `vorigEindsaldoVoor`
+│   │   │                   # (aansluiting live uit de afschriften; overlap = geen aansluiting),
+│   │   │                   # `verwijderAfschrift` + `bankSaldiNaVerwijderen`; werklijst:
+│   │   │                   # `filterBankTransacties`/`telBankStatussen` (Te koppelen negeert de periode),
+│   │   │                   # `koppelingVan`, `standaardBankStatus`
+│   │   ├── bankVoorstel.ts # Bank als wachtrij: hooguit één koppelvoorstel per transactie, met de reden
+│   │   │                   # (i18n-sleutel). Facturen via `besteMatch` mét datumgrens (factuur hooguit
+│   │   │                   # `VOORSTEL_MAX_DAGEN_VOORUIT` = 7 dagen ná de betaling, ERP-plan F11); ambigu
+│   │   │                   # of storno = geen voorstel; PSP-uitbetaling; ingediende BTW/accijns op € 1
+│   │   │                   # (`AANGIFTE_MARGE_CENT`), teken klopt, niet van vóór de periode. Kiezers:
+│   │   │                   # `factuurKiezerKandidaten` (een open factuur die al aan een andere transactie
+│   │   │                   # hangt staat onderaan: deelbetaling), `btw-`/`accijnsKiezerKandidaten`.
+│   │   │                   # `besteMatchBinnenDatum` = die datumgrens, gedeeld met de import
+│   │   ├── bankImportKoppeling.ts # Automatische koppeling bij het inlezen (`autoKoppelImport`): een koppeling uit
+│   │   │                   # `bank_koppelingen` komt terug, nooit een storno, facturen via `besteMatchBinnenDatum`
+│   │   │                   # (zelfde datumgrens als het voorstel), BTW/accijns op ± € 1, PSP alleen als voorstel
+│   │   ├── pspVerslag.ts   # Het uitbetalingsverslag van Mollie e.d. (PDF, tekstlaag via pdf.js): `leesPspVerslag`
+│   │   │                   # (regels: datum, methode, bedragen, omschrijving, consument; soort betaling/
+│   │   │                   # terugbetaling/kosten/compensatie/overig; kenmerk + totaal) en `koppelPspVerslag`
+│   │   │                   # (factuur via `wc_order_nummer` → `bestelling_id` of het factuurnummer van de
+│   │   │                   # betaallink; terugstorting in hetzelfde verslag = netto nul, anders de creditnota;
+│   │   │                   # kosten per factuur van de PSP via `verslagKosten`; een betaling van een bestelling
+│   │   │                   # zonder factuur = `geen_factuur` met `bestellingId`). Koppelt zelf niets
+│   │   ├── pspVerslagScan.ts # Terugval voor wat de tekstlaag niet levert (scan, foto's, andere PSP of
+│   │   │                   # opmaak): schema + prompt voor Claude, die alleen de tabel overschrijft — zonder
+│   │   │                   # consument en zonder het uitbetaalde bedrag (de optelcontrole blijft echt);
+│   │   │                   # `normaliseerVerslagScan` duidt de regels met dezelfde `verslagRegel` als de
+│   │   │                   # tekstlaag, `verslagInvoer` (eerste PDF, anders hooguit tien foto's)
+│   │   ├── pspUitbetaling.ts # De kosten van een PSP-uitbetaling verrekenen met de factuur van de PSP:
+│   │   │                   # `kostenCent`/`kostenVerrekend` op de koppeling, open kosten ("factuur volgt"),
+│   │   │                   # `pspVerrekeningenVoor` (factuur → uitbetalingen), `inkoopNaVerrekening` (helemaal
+│   │   │                   # gedekt = betaald, `betaald_door_verrekening`), `verrekenKandidaten` (het verslag
+│   │   │                   # noemt het nummer = voorgesteld), `pasPspVerrekeningToe` (een oude kostenpost
+│   │   │                   # vervalt), `kostenFactuurKandidaten`, `pspKostenRegels`, `verslagInfo` (las Claude
+│   │   │                   # het verslag, dan ook de regels, `bron`, `model`) + `verslagUitInfo` (terug)
+│   │   ├── aangifteStappen.ts # BTW en accijns in hetzelfde ritme: Lopend → Berekend → Gecontroleerd →
+│   │   │                   # Ingediend → Betaald (of Terugontvangen; € 0 ingediend = Nihil). Per periode de
+│   │   │                   # stap, het bedrag met teken (centen), de uiterste datum, de ene volgende
+│   │   │                   # handeling en de teksten; `btwPeriodeCijfers` (de rubrieken), de vier-ogen-
+│   │   │                   # controle (`btwControleRecord`/`metBtwControle` op de periodesleutel,
+│   │   │                   # `controleBlokkade`, `zelfdePersoon`), `betalingKandidaten` uit de bewaarde
+│   │   │                   # afschriften, `leesAangifteDoel`. "Vraagt actie" = de badgeregel
+│   │   │                   # (`telOpenstaandeBtwPerioden`, `openAccijnsMaanden`) — een test bewaakt dat
 │   │   ├── sndAfdracht.ts  # SNd-statiegeld per periode + afdrachtstatus uit de bankkoppeling
-│   │   │                   # `{soort:'snd', periodeKey}` (Statiegeld-pagina, banktabel Boekhouding).
+│   │   │                   # `{soort:'snd', periodeKey}` (Statiegeld-pagina, Bank).
 │   │   │                   # Een webshopfactuur draagt geen statiegeldregel; geef `{bestellingen,
 │   │   │                   # verpakkingen}` mee, dan tellen de SND-stuks uit de orderregels
 │   │   │                   # (`statiegeldVanOrder`) — anders valt de afdracht te laag uit
@@ -290,7 +449,7 @@ BrewAdmin-HA-App/
 │   │   ├── factuurMail.ts  # Welke mailtekst bij een verkoopfactuur: `factuur` (open) of `factuur_betaald`
 │   │   │                   # (al voldaan — webshoporder betaald in WooCommerce, kassa, vinkje) + de
 │   │   │                   # betaalvariabelen {betaalregel}/{betaaldatum}/{betaalwijze}; gedeeld door
-│   │   │                   # de boekhoud- en de bestellingenpagina
+│   │   │                   # Facturen en de bestellingenpagina
 │   │   ├── mollieLink.ts   # Eén Mollie-betaallink per verkoopfactuur (`mollie_link`), hergebruikt door elke volgende mail
 │   │   ├── ubl.ts          # E-factuur in UBL 2.1 / PEPPOL BIS Billing 3.0: cent-exact, multi-tarief TaxSubtotals, kortingen als AllowanceCharge, creditnota als CreditNote-document
 │   │   ├── csv.ts          # CSV-export: `csvCel`/`csvRij`/`csvTekst` zijn formule-veilig (apostrof vóór = + - @ tab/CR,
@@ -365,16 +524,25 @@ werkruimtes, het **tweede menu** de pagina's van de gekozen werkruimte.
   (`#/productie/recepten/<id>`, `#/verkoop/producten/<id>`,
   `#/verkoop/bestellingen/<id>`; encodeURIComponent, een kapotte encoding = geen
   record). Oude links blijven werken (`PAGINA_ALIAS`: `batchflow` → `batches`,
-  `dashboard/<n>` → `batches/<n>`, `planning` → `batches/agenda`).
+  `dashboard/<n>` → `batches/<n>`, `planning` → `batches/agenda`, en de oude
+  administratiepagina's — zie hieronder).
   State → hash is een history-entry (met een markering in `history.state`,
-  `historieStap`), hash → state via `hashchange`; nooit zelf `location.hash`
-  zetten in een pagina — navigeer via **`gaNaar(doel)`** (prop vanuit App.tsx;
-  `{pagina, id?, tab?, filter?, stand?}` → `doelNaarRoute`), ook voor een
-  sprong naar een andere werkruimte en voor attentieposten.
+  `historieStap`), hash → state via `hashchange`/`popstate`; nooit zelf
+  `location.hash` zetten in een pagina — navigeer via **`gaNaar(doel)`** (prop
+  vanuit App.tsx; `{pagina, id?, tab?, filter?, lotId?, stand?, actie?}` →
+  eerst `resolveerDoel`, dan `doelNaarRoute`), ook voor een sprong naar een
+  andere werkruimte, voor attentieposten en voor de rijen van het
+  Administratie-dashboard. Het `id` van een batch, recept, product of
+  bestelling gaat in de route; tab, filter, lot, `actie` en het `id` van een
+  pagina zonder eigen route (een factuur, een klant) gaan als eenmalig
+  navigatiedoel naar de pagina. Oudere pagina's en die van Administratie
+  krijgen dezelfde functie onder de prop-naam `gaNaarDoel`.
 - **Tabs:** Productie = Brouwzaal (`dashboard`) · Batches · Recepten ·
   Ingrediënten · HACCP · Gereedschap; Verkoop = Overzicht (`dashboard`) ·
-  Producten · Bestellingen · Kassa · Klanten · Statiegeld. De werkruimtetitel
-  in de bovenbalk is een gewoon label.
+  Producten · Bestellingen · Kassa · Klanten · Statiegeld; Administratie =
+  Facturen · Bank · Aangiftes · Voorraad · Rapporten (het dashboard is het
+  startpunt van de werkruimte). De werkruimtetitel in de bovenbalk is een
+  gewoon label.
 - **Detailscherm** (`isDetailRoute`: batch of record): op de telefoon geen
   onderbalk en geen chips; de kopbalk toont de naam (`detailTitel`) met één
   terugknop (`history.back()` als de vorige entry van de app zelf is, anders de
@@ -389,6 +557,46 @@ werkruimtes, het **tweede menu** de pagina's van de gekozen werkruimte.
   accent als tekst of rand, nooit `--t-accent` rechtstreeks op wit.
 - De "Nu actief"-strook blijft in de schil (lichte strook onder de
   bovenbalk), want tankalarmen horen op élk scherm zichtbaar te zijn.
+
+#### Administratie (v1.12.89/90)
+
+- **Tweede menu:** Facturen · Bank · Aangiftes · Voorraad · Rapporten, met het
+  dashboard (Overzicht) als startpunt. Daaronder hooguit één segment
+  (Verkoop | Inkoop, BTW | Accijns, AGP-stand | Verloop | Tellingen) — nooit
+  een derde menulaag; de rest opent als detail. Klanten staan alleen in
+  Verkoop › Klanten.
+- **Oude id's:** `boekhouding` (met een oud tabblad), `agp`, `inventarisatie`
+  en `voorraadverloop` bestaan niet meer als pagina. `PAGINA_ALIAS` (in
+  `parseRoute`, een oude hash wordt herschreven) en `resolveerDoel` (in
+  `gaNaar`, dus ook `setPage`) sturen ze naar de nieuwe plek mét het segment.
+  Nieuwe code navigeert nooit naar een oude id.
+- **Navigatiedoel** (`AttentieDoel`: `{pagina, tab?, filter?, id?, actie?}`,
+  via `gaNaar` — bij deze pagina's de prop `gaNaarDoel`). Elke pagina leest het alleen in haar beginstand en meldt
+  het daarna verwerkt (`onNavDoelConsumed`); naar dezelfde pagina navigeren
+  verhoogt `navNonce`, dus de pagina mount opnieuw. Wat er geldt:
+
+  | Pagina | `tab` | `filter` | `id` | `actie` |
+  |---|---|---|---|---|
+  | `facturen` | `verkoop`/`inkoop` (zonder: Inkoop bij `te_verwerken` of een leverancier) | `open`, `te_laat`, `betaald`, `credit`, `alles`, `te_verwerken`, `klant:<id>`, `leverancier:<naam>` | die factuur in het detail; valt hij buiten de filter, dan gaan status en gedeelde periode naar Alles | `nieuw` (losse factuur / inkoop boeken) |
+  | `bank` | — | `te_koppelen`, `gekoppeld`, `alles` (zonder: Te koppelen als daar iets staat) | — | `importeren` (bestandskiezer) |
+  | `aangiftes` | `btw`/`accijns` | periodesleutel `2026-Q3`/`2026-M09` (ander periodetype → de periode waar hij in valt) of accijnsmaand `2026-09` (zonder tab = Accijns): die periode open, jaar volgt | — | — |
+  | `rapporten` | `wv`, `marge`, `balans`, `openstaand`, `omzet`, `journaal` (oud: `ouderdom`, `omzet_cat`, `transacties`; ook in `filter`) | een dagboek (`alle`, `verkoop`, `inkoop`, `accijns`, `btw`, `memoriaal`, `kapitaal`) zet het journaalfilter (open het journaal met `tab: 'journaal'`) | — | — |
+  | `voorraad` | `agp`, `verloop`, `tellingen` | — | — | — |
+  | `klanten` | — | — | die klant | — |
+
+  Een link wijst het ding zelf aan (de factuur, de periode, de maand), niet
+  alleen het tabblad. De periode zet je vóór de navigatie met
+  `zetGedeeldePeriode` (dashboardtegel "deze maand", "Facturen van deze
+  klant" → alles).
+- **Eén getal:** de badge op het Admin-icoon = het aantal rijen op het
+  dashboard = de som van de menubadges (Facturen, Bank, Aangiftes). App
+  rekent de rijen één keer uit (`adminRijen` = `beslissingen()`) en geeft ze
+  aan het dashboard én aan `attentiePosten` (`adminPosten`). Eén rij per ding
+  dat je afhandelt: per vervallen verkoop- of achterstallige inkoopfactuur, per open BTW-periode, per open
+  accijnsmaand, per rekening met een aansluitverschil; een wachtrij (postvak,
+  te koppelen banktransacties) is één rij. Een nieuw aandachtspunt in
+  Administratie is een rij in `beslissingen.ts` — nooit een losse telling op
+  een menu-item.
 
 ### Frontend → Backend communication
 
@@ -499,8 +707,31 @@ scanhelper (`claudeScan.ts`: modelketen, geen temperature, foutcodes), de
 factuur- en etiketscan (schema's binnen de grenzen van gestructureerde
 uitvoer, opschonen, toepassen zonder invoer van de gebruiker te overschrijven),
 het scangeheugen, de totaal- en dubbelecontrole, de foto-omzetting
-(`afbeelding.ts`) en de regel-zoeker in de PDF (`pdfZoek.ts`). Daarnaast de
-keten en het etiket (opzet Productie & Verkoop): `etiket.ts` (Balling-ABV,
+(`afbeelding.ts`) en de regel-zoeker in de PDF (`pdfZoek.ts`).
+De administratie (v1.12.89/90) heeft een eigen blok: de periodekeuze
+(`periode.test.ts`), de factuurfilter (`factuurFilter.test.ts`: een vervallen
+factuur van vorig jaar staat onder Te laat terwijl de periode "dit jaar" is, en
+elk chipaantal is de lengte van de lijst eronder), het factuurdetail
+(`factuurTijdlijn.test.ts`), de facturen per klant (`klantFacturen.test.ts`), de
+bewaarde afschriften (`bankAfschriften.test.ts`: import zonder dubbelen, vlaggen
+uit `bank_koppelingen`, aansluiting per afschrift, verwijderen +
+`bank_saldi`), de bankwerklijst en de koppelvoorstellen
+(`bankWerklijst.test.ts`, `bankVoorstel.test.ts`: datumgrens, ambigu, storno,
+één factuur één betaling, deelbetaling in de kiezer), de automatische koppeling
+bij het inlezen (`bankImportKoppeling.test.ts`: dezelfde datumgrens), het uitbetalingsverslag van Mollie (`pspVerslag.test.ts`: bedragen en datums in vijf talen, kolommen uit de kopregel, een streepje is geen minteken, terugstorting tegen betaling, creditnota, in twee keer betaald, kosten per factuur van de PSP), de terugval op Claude (`pspVerslagScan.test.ts`: schema binnen de grenzen en zonder consument, hetzelfde verslag en dezelfde koppeling als de tekstlaag, opschonen, kosten per transactie, bewaren en teruglezen), de factuur bij een bestelling (`orderFactuur.test.ts`: WooCommerce-bedragen cent-exact, betaald = betaald, vooraf factureren alleen als hij betaald is, creditnota precies min de factuur en het journaal valt weg, en de Mollie-uitbetaling die na de factuur vooraf wél uitsplitst) en de kostenverrekening (`pspUitbetaling.test.ts`: vier uitbetalingen dekken de factuur → betaald op de laatste dag, ontkoppelen → weer open, een eigen 'betaald' blijft staan, kostenpost vervalt, nooit meer dan de kosten), de aangiftestappen
+(`aangifteStappen.test.ts`: de telling op het segment = die van de badge, in
+kwartaal- én maandmodus; nihil; controlesleutel en migratie; navigatiedoel), de
+rapporten (`rapporten.test.ts`: W&V telt op tot `nettowinst`, peildatum, open
+en liquide middelen op een peildatum, openstaande posten, omzet per artikel,
+journaalfilter) en `balans.test.ts` op een peildatum, de accijnswaardering van
+de voorraad (`agpWaardering.test.ts`), de stapper van het voorraadverloop
+(`voorraadverloopStapper.test.ts`), de tellingenfilters
+(`inventarisatieFilter.test.ts`), de oude routes (`route.test.ts`), de plek
+van het ⋯-menu (`menuPositie.test.ts`) en
+beslissingen + attentie (`beslissingen.test.ts`, `attentie.test.ts`:
+werkruimte-badge = aantal dashboardrijen = som van de menubadges, één rij per
+BTW-periode en per accijnsmaand).
+Ook de keten en het etiket (opzet Productie & Verkoop): `etiket.ts` (Balling-ABV,
 energie in kcal/kJ met vaste testwaarden 1.050/1.010 → 46/194 … 1.090/1.018 →
 85/354, de ABV-marge, Bevat-regel, versie-ophoging, `legEtiketVast`),
 `productKeten.ts`, `batchKeten.ts`, `receptNaarBatch.ts` (karakteriseringstests
@@ -533,6 +764,11 @@ alleen lezen, uitval halverwege, plafond op onverwerkte facturen en op de mailgr
 gebruikersnaam, mapnamen met haken/accenten als modified UTF-7, opnieuw doorlopen en het
 loslaten van de waterlijn bij een teruggezette lijst), verbindingsfouten → codes, de rollen,
 de secret-bestemming en de backup-versleuteling van `imap_creds`.
+`TestBankAfschriften` bewaakt de bewaarde bankafschriften: `bank_transacties`
+en `bank_afschriften` alleen als lijst (422), `productie` krijgt 403 (ook in
+een commit), `boekhouding` mag schrijven, delta toevoegen/verwijderen werkt.
+Het uitbetalingsverslag op een banktransactie (`verslag.bestand`) houdt zijn
+PDF vast tegen `/api/delete_upload` (409), net als een factuurbijlage.
 De suite start de echte handler op een efemere poort met een tijdelijke
 DATA_DIR.
 
@@ -604,7 +840,10 @@ versie noemen, zodat alle drie de bestanden in sync blijven.
 
 ### Component structure
 
-- Pages are large single-file components (`~1,000–4,000 lines`) with inline state
+- Pages are large single-file components (`~1,000–4,000 lines`) with inline state.
+  Uitzondering die de richting aangeeft: Administratie (`pages/admin/`) is
+  een container met secties, een gedeelde context en per sectie een submap
+  met de zelfstandige onderdelen
 - **Boy-scout-regel (ERP 3.5):** raak je een grote pagina aan, verplaats dan
   waar het kan pure logica naar `src/utils/` (mét test — valt onder de
   strict-ratchet) en zelfstandige modals/tabbladen naar eigen bestanden.
@@ -626,7 +865,7 @@ versie noemen, zodat alle drie de bestanden in sync blijven.
   `src/types` en `src/i18n` — die ratchet moet schoon blijven
   (`npm run typecheck`, ook in CI) en de include mag alleen groeien
 - Page-props: typ nieuwe/aangeraakte pagina's met een `XxxPageProps`-interface
-  (zie AccijnsPage) i.p.v. `: any` — boy-scout-regel
+  (zie `VoorraadPageProps` in `pages/admin/VoorraadPage.tsx`) i.p.v. `: any` — boy-scout-regel
 - All shared types defined in `src/types/index.ts`
 - Prefer explicit type annotations on function parameters
 
@@ -685,6 +924,51 @@ Houd de UI consistent door altijd dezelfde patronen te gebruiken:
 - **Lege staat = korte regel + de knop zelf**, nooit een zin die uitlegt waar
   de knop staat. Een sectie die leeg is en waar niets te doen valt, toon je
   helemaal niet.
+
+### Administratie — patronen (lijstpagina's)
+
+Bindend voor de lijsten in Administratie (Facturen, Bank, Aangiftes, Voorraad,
+Rapporten › Journaal) en voor elke lijst die daar bijkomt:
+
+- **Eén filterbalk:** `<FilterBalk zoek onZoek status={{chips, waarde, onKies}}
+  periode={{keuze, onKeuze, eigen, onEigen, uit}}>`; extra filters (klant,
+  leverancier, rekening, type) als kinderen. Status als `StatusChips` met
+  aantallen (`nadruk` = rood zodra Te laat > 0). De periode is gedeeld:
+  `useGedeeldePeriode()` + `periodeBereik` (`utils/periode.ts`) — nooit een
+  eigen van/tot-veld of periodestate in de pagina. Enige uitzondering:
+  Aangiftes kiest een jaar, want daar ís de lijst de perioden.
+- **Wat aandacht vraagt filter je niet weg:** Open, Te laat, Te verwerken
+  (Facturen) en Te koppelen (Bank) negeren de periode; de kiezer staat dan
+  uit mét de reden (`uit`, bijv. `periode_uit_open`). Die regel staat in de
+  util (`periodeGeldtVoorStatus`, `bankPeriodeGeldt`), niet in de pagina. Een
+  chip noemt precies het aantal regels eronder, en de totaalregel rekent met
+  wat er staat.
+- **Lijst:** `<ResponsiveLijst>` — een tabel op het bureau, kaarten op de
+  telefoon (nooit een tabel die zijwaarts scrolt). Een klik op de rij opent
+  het detail; een knop in een telefoonkaart krijgt `KAART_INTERACTIEF`.
+  Minder belangrijke kolommen `breed` (pas vanaf 1024 px), zodat de tabel
+  naast een open detail past.
+- **Eén zichtbare handeling per rij**, de handeling die bij de stand past
+  (herinnering, Markeer betaald, Koppel, Verplaatsen, Controleren); de rest
+  onder ⋯ (`RowActions`) of in het detail.
+- **Detail:** `<LijstMetDetail lijst detail open>` met een `<DetailPaneel
+  titel onSluit acties>` — op het bureau naast de lijst, op de telefoon een
+  eigen scherm met terugknop en een vaste actiebalk (één primaire knop, de
+  rest onder "Meer"). Half ingevulde invoer hoort in de state van de pagina:
+  bij een indelingswissel wordt het detail opnieuw opgebouwd.
+- **Beslissen in een util, tonen in de pagina:** status, stap, voorstel en
+  tellingen zijn pure functies met een test die i18n-sleutels teruggeven
+  (`factuurFilter.ts`, `factuurTijdlijn.ts`, `bankVoorstel.ts`,
+  `aangifteStappen.ts`, `rapporten.ts`), op de bestaande selecties
+  (`facturen.ts`, `btw.ts`, `bank.ts`) — geen tweede definitie van "open".
+  Meldingen zonder `alert()`/`confirm()`: een meldingsbalk of rode regel,
+  `BevestigKnop` of `useUndo`.
+- **Een nieuwe lijst toevoegen:** (1) filter- en telregels in `src/utils/`
+  met test; (2) FilterBalk + StatusChips + gedeelde periode; (3)
+  ResponsiveLijst met telefoonkaart; (4) LijstMetDetail/DetailPaneel; (5)
+  het navigatiedoel in de beginstand lezen en in de tabel bij "De schil"
+  zetten; (6) vraagt iets aandacht, dan een rij in `beslissingen.ts` — de
+  badges volgen vanzelf.
 
 ---
 
@@ -923,7 +1207,7 @@ locatie geldt als AGP — zo blijven bestaande records exact hetzelfde
 gewaardeerd, en voor de voorraadtelling schuift alleen zo'n oud record nog door
 naar een locatie die wél voorraad heeft.
 
-De inventarisatie (`InventarisatiePage`) telt bewust locatieloos: een geteld
+De inventarisatie (Voorraad › Tellingen, `InventarisatiePage`) telt bewust locatieloos: een geteld
 tekort is daar een AGP-discrepantie, dus die afboekingen krijgen geen locatie
 en blijven accijnsplichtig.
 
@@ -933,8 +1217,8 @@ Twee aparte stappen, in deze volgorde:
 
 1. **Uitslaan** — het bier verlaat de AGP naar een vrije voorraadlocatie. Dát
    is het belastbare feit: verplaatsing + accijnsrecord + logregel `uitslaan`
-   (`bouwVerplaatsing` / `bouwUitslagBoekingen` in `utils/agp.ts`). Kan op de
-   AGP-pagina, de productpagina, in de kassa (tegel met AGP-voorraad), in de
+   (`bouwVerplaatsing` / `bouwUitslagBoekingen` in `utils/agp.ts`). Kan op
+   Voorraad › AGP-stand, de productpagina, in de kassa (tegel met AGP-voorraad), in de
    pickmodal en bij het aanmaken van een bestelling (`UitslagModal`).
 2. **Verkopen** — kassa, bestelling of webshop, privé én zakelijk: altijd uit
    vrije voorraad buiten de AGP (`bouwVerkoopUitleveringen` in
@@ -1031,11 +1315,11 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_afwijkingen` | array | Expliciete afwijkingsregistraties: de enige manier om langs een harde CCP-blokkade te komen, altijd met onderbouwing + CAPA. Append-only |
 | `haccp_trace_oefeningen` | array | **Traceeroefeningen** (hoofdstuk 11): periodieke mock recall met bevroren omvang (lotcodes, afnemers), massabalans, traceergaten, doorlooptijd en conclusie. Append-only — een tegenvallende oefening mag niet achteraf bijgesteld worden |
 | `haccp_instellingen` | object | Kritische grenzen uit het handboek: stabiliteitsdagen, forced-fermentation-marge, THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |
-| `inkoop_facturen` | array | Inkoopfacturen |
+| `inkoop_facturen` | array | Inkoopfacturen. `betaald_via_alt_id` = betaald vanaf een alt-rekening; `betaald_door_verrekening` = de factuur van een PSP staat op betaald omdat de uitbetalingen hem dekken (`kostenVerrekend` in `bank_koppelingen`); `vorige_stand` = de stand van vóór een afrekening via een alt-rekening (ongedaan maken zet hem terug) |
 | `scan_correcties` | array | Het scangeheugen (`utils/scanGeheugen.ts`): `{tekst, soort, leverancier?, artikelcode?, naam?, kostensoort?, eenheid?}`, de nieuwste 500. Bij elk opslaan van een gescande factuur geleerd (per leverancier + artikelnummer, anders omschrijving); de oude `{tekst, soort}` blijft gelden als algemene correctie. Gaat vóór de indeling van het model |
 | `inkoop_inbox` | array | Facturen per e-mail: de PDF-bijlagen die de server-tick `_inbox_tick` uit het postvak (IMAP) haalde, met `status` `nieuw`/`verwerkt`/`genegeerd`. Item: `{id, ontvangen, mail_datum, van, van_naam, onderwerp, message_id, bijlage: {naam, bestand}, grootte, sha256, status, factuur_id?, afgehandeld?}`. De server voegt alleen nieuwe items toe (bestand `inbox_<sha256[:20]>.pdf` in de bijlagenmap); verwerken, negeren, terugzetten en verwijderen doet de app. Een PDF met een `sha256` die er al in staat (ook genegeerd/verwerkt) komt er nooit nog eens bij. Financiële key: alleen `boekhouding`/`beheer` schrijven. Wel in de Excel-backup |
-| `verkoop_facturen` | array | Verkoopfacturen |
-| `bestellingen` | array | WooCommerce-bestellingen |
+| `verkoop_facturen` | array | Verkoopfacturen. `verrekend_alt_id` = verrekend met de schuld aan een alt-rekening (ook nadat de factuur met de hand op betaald is gezet); `vorige_stand` = de stand daarvoor. De factuur van een bestelling draagt `bestelling_id` (opgebouwd door `bouwOrderFactuur` in `utils/orderFactuur.ts`); wordt een gefactureerde bestelling geannuleerd, dan komt er een creditnota met `credit_van_factuur_id` en hetzelfde `bestelling_id` |
+| `bestellingen` | array | WooCommerce-bestellingen. `factuur_id`/`factuur_nummer` = de verkoopfactuur; die kan er al zijn vóór `afgerond` — een betaalde order die nog niet is opgehaald of verzonden, vooraf gefactureerd (Bestellingen "Factuur maken", of Bank vanuit een PSP-uitbetaling). Afronden maakt dan geen tweede factuur, de orderregels liggen vast en annuleren maakt een creditnota |
 | `bestelling_picks` | array | Pickregels per bestelling |
 | `afboekingen` | array | Biervoorraadbewegingen (vermis, vernietiging, overig). `bron_locatie_id` = waar het bier lág — bepaalt van welke locatie het afgaat én of er accijns verschuldigd wordt. Ontbreekt op records van vóór v1.12.52; die gelden als AGP |
 | `klanten` | array | Klanten |
@@ -1054,7 +1338,11 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `kapitaal_boekingen` | array | Kapitaalstortingen / -onttrekkingen |
 | `journaal` | array | Onveranderlijke journaalregels (ERP 2.1): geboekt bij definitief maken van facturen/aangiftes, bedragen in centen, correcties via storno — server-side append-only (422 bij wijzigen/verwijderen van bestaande regels) |
 | `jaarafsluitingen` | array | Jaarafsluitingen (ERP 2.3): snapshot balansposten + eigen vermogen per afgesloten boekjaar; beginbalans voor het EV-verloop op de balans |
-| `bank_saldi` | object | Laatst bekende MT940-eindsaldo per IBAN (ERP 2.3), gezet bij bankimport; bron voor "liquide middelen" op de balans |
+| `bank_saldi` | object | Laatst bekende MT940-eindsaldo per IBAN (ERP 2.3): `{iban, eindsaldo, beginsaldo, datum, afschrift_nr, geimporteerd_op}`, gezet bij bankimport. `datum` = het einde van de periode van het afschrift (`tot`); een ouder afschrift draait een nieuwer saldo niet terug, en na het verwijderen van een afschrift geldt weer het laatst overgebleven afschrift van die rekening (of geen saldo). De balans leest de liquide middelen uit de bewaarde afschriften en valt hierop terug (`liquideMiddelenOp`) |
+| `bank_transacties` | array | Bewaarde banktransacties (v1.12.89): een regel uit `parseMT940` met `{id, afschrift_id, iban, datum, type: C\|D, bedrag, referentie?, tegenpartij?, omschrijving?, storno?}` plus de gekoppeld*-vlaggen (`gekoppeldFactuurId`, `gekoppeldBtwPeriode`, `gekoppeldAccijnsMaand`, …) en de markeringen van de automatische koppeling. **`bank_koppelingen` blijft de bron van waarheid** (sleutel `txKey`): de vlaggen worden bij elke lezing opnieuw gezet (`herstelKoppelingVlaggen` in AdministratiePage) — lees ze uit de context en wijzig een transactie op `id`/`txKey`, nooit op haar plek in de lijst. Hetzelfde bestand twee keer inlezen voegt niets dubbel toe (`bouwBankImport`). Een PSP-uitbetaling kan een `verslag` dragen: het uitbetalingsverslag (PDF in de bijlagenmap) plus kenmerk, totalen en de ingehouden kosten per factuur van de PSP (`utils/pspUitbetaling.ts`, geen klantnamen) — las Claude het, dan ook `bron`, `model` en de regels zonder consument; dat blijft staan als de koppeling verdwijnt. Financieel (`boekhouding`/`beheer`); Excel-sheet `BankTransacties` |
+| `bank_afschriften` | array | Ingelezen MT940-bestanden: `{id, iban, referentie, afschriftNr, beginsaldo, eindsaldo, van, tot, geimporteerd_op, aantal, nieuw, overgeslagen, transactie_ids, vorig_eindsaldo?}`. `transactie_ids` = álle transacties uit het bestand, ook die er al waren (de saldocontrole per afschrift); de aansluiting op het vorige afschrift rekent live (`vorigEindsaldoVoor`; overlap = geen aansluiting). Verwijderen (vijf seconden terugweg, audit `Bankafschrift`) haalt alleen transacties weg die in geen ander afschrift staan, laat `bank_koppelingen` staan — opnieuw inlezen zet de koppelingen terug — en zet `bank_saldi` terug (`bankSaldiNaVerwijderen`). Financieel; Excel-sheet `BankAfschriften` |
+| `btw_aangiftes` | array | Twee soorten record in één key. **Indiening:** `{id, periodeKey, ingediend_datum, bedrag, ingediend_door?}` — een record mét `periodeKey` betekent "ingediend" (`geslotenPeriodeSets` in `utils/btw.ts`); `bedrag` in hele euro's, negatief = teruggave; terugzetten = het record weg + storno in het journaal. **Controle:** `{periode, status, berekend_datum, berekend_door, reviewer, controle_status, controle_datum, controle_door, bevindingen, zelfde_persoon_akkoord?}` met `periode` = de periodesleutel (`2026-Q3`, `2026-M09`) en nooit een `periodeKey`; een oud record onder `<jaar>-<maandnaam in de schermtaal>` wordt bij de volgende schrijfactie omgezet (`btwControleRecord`/`metBtwControle`). Wie berekende, controleerde en indiende is de ingelogde gebruiker (`whoami`); de controleur kies je uit `gebruikers_rollen` (zonder gebruikers: vrije naam) — nooit een vaste naam. Controleur = berekenaar/indiener mag alleen met "toch akkoord" + bevindingen. Financieel |
+| `accijns_aangiftes` | array | Eén record per maand: `{maand: 'JJJJ-MM', status: open\|berekend\|ingediend\|betaald, berekend_datum, berekend_door, reviewer, controle_status, controle_datum, controle_door, bevindingen, zelfde_persoon_akkoord?, ingediend_datum, ingediend_door, bedrag, betaald_datum}`. "Vraag controle aan" zet `berekend`; indienen kan pas na akkoord en legt het maandtotaal vast als `bedrag` (euro's) — dat maakt het matchen van de bankbetaling mogelijk. € 0 ingediend = nihil (afgerond, geen betaling). Betaald via een bankkoppeling (`{soort:'accijns', maandKey}`, transactiedatum) of met de hand met een gekozen datum. Financieel |
 | `btw_tarieven` | array | Actieve BTW-tarieven (bijv. `[0, 9, 21]`) |
 | `ing_types` | array | Ingrediënttypen |
 | `accijns_instellingen` | object | Accijnstarieven |
@@ -1068,7 +1356,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `nummer_reeksen` | object | Server-beheerde nummerreeksen (`factuur`/`creditnota` per jaar; `bestelling` = kort doorlopend `M-`-nummer voor handmatige orders, geen jaarreset), atomair uitgegeven via `POST /api/nextnr` — nooit client-side muteren |
 | `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`, en `bewaking` = drempels van de temperatuurbewaking; leeg veld = default uit `utils/tankbewaking.ts`) |
 | `notificatie_instellingen` | object | Meldingsinstellingen: HA `notify`-service + scherm-melding (herbruikbaar voor alle notificaties) |
-| `bank_koppelingen` | object | Koppeling banktransacties aan facturen/BTW (zie hieronder) |
+| `bank_koppelingen` | object | Koppeling banktransacties (sleutel `txKey`) aan facturen, BTW, accijns, SNd, kapitaal, aflossing en PSP-bundels — dé bron van wat er gekoppeld is; de vlaggen op `bank_transacties` volgen hieruit (zie hieronder) |
 | `app_logo` | string\|null | Base64 app-logo |
 | `app_logo_icoon` | object | Automatisch gegenereerd 180×180-PNG-icoon uit het logo (`{van, icoon}`) t.b.v. `GET /api/app_icoon` (iOS-home-screen); afgeleide data — beheer-only, bewust níét in de Excel-backup (regenereert vanzelf) |
 | `factuur_logo` | string\|null | Base64 factuurlogo |
@@ -1090,7 +1378,7 @@ Backup en restore gaan via Excel (`.xlsx`) — **niet** via JSON. De functies `e
 - **Export:** `doExport()` in `App.tsx` → `excelExport(data)` → downloadt `brewadmin_backup_YYYY-MM-DD.xlsx`
 - **Import:** `doImport(e)` in `App.tsx` → `excelImport(file, cb, onError)` → stelt alle state in
 - **UI:** Instellingen → App → Data import & export (`accept=".xlsx"`)
-- **Bestandsstructuur:** 31 array-sheets (één per datasleutel) + één `Instellingen`-sheet voor objects, primitieven en logo's
+- **Bestandsstructuur:** 81 array-sheets (één per datasleutel, `bouwBackupWerkboek`; o.a. `BankTransacties` en `BankAfschriften` voor de bewaarde bankafschriften, `AccijnsAangiftes`, `BtwAangiftes`, `Journaal`; lijsten van losse waarden als rijen `{waarde}`) + één `Instellingen`-sheet voor objects (`INST_JSON_KEYS`, o.a. `bank_koppelingen` en `bank_saldi`), primitieven en logo's
 - **Geneste objecten** binnen array-items worden als JSON-string opgeslagen en bij import teruggeparsed
 - **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`, `imap_creds`) zitten **nooit** in de Excel-backup en alleen gemaskeerd in de download-ZIP van een serverbackup (zonder db-kopie, `_backup_to_zip`); de serverbackup op schijf en offsite bevat ze **alleen versleuteld** (ERP 5.8, zie "Security constraints"), zodat die volledig herstelbaar blijft zonder leesbare geheimen
 - **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`, `website_telemetrie_status`, `inkoop_inbox_status`) staat bewust niet in de backup — die regenereert vanzelf
@@ -1103,28 +1391,38 @@ Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `ex
 
 ### Periodeberekening
 
-`getPeriodes(year, periode)` in `BoekhoudingPage.tsx` berekent kwartaal- of maandperiodes. De geselecteerde periode wordt bijgehouden in `selectedPeriode` (lokale state). De memo's `btwPerTariefAangifte` en `omzetBtwPerTarief` filteren altijd op de geselecteerde periode (of het hele jaar als niets geselecteerd is).
+`getPeriodes(year, periode)` in `utils/btw.ts` berekent kwartaal- of maandperiodes (`key` = `2026-Q3` of `2026-M09`). Aangiftes (`pages/admin/AangiftesSectie.tsx`) toont per jaar de perioden die al begonnen zijn, als stappen (`btwRijen` in `utils/aangifteStappen.ts`); de gekozen periode is het detail, niet een filter op de pagina. De cijfers van één periode — rubrieken 1a/1b/1d/2a/4a/4b/5b, voorbelasting per tarief, het te betalen of terug te ontvangen bedrag in centen — komen uit `btwPeriodeCijfers`, het jaartotaal in de kop uit `btwJaarCijfers`.
 
 - **Facturen tellen op hun effectieve periode** (`inBtwPeriode`/`inBtwJaar` in `utils/btw.ts`), inkoop én verkoop: een factuur met een datum in een al ingediende of betaalde periode krijgt bij aanmaken `btw_periode` (rollover) en telt in de lopende aangifte. WooCommerce-orders blijven op betaaldatum.
-- **Eén bron per verkoop:** een opgehaalde WooCommerce-order telt alleen mee zolang er in de app geen verkoopfactuur voor bestaat (`wcOrdersNogNietGefactureerd`); een afgeronde webshoporder telt via zijn factuur.
+- **Eén bron per verkoop:** een opgehaalde WooCommerce-order telt alleen mee zolang er in de app geen verkoopfactuur voor bestaat (`wcOrdersNogNietGefactureerd`); een gefactureerde webshoporder (afgerond, of vooraf gefactureerd zodra hij betaald was) telt via zijn factuur.
 - **Handmatige inkooptotalen** worden een correctieregel (`inkoopRegelsMetCorrectie` in `utils/centen.ts`), zodat journaal, W&V, rubriek 5b en de periodekaart dezelfde voorbelasting tellen.
 
-### Periodestatus
+### Periodestatus: vijf stappen (v1.12.90)
 
-Periodes hebben vier statussen:
+BTW en accijns lopen in hetzelfde ritme (`utils/aangifteStappen.ts`, één
+`PeriodeLijst` voor beide):
 
-| Status | Kleur | Conditie |
-|--------|-------|----------|
-| Toekomstig | Grijs | `p.from > today` |
-| Lopend | Blauw | `p.from ≤ today ≤ p.to` |
-| Openstaand | Oranje | `p.to < today` én géén BTW-koppeling in `bankKoppelingen` |
-| Afgesloten | Groen | `p.to < today` én BTW-koppeling aanwezig |
+| Stap | Conditie (BTW) | In de lijst |
+|------|----------------|-------------|
+| Lopend | `p.to ≥ vandaag`, niets ingediend of betaald | pil blauw, bedrag "tot nu" |
+| Berekend | voorbij, geen akkoord van de controleur | knop *Controleren* (zonder activiteit en € 0: grijze pil, geen knop) |
+| Gecontroleerd | `controle_status: 'akkoord'` in het controlerecord | knop *Indienen* |
+| Ingediend | record mét `periodeKey` in `btw_aangiftes` | knop *Koppel betaling* (één transactie binnen € 1: meteen met die transactie) |
+| Betaald / Terugontvangen / Nihil | BTW-koppeling in `bank_koppelingen`, of ingediend met € 0 | pil groen "afgerond" |
 
-Een periode wordt pas "Afgesloten" wanneer de gebruiker een banktransactie koppelt als bewijs van betaling. Zolang dat niet is gedaan staat de periode op **Openstaand** (oranje).
+Een periode is pas afgerond wanneer er een banktransactie aan gekoppeld is als
+bewijs van betaling (of de aangifte nihil was). Wat om actie vraagt staat
+bovenaan (vroegste uiterste datum eerst — één maand na afloop); de telling op
+het segment en de dashboardrijen volgen dezelfde regel als
+`telOpenstaandeBtwPerioden` (voorbij, niet ingediend of betaald, wél
+activiteit). Toekomstige perioden en de oude jaarweergave van de rubrieken
+bestaan niet meer. BTW indienen zonder controle kan nog (bevestiging in de knop,
+"Indienen zonder controle"), behalve in een periode die al betaald is; accijns
+indienen blijft geblokkeerd tot het akkoord.
 
 ### `bankKoppelingen` — koppelingtypen
 
-Het `bankKoppelingen` object (sleutel: `txKey(tx)`) ondersteunt drie soorten koppelingen:
+Het `bankKoppelingen` object (sleutel: `txKey(tx)`, de enige definitie staat in `utils/bank.ts`) kent deze soorten koppelingen:
 
 ```ts
 // Verkoopfactuur
@@ -1133,8 +1431,18 @@ Het `bankKoppelingen` object (sleutel: `txKey(tx)`) ondersteunt drie soorten kop
 // Inkoopfactuur
 { soort: 'inkoop', factuurId: number }
 
-// BTW-afdracht (koppelt een debettransactie aan een BTW-periode)
+// BTW-afdracht (debettransactie) of -teruggave (credit) ↔ een BTW-periode
 { soort: 'btw', periodeKey: string }  // bijv. '2026-Q1' of '2026-M04'
+
+// Accijnsbetaling ↔ een accijnsmaand; zet de maand en haar accijnsrecords
+// op betaald met de transactiedatum (koppelAccijnsBetaling)
+{ soort: 'accijns', maandKey: string }  // bijv. '2026-09'
+
+// Kapitaalstorting/-onttrekking (factuurId = id van de kapitaalboeking)
+{ soort: 'kapitaal', factuurId: number }
+
+// Aflossing aan een alternatieve rekening (telt in schuldPerAltRekening)
+{ soort: 'aflossing', altRekeningId: number, bedrag: number }
 
 // SNd-afdracht (statiegeld aan Statiegeld Nederland): debettransactie ↔
 // SNd-periode; zet die periode op de Statiegeld-pagina op "afgedragen".
@@ -1142,14 +1450,42 @@ Het `bankKoppelingen` object (sleutel: `txKey(tx)`) ondersteunt drie soorten kop
 { soort: 'snd', periodeKey: string }
 
 // PSP-uitbetaling (Mollie e.d.): één credittransactie dekt meerdere
-// verkoopfacturen; het verschil (transactiekosten) wordt automatisch als
-// betaalde inkoopfactuur geboekt (kostenFactuurId). gemarkeerdBetaald bevat
-// de factuur-ids die door de koppeling op betaald zijn gezet, zodat
-// ontkoppelen ze kan terugzetten.
-{ soort: 'psp', factuurIds: number[], kostenFactuurId?: number, gemarkeerdBetaald: number[] }
+// verkoopfacturen (ook een creditnota bij een terugstorting); het verschil
+// zijn de kosten die de PSP inhield (kostenCent). Die kosten zijn óf
+// automatisch als betaalde inkoopfactuur geboekt (kostenFactuurId, de oude
+// manier), óf verrekend met de factuur die de PSP er per maand voor stuurt
+// (kostenVerrekend: per inkoopfactuur het deel uit deze uitbetaling), óf nog
+// open ("factuur volgt"). gemarkeerdBetaald bevat de factuur-ids die door de
+// koppeling op betaald zijn gezet, zodat ontkoppelen ze kan terugzetten.
+{ soort: 'psp', factuurIds: number[], gemarkeerdBetaald: number[], kostenCent?: number,
+  kostenFactuurId?: number, kostenVerrekend?: { factuurId: number, cent: number }[] }
 ```
 
-De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort: 'btw'`-entries en bouwt een `Set<string>` van betaalde periodeKeys. Bij MT940-herimport worden BTW-koppelingen automatisch hersteld via `gekoppeldBtwPeriode` op de transactie.
+**Het uitbetalingsverslag** (de PDF van Mollie bij een uitbetaling) hoort bij
+de transactie, niet bij de koppeling: `bank_transacties[].verslag` (`{naam,
+bestand, referentie, som_cent, totaal_cent, aantal, kosten: [{nummer, cent}]}`
+— geen klantnamen; `_bijlage_in_gebruik` houdt de PDF vast). Bij het
+uitsplitsen leest de app de PDF opnieuw (`koppelPspVerslag`) en vinkt de
+facturen aan. Levert de tekstlaag niets op (een scan, foto's — die worden
+samen één PDF-bijlage —, een andere PSP of opmaak), dan leest Claude het
+verslag (`pages/admin/bank/verslagLezen.ts`, `utils/pspVerslagScan.ts`; alleen
+met een sleutel). Dan staan ook `bron: 'claude'`, `model` en de regels zelf op
+`verslag` (`{datum, methode, bedrag_cent, uitbetaald_cent, omschrijving}`,
+zonder consument): het venster leest die terug (`verslagUitInfo`) in plaats
+van opnieuw te laten lezen, en zegt dat Claude het las — nakijken voor het
+koppelen. Ook dan koppelt niets vanzelf. De factuur van de PSP (inkoop) staat op betaald zodra de
+uitbetalingen hem helemaal dekken (`inkoopNaVerrekening`, met
+`betaald_door_verrekening` — alleen dan zet ontkoppelen hem weer open); hij
+telt als gekoppeld in `gekoppeldeFactuurIds`. Verrekenen kan vanaf de
+uitbetaling (Bank: "Kosten verrekenen") en vanaf de factuur (Facturen ›
+Inkoop: "Verrekenen met uitbetalingen"); de vastlegging is gedeeld
+(`verrekenPspKosten` in AdministratiePage). Een factuur die met de hand op
+betaald is gezet hangt nergens aan (`verkoopAfrekening`/`inkoopAfrekening` in
+`utils/factuurTijdlijn.ts` = null): verrekenen met een alt-rekening of met
+uitbetalingen kan dan nog, en ongedaan maken zet hem terug in zijn
+`vorige_stand`.
+
+De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, via `useAdmin()` in elke sectie) leest alle `soort: 'btw'`-entries en bouwt een `Set<string>` van betaalde periodeKeys; `aangifteStappen.ts` en `geslotenPeriodeSets` (`utils/btw.ts`) lezen dezelfde bron. Omdat de transacties bewaard worden (`bank_transacties`) zijn de gekoppeld*-vlaggen alleen nog een afgeleide: `herstelKoppelingVlaggen` zet ze bij elke lezing gelijk aan dit object (ook na ontkoppelen vanuit Aangiftes, een ander apparaat of een teruggezette backup), en een opnieuw ingelezen afschrift krijgt zijn koppelingen hieruit terug. Een BTW-, accijns- of SNd-ontkoppeling haalt elke betaling van die periode weg.
 
 ---
 
@@ -1187,7 +1523,7 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 | POST | `/api/backups/trigger` | Nu een backup maken (beheer-only) |
 | POST | `/api/backups/restore` | Eén data-key terugzetten uit een serverbackup (`{date, key}`) — beheer-only, geweigerd voor append-only keys, credentials en server-beheerde keys (`_NIET_TERUGZETBAAR`: `nummer_reeksen` + afgeleide serverdata), zelfde schrijfweg als `/api/data` (schemavalidatie, rollenvalidatie + lockout-guard via `_key_guard_fout`, versie, audit `backup_restore`). De rest van de administratie blijft staan |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB). Overschrijft nooit een bestaande bijlage: bij een botsing wijkt de server uit naar een vrije naam en geeft die terug als `bestand` — de client bewaart díé naam |
-| POST | `/api/delete_upload/<naam>` | Bijlage verwijderen; 409 zolang een inkoopfactuur, postvak-item, afboeking, verliesregistratie of lot (`etiket_fotos`) ernaar verwijst (`_bijlage_in_gebruik`) |
+| POST | `/api/delete_upload/<naam>` | Bijlage verwijderen; 409 zolang een inkoopfactuur, postvak-item, afboeking, verliesregistratie, lot (`etiket_fotos`) of banktransactie (`verslag`, het uitbetalingsverslag van een PSP) ernaar verwijst (`_bijlage_in_gebruik`) |
 | GET | `/*` | Serve `index.html` (SPA fallback) |
 
 ### Security constraints (do not remove)
@@ -1281,7 +1617,11 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
   betaalstatus van al bestaande orders ververst — een order die als `pending`
   binnenkwam kan later betaald zijn. Een order die in WooCommerce betaald is,
   levert bij afronden een verkoopfactuur met status `betaald` (die factuur
-  vraagt niet meer om een overboeking, in de mail noch op de PDF)
+  vraagt niet meer om een overboeking, in de mail noch op de PDF). Die factuur
+  kan ook al eerder, zodra de order betaald is ("Factuur maken" op de
+  bestelling, `utils/orderFactuur.ts`): een afhaalklant die zijn bier nog niet
+  ophaalde houdt de order open, maar de betaling zit al in een
+  Mollie-uitbetaling. Afronden maakt dan geen tweede factuur
 - **Annulering in de winkel** (`utils/wcOrderImport.ts`): open bestellingen
   die niet in de statusselectie zaten, haalt elke import apart per id op
   (`include=…&status=any`, alleen verversen, nooit nieuw). Geannuleerd, mislukt
@@ -1402,8 +1742,9 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 
 ### Claude AI (Anthropic)
 
-- Used for: de inkoopfactuur (PDF of foto's), foto's van het etiket op een zak (lotnummer, THT, eigenschappen)
-  en het waterrapport (Gereedschap → Waterprofiel)
+- Used for: de inkoopfactuur (PDF of foto's), foto's van het etiket op een zak (lotnummer, THT, eigenschappen),
+  het waterrapport (Gereedschap → Waterprofiel) en het uitbetalingsverslag van een PSP als de tekstlaag van de
+  PDF niets oplevert (Bank: scan, foto's, onbekende opmaak — `utils/pspVerslagScan.ts`)
 - Eén plek: `utils/claudeScan.ts` (`voerScanUit`). Gestructureerde uitvoer via `output_config.format`
   (`json_schema`), **geen temperature** en **geen geforceerde tool-aanroep** (de huidige modellen weigeren
   beide met een 400), `max_tokens` 16k (het nadenken telt mee), `stop_reason` `max_tokens`/`refusal` →
@@ -1426,21 +1767,21 @@ De computed `btwBetaaldePerioden` (memo in `BoekhoudingPage`) leest alle `soort:
 - **Waarom pollen:** de addon is doorgaans niet publiek bereikbaar en kan dus geen mail *ontvangen*. De brouwer stuurt een inkoopfactuur door naar een eigen postvak; de server-thread `inbox` (`_inbox_loop` → `_inbox_tick`, interval `imap_creds.interval`, standaard 15 min) haalt de PDF-bijlagen er zelf uit via `imaplib` (stdlib). Postvakken die alleen met OAuth werken (Microsoft 365, Outlook.com) kunnen niet; Gmail kan met een app-wachtwoord
 - **Alleen lezen, waterlijn per map:** de map gaat met EXAMINE open; niets wordt als gelezen gemarkeerd, verplaatst of verwijderd. Wat al bekeken is staat als UID-waterlijn (`uidvalidity` + `laatste_uid`, per `mailbox`) in `inkoop_inbox_status`; `UID n:*` geeft altijd minstens het laatste bericht, dus filter op `uid > waterlijn`. Wisselt de map of de UIDVALIDITY, dan begint hij opnieuw (een server die UIDVALIDITY niet meldt houdt zijn waterlijn: `None` == `None`). Een mapnaam mag alles zijn behalve stuurtekens, aanhalingsteken en backslash (`[Gmail]/Alle berichten`, `Facturen ë`); niet-ASCII gaat als modified UTF-7 (`_inbox_imap_utf7`), `IMAP_MAP_RE` in `utils/inkoopInbox.ts` spiegelt de regex. De allereerste ronde in een map kijkt naar de nieuwste 50 berichten (`INBOX_MAX_BERICHTEN`), latere rondes nemen hooguit 50 nieuwe tegelijk mee — de rest volgt de volgende ronde
 - **Nooit twee keer dezelfde PDF:** `sha256` van de bytes tegen alle items in `inkoop_inbox` (ook genegeerd of verwerkt). Definitief verwijderen van een genegeerd item (record + bestand) maakt hem weer importeerbaar — dat is bedoeld
-- **Wat er in komt:** `_inbox_lees_bericht` (zuivere functie) zoekt in het hele bericht, ook in een als bijlage doorgestuurd bericht (`message/rfc822`). Overgeslagen berichten krijgen een reden (`geen_pdf`, `afzender`, `te_groot`, `te_veel`, `onleesbaar`, `dubbel`) in `inkoop_inbox_status.overgeslagen` en dus zichtbaar op de tab Inkoop en in de instellingen — een doorgestuurde factuur die niet verschijnt moet altijd te verklaren zijn. Het afzenderfilter (`afzenders`: adressen of `@domein`; leeg = iedereen) kijkt naar de afzender van de doorstuurmail, niet naar die van de leverancier; het is geen echte beveiliging (een afzender is te vervalsen)
-- **Verwerken = het gewone inkoopformulier:** tab Inkoop → *Ontvangen per e-mail* → *Verwerk* opent `InkoopFactuurModal` met `inboxItem`: de PDF wordt geladen, naast het formulier gezet en meteen gescand. Bij opslaan wijst de factuur naar **hetzelfde bestand** (`bijlage` = `inboxItem.bijlage`, geen tweede upload) en wordt het item `verwerkt` met `factuur_id`. `_bijlage_in_gebruik` telt `inkoop_inbox` mee, dus zo'n bestand gaat nooit weg zolang het item of de factuur ernaar wijst. Wordt de factuur verwijderd, dan komt het item terug op de wachtlijst (`inboxFactuurVerwijderd`). Wachten er meer, dan biedt het formulier *Opslaan en volgende*: de pagina opent meteen het volgende item (de modal is per item gesleuteld, `key={inboxVerwerk.id}`). Zonder leverancier én factuurnummer maakt de pagina geen factuur; voor een postvak-item boekt ze dan ook geen voorraad en blijft het formulier open (`inbox_vul_factuurgegevens`) — anders stonden de lots er al in terwijl het item op `nieuw` bleef en het volgende verwerken ze nog eens boekte
+- **Wat er in komt:** `_inbox_lees_bericht` (zuivere functie) zoekt in het hele bericht, ook in een als bijlage doorgestuurd bericht (`message/rfc822`). Overgeslagen berichten krijgen een reden (`geen_pdf`, `afzender`, `te_groot`, `te_veel`, `onleesbaar`, `dubbel`) in `inkoop_inbox_status.overgeslagen` en dus zichtbaar onder Facturen › Inkoop › *Te verwerken* en in de instellingen — een doorgestuurde factuur die niet verschijnt moet altijd te verklaren zijn. Het afzenderfilter (`afzenders`: adressen of `@domein`; leeg = iedereen) kijkt naar de afzender van de doorstuurmail, niet naar die van de leverancier; het is geen echte beveiliging (een afzender is te vervalsen)
+- **Verwerken = het gewone inkoopformulier:** Facturen › Inkoop → status *Te verwerken* (de chip, of `{pagina:'facturen', tab:'inkoop', filter:'te_verwerken'}`) → *Verwerk* opent `InkoopFactuurModal` met `inboxItem`: de PDF wordt geladen, naast het formulier gezet en meteen gescand. Bij opslaan wijst de factuur naar **hetzelfde bestand** (`bijlage` = `inboxItem.bijlage`, geen tweede upload) en wordt het item `verwerkt` met `factuur_id`. `_bijlage_in_gebruik` telt `inkoop_inbox` mee, dus zo'n bestand gaat nooit weg zolang het item of de factuur ernaar wijst. Wordt de factuur verwijderd, dan komt het item terug op de wachtlijst (`inboxFactuurVerwijderd`). Wachten er meer, dan biedt het formulier *Opslaan en volgende*: de pagina opent meteen het volgende item (de modal is per item gesleuteld, `key={inboxVerwerk.id}`). Zonder leverancier én factuurnummer maakt de pagina geen factuur; voor een postvak-item boekt ze dan ook geen voorraad en blijft het formulier open (`inbox_vul_factuurgegevens`) — anders stonden de lots er al in terwijl het item op `nieuw` bleef en het volgende verwerken ze nog eens boekte
 - **Er wordt niets automatisch geboekt.** Ook niet als de scan alles goed heeft: het postvak is een wachtrij, de boeking blijft een handeling van een mens
-- **Zichtbaarheid:** badge op het tabblad Inkoop, attentiepost `inkoop_inbox` (werkruimte Administratie), een rij op het Administratie-dashboard (`beslissingen.ts`, `wacht_op_jou`) en één HA-melding per ophaalronde met nieuwe facturen (`notificatie_instellingen`). Een fout van de laatste ronde (`fout.code`: `verbinding`, `certificaat`, `tls`, `login`, `map`, `protocol`, `opslag`, `vol`) staat op de kaart met — bij een instellingsfout — een link die naar de kaart in Instellingen → Koppelingen scrolt
+- **Zichtbaarheid:** "n te verwerken" op het segment Inkoop en de chip *Te verwerken*, attentiepost `inkoop_inbox` (werkruimte Administratie; het postvak is één rij en telt dus 1 in de badge, label `attentie_postvak`), een rij op het Administratie-dashboard (`beslissingen.ts`, `wacht_op_jou`) en één HA-melding per ophaalronde met nieuwe facturen (`notificatie_instellingen`). Een fout van de laatste ronde (`fout.code`: `verbinding`, `certificaat`, `tls`, `login`, `map`, `protocol`, `opslag`, `vol`) staat op de kaart met — bij een instellingsfout — een link die naar de kaart in Instellingen → Koppelingen scrolt; op Inkoop staat dan ook een rode regel "Postvak: …" die naar *Te verwerken* springt, zodat een kapot postvak niet achter de chip verdwijnt
 - **Rollen:** `imap_creds` en `inkoop_inbox_status` alleen `beheer` (in `_BEHEER_KEYS`; `utils/rollen.ts` spiegelt), `inkoop_inbox` is financieel (`boekhouding` + `beheer`). *Test verbinding* is beheer-only, *Nu ophalen* ook voor `boekhouding`
 
 ### Mollie (betaallink op facturen)
 
 - Used for: online betaallink (iDEAL, creditcard, Bancontact …) op **verkoop­facturen** die per mail worden verstuurd
 - API-key + `enabled` + `redirectUrl` in de secure key `mollie_creds`; server voegt de key server-side toe (proxy — key nooit naar de browser)
-- Flow: `mailVerkoopFactuur` (BoekhoudingPage) bouwt de Mollie-context (bedrag in centen, omschrijving, redirect-URL) → `MailModal` toont een checkbox **"Mollie betaallink toevoegen"** → bij verzenden roept `mollieCreatePayment` (`POST /api/mollie/payment`) de betaal-URL op → knop in de HTML-mail (`buildMailHtml` `payButton`) + kale link in de platte tekst
+- Flow: `mailVerkoopFactuur` (`pages/admin/FacturenSectie.tsx`) bouwt de Mollie-context (bedrag in centen, omschrijving, redirect-URL) → `MailModal` toont een checkbox **"Mollie betaallink toevoegen"** → bij verzenden roept `mollieCreatePayment` (`POST /api/mollie/payment`) de betaal-URL op → knop in de HTML-mail (`buildMailHtml` `payButton`) + kale link in de platte tekst
 - Server gebruikt de **Payment Links API** (`/v2/payment-links`), niet de Payments API: een betaallink **verloopt standaard niet** en blijft geldig tot de klant betaalt. De deelbare URL komt uit `_links.paymentLink.href` (pure helper `_mollie_link_url`). Een Payments-checkout zou kortlevend zijn en na verlopen naar de `redirectUrl` (de website/homepagina) leiden
 - **Eén link per factuur** (`utils/mollieLink.ts`): omdat een link niet verloopt, komt de eerste link op de verkoopfactuur (`mollie_link: {id, url, amount_cent, aangemaakt}`) en gebruikt elke volgende mail (herinnering, aanmaning, opnieuw versturen) díe link zolang de factuur openstaat en het bedrag gelijk is (`herbruikbareBetaallink`). Maak nooit per mail een nieuwe link: twee links = de klant kan dezelfde factuur twee keer betalen. Een link die na betaling via de bank of een creditnota nog openstaat, wordt (nog) niet bij Mollie gearchiveerd
 - Redirect-URL valt terug op `brewery_details.website`; zonder een geldige URL blijft de checkbox uitgeschakeld (Mollie vereist een `redirectUrl`)
-- Betaling-terugkoppeling loopt via de bestaande **PSP-bankreconciliatie** (`bank.ts`): een Mollie-uitbetaling op het afschrift wordt aan de factuur/facturen gekoppeld — er is (bewust) geen webhook, want de addon is doorgaans niet publiek bereikbaar
+- Betaling-terugkoppeling loopt via de bestaande **PSP-bankreconciliatie** (`bank.ts`): een Mollie-uitbetaling op het afschrift wordt aan de factuur/facturen gekoppeld — er is (bewust) geen webhook, want de addon is doorgaans niet publiek bereikbaar. Met het **uitbetalingsverslag** (PDF) erbij zoekt de app de facturen zelf (`utils/pspVerslag.ts`: "Factuur F2026-0044" = de betaallink, "Bestelling 3289" = de webshoporder) en worden de ingehouden kosten verrekend met de maandfactuur van Mollie (`utils/pspUitbetaling.ts`, zie "`bankKoppelingen` — koppelingtypen"). Een betaalde bestelling die nog niet is afgerond (de klant heeft hem nog niet opgehaald) heeft nog geen factuur: het venster noemt die regel `geen_factuur` en maakt de factuur met één klik (`teFacturerenUitVerslag` + `bouwOrderFactuur`); de order blijft open
 
 ### Home Assistant
 
@@ -1488,10 +1829,10 @@ Bij elke nieuwe sleutel: voeg toe aan **alle 5** taalbestanden (nl/en/de/fr/es).
 ## Adding New Features — Checklist
 
 1. **Type first:** add new interfaces to `src/types/index.ts`
-2. **Constants:** add new enums/mappings to `src/constants.ts`
+2. **Constants:** add new enums/mappings to `src/utils/constants.ts`
 3. **Translations:** add i18n keys to all 5 `src/i18n/*.json` files
-4. **Page component:** create in `src/pages/` following existing patterns
-5. **Navigation:** register page in `App.tsx` nav array and routing logic
+4. **Page component:** create in `src/pages/` following existing patterns (Administratie: een sectie in `src/pages/admin/`, lijsten volgens "Administratie — patronen")
+5. **Navigation:** register page in `App.tsx` nav array (`navPerWerkruimte`) and in `PAGINA_WERKRUIMTE` (`utils/route.ts`); een pagina die verdwijnt of verhuist krijgt een regel in `PAGINA_ALIAS`/`resolveerDoel`, zodat oude links blijven werken
 6. **Data key:** if persisting new data, use `useStore('new_key')` — server handles storage automatically
 7. **API proxy:** if calling a new external API, add proxy handler in `server.py`
 8. **Security:** any new server endpoint must validate input and respect rate limiting

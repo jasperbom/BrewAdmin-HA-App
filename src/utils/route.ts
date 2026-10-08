@@ -13,11 +13,13 @@ export const WERKRUIMTE_IDS: WerkruimteId[] = ['productie', 'verkoop', 'administ
 // meer zijn werkruimte-loos en blijven altijd bereikbaar. `batchflow` en
 // `planning` zijn oude namen van `batches` (zie PAGINA_ALIAS) en staan er
 // nog in zodat een sprong met de oude naam ook de werkruimte goed zet.
+// Administratie heeft vijf vaste plekken (het tweede menu, in deze volgorde):
+// Facturen, Bank, Aangiftes, Voorraad en Rapporten.
 export const PAGINA_WERKRUIMTE: Record<string, WerkruimteId> = {
   ingredienten: 'productie', recepten: 'productie', batches: 'productie', batchflow: 'productie',
   planning: 'productie', haccp: 'productie', tool_phcorrectie: 'productie', tool_waterprofiel: 'productie',
   producten: 'verkoop', bestellingen: 'verkoop', kassa: 'verkoop', klanten: 'verkoop', statiegeld: 'verkoop',
-  boekhouding: 'administratie', rapporten: 'administratie', agp: 'administratie', inventarisatie: 'administratie', voorraadverloop: 'administratie',
+  facturen: 'administratie', bank: 'administratie', aangiftes: 'administratie', voorraad: 'administratie', rapporten: 'administratie',
 }
 
 export const WERKRUIMTELOZE_PAGINAS = ['dashboard', 'instellingen', 'meer']
@@ -29,14 +31,90 @@ export type BatchesStand = 'lopend' | 'gesloten' | 'agenda'
 
 export const BATCHES_STANDEN: BatchesStand[] = ['lopend', 'gesloten', 'agenda']
 
+/** Waar een oude pagina-id nu staat: de pagina, en zo nodig de stand van
+ *  Batches of het segment (`tab`) dat de doelpagina moet openen. */
+export interface PaginaAlias {
+  pagina: string
+  stand?: BatchesStand
+  tab?: string
+}
+
 /**
  * Oude pagina-id's: oude links, bladwijzers, een geïnstalleerde app met een
- * onthouden hash en code die de oude naam nog gebruikt, blijven werken.
- * Planning is de agenda van Batches geworden.
+ * onthouden hash en code die de oude naam nog gebruikt, blijven werken. Ze
+ * openen de pagina waar het onderdeel nu staat — met het juiste segment erbij.
+ * Planning is de agenda van Batches geworden; Boekhouding, AGP, Inventarisatie
+ * en Voorraadverloop zijn opgegaan in de vijf plekken van Administratie.
  */
-export const PAGINA_ALIAS: Record<string, { pagina: string; stand?: BatchesStand }> = {
+export const PAGINA_ALIAS: Record<string, PaginaAlias> = {
   batchflow: { pagina: 'batches' },
   planning: { pagina: 'batches', stand: 'agenda' },
+  boekhouding: { pagina: 'facturen' },
+  agp: { pagina: 'voorraad', tab: 'agp' },
+  inventarisatie: { pagina: 'voorraad', tab: 'tellingen' },
+  voorraadverloop: { pagina: 'voorraad', tab: 'verloop' },
+}
+
+/** Een navigatiedoel: pagina plus wat de pagina bij het openen moet tonen
+    (zelfde vorm als `AttentieDoel` in utils/attentie.ts). */
+export interface PaginaDoel {
+  pagina: string
+  tab?: string
+  filter?: string
+  lotId?: number
+  id?: string | number | null
+  actie?: string
+}
+
+/**
+ * Zet een navigatiedoel om naar de huidige indeling. Een oud Boekhouding-
+ * tabblad landt op de plek waar het nu staat: Verkoop/Inkoop → Facturen,
+ * Klanten → Verkoop › Klanten, Bank → Bank, Rapporten (filter = het rapport)
+ * → Rapporten, Accijns en BTW-aangifte → Aangiftes. Een andere oude pagina-id
+ * (`PAGINA_ALIAS`) krijgt zijn nieuwe pagina, stand en segment. Een doel dat al
+ * klopt komt ongewijzigd terug.
+ */
+export function resolveerDoel<T extends PaginaDoel>(d: T): T {
+  if (!d || typeof d.pagina !== 'string') return d
+  if (d.pagina === 'boekhouding') {
+    const { tab, filter } = d
+    switch (tab) {
+      case 'verkoop':
+      case 'inkoop':
+        return { ...d, pagina: 'facturen' }
+      case 'klanten': {
+        const { tab: _t, filter: _f, ...rest } = d
+        return { ...rest, pagina: 'klanten' } as T
+      }
+      case 'bank': {
+        const { tab: _t, ...rest } = d
+        return { ...rest, pagina: 'bank' } as T
+      }
+      case 'rapporten': {
+        // Het rapport zat in `filter`; bij Rapporten is het rapport het tabblad.
+        const { tab: _t, filter: _f, ...rest } = d
+        return { ...rest, pagina: 'rapporten', ...(filter ? { tab: filter } : {}) } as T
+      }
+      case 'accijns':
+        return { ...d, pagina: 'aangiftes', tab: 'accijns' }
+      case 'btw_aangifte':
+        return { ...d, pagina: 'aangiftes', tab: 'btw' }
+      default: {
+        const { tab: _t, ...rest } = d
+        return { ...rest, pagina: 'facturen' } as T
+      }
+    }
+  }
+  const alias = aliasVan(d.pagina)
+  if (alias) {
+    return {
+      ...d,
+      pagina: alias.pagina,
+      ...(alias.tab ? { tab: alias.tab } : {}),
+      ...(alias.stand && !(d as { stand?: unknown }).stand ? { stand: alias.stand } : {}),
+    }
+  }
+  return d
 }
 
 /** Pagina's met een geopend record in de route: `#/verkoop/producten/<id>`. */
@@ -50,8 +128,9 @@ const heeftEigen = (obj: object, sleutel: string | null | undefined): sleutel is
   sleutel != null && Object.prototype.hasOwnProperty.call(obj, sleutel)
 
 /** De alias van een oude pagina-id, of `undefined`. */
-const aliasVan = (pagina: string | null | undefined): { pagina: string; stand?: BatchesStand } | undefined =>
-  heeftEigen(PAGINA_ALIAS, pagina) ? PAGINA_ALIAS[pagina] : undefined
+function aliasVan(pagina: string | null | undefined): PaginaAlias | undefined {
+  return heeftEigen(PAGINA_ALIAS, pagina) ? PAGINA_ALIAS[pagina] : undefined
+}
 
 export interface Route {
   werkruimte: WerkruimteId
@@ -62,6 +141,10 @@ export interface Route {
   recordId?: string | null
   /** Stand van de Batches-lijst (alleen `batches` zonder batch). */
   stand?: BatchesStand | null
+  /** Segment dat een oude link meebracht (`#/administratie/inventarisatie` →
+      Voorraad › Tellingen). Alleen bij het lezen: `bouwHash` schrijft hem
+      nooit en `routeGelijk` kijkt er niet naar. */
+  tab?: string
 }
 
 const isWerkruimte = (v: string | null): v is WerkruimteId => v != null && (WERKRUIMTE_IDS as string[]).includes(v)
@@ -98,7 +181,8 @@ const ontcijfer = (deel: string | undefined): string | null => {
  * state. Een pagina die bij een andere werkruimte hoort dan de hash zegt,
  * wint: `#/verkoop/batches` opent Productie. Oude namen worden omgezet:
  * `batchflow/<n>` en `dashboard/<n>` (Productie) → `batches/<n>`, `planning`
- * → `batches` in de stand Agenda.
+ * → `batches` in de stand Agenda, en een oude administratiepagina
+ * (`PAGINA_ALIAS`) opent de pagina waar het onderdeel nu staat.
  */
 export function parseRoute(hash: string): Route | null {
   const schoon = (hash || '').replace(/^#/, '').replace(/^\/+/, '').replace(/\/+$/, '')
@@ -115,6 +199,7 @@ export function parseRoute(hash: string): Route | null {
   if (pagina === 'dashboard' && w === 'productie' && positiefGeheel(eerste) != null) pagina = 'batches'
   const werkruimte = PAGINA_WERKRUIMTE[pagina] || w
   const route: Route = { werkruimte, pagina }
+  if (alias?.tab) route.tab = alias.tab
   if (pagina === 'batches') {
     const n = positiefGeheel(eerste)
     if (n != null) route.batchId = n
@@ -189,6 +274,8 @@ export interface NavDoel {
   filter?: string
   lotId?: number
   stand?: BatchesStand
+  /** Een handeling die de doelpagina bij het openen start (`nieuw`, `importeren`). */
+  actie?: string
   /** Alleen voor een werkruimte-loze pagina (dashboard): van welke werkruimte. */
   werkruimte?: WerkruimteId
 }
@@ -208,7 +295,9 @@ export type GaNaar = (doel: NavDoel, opties?: GaNaarOpties) => void
  * waar je nu bent: een werkruimte-loze pagina blijft daar, tenzij het doel
  * zelf een werkruimte noemt.
  */
-export function doelNaarRoute(doel: NavDoel, huidig: WerkruimteId): Route {
+export function doelNaarRoute(doelIn: NavDoel, huidig: WerkruimteId): Route {
+  // Een oud Boekhouding-tabblad of een oude pagina-id landt op zijn nieuwe plek.
+  const doel = doelIn.pagina === 'boekhouding' ? resolveerDoel(doelIn) : doelIn
   const alias = aliasVan(doel.pagina)
   let pagina = alias ? alias.pagina : (BEKENDE_PAGINAS.has(doel.pagina) ? doel.pagina : 'dashboard')
   const id = doel.id == null ? '' : String(doel.id)

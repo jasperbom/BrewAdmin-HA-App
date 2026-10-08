@@ -4,7 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.12.96] — 2026-10-08
+## [1.12.97] — 2026-10-08
+
+Productie en Verkoop zijn opnieuw ingericht volgens het opzet
+(`docs/OPZET-PRODUCTIE-VERKOOP.md`), in zeven delen; tegelijk kreeg
+Administratie een nieuwe indeling (1.12.89–1.12.94). Deze versie brengt die
+twee samen.
+
+### Samengevoegd met de nieuwe Administratie
+
+- **Eén navigatie.** `gaNaar` (utils/route.ts: `resolveerDoel`, dan
+  `doelNaarRoute`) is de enige sprongfunctie. De rijen van het
+  Administratie-dashboard, de oude tabbladen van Boekhouding en `agp`,
+  `inventarisatie` en `voorraadverloop` landen op Facturen, Bank, Aangiftes,
+  Voorraad of Rapporten met het juiste segment, ook als oude link of
+  bladwijzer. Een batch, recept, product of bestelling staat in de route; een
+  factuur of klant gaat als eenmalig navigatiedoel naar de pagina.
+- **Een bestelling openen vanuit een factuur of een klant** gaat via de route
+  (`#/verkoop/bestellingen/<id>`), zoals overal; de terugknop brengt je terug.
+- **Factuur maken vóór het ophalen, in de nieuwe bestelling.** Bij een betaalde
+  bestelling die nog niet is opgehaald of verzonden staat "Factuur maken" in
+  het ⋯-menu ("Nu al; de bestelling blijft open"). De kaart in de lijst en de
+  kop van de bestelling tonen dan "Gefactureerd", en de volgende stap heet
+  "Afronden" in plaats van "Factuur maken". Een gefactureerde bestelling krijgt
+  geen regels meer bij of af (de BTW via "BTW corrigeren"); annuleren maakt de
+  creditnota. Lukt het factuur- of creditnotanummer niet, dan staat dat in het
+  venster zelf, niet in een browsermelding.
+- **Klanten:** de bestellingen en facturen van een klant (op de telefoon als
+  kaarten) tonen hetzelfde bestelnummer als de bestelling zelf (`M-0015`).
+- **Het ⋯-menu** schuift bij scrollen met zijn knop mee en klapt omhoog als het
+  eronder niet past; één regel daarvoor, niet twee.
 
 ### Productie & Verkoop, deel 7: brouwzaal en batch op de telefoon — het opzet is gebouwd
 
@@ -57,10 +86,6 @@ All notable changes to this project are documented here.
 - Energie op het gedrukte etiket staat standaard op "niet vermeld"; de website
   toont de berekende waarde.
 
----
-
-## [1.12.95] — 2026-10-08
-
 ### Productie & Verkoop, deel 6: "Wat brouw je?" en de productpagina als knooppunt
 
 **Nieuwe batch: het blad "Wat brouw je?"**
@@ -104,10 +129,6 @@ All notable changes to this project are documented here.
 - Uitslaan, rebranden en afboeken boeken hetzelfde als voorheen (nagelopen);
   W&V en COGS zijn ongewijzigd.
 
----
-
-## [1.12.94] — 2026-10-08
-
 ### Productie & Verkoop, deel 5: Etiket bijwerken en de tab Batches
 
 **Etiket bijwerken — één plek, ook voor de webshop**
@@ -145,10 +166,6 @@ All notable changes to this project are documented here.
 - *+ Nieuwe batch* opent het planformulier als venster (het stond onder de
   agenda). Verwijderen kan alleen bij Gepland, via ⋯, met terugweg.
 - De attentiepost "batches met open taken" opent Batches › Lopend.
-
----
-
-## [1.12.93] — 2026-10-08
 
 ### Productie & Verkoop, deel 4: etiket & website, verkoopoverzicht, bestellingen op de telefoon
 
@@ -200,10 +217,6 @@ All notable changes to this project are documented here.
   verschil). Het totaal in lijst en detail is nu gelijk aan de factuur
   (inclusief statiegeld bij een handmatige order).
 
----
-
-## [1.12.92] — 2026-10-08
-
 ### Productie & Verkoop, deel 3: de keten, recepten in gebruik, kassa op de telefoon
 
 **De keten in de batch**
@@ -243,10 +256,6 @@ All notable changes to this project are documented here.
   verkoopt alleen vrije voorraad. Wat er geboekt wordt is ongewijzigd
   (vergeleken met de vorige versie: geen verschil).
 
----
-
-## [1.12.91] — 2026-10-08
-
 ### Productie & Verkoop, deel 2: snelle winst
 
 **Productie**
@@ -279,10 +288,6 @@ All notable changes to this project are documented here.
   modal zelf.
 - **Klanten:** bestellingen met hun echte ordernummer (M-0014).
 - De voorbeeldwaarden in het productformulier (o.a. "67" kcal) zijn weg.
-
----
-
-## [1.12.90] — 2026-10-07
 
 ### Productie & Verkoop, deel 1: routes, schil en het rekenfundament
 
@@ -330,10 +335,6 @@ Eerste bouwstap van `docs/OPZET-PRODUCTIE-VERKOOP.md`.
   `energie_op_etiket`, `recept.vastgepind`/`niet_in_brewfather`, snapshots op
   nieuwe CCP 3-controles, `wc.meta_stand` op een artikel.
 
----
-
-## [1.12.89] — 2026-10-07
-
 ### Opzet: Productie en Verkoop overzichtelijker
 
 Alleen documentatie, geen wijziging in de app. Nieuw: `docs/OPZET-PRODUCTIE-VERKOOP.md`,
@@ -353,6 +354,389 @@ voor bureau en telefoon (de mockups staan op een apart ontwerpcanvas):
   "Zonder tag" die altijd leeg is).
 
 ---
+
+## [1.12.94] — 2026-10-07
+
+### Factuur al maken als een betaalde bestelling nog niet is opgehaald
+
+- **Factuur maken vóór het ophalen.** Een webshopbestelling die betaald is
+  kreeg zijn factuur pas bij het afronden. Haalt een afhaalklant zijn bier niet
+  op, dan bleef de order open zonder factuur — terwijl de betaling al in een
+  uitbetaling van Mollie zat, die daardoor niet uit te splitsen was. Een
+  betaalde bestelling heeft nu de knop "Factuur maken": de factuur krijgt een
+  nummer en staat op betaald (met de betaaldatum uit de webshop), de bestelling
+  blijft open. Dat kan ook vóór het picken. Afronden maakt daarna geen tweede
+  factuur. In de lijst en op de bestelling staat "Gefactureerd".
+- **Rechtstreeks vanuit de Mollie-uitbetaling.** Zit er in een uitbetaling een
+  betaalde bestelling zonder factuur, dan zegt het venster op Bank dat bij die
+  regel ("nog geen factuur") en maakt "Factuur maken" hem meteen; hij wordt
+  aangevinkt en de uitbetaling telt op.
+- **Regels liggen vast, annuleren crediteert.** Een gefactureerde bestelling
+  krijgt geen regels meer bij of af; de BTW corrigeren kan via "BTW
+  corrigeren", net als na afronden (de factuur gaat mee). Wordt zo'n bestelling
+  toch geannuleerd, dan maakt de app een creditnota voor het hele bedrag. Het
+  terugbetalen zelf gebeurt in de webshop; die terugboeking koppelt later aan
+  de creditnota.
+
+## [1.12.93] — 2026-10-07
+
+### Uitbetalingsverslag: Claude leest wat de app zelf niet kan lezen
+
+- **Scan, foto of andere opmaak.** De app leest het uitbetalingsverslag eerst
+  zelf uit de tekst van de PDF. Lukt dat niet — een gescande PDF zonder tekst,
+  een foto van een afgedrukt verslag, een andere betaaldienst of een nieuwe
+  opmaak van Mollie — dan leest Claude AI het, als er een API-sleutel is
+  (Instellingen → Claude AI). Foto's (de pagina's van één verslag) worden samen
+  één PDF bij de transactie. Claude schrijft alleen de tabel over: welke
+  bestelling of factuur bij een regel hoort, wat kosten zijn en of alles
+  optelt tot de uitbetaling bepaalt de app zelf, net als bij een gewone PDF.
+  Het venster zegt dat Claude het verslag las; kijk de regels na voordat je
+  koppelt. Er wordt niets vanzelf gekoppeld.
+- **Eén keer lezen.** Wat Claude las wordt bij de transactie bewaard (zonder
+  namen van klanten), zodat het venster het verslag bij de volgende keer
+  openen niet opnieuw laat lezen.
+- **Zonder sleutel** zegt de melding nu dat een scan of foto met een
+  Claude-sleutel wel leesbaar is.
+
+## [1.12.92] — 2026-10-07
+
+### Mollie-uitbetalingen: verslag, facturen en de factuur van Mollie
+
+- **Uitbetalingsverslag koppelen.** Open een uitbetaling van Mollie (of een
+  andere PSP) op Bank en koppel het uitbetalingsverslag (de PDF). De app leest
+  het verslag in de browser en vinkt zelf de facturen aan: een webshopbetaling
+  via het bestelnummer ("Bestelling 3289"), een betaallink via het
+  factuurnummer ("Factuur F2026-0044"). Een bestelling die in hetzelfde verslag
+  betaald én teruggestort is telt niet mee; een gedeeltelijke terugstorting
+  gaat via de creditnota. Per regel staat erbij wat er gevonden is (of dat er
+  geen factuur is, of dat hij al aan een andere transactie hangt), en of het
+  verslag optelt tot het uitbetaalde bedrag. De PDF blijft bij de transactie,
+  ook na ontkoppelen.
+- **De kosten verrekenen met de factuur van Mollie.** Mollie houdt zijn kosten
+  in op elke uitbetaling en stuurt er per maand één factuur voor; die wordt
+  verrekend, niet per bank betaald. Bij het uitsplitsen kies je de factuur van
+  Mollie waar de ingehouden kosten bij horen (het verslag noemt het nummer) —
+  of "factuur volgt" als hij nog niet geboekt is. De oude automatische
+  kostenpost per uitbetaling kan nog steeds. Is de factuur later geboekt, dan
+  verrekent de knop "Kosten verrekenen" op de uitbetaling hem in één klik, of
+  vanaf de factuur zelf: "Verrekenen met uitbetalingen" vinkt de uitbetalingen
+  aan die het verslag aan die factuur toeschrijft (een oude kostenpost vervalt
+  dan, met tegenboeking). Dekken de uitbetalingen de factuur helemaal, dan
+  staat hij op betaald ("Verrekend") met de datum van de laatste uitbetaling;
+  ontkoppelen zet hem weer open.
+- **Verrekenen kan ook na "Betaald".** Een factuur die met de hand op betaald
+  is gezet hangt nergens aan; "Verrekenen" (verkoop, met een alt-rekening),
+  "Via alt. rekening" (inkoop) en "Verrekenen met uitbetalingen" blijven dan
+  beschikbaar. Ongedaan maken zet de factuur terug in de stand van daarvoor —
+  een betaalde factuur blijft betaald.
+
+## [1.12.91] — 2026-10-07
+
+### Administratie: afronding na de controle
+
+Een brede controle op geld, opslag, bediening en de rest van de app vond nog
+een reeks fouten; die zijn hersteld.
+
+- **Automatisch koppelen bij het inlezen keek alleen naar het bedrag**, dus een
+  betaling kon stil aan een factuur van maanden later blijven hangen. De import
+  gebruikt nu dezelfde regels als het voorstel: een factuur hooguit zeven dagen
+  na de betaling, en een aangifte alleen als het bedrag past en de periode nog
+  geen betaling heeft (bankkosten gaan niet meer naar een nihil-periode).
+- **Twee tabbladen tegelijk:** inlezen of een afschrift verwijderen in een
+  tabblad dat al een tijd openstond, maakte dubbele transacties of wiste een
+  transactie die ook in een ander afschrift stond. Beide halen nu eerst de
+  verse stand op.
+- **Een afschrift verwijderen** haalt ook de koppelingen van zijn transacties
+  weg (facturen, BTW, accijns) — de terugweg zegt hoeveel. Opnieuw inlezen
+  koppelt ze weer.
+- **Twee gelijke boekingen op één dag zonder kenmerk** (bijvoorbeeld twee keer
+  dezelfde pinbetaling) deelden één koppeling; elke boeking heeft nu zijn eigen.
+- **Een bestand dat geen MT940 is** gaf "ingelezen" in het groen en bewaarde een
+  leeg afschrift; nu een rode melding en er wordt niets bewaard.
+- **Balans:** een nieuwer banksaldo gaat vóór een ouder bewaard afschrift.
+- **Accijns per maand** gebruikt overal de maand van de boeking zelf; in een
+  tijdzone ten westen van UTC kon een boeking van de eerste van de maand in de
+  vorige maand vallen.
+- **Telefoon:** de terugknop van het toestel sluit het detailscherm in plaats
+  van de pagina te verlaten (de filters blijven staan); het ⋯-menu klapt omhoog
+  als er onder geen ruimte is en blijft in beeld; de kop van een uitklapsectie,
+  de sluitknop van een venster en de links in het factuurdetail zijn 44 px; de
+  gekozen statuschip schuift in beeld.
+- **Tablet (768–1100 px):** Bank en Facturen met een open detail schuiven niet
+  meer zijwaarts en houden bedrag en knop in beeld; de stappen in het
+  aangiftedetail overlappen niet meer.
+- **Bureau:** na het sluiten van het detail staat de focus weer op de regel;
+  Escape op "Verwijderen?" sluit alleen de vraag; het rapportmenu blijft onder
+  de bovenbalk.
+- **Overzicht:** een BTW-periode zegt *Controleren* zolang de controle nog niet
+  akkoord is, net als Aangiftes. De totaalregel van Facturen noemt hetzelfde
+  aantal te late facturen als de chip.
+- **Fabrieksreset** wist ook de bewaarde bankafschriften.
+- Een oude link (`#/administratie/boekhouding`) maakt geen extra stap in de
+  geschiedenis meer, en de meldingen bij Kassa en Bestellingen verwijzen naar
+  *Voorraad › AGP-stand* in plaats van het verdwenen menu-item AGP.
+- 194 vertaalsleutels die nergens meer gebruikt werden zijn uit alle vijf de
+  talen verwijderd.
+
+## [1.12.90] — 2026-10-07
+
+### Administratie opnieuw ingedeeld (deel 2: de schermen)
+
+Na het fundament van 1.12.89 zijn de vijf plekken zelf opnieuw gebouwd. Alle
+lijsten werken nu op dezelfde manier: één filterbalk met zoeken, status en een
+periode die in de hele werkruimte blijft staan, een lijst die op de telefoon
+kaarten wordt, en een detail naast de lijst — op de telefoon een eigen scherm
+met de knoppen onder de duim. Wat aandacht vraagt (Open, Te laat, Te
+verwerken, Te koppelen) verdwijnt nooit meer achter een periode.
+
+#### Facturen
+
+- **Verkoop | Inkoop** met het aantal open aan elke kant. Het postvak hangt aan
+  Inkoop als "n te verwerken" en is een status in de lijst.
+- **Filterbalk:** zoeken op nummer, klant of leverancier, omschrijving en
+  bedrag ("496,10" vindt € 496,10; op het bureau zet `/` de cursor in het
+  zoekveld), de chips Open, Te laat, Betaald, Creditnota en Alles (bij Inkoop
+  ook Te verwerken), een keuze voor klant of leverancier en de gedeelde
+  periode. Standaard staat Alles aan.
+- **De totaalregel rekent met wat je ziet:** "n facturen · samen € x", met
+  het aantal te late facturen als knop naar Te laat (hetzelfde getal als de
+  chip). Op de telefoon ook netto en BTW.
+  De vaste van/tot-kaart, de rode balk met vervallen facturen en de drie
+  inkoopkaarten zijn weg.
+- **Eén knop per regel**, die bij de stand past (herinnering, Markeer betaald).
+  PDF, e-factuur, mailen, verrekenen en de herinneringen staan in het detail.
+- **Het detail** staat naast de lijst: bedragen, factuur- en vervaldatum, klant
+  en bestelling als link, gekoppelde creditnota's, de betaallink en *Gebeurd* —
+  gemaakt, gemaild, vervallen, herinnerd, verrekend en betaald, met de
+  bijschrijving erbij als die aan de factuur gekoppeld is (ook binnen een
+  Mollie-uitbetaling). Bij een inkoopfactuur de regels, BTW-periode en
+  verlegging, de bijlage (openen of uploaden), betaald via een alternatieve
+  rekening, bewerken en verwijderen (met de bevestiging in de knop).
+- **Sorteren op datum** kan weer (de kolomkop, op de telefoon *Volgorde*). De
+  CSV bevat precies de gefilterde lijst, ook facturen zonder regels.
+- **Een storing van het postvak** staat als rode regel op Inkoop, niet meer
+  verstopt achter de chip.
+- Geen `alert()` of `confirm()` meer: een melding bovenin, de bevestiging in de
+  knop, en voor een e-factuur met ontbrekende gegevens een venster met *Toch
+  downloaden*.
+
+#### Bank
+
+- **Een werkwachtrij:** Te koppelen | Gekoppeld | Alles, met zoeken op
+  tegenpartij, omschrijving en bedrag. De lijst begint op Te koppelen zolang
+  daar iets staat; die chip negeert de periode.
+- **Per transactie hooguit één voorstel**, met de reden ("bedrag en
+  factuurnummer kloppen", "6 webshopfacturen, verschil als transactiekosten",
+  "BTW Q2 2026, bedrag klopt"), en één knop: *Koppel*, *Uitsplitsen*, *Markeer
+  betaald* of *Boeken als…*. Twijfel — meer kandidaten, een terugboeking, twee
+  transacties op dezelfde factuur — geeft geen voorstel maar wel de reden. De
+  rest staat onder ⋯ en in het venster dat een tik op de regel opent.
+- **Kiezers met zoeken** in plaats van lange keuzelijsten. Een open factuur die
+  al aan een andere transactie hangt staat onderaan, zodat een betaling in twee
+  delen kan.
+- **De kop:** rekeningkeuze, het saldo van het laatste afschrift met zijn
+  datum, *Afschrift importeren*, *Afschriften* (periode, aantal transacties,
+  saldocontrole, tonen en verwijderen met vijf seconden terugweg) en *Kapitaal
+  boeken*, ook zonder transactie.
+- **De vier saldocontroles zijn één regel.** Klopt er iets niet, dan wordt hij
+  oranje en klappen de controles vanzelf open.
+- Ontkoppelen heeft vijf seconden terugweg, een afschrijving kan als
+  kapitaalonttrekking geboekt worden, en de schuld aan alternatieve rekeningen
+  staat nu op Rapporten › Balans.
+
+#### Aangiftes
+
+- **BTW | Accijns** als segment, elk met het aantal perioden dat iets van je
+  vraagt (hetzelfde getal als de badge), een jaarkeuze en in de kop het
+  jaartotaal ("Kwartaalaangifte · 2026 tot nu: € 11,72 te betalen", of terug
+  te ontvangen). Vraagt een periode in een ander jaar iets, dan staat er een
+  link naartoe.
+- **Eén lijst met per periode vijf stappen** — Lopend, Berekend, Gecontroleerd,
+  Ingediend, Betaald — en één volgende stap. Wat iets van je vraagt staat
+  bovenaan, op volgorde van de uiterste datum; op de telefoon een kaart per
+  periode. Het scherm was op de telefoon zes schermlengtes lang.
+- **Het detail van een periode:** de rubrieken met een bedrag (1a, 1b, 5b en
+  bij verlegde inkoop 4a/4b; *Alle rubrieken* toont de rest met uitleg), de
+  voorbelasting per tarief om open te klappen, de waarschuwingen bij 0%
+  verlegd, de SNd-regel, de controle door een tweede persoon, indienen (met
+  *Terugzetten*) en de betaling. Bij accijns de boekingen per batch of per
+  uitslag.
+- **Koppel betaling** stelt de transactie voor uit de bewaarde afschriften
+  (binnen € 1, nooit een transactie die al ergens aan hangt); is er precies
+  één, dan koppelt de knop meteen.
+- Indienen en accijns op betaald zetten gaan met vijf seconden terugweg. Met
+  de hand op betaald vraagt om de datum (standaard vandaag); een bankkoppeling
+  neemt de datum van de transactie.
+- **Nulaangifte accijns:** de vorige maand staat er ook zonder boekingen, en
+  een maand die met € 0 is ingediend is afgerond als *Nihil*.
+
+#### Rapporten
+
+- **Eén periodebalk** voor alle rapporten, met dezelfde keuzes als de
+  filterbalk; een periode loopt tot vandaag. *Vergelijk met vorig jaar* bij
+  Winst & verlies en Omzet, CSV van het open rapport en *Alles exporteren
+  (ZIP)* over de gekozen periode.
+- **Zes rapporten in drie groepen:** Resultaat (Winst & verlies, Marge op
+  kostprijs), Positie (Balans, Openstaande posten) en Analyse (Omzet per
+  artikel, Journaal). Op een breed scherm een menu links, smaller een
+  keuzelijst.
+- **Winst & verlies telt van boven naar beneden op:** Omzet − Grondstoffen −
+  Verpakkingsmateriaal = Brutomarge − Overige kosten (per kostensoort uit te
+  klappen) − Accijns = Nettoresultaat. Een klik op een regel opent het journaal
+  met de boekingen erachter.
+- **Marge op kostprijs** (de kostprijs van wat werkelijk verkocht is) is een
+  eigen rapport.
+- **Balans en Openstaande posten op een peildatum** — het einde van de
+  periode, nooit later dan vandaag — in plaats van stilletjes "vandaag":
+  debiteuren, crediteuren, accijnsschuld, kapitaal, BTW en banksaldo zoals ze
+  die dag stonden. Voorraad en de schuld aan alternatieve rekeningen kent de
+  app alleen van nu; ligt de peildatum eerder, dan staat er "huidige stand"
+  bij.
+- **Openstaande posten:** per relatie uit te klappen tot de facturen, en een
+  factuur opent het factuurdetail.
+- **Omzet per artikel** (was: per categorie) groepeert op de factuurregel;
+  statiegeld en facturen zonder regels staan apart, creditnota's tellen
+  negatief, en het totaal is de omzet.
+- **Journaal** met dagboekchips (Alle, Verkoop, Inkoop, Accijns, BTW,
+  Memoriaal, Kapitaal) en zoeken; kapitaalboekingen staan er als losse regels
+  bij. Een factuurregel opent de factuur, een aangifteregel de periode. Het
+  Transactieoverzicht is in het journaal opgegaan.
+
+#### Voorraad
+
+- **AGP-stand:** twee tegels in plaats van vijf — de liters in de AGP (tanks en
+  verpakt) en de accijnswaarde, met de gemiddelden van vorige maand en dit jaar
+  en waar de waarde op rust. De lijsten In tanks, Verpakt in AGP (*Verplaatsen*
+  per regel), Uitgeslagen voorraad en Verplaatsingen; op de telefoon kaarten.
+- **Verplaatsingen** met de gedeelde periode en zoeken, twintig tegelijk
+  (*Toon meer*), verwijderen onder ⋯ met terugweg. *Locaties beheren* is een
+  gewone knop: *Bewerken* per locatie, verwijderen met de vraag in de regel.
+- **Eén accijnswaardering** in AGP-stand, Verloop en Tellingen: de bevroren
+  voorcalculatie van de afvulling, anders het tarief van vandaag met "geschat"
+  erbij. De potentiële accijnsschuld in Verloop is daardoor gelijk aan de
+  AGP-tegel.
+- **Verloop** begint op de gedeelde periode als die een maand, kwartaal of
+  jaar is; beide exports staan in één werkbalk, en gereed product is op de
+  telefoon een kaart per bier.
+- **Tellingen:** statuschips, typefilter en zoeken in de lijst; in een telling
+  *Alleen verschillen* en zoeken. Een verschil zonder verklaring blokkeert het
+  afronden in de regel zelf (rood omrand) in plaats van met een melding, en de
+  bevestiging telt ingrediënt- én bierregels en noemt de accijns van een tekort.
+
+#### Overzicht en Klanten
+
+- **Eén getal:** de badge op het Admin-icoon is precies het aantal regels op
+  het overzicht, en de badges op Facturen, Bank en Aangiftes tellen daar samen
+  op. Elke open BTW-periode en elke accijnsmaand is een eigen regel, en één die
+  voorbij de uiterste datum is staat op *te laat*. Het postvak en de te
+  koppelen banktransacties zijn elk één regel.
+- **Elke regel opent het ding zelf:** de factuur in het detail (ook als hij
+  buiten de gekozen periode valt), de BTW-periode, de accijnsmaand. *Omzet* en
+  *Inkoop deze maand* openen Facturen op deze maand, de openstaande debiteuren
+  en crediteuren op Open — met dezelfde bedragen als de totaalregel daar.
+- **Nieuwe regels:** banktransacties die op koppeling wachten, en het
+  aansluitverschil (een ontbrekend afschrift) krijgt eindelijk een waarde.
+- **Klanten (Verkoop):** de oranje stip alleen bij een écht vervallen factuur;
+  *Facturen van deze klant* opent Facturen met die klant als filter, en een
+  factuur op de klantkaart opent het factuurdetail. De bevestigingen staan in
+  de knop, en op de telefoon scrolt niets meer zijwaarts.
+
+#### Opgeloste problemen
+
+- **Vervallen facturen vielen uit de lijst.** "Toon alleen vervallen" filterde
+  binnen de periode, dus een vervallen factuur van vorig jaar was in januari
+  nergens te vinden. *Te laat* en *Open* negeren nu de periode, en de
+  periodekiezer zegt dat erbij.
+- **Winst & verlies telde niet op.** De brutowinst trok alleen grondstoffen en
+  verpakking af; de overige kosten kwamen zonder eigen regel pas in de
+  nettowinst terug. Nu volgt elke regel uit de regels erboven, en een test
+  bewaakt dat.
+- **Accijns:** "Markeer als berekend" stond twee keer per maand (één keer in een
+  vaste blauwe kleur) en het maandtotaal stond wit op wit. Nu één knop per
+  maand, een leesbaar totaal en geen `alert()`: waarom indienen nog niet kan
+  staat bij de knop.
+- **"Accijns betaald"** stond bij uitgeslagen voorraad altijd, ook als de
+  accijns nog openstond. De badge komt nu uit de accijnsrecords: betaald, open
+  met het bedrag, of een streepje.
+- **Debiteuren werden op drie manieren geteld.** Balans en Openstaande posten
+  tellen "open" nu zoals het overzicht en Facturen: een creditnota is geen
+  openstaande vordering.
+- **De vier-ogencontrole had een vaste naam.** De controleur stond in de code.
+  Nu kies je een gebruiker uit het rollenbeheer (zijn er geen, dan typ je een
+  naam), en wie berekende, controleerde en indiende is de ingelogde gebruiker.
+  Is controleur en berekenaar dezelfde persoon, dan vraagt akkoord om *toch
+  akkoord* en bevindingen.
+- **De BTW-controle bij maandaangifte** werd bewaard onder de maandnaam in de
+  schermtaal, zodat een andere taal hem niet meer vond. Nu onder de
+  periodesleutel (`2026-M09`); een oud record wordt bij de volgende wijziging
+  omgezet.
+- **"Te betalen € 270,05 · terug"** en tweemaal "Te betalen" in het jaartotaal:
+  een teruggave heet nu *Terug te ontvangen*, en eenmaal binnen
+  *Terugontvangen*.
+- **Badge en overzicht spraken elkaar tegen** (13 op het icoon, "Beslissingen
+  10" op het overzicht): zie *Overzicht en Klanten*.
+- **Telefoon:** in Administratie scrolt geen tabel meer zijwaarts — kaarten, een
+  filterpaneel van onderen en een detailscherm met een vaste actiebalk, met
+  tapdoelen van 44 px.
+
+#### Let op — gedragswijzigingen
+
+- **Een klik op een factuur opent het detail**, niet meer de bestelling; die is
+  een link in het detail. Bij een creditnota staan *Markeer betaald* en
+  *Verrekenen* niet meer.
+- **Exportbestanden:** in de ZIP heet `transactieoverzicht.csv` nu
+  `journaal.csv` (met de kapitaalregels; de regels per batch met betaalde
+  accijns zijn weg) en `omzet_categorie.csv` nu `omzet_artikel.csv`;
+  `winst_verlies.csv` volgt de nieuwe volgorde. De ZIP zelf heet
+  `boekhouding_<van>_<tot>.zip`. De CSV van Openstaande posten heeft één regel
+  per factuur.
+- **De jaarafsluiting** legt, net als voorheen, de balans van vandaag vast — de
+  liquide middelen op 31 december zijn niet bekend zolang afschriften pas sinds
+  kort bewaard worden. Sluit een boekjaar dus direct na afloop af. De
+  bevestiging staat in de knop.
+- **Verloop waardeert oude afvullingen anders.** Een afvulling zonder bevroren
+  voorcalculatie (van vóór v2.4) werd geschat tegen het tarief van de
+  afvuldatum; nu tegen het tarief aan het einde van de periode (of vandaag), net
+  als de AGP-tegel. Een nieuwe telling legt voor zo'n regel de schatting van
+  vandaag vast.
+- **Accijns:** er is geen aparte stap "Markeer als berekend" meer; *Vraag
+  controle aan* zet de maand op berekend. BTW indienen zonder controle kan nog
+  (met de bevestiging in de knop), accijns indienen pas na akkoord. De uiterste
+  datum van een accijnsaangifte is, net als bij BTW, de laatste dag van de
+  maand erna.
+- **De gedeelde periode** geldt in Facturen, Bank, Rapporten en Voorraad
+  tegelijk en blijft de sessie lang staan; een nieuw tabblad begint op dit
+  jaar. Een factuur openen die buiten de filter valt, of *Facturen van deze
+  klant*, zet hem op Alles. Rapporten onthoudt ook het gekozen rapport, de
+  vergelijking en het journaalfilter.
+- **Openstaande posten** laat creditnota's weg (zie hierboven).
+- **De facturen van een klant** worden gevonden zoals de klantfilter: ook via
+  het e-mailadres als de factuur geen klant-id heeft. De omzet op een
+  klantkaart kan daardoor hoger uitvallen.
+
+---
+
+## [1.12.89] — 2026-10-07
+
+### Administratie opnieuw ingedeeld (deel 1: fundament)
+
+De werkruimte Administratie had vier menu-items, een pagina zonder menuplek,
+zeven tabbladen in Boekhouding en daaronder nog zes. Dit is de eerste stap naar
+vijf vaste plekken.
+
+- **Nieuw menu:** Facturen (Verkoop | Inkoop), Bank, Aangiftes (BTW | Accijns),
+  Voorraad (AGP-stand | Verloop | Tellingen) en Rapporten. Boekhouding en de
+  wegwijzer Rapporten zijn weg; oude links (`#/administratie/boekhouding`,
+  `agp`, `inventarisatie`, `voorraadverloop`) openen de nieuwe plek.
+- **Klanten alleen nog in Verkoop:** het dubbele tabblad Klanten in Boekhouding
+  is verwijderd.
+- **Bankafschriften worden bewaard** (`bank_transacties`, `bank_afschriften`,
+  in de backup). Een afschrift twee keer inlezen voegt niets dubbel toe; een
+  afschrift verwijderen kan met vijf seconden terugweg.
+- **Gedeelde onderdelen** voor de volgende stap: filterbalk, periodekiezer,
+  statuschips, lijst die op de telefoon kaarten wordt en een detailpaneel;
+  `utils/periode.ts` en `utils/factuurFilter.ts` (open en te laat negeren de
+  periode).
 
 ## [1.12.88] — 2026-10-07
 

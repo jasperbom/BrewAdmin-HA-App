@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseRoute, bouwHash, routeGelijk, isDetailRoute, werkruimteVanPagina, lijstRoute, doelNaarRoute,
-  canoniekePagina, historieMarkering, historieDiepte, historieStap, vorigeIsEigen, type Route, type NavDoel,
+  canoniekePagina, historieMarkering, historieDiepte, historieStap, vorigeIsEigen, resolveerDoel,
+  PAGINA_ALIAS, PAGINA_WERKRUIMTE, type Route, type NavDoel,
 } from '../route'
 
 describe('parseRoute', () => {
   it('leest werkruimte en pagina', () => {
     expect(parseRoute('#/verkoop/bestellingen')).toEqual({ werkruimte: 'verkoop', pagina: 'bestellingen' })
-    expect(parseRoute('/administratie/boekhouding/')).toEqual({ werkruimte: 'administratie', pagina: 'boekhouding' })
+    expect(parseRoute('/administratie/facturen/')).toEqual({ werkruimte: 'administratie', pagina: 'facturen' })
     expect(parseRoute('#/productie/dashboard')).toEqual({ werkruimte: 'productie', pagina: 'dashboard' })
   })
 
@@ -73,7 +74,7 @@ describe('parseRoute', () => {
 
   it('negeert een id op een pagina zonder record', () => {
     expect(parseRoute('#/verkoop/kassa/5')).toEqual({ werkruimte: 'verkoop', pagina: 'kassa' })
-    expect(parseRoute('#/administratie/boekhouding/9')).toEqual({ werkruimte: 'administratie', pagina: 'boekhouding' })
+    expect(parseRoute('#/administratie/facturen/9')).toEqual({ werkruimte: 'administratie', pagina: 'facturen' })
   })
 
   it('geeft null bij een lege of onbekende hash', () => {
@@ -107,6 +108,61 @@ describe('parseRoute', () => {
     expect(parseRoute('#/productie/__proto__')).toEqual({ werkruimte: 'productie', pagina: 'dashboard' })
     expect(parseRoute('#/verkoop/hasOwnProperty/3')).toEqual({ werkruimte: 'verkoop', pagina: 'dashboard' })
     expect(parseRoute('#/constructor/dashboard')).toBeNull()
+  })
+})
+
+describe('oude pagina-id\'s (alias)', () => {
+  it('opent de pagina waar het onderdeel nu staat, met het segment erbij', () => {
+    expect(parseRoute('#/administratie/boekhouding')).toEqual({ werkruimte: 'administratie', pagina: 'facturen' })
+    expect(parseRoute('#/administratie/agp')).toEqual({ werkruimte: 'administratie', pagina: 'voorraad', tab: 'agp' })
+    expect(parseRoute('#/administratie/inventarisatie')).toEqual({ werkruimte: 'administratie', pagina: 'voorraad', tab: 'tellingen' })
+    expect(parseRoute('#/administratie/voorraadverloop')).toEqual({ werkruimte: 'administratie', pagina: 'voorraad', tab: 'verloop' })
+    // Een tegenstrijdige werkruimte in een oude link: de pagina wint, net als bij gewone pagina's.
+    expect(parseRoute('#/productie/agp')).toEqual({ werkruimte: 'administratie', pagina: 'voorraad', tab: 'agp' })
+  })
+
+  it('bouwt nooit een hash met een oude id of het segment', () => {
+    const r = parseRoute('#/administratie/inventarisatie')!
+    expect(bouwHash(r)).toBe('#/administratie/voorraad')
+    expect(routeGelijk(r, { werkruimte: 'administratie', pagina: 'voorraad' })).toBe(true)
+  })
+
+  it('heeft vijf plekken in Administratie en geen oude id als echte pagina', () => {
+    const admin = Object.entries(PAGINA_WERKRUIMTE).filter(([, w]) => w === 'administratie').map(([p]) => p)
+    expect(admin).toEqual(['facturen', 'bank', 'aangiftes', 'voorraad', 'rapporten'])
+    // De oude administratie-id's zijn geen pagina meer; `batchflow` en
+    // `planning` staan er bewust nog in, zodat een sprong met de oude naam de
+    // werkruimte goed zet (ze gaan via PAGINA_ALIAS naar Batches).
+    const oudeAdmin = Object.keys(PAGINA_ALIAS).filter(oud => PAGINA_WERKRUIMTE[PAGINA_ALIAS[oud].pagina] === 'administratie')
+    expect(oudeAdmin.sort()).toEqual(['agp', 'boekhouding', 'inventarisatie', 'voorraadverloop'])
+    for (const oud of oudeAdmin) expect(PAGINA_WERKRUIMTE[oud]).toBeUndefined()
+  })
+})
+
+describe('resolveerDoel', () => {
+  it('zet een oud Boekhouding-tabblad om naar de nieuwe plek', () => {
+    expect(resolveerDoel({ pagina: 'boekhouding' })).toEqual({ pagina: 'facturen' })
+    expect(resolveerDoel({ pagina: 'boekhouding', tab: 'verkoop' })).toEqual({ pagina: 'facturen', tab: 'verkoop' })
+    expect(resolveerDoel({ pagina: 'boekhouding', tab: 'inkoop', filter: 'te_laat', id: 4 })).toEqual({ pagina: 'facturen', tab: 'inkoop', filter: 'te_laat', id: 4 })
+    expect(resolveerDoel({ pagina: 'boekhouding', tab: 'klanten' })).toEqual({ pagina: 'klanten' })
+    expect(resolveerDoel({ pagina: 'boekhouding', tab: 'bank' })).toEqual({ pagina: 'bank' })
+    expect(resolveerDoel({ pagina: 'boekhouding', tab: 'rapporten', filter: 'balans' })).toEqual({ pagina: 'rapporten', tab: 'balans' })
+    expect(resolveerDoel({ pagina: 'boekhouding', tab: 'rapporten' })).toEqual({ pagina: 'rapporten' })
+    expect(resolveerDoel({ pagina: 'boekhouding', tab: 'accijns' })).toEqual({ pagina: 'aangiftes', tab: 'accijns' })
+    expect(resolveerDoel({ pagina: 'boekhouding', tab: 'btw_aangifte' })).toEqual({ pagina: 'aangiftes', tab: 'btw' })
+  })
+
+  it('zet een oude pagina om naar Voorraad met het juiste segment', () => {
+    expect(resolveerDoel({ pagina: 'agp' })).toEqual({ pagina: 'voorraad', tab: 'agp' })
+    expect(resolveerDoel({ pagina: 'inventarisatie' })).toEqual({ pagina: 'voorraad', tab: 'tellingen' })
+    expect(resolveerDoel({ pagina: 'voorraadverloop' })).toEqual({ pagina: 'voorraad', tab: 'verloop' })
+  })
+
+  it('laat een doel dat al klopt ongemoeid', () => {
+    const d = { pagina: 'aangiftes', tab: 'btw', filter: '2026-Q3' }
+    expect(resolveerDoel(d)).toBe(d)
+    expect(resolveerDoel({ pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_verlopen' }))
+      .toEqual({ pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_verlopen' })
   })
 })
 
@@ -229,7 +285,7 @@ describe('doelNaarRoute', () => {
   it('negeert tab en filter (die zijn eenmalige signalen, geen route)', () => {
     expect(doelNaarRoute({ pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_alle', lotId: 4 }, 'productie'))
       .toEqual({ werkruimte: 'productie', pagina: 'ingredienten' })
-    expect(doelNaarRoute({ pagina: 'boekhouding', tab: 'btw_aangifte' }, 'productie')).toEqual({ werkruimte: 'administratie', pagina: 'boekhouding' })
+    expect(doelNaarRoute({ pagina: 'boekhouding', tab: 'btw_aangifte' }, 'productie')).toEqual({ werkruimte: 'administratie', pagina: 'aangiftes' })
   })
 
   it('zet de stand van Batches, maar een batch gaat voor', () => {

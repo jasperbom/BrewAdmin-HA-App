@@ -69,3 +69,69 @@ export function btwPositieCent(
   const cent = Object.values(perPeriode).reduce((s, c) => s + c, 0)
   return { cent, openPerioden }
 }
+
+// ── De BTW-positie op een peildatum (Rapporten › Balans) ────────────────────
+// De balans kan op een eerdere dag staan dan vandaag (het einde van de
+// gekozen periode). Dan telt alleen wat er op die dag al was: journaalregels
+// tot en met de peildatum, en een periode is pas afgerekend als de betaling
+// (of de nihil-aangifte) op of vóór die dag ligt. Zonder dat verdween de BTW
+// van Q3 al van de balans op 30-09 terwijl het geld pas in oktober van de bank
+// ging — en stond het in de liquide middelen én nergens als schuld.
+
+const ISO_DAG = /^\d{4}-\d{2}-\d{2}$/
+
+/** Een BTW-indiening zoals `btw_aangiftes` hem bewaart (alleen wat hier telt). */
+export interface BtwIndieningOp {
+  periodeKey?: string
+  bedrag?: number | string
+  ingediend_datum?: string
+}
+
+/**
+ * Welke BTW-periodes op `peildatum` afgerekend waren: een gekoppelde
+ * BTW-betaling of -teruggave met een transactiedatum op of vóór de peildatum
+ * (de datum is het begin van de koppelsleutel, `txKey` in utils/bank.ts), of
+ * een nihil-aangifte (afgerond € 0, er komt nooit een banktransactie) die toen
+ * al ingediend was. Een koppeling of indiening zonder leesbare datum telt als
+ * afgerekend, zoals de balans van vandaag altijd deed.
+ */
+export function btwAfgerekendOp(
+  bankKoppelingen: Record<string, unknown> | null | undefined,
+  indieningen: Iterable<BtwIndieningOp | null | undefined> | null | undefined,
+  peildatum: string,
+): Set<string> {
+  const uit = new Set<string>()
+  for (const [sleutel, k] of Object.entries(bankKoppelingen || {})) {
+    const kop = k as { soort?: unknown, periodeKey?: unknown } | null
+    if (!kop || kop.soort !== 'btw' || !kop.periodeKey) continue
+    const datum = String(sleutel).slice(0, 10)
+    if (ISO_DAG.test(datum) && datum > peildatum) continue
+    uit.add(String(kop.periodeKey))
+  }
+  for (const a of indieningen || []) {
+    if (!a?.periodeKey) continue
+    if (Math.round(Number(a.bedrag) || 0) !== 0) continue
+    const datum = String(a.ingediend_datum || '').slice(0, 10)
+    if (ISO_DAG.test(datum) && datum > peildatum) continue
+    uit.add(String(a.periodeKey))
+  }
+  return uit
+}
+
+/**
+ * De BTW-positie (zoals `btwPositieCent`) op een peildatum: alleen de
+ * journaalregels met een boekdatum tot en met `peildatum`. Een doorgerolde
+ * regel telt dus op zijn boekdatum, in zijn rolloverperiode.
+ */
+export function btwPositieOp(
+  journaal: BtwJournaalRegel[],
+  afgerekendePerioden: Set<string>,
+  periodeType: BtwPeriodeType,
+  peildatum: string,
+): BtwPositie {
+  const tot = (journaal || []).filter(r => {
+    const d = String(r?.datum || '').slice(0, 10)
+    return !ISO_DAG.test(d) || d <= peildatum
+  })
+  return btwPositieCent(tot, afgerekendePerioden, periodeType)
+}

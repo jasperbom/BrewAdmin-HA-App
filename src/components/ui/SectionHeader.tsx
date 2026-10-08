@@ -56,11 +56,14 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({
       className={`px-4 py-2.5 font-semibold text-sm flex items-center justify-between select-none ${skin} ${round} ${cls}`}
     >
       {onToggle ? (
+        // Op de telefoon is de knop de hele kop: hij loopt over de opvulling
+        // van de rij heen (-my/-ml, met dezelfde opvulling terug) tot een
+        // tapdoel van 44 px. Op het bureau precies de oude knop.
         <button
           type="button"
           aria-expanded={open}
           onClick={onToggle}
-          className={`flex-1 min-w-0 flex items-center text-left cursor-pointer ${solid ? 'hover:opacity-90' : 'hover:text-gray-950'}`}
+          className={`flex-1 min-w-0 flex items-center text-left cursor-pointer -my-2.5 py-2.5 -ml-4 pl-4 min-h-tap sm:my-0 sm:py-0 sm:ml-0 sm:pl-0 sm:min-h-0 ${solid ? 'hover:opacity-90' : 'hover:text-gray-950'}`}
         >
           {titleContent}
         </button>

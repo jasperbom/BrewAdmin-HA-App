@@ -1,7 +1,7 @@
 // ── Vervallen en achterstallige facturen ─────────────────────────────────────
 // Eén plek voor de vraag "is deze factuur te laat?" — de attentie-badge van de
-// werkruimte Administratie, het Administratie-dashboard en de boekhoudpagina
-// rekenen hier allemaal mee, zodat ze nooit een verschillend aantal tonen.
+// werkruimte Administratie, het Administratie-dashboard en Administratie →
+// Facturen rekenen hier allemaal mee, zodat ze nooit een verschillend aantal tonen.
 //
 // Verkoopfacturen: de vervaldatum = factuurdatum + betalingstermijn, waarbij de
 // termijn van de klantkaart voorgaat op die van de brouwerij (Instellingen),
@@ -58,8 +58,8 @@ export function vervaldatumVerkoopFactuur(factuur: any, klanten: any[] = [], bre
 /**
  * De brouwerijgegevens met de betalingstermijn die voor déze factuur geldt
  * (klantkaart → brouwerij → 14). Geef dit mee aan de factuur-, herinnerings-
- * en UBL-opbouw: dan noemt elk document — vanuit Boekhouding, Bestellingen of
- * de kassa — dezelfde vervaldatum als waarmee de te-laat-badge rekent.
+ * en UBL-opbouw: dan noemt elk document — vanuit Administratie → Facturen,
+ * Bestellingen of de kassa — dezelfde vervaldatum als waarmee de te-laat-badge rekent.
  */
 export function breweryMetTermijn(factuur: any, klanten: any[] = [], breweryDetails: any = null): any {
   return {...(breweryDetails || {}), betalingstermijn: betalingstermijnVoor(factuur, klanten, breweryDetails)}
@@ -78,12 +78,13 @@ export const isVerkoopFactuurOpen = (f: any): boolean =>
 /**
  * Heeft deze bestelling al een verkoopfactuur? Ja bij status `afgerond`, een
  * `factuur_id` op de order, of een factuur met dit `bestelling_id` die zelf
- * geen creditnota is en niet door een creditnota is tenietgedaan. Afronden
- * vraagt het vóór het een factuurnummer ophaalt: een tweede klik (of een
- * tweede tabblad) mag nooit een tweede definitieve factuur en journaalboeking
- * voor dezelfde order maken.
+ * geen creditnota is en niet door een creditnota is tenietgedaan. Afronden en
+ * vooraf factureren (utils/orderFactuur.ts) vragen het vóór ze een
+ * factuurnummer ophalen: een tweede klik (of een tweede tabblad) mag nooit een
+ * tweede definitieve factuur en journaalboeking voor dezelfde order maken.
+ * Een betaalde webshoporder kan zijn factuur al vóór het afronden hebben.
  */
-export function orderIsGefactureerd(order: any, verkoopFacturen: any[] | null | undefined): boolean {
+export function orderIsGefactureerd(order: any, verkoopFacturen: readonly any[] | null | undefined): boolean {
   if (!order) return false
   if (order.status === 'afgerond' || order.factuur_id != null) return true
   const lijst = verkoopFacturen || []

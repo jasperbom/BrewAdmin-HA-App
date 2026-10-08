@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   parseMT940, scoreMatch, besteMatch, saldoControle, mt940Richting, gekoppeldeFactuurIds,
   isPspTransactie, zoekPspCombinatie, pspKandidaten, isBelastingdienstTransactie,
+  txKey, bouwBankImport, herstelKoppelingVlaggen, isLeegMt940,
 } from '../bank'
+import { autoKoppelImport } from '../bankImportKoppeling'
 
 const MT940_FIXTURE = [
   ':20:940S260716',
@@ -299,5 +301,69 @@ describe('isBelastingdienstTransactie', () => {
   it('laat gewone transacties met rust', () => {
     expect(isBelastingdienstTransactie({tegenpartij: 'Mouterij Dingemans'})).toBe(false)
     expect(isBelastingdienstTransactie({})).toBe(false)
+  })
+})
+
+describe('txKey: twee gelijke boekingen zonder //-referentie', () => {
+  // ABN AMRO-/Rabobank-stijl: geen '//' in :61:, dus geen referentie.
+  const TWEE = [
+    ':25:NL91ABNA0417164300', ':28C:12', ':60F:C261004EUR0,00',
+    ':61:2610051005C120,00NTRFNONREF', ':86:/NAME/Cafe De Ton/REMI/Factuur 2026-0011',
+    ':61:2610051005C120,00NTRFNONREF', ':86:/NAME/Cafe De Ton/REMI/Factuur 2026-0012',
+    ':62F:C261005EUR240,00',
+  ].join('\n')
+  let n = 500
+  const id = () => n++
+  const nu = '2026-10-07T09:00:00.000Z'
+
+  it('krijgen elk een eigen sleutel; de eerste houdt de basissleutel', () => {
+    const p = parseMT940(TWEE)
+    expect(p.transacties.map((x: any) => x.referentie)).toEqual(['', ''])
+    const r = bouwBankImport(p, [], [], {maakId: id, nu})
+    expect(r.nieuw).toHaveLength(2)
+    const [a, b] = r.nieuw.map(txKey)
+    expect(a).toBe('2026-10-05|C|120|Cafe De Ton')
+    expect(b).toBe('2026-10-05|C|120|Cafe De Ton|#2')
+    expect(r.nieuw[1].volgnr).toBe(2)
+  })
+  it('elk zijn eigen koppeling, ook na het herstel van de vlaggen', () => {
+    const r = bouwBankImport(parseMT940(TWEE), [], [], {maakId: id, nu})
+    const auto = autoKoppelImport(r.nieuw, {
+      verkoopFacturen: [
+        {id: 11, status: 'open', datum: '2026-10-01', bruto: 120, klant_naam: 'Cafe De Ton', factuurnummer: '2026-0011'},
+        {id: 12, status: 'open', datum: '2026-10-02', bruto: 120, klant_naam: 'Cafe De Ton', factuurnummer: '2026-0012'},
+      ],
+    })
+    expect(Object.keys(auto.koppelingen)).toHaveLength(2)
+    const hersteld = herstelKoppelingVlaggen(auto.transacties, auto.koppelingen)
+    expect(hersteld.map((x: any) => x.gekoppeldFactuurId)).toEqual([11, 12])
+  })
+  it('opnieuw inlezen geeft niets dubbel, ook niet tegen records van vóór de nummering', () => {
+    const eerste = bouwBankImport(parseMT940(TWEE), [], [], {maakId: id, nu})
+    const tweede = bouwBankImport(parseMT940(TWEE), eerste.nieuw, [{...eerste.afschrift, afschriftNr: 'anders'}], {maakId: id, nu})
+    expect(tweede.nieuw).toHaveLength(0)
+    expect(tweede.dubbel).toBe(2)
+    const oud = eerste.nieuw.map(({volgnr: _v, ...rest}: any) => rest)
+    const derde = bouwBankImport(parseMT940(TWEE), oud, [{...eerste.afschrift, afschriftNr: 'nog anders'}], {maakId: id, nu})
+    expect(derde.nieuw).toHaveLength(0)
+    expect(derde.dubbel).toBe(2)
+  })
+  it('zonder volgnummer (of volgnr 1) blijft de sleutel ongewijzigd', () => {
+    const tx = {datum: '2026-10-05', type: 'C', bedrag: 120, tegenpartij: 'Cafe De Ton'}
+    expect(txKey(tx)).toBe('2026-10-05|C|120|Cafe De Ton')
+    expect(txKey({...tx, volgnr: 1})).toBe('2026-10-05|C|120|Cafe De Ton')
+    expect(txKey({...tx, referentie: 'R1', volgnr: 3})).toBe('2026-10-05|C|120|R1|#3')
+  })
+})
+
+describe('isLeegMt940', () => {
+  it('een CSV of ander bestand levert niets op', () => {
+    expect(isLeegMt940(parseMT940('Datum;Omschrijving;Bedrag\n2026-10-01;Koffie;-5,00\n'))).toBe(true)
+    expect(isLeegMt940(parseMT940(''))).toBe(true)
+    expect(isLeegMt940(null)).toBe(true)
+  })
+  it('een echt afschrift, ook zonder transacties, is niet leeg', () => {
+    expect(isLeegMt940(parseMT940(MT940_FIXTURE))).toBe(false)
+    expect(isLeegMt940(parseMT940([':25:NL91ABNA0417164300', ':60F:C261001EUR10,00', ':62F:C261001EUR10,00'].join('\n')))).toBe(false)
   })
 })

@@ -46,6 +46,18 @@ export const BetaaldBadge: React.FC<{ b: any }> = ({ b }) => wcOrderAfgebroken(b
   </span>
 ) : null
 
+// Vooraf gefactureerd (utils/orderFactuur.ts): de factuur is er al, de
+// bestelling nog niet afgerond (niet opgehaald of verzonden). Na afronden of
+// annuleren zegt de status genoeg. `nummer`: het nummer van de gevonden
+// factuur (het detail); de lijst leest het van de bestelling.
+export const GefactureerdBadge: React.FC<{ b: any; nummer?: string }> = ({ b, nummer }) =>
+  (nummer != null || b?.factuur_id != null) && b?.status !== 'afgerond' && b?.status !== 'geannuleerd' ? (
+    <span title={t('orders_gefactureerd_tip').replace('{nummer}', nummer ?? b?.factuur_nummer ?? '')}
+      className={`${chip} bg-blue-100 text-blue-700`}>
+      <Icon n="receipt" /> {t('orders_gefactureerd')}
+    </span>
+  ) : null
+
 // Afhalen of verzenden (webshoporder). Een afhaalorder zonder gekozen moment
 // krijgt de oranje "nog te kiezen"-kleur: daar hoort de klant nog iets te
 // doen, en de bestelbevestiging bevat daarvoor de link. Rood: het gekozen

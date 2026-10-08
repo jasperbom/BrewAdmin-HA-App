@@ -4,7 +4,7 @@ import { fmt, fmtWeekdagDatum, tod } from '../../utils/format'
 import { regelsKort } from '../../utils/bestelling'
 import { orderNummer } from '../../utils/picking'
 import type { LeverLabel } from '../../utils/verkoopOverzicht'
-import { StatusChip, BetaaldBadge, LeveringBadge, KlantTypeChip } from './BestellingBadges'
+import { StatusChip, BetaaldBadge, GefactureerdBadge, LeveringBadge, KlantTypeChip } from './BestellingBadges'
 
 interface BestellingKaartProps {
   b: any
@@ -60,6 +60,7 @@ const BestellingKaart: React.FC<BestellingKaartProps> = ({ b, totaal, klantType,
             <KlantTypeChip type={klantType} />
             <LeveringBadge b={b} />
             <BetaaldBadge b={b} />
+            <GefactureerdBadge b={b} />
             {levering && levering.sleutel && (
               <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${LEVER_KLEUR[levering.kleur]}`}>
                 {leverTekst(levering)}

@@ -1,4 +1,5 @@
-// BTW-periode helpers — zie BoekhoudingPage voor het gebruik.
+// BTW-periode helpers — gebruikt door Administratie (Aangiftes, de rollover in
+// pages/admin/AdministratiePage.tsx), Bestellingen en Statiegeld.
 // Een periodeKey is altijd 'YYYY-Qn' (kwartaal) of 'YYYY-Mnn' (maand).
 
 import type { InkoopFactuur } from '../types'
@@ -54,7 +55,7 @@ export function effectievePeriodeKey(
 }
 
 // Bouw de sets van ingediende en betaalde periodeKeys uit de ruwe stores,
-// zodat elke pagina (Boekhouding, Bestellingen, …) dezelfde periode-lock
+// zodat elke pagina (Administratie, Bestellingen, …) dezelfde periode-lock
 // kan afleiden zonder eigen memo-logica te dupliceren.
 export function geslotenPeriodeSets(
   btwAangiftes: any[],
@@ -176,7 +177,7 @@ export function omzetBtwOpGrondslag(verkoopFacturen: any[], wcOrders: any[]): Om
 // ── Eén bron per verkoop: webshoporder óf verkoopfactuur ────────────────────
 // Een geïmporteerde webshoporder die in Bestellingen wordt afgerond krijgt
 // een eigen verkoopfactuur (met `bestelling_id`). Diezelfde order komt via
-// "Verkoop ophalen" op de BTW-tab nog eens binnen als WooCommerce-order. Tel
+// "Verkoop ophalen" op Aangiftes → BTW nog eens binnen als WooCommerce-order. Tel
 // je beide mee, dan staat de omzet-BTW van het hele webshopkanaal er dubbel.
 // De verkoopfactuur is het fiscale document en daarmee de enige bron: een
 // order telt alleen nog mee zolang er in de app geen factuur voor bestaat.
@@ -218,7 +219,8 @@ export function inBtwPeriode(
   return !!key && effectievePeriodeKey(factuur, periode) === key
 }
 
-// Zelfde toets voor een heel aangiftejaar (het jaartotaal op de BTW-tab).
+// Zelfde toets voor een heel aangiftejaar (het jaartotaal op Aangiftes → BTW,
+// zie utils/aangifteStappen.ts).
 export function inBtwJaar(
   factuur: Pick<InkoopFactuur, 'datum' | 'btw_periode'>,
   periode: BtwPeriodeType,
@@ -255,7 +257,7 @@ const periodesMetActiviteit = (facturen: any[], periode: BtwPeriodeType): Set<st
   new Set((facturen || []).map(f => datumToPeriodeKey(f?.datum || '', periode)).filter(Boolean))
 
 // ── Werkruimte-badge (Administratie) ────────────────────────────────────────
-// Telt periodes met status "Openstaand" (BoekhoudingPage): de periode is al
+// Telt periodes met status "Openstaand" (Administratie → Aangiftes): de periode is al
 // voorbij (p.to < vandaag), er is nog geen aangifte ingediend of betaling
 // gekoppeld, ÉN er was daadwerkelijk activiteit in die periode (minstens één
 // verkoop- of inkoopfactuur) — anders zou een jonge onderneming kwartalen van
