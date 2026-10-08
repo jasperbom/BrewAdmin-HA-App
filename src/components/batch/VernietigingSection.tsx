@@ -6,6 +6,7 @@ import { VERLIES_BRONNEN } from '../../utils/constants'
 import { logAudit } from '../../utils/audit'
 import { uploadBijlage, uploadFoutSleutel } from '../../utils/bijlage'
 import Btn from '../ui/Btn'
+import BevestigKnop from '../ui/BevestigKnop'
 import Inp from '../ui/Inp'
 import Modal from '../ui/Modal'
 import SectionHeader from '../ui/SectionHeader'
@@ -165,8 +166,8 @@ const VernietigingSection: React.FC<{
     setVerliesForm({...emptyVerlies, datum: verliesForm.datum})
   }
 
+  // De vraag zit in de knop (BevestigKnop), geen confirm().
   const deleteVerlies = (id: number) => {
-    if (!confirm(t('batch_verlies_confirm_delete'))) return
     logAudit(auditLog, setAuditLog, {entiteit:'Verliesregistratie', entiteit_id:id, actie:'verwijderd', omschrijving:`Batch ${batch?.naam||''}`})
     setVerliesRegistraties((prev: any[]) => (prev || []).filter((r: any) => r.id !== id))
   }
@@ -285,7 +286,8 @@ const VernietigingSection: React.FC<{
                         <td className="px-2 py-1.5 text-right font-mono">{Number(r.liter || 0).toFixed(2)}</td>
                         <td className="px-2 py-1.5 text-gray-400 italic">{r.notitie || ''}</td>
                         <td className="px-2 py-1.5">
-                          <button onClick={() => deleteVerlies(r.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none">×</button>
+                          <BevestigKnop v="ghost" s="sm" vraag={t('batch_verlies_confirm_delete')} onBevestig={() => deleteVerlies(r.id)}
+                            title={t('btn_delete')} cls="text-gray-400 hover:text-red-500 min-w-[40px] sm:min-w-0">✕</BevestigKnop>
                         </td>
                       </tr>
                     )

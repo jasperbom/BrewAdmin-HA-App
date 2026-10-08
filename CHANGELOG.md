@@ -4,6 +4,61 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.96] — 2026-10-08
+
+### Productie & Verkoop, deel 7: brouwzaal en batch op de telefoon — het opzet is gebouwd
+
+**Brouwzaal**
+- **Tankkaart** met mini-tank in de bierkleur, tank + product, fase met dagteller,
+  recept, SG (drie decimalen), °C en pH met meetmoment, vergistingsvoortgang en
+  de verwachte afvuldatum ("over tijd" als die voorbij is). De etiketchip staat
+  er alleen als het etiket niet klopt. **Eén knop: de volgende stap** — met ›
+  opent hij de batch op de juiste plek, zonder › voert hij uit (*Meting* opent
+  het meetblad). Op de telefoon één kaart met rijen per tank.
+- **Andere batches**: gepland, brouwend en afgevuld, plus Vergisten/
+  Conditioneren zonder (bestaande) tank, met dezelfde ene knop; *+ Batch* opent
+  het blad *Wat brouw je?*; "Gesloten batches (n) ›".
+- **Vraagt om aandacht** (met de etiketpost naast de afvuldag) en **Komende 14
+  dagen** (brouwdagen, dry hop, verwacht afvullen met etiketchip) in een
+  rechterkolom; tussen 768 en 1279 px eronder, op de telefoon "Vraagt om
+  aandacht" bovenaan. De knoppenrij die de tabs herhaalde is weg.
+
+**Batchpagina**
+- **FaseKop** in plaats van de stappenbalk die op de telefoon zijwaarts scrolde:
+  op het bureau een compacte balk, op de telefoon "Fase 4 van 6 ·
+  Conditioneren" met een lijst van de fases.
+- Kop volgens het opzet: *Batchdossier* (vanaf Brouwen, als tussenrapport) en
+  ⋯ (Printen, Gegevens bewerken; bij Gepland ook Recept opnieuw toepassen en
+  Verwijderen met vijf seconden terugweg — verwijderen kan alleen bij Gepland).
+- Op de telefoon draagt een **vaste actiebalk** onderin de stap van de fase
+  (bijv. "ABV vastzetten · 7,5 % vol"); nooit twee primaire knoppen onderin.
+- Geen browservragen meer op de batchpagina en de brouwzaal (tank verplaatsen,
+  carbonatie, cold crash, ingrediënten, afvulling of batch verwijderen): de
+  bevestiging staat in de knop, een fout als melding op de pagina. Wat er
+  geboekt wordt is ongewijzigd (vergeleken met de vorige versie).
+
+**Documentatie**
+- CLAUDE.md beschrijft de nieuwe schil (tabs, routes, `gaNaar`, detailschermen),
+  de regels voor *Etiket & website* (één bron, één schrijfweg, CCP 3
+  onafhankelijk, ABV vastzetten, energie kcal/kJ, webshop), recepten "in
+  gebruik", de nieuwe utils en componenten, en `producten`/`product_artikelen`
+  in de key-tabel.
+
+**Bewust niet gebouwd of nog open**
+- **Gluten** wordt niet genormaliseerd (zoals CCP 3 altijd deed): een etiket met
+  alleen "gerst" terwijl de ingrediënten "gluten" dragen is rood. Beslissing aan
+  de brouwerij, na toetsing aan het HACCP-handboek.
+- De ABV-poort en de CCP 1-vrijgave worden alleen in de app afgedwongen, niet
+  door de server.
+- Een tankchip in de batchkop blijft staan als die tank niet meer bestaat; een
+  lange biernaam maakt een tankrij op de telefoon hoger.
+- *Picken ›* in het Overzicht opent de bestelling, niet meteen de pickmodal.
+- In het formulier *Nieuwe bestelling* staan nog browsermeldingen.
+- Energie op het gedrukte etiket staat standaard op "niet vermeld"; de website
+  toont de berekende waarde.
+
+---
+
 ## [1.12.95] — 2026-10-08
 
 ### Productie & Verkoop, deel 6: "Wat brouw je?" en de productpagina als knooppunt

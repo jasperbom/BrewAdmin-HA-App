@@ -168,6 +168,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   const batchBi = (bi || []).filter(i => i.batch_id === batch.id)
   const [stappenOpen, setStappenOpen] = React.useState<boolean>(true)
   const [hopOpen, setHopOpen] = React.useState<boolean>(true)
+  const [hopMelding, setHopMelding] = React.useState<string | null>(null)
   // Koel-invoer (verweven in de koelstap)
   const [koelForm, setKoelForm] = React.useState<any>({ datum: tod(), start_temp: '', eind_temp: '', duur_min: '', methode: 'plate', opmerking: '' })
 
@@ -208,10 +209,12 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   const syncHopUitRecept = () => {
     if (!setBi || !batchRecept) return
     const receptHops = (batchRecept.hop || []) as any[]
+    // Niets over te nemen: dat staat bij de knop (geen alert()).
     if (receptHops.length === 0) {
-      alert(t('hop_schema_recept_geen_hops'))
+      setHopMelding(t('hop_schema_recept_geen_hops'))
       return
     }
+    setHopMelding(null)
     setBi((prev: any[]) => prev.map(x => {
       if (x.batch_id !== batch.id) return x
       if (String(x.ingredient_type).toLowerCase() !== 'hop') return x
@@ -1031,6 +1034,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                     </table>
                   </div>
                 )}
+                {hopMelding && <div role="alert" className="mt-3 text-xs text-orange-700">{hopMelding}</div>}
                 <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
                   <div className="text-xs text-gray-400 italic flex-1 min-w-0">{t('hop_schema_hint')}</div>
                   <div className="flex gap-2">

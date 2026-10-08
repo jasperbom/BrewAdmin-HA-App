@@ -10,6 +10,10 @@ telefoon) staan op het ontwerpcanvas "Opzet Productie & Verkoop".*
 Dit is een opzet, nog geen bouwplan per regel. Hoofdstuk 10 deelt het op in
 fases die elk los op te leveren zijn.
 
+**Stand:** gebouwd in 1.12.90 t/m 1.12.96 (fases F1–F13, zie CHANGELOG). Wat
+bewust anders is gebouwd of nog openstaat, staat in de CHANGELOG van 1.12.96.
+Gluten-normalisatie (hoofdstuk 10, *Later*) is niet gebouwd.
+
 ---
 
 ## 1. Samenvatting

@@ -28,7 +28,11 @@ BrewAdmin-HA-App/
 │   ├── components/
 │   │   ├── ui/             # Reusable UI primitives (o.a. `useDialoogFocus` — focus-trap/Escape van Modal
 │   │   │                   # en het inkoopwerkblad — en `useSmalScherm`: het omslagpunt van 768 px;
-│   │   │                   # `useTelefoonIndeling`: ook een telefoon dwars houdt de telefoonindeling)
+│   │   │                   # `useTelefoonIndeling`: ook een telefoon dwars houdt de telefoonindeling).
+│   │   │                   # Ook: `ActieBalk` (één volgende stap vast onderin, `bottom: var(--onderbalk)`,
+│   │   │                   # zet `--actiebalk` voor de UndoBar), `AttentieKaart` ("Vraagt om aandacht"),
+│   │   │                   # `Segment`, `Onderblad`, `Blad` (Modal op het bureau, Onderblad op de
+│   │   │                   # telefoon), `EtiketAllergenen`, `useBreedte`
 │   │   ├── InkoopFactuurModal.tsx  # Inkoop boeken: het werkblad (bureau: factuur naast de boeking; telefoon:
 │   │   │                           # wissel Factuur | Boeking, regel in een paneel van onderen). Alle regels in
 │   │   │                           # één lijst, factuurscan, etiketfoto's, totaalcontrole, "Bij opslaan". Geeft
@@ -47,6 +51,25 @@ BrewAdmin-HA-App/
 │   │   ├── BatchRapportExport.tsx  # Batchdossier → print-HTML / printvenster / PDF-download
 │   │   └── PakbonExport.tsx        # Pakbon, picklijst, factuur, herinnering. Deelt
 │   │                               # `DOC_CSS`/`esc`/`breweryBlock`/`openPrint` met het dossier
+│   │   ├── batch/                  # De batchpagina in delen: BatchKop + KetenRegel (Recept › Product ›
+│   │   │                           # Tank), EtiketKaart (etiket & website; modi batch/product/recept),
+│   │   │                           # EtiketBijwerken (de énige schrijfweg voor het etiket, overal te openen
+│   │   │                           # met `useEtiketBijwerken()?.open({productId, batchId?})`), AbvVastzetten,
+│   │   │                           # NieuweBatchBlad ("Wat brouw je?", overal via `useNieuweBatch()?.open(…)`),
+│   │   │                           # MetingBlad, AfvulSessieSectie (CCP 2/3), useProductKoppeling, FaseKop
+│   │   │                           # (bureau: compacte stappenbalk; telefoon: "Fase 4 van 6" met een lijst)
+│   │   ├── brouwzaal/              # Brouwzaal: TankKaart (één knop = `volgendeStap`), LegeTank, AndereBatches
+│   │   │                           # (ook Vergisten/Conditioneren zonder bestaande tank), KomendeDagen
+│   │   ├── batches/                # Tab Batches: Lopend · Gesloten · Agenda (BatchesAgenda = de brouwagenda;
+│   │   │                           # Gantt op het bureau, lijst per tank op de telefoon)
+│   │   ├── recept/                 # Recepten "in gebruik": ReceptLijst, ReceptDetail + ReceptVerbindingen,
+│   │   │                           # ReceptKiezer (dé kiezer: Wat brouw je?, recept koppelen, opnieuw toepassen),
+│   │   │                           # ProductKiezer, KiezerBlad
+│   │   ├── product/                # De productpagina als knooppunt: KetenStrook (Recept › Brouwsels › Etiket ›
+│   │   │                           # Voorraad › Verkoop), ProductKop, Voorraad-/Brouwsels-/Artikelen-/ReceptKaart
+│   │   ├── verkoop/                # Verkoop › Overzicht: TePicken, VoorraadKomtEraan
+│   │   ├── bestelling/             # Bestellingen: kaarten, statuschips, orderregels met "komt eraan", merchbeheer
+│   │   ├── kassa/                  # Kassa: tegels per product, bonbalk + bon (onderblad onder `lg`), klant
 │   ├── pages/              # Feature pages (one per domain)
 │   ├── utils/
 │   │   ├── api.ts          # API client & state management
@@ -79,6 +102,48 @@ BrewAdmin-HA-App/
 │   │   ├── constants.ts    # Enums, mappings, defaults
 │   │   ├── format.ts       # Formatting utilities
 │   │   ├── calculations.ts # Business logic calculations
+│   │   ├── etiket.ts       # Etiket & website — de énige bron (zie "Etiket & website" hieronder):
+│   │   │                   # `etiketWaarden` (per waarde getal + bron), `abvBerekend` (Balling via
+│   │   │                   # `abvBalling`, + suiker na de kook), `energiePer100ml` (kcal én kJ), `abvMarge`,
+│   │   │                   # `vergelijkEtiket`/`etiketStatus`, `allergeenRegel` ("Bevat: …"),
+│   │   │                   # `referentieBatch`, `productEtiketWaarden`, `legEtiketVast` (énige schrijfweg),
+│   │   │                   # `volgendeEtiketVersie`, `websiteLooptAchter`, `webshopBevatRegel`
+│   │   ├── etiketKaart.ts  # Het model van de EtiketKaart (blokken, rijen, oordelen) bovenop etiket.ts
+│   │   ├── afvulControle.ts # De afvulcontrole (tankvolume, ABV): fout = knop uit, waarschuwing = bevestigen in de knop
+│   │   ├── productKeten.ts # De keten recept › batch › product: `receptHoofdId`/`hoofdIdResolver` (een
+│   │   │                   # Brewfather-versie `<parent>__v<_id>` telt voor zijn hoofdrecept — gebruik
+│   │   │                   # nooit een eigen regex), `batchTitel` (product → recept → naam; overal dezelfde
+│   │   │                   # titel), `receptenVanProduct` (recept_ids ∪ recepten van zijn batches, afgeleid),
+│   │   │                   # `huidigReceptVoorProduct`, `productVoorstelVoorRecept`, `productVoorBatch`,
+│   │   │                   # `receptVoorBatch`, `nieuwProductUitBatch` (geen ABV, geen allergenen),
+│   │   │                   # `tankBeschikbaarOp` (gereserveerd ≠ bezet), `productenVoorKeuze`
+│   │   ├── batchKeten.ts   # Het product bij plannen (één kandidaat = koppelen met terugweg, meer = kiezen,
+│   │   │                   # geen = nieuw/later) en de ketenregel in de batchkop
+│   │   ├── receptNaarBatch.ts # De énige vertaling recept → batch + batchregels (plannen én opnieuw toepassen)
+│   │   ├── nieuweBatch.ts  # Het blad "Wat brouw je?": `planNieuweBatch`, tankstatus op de brouwdatum
+│   │   ├── receptGebruik.ts # Recepten "in gebruik" (zie Key Domain Concepts): `receptGebruik`,
+│   │   │                   # `receptenPerProduct`, `receptenVoorKiezer`, `tellingen`
+│   │   ├── receptLijst.ts  # De receptenpagina: In gebruik · Archief · Verborgen, tags als filter, zoeken
+│   │   ├── verkoopOverzicht.ts # Eén voorraadtelling voor Verkoop: `voorraadPerProduct` (per verpakking —
+│   │   │                   # flessen en fusten nooit opgeteld; vrij · AGP · besteld · tekort/uitTeSlaan),
+│   │   │                   # `komtEraan` (batches Gepland t/m Conditioneren, geschatte stuks),
+│   │   │                   # `dekkingWeken`, `orderRegelLevering`. Overzicht, Producten, Kassa en
+│   │   │                   # Bestellingen delen één `verkoopCtx` uit App.tsx — nooit een eigen telling
+│   │   ├── volgendeStap.ts # De ene volgende stap per batch (tankkaart, Batches › Lopend, ActieBalk):
+│   │   │                   # met › = openen (`stapNaarBatchDoel`), zonder › = uitvoeren
+│   │   ├── batchesLijst.ts # Tab Batches: groepering per fase, filter, `stapNaarBatchDoel`/`batchAankomst`
+│   │   ├── batchAgenda.ts  # De brouwagenda per tank (balkposities, bereik)
+│   │   ├── productPagina.ts # Productpagina: lijstgroepen, chips, `tekortChip` (echt tekort naast het AGP-deel),
+│   │   │                   # kostprijs per stuk (liter zonder verpakking × inhoud + verpakking)
+│   │   ├── productAandacht.ts # Selecties achter de attentieposten `etiket`, `afgevuld_zonder_artikel`,
+│   │   │                   # `bier_tht`, `sku_conflict` (attentieTekst.ts maakt er de tekst van)
+│   │   ├── verkoopDashboard.ts # Rijen en teksten van Verkoop › Overzicht (te picken, voorraadchips, komt eraan)
+│   │   ├── bestelling.ts   # Bestellingen: zoeken, statustellingen, de ene volgende stap, totalen (= factuur)
+│   │   ├── kassaCatalogus.ts # Kassategels per product_id; `kassaAllocatie` boekt uit dezelfde lots als de tegel
+│   │   ├── productLogboek.ts # Het logboek van één product (eigen mutaties + webshopregels)
+│   │   ├── detailTitel.ts  # Kopbalktitel op een detailscherm ("Kadeblond #2609", receptnaam, WC-4321)
+│   │   ├── brouwzaal.ts    # De brouwzaal: tankrijen, andere batches, komende 14 dagen
+│   │   ├── batchActieBalk.ts # De stap van de fase in de ActieBalk van de batch (telefoon)
 │   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
 │   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
 │   │   ├── balans.ts       # Balansposten uit het journaal: `btwPositieCent` = nog af te dragen
@@ -118,8 +183,9 @@ BrewAdmin-HA-App/
 │   │   ├── wcProduct.ts    # WooCommerce-productkaart per artikel: payload bouwen (lege velden gaan
 │   │   │                   # nooit mee — een push wist niets), winkelantwoord lezen, verschillen
 │   │   │                   # app ↔ winkel, prijsomrekening excl./incl. BTW, categorieënboom
-│   │   ├── batchRapport.ts # Batchdossier van een afgeronde batch (`batchIsAfgerond` =
-│   │   │                   # Afgevuld/Verpakt/Gesloten): kerncijfers, tijdlijn,
+│   │   ├── batchRapport.ts # Batchdossier (vanaf Brouwen te openen; `batchIsAfgerond` =
+│   │   │                   # Afgevuld/Verpakt/Gesloten markeert het definitieve dossier, een
+│   │   │                   # eerder dossier noemt de fase): kerncijfers, tijdlijn,
 │   │   │                   # ingrediënten mét leverancierslot, metingen, CCP 1/2/3,
 │   │   │                   # afvullingen, verlies, afwijkingen, kostprijs. Rekent zelf
 │   │   │                   # niets uit wat een scherm al toont — het leent de bestaande
@@ -277,7 +343,7 @@ BrewAdmin-HA-App/
 └── tsconfig.json
 ```
 
-### De schil (navigatie) — v1.12.56
+### De schil (navigatie) — v1.12.96
 
 Eén schil, één omslagpunt (768 px). Het **hoofdmenu** zijn de drie
 werkruimtes, het **tweede menu** de pagina's van de gekozen werkruimte.
@@ -291,10 +357,29 @@ werkruimtes, het **tweede menu** de pagina's van de gekozen werkruimte.
   eigen pagina) krijgt een terugknop; een detailscherm (`isDetailRoute`)
   géén onderbalk. `MeerPage` = wie je bent, verbinding, Instellingen,
   Uitloggen.
-- **Hash-routing** (`utils/route.ts`): `#/<werkruimte>/<pagina>[/<batchId>]`;
-  `PAGINA_WERKRUIMTE` staat dáár. State → hash is een history-entry, hash →
-  state via `hashchange`; nooit zelf `location.hash` zetten in een pagina —
-  navigeer via `setPage`.
+- **Hash-routing** (`utils/route.ts`): `#/<werkruimte>/<pagina>[/<id of stand>]`;
+  `PAGINA_WERKRUIMTE` staat dáár. Een batch is altijd zijn eigen pagina
+  (`#/productie/batches/<id>`, ook vanaf een tankkaart; er is geen paneel onder
+  de tanks meer); `#/productie/batches/lopend|gesloten|agenda` is de stand van
+  de lijst. Recepten, producten en bestellingen hebben een `recordId`
+  (`#/productie/recepten/<id>`, `#/verkoop/producten/<id>`,
+  `#/verkoop/bestellingen/<id>`; encodeURIComponent, een kapotte encoding = geen
+  record). Oude links blijven werken (`PAGINA_ALIAS`: `batchflow` → `batches`,
+  `dashboard/<n>` → `batches/<n>`, `planning` → `batches/agenda`).
+  State → hash is een history-entry (met een markering in `history.state`,
+  `historieStap`), hash → state via `hashchange`; nooit zelf `location.hash`
+  zetten in een pagina — navigeer via **`gaNaar(doel)`** (prop vanuit App.tsx;
+  `{pagina, id?, tab?, filter?, stand?}` → `doelNaarRoute`), ook voor een
+  sprong naar een andere werkruimte en voor attentieposten.
+- **Tabs:** Productie = Brouwzaal (`dashboard`) · Batches · Recepten ·
+  Ingrediënten · HACCP · Gereedschap; Verkoop = Overzicht (`dashboard`) ·
+  Producten · Bestellingen · Kassa · Klanten · Statiegeld. De werkruimtetitel
+  in de bovenbalk is een gewoon label.
+- **Detailscherm** (`isDetailRoute`: batch of record): op de telefoon geen
+  onderbalk en geen chips; de kopbalk toont de naam (`detailTitel`) met één
+  terugknop (`history.back()` als de vorige entry van de app zelf is, anders de
+  lijst). Een pagina heeft dan geen tweede terugweg; de volgende stap staat in
+  een vaste `ActieBalk` onderin.
 - **Maten:** `--kopbalk`, `--onderbalk` (incl. `--safe-top`/`--safe-bottom`,
   alleen in standalone-modus op `env()`), `--kb-inset`; toetsenbord open =
   `body.kb-open` (`components/ui/toetsenbord.ts`). Elke vaste actiebalk
@@ -414,7 +499,16 @@ scanhelper (`claudeScan.ts`: modelketen, geen temperature, foutcodes), de
 factuur- en etiketscan (schema's binnen de grenzen van gestructureerde
 uitvoer, opschonen, toepassen zonder invoer van de gebruiker te overschrijven),
 het scangeheugen, de totaal- en dubbelecontrole, de foto-omzetting
-(`afbeelding.ts`) en de regel-zoeker in de PDF (`pdfZoek.ts`).
+(`afbeelding.ts`) en de regel-zoeker in de PDF (`pdfZoek.ts`). Daarnaast de
+keten en het etiket (opzet Productie & Verkoop): `etiket.ts` (Balling-ABV,
+energie in kcal/kJ met vaste testwaarden 1.050/1.010 → 46/194 … 1.090/1.018 →
+85/354, de ABV-marge, Bevat-regel, versie-ophoging, `legEtiketVast`),
+`productKeten.ts`, `batchKeten.ts`, `receptNaarBatch.ts` (karakteriseringstests
+op het oude gedrag), `receptGebruik.ts`/`receptLijst.ts`, `verkoopOverzicht.ts`
+(ook: dezelfde "vrij" als de kassa), `volgendeStap.ts`, `nieuweBatch.ts`,
+`batchesLijst.ts`/`batchAgenda.ts`, `productPagina.ts`, `bestelling.ts`,
+`kassaCatalogus.ts` en de routes (`route.ts`: aliassen, recordId, historie).
+Testdata van de demo-brouwerij uit het opzet: `__tests__/demoBrouwerij.ts`.
 
 `server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
 key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
@@ -733,6 +827,55 @@ gebruiker als het al ergens in de administratie staat.
 
 ---
 
+## Etiket & website — één bron, één schrijfweg
+
+Aan het einde van een batch moet zichtbaar zijn wat er op het etiket en de
+website hoort (zie `docs/OPZET-PRODUCTIE-VERKOOP.md` hoofdstuk 5). Regels:
+
+- **Eén bron.** Elk getal en elk oordeel op de EtiketKaart, in het
+  batchdossier, op de productpagina, in het blad *Wat brouw je?* en in CCP 3
+  komt uit `utils/etiket.ts` (`etiketWaarden` met per waarde een **bron**:
+  vastgezet · lab · Brewfather · berekend uit OG/FG · verwacht (recept)).
+  Componenten rekenen niets zelf uit.
+- **ABV.** Berekend met Balling (`abvBalling` in calculations.ts, de enige
+  implementatie; niet ×131,25). *ABV vastzetten* (`abv_definitief`,
+  `abv_bron`) is verplicht vóór de eerste afvulsessie (`abvVastgezetBlokkade`,
+  `magNaarAfvullen`, `magSessieStarten`), omdat accijns, voorcalc en THT-klasse
+  `batch.ABV` lezen; een batch die al een sessie heeft of afgevuld is, wordt
+  niet met terugwerkende kracht geblokkeerd. De Brewfather-sync zet
+  `abv_bron: 'brewfather'` en overschrijft een vastgezette ABV nooit.
+  Wettelijke marge (`abvMarge`): ±0,5 % vol tot en met 5,5 %, ±1,0 daarboven;
+  liggen etiket en batch aan weerszijden van 5,5, dan ±0,5.
+- **Energie** altijd kcal én kJ per 100 ml, elk met de factoren van bijlage
+  XIV (kcal = 7·alcohol + 4·koolhydraten, kJ = 29·alcohol + 17·koolhydraten) —
+  nooit kJ = kcal × 4,184. Op het product staat energie alleen vast bij
+  `energie_op_etiket === 'vermeld'`; anders volgt de website de afleiding.
+  IBU is "berekend (Tinseth)", EBC "recept, niet gemeten" — nooit "gemeten".
+- **Het etiket schrijf je op één plek.** `product.allergenen` en
+  `etiket_versie` veranderen alleen via `legEtiketVast`, aangeroepen door de
+  dialoog `EtiketBijwerken` (`useEtiketBijwerken()?.open(…)`). Wijzigen
+  allergenen of ABV, dan is een nieuwe versie verplicht. De HACCP-matrix is
+  alleen-lezen. Nooit allergenen voorvinken vanuit de batch, nergens "neem
+  over" — CCP 3 blijft een onafhankelijke controle: het veld etiketversie
+  begint leeg ("verwacht: v4" als tekst), en nieuwe EtiketControle-records
+  bevriezen `etiket_versie_gelezen`/`_verwacht`, `abv_batch`,
+  `abv_etiket_verwacht` en `abv_marge`. Gluten wordt niet genormaliseerd
+  (gelijk aan CCP 3: een etiket met alleen "gerst" bij ingrediënten met
+  "gluten" is rood).
+- **Allergenen via het lot**: geef `lots` mee aan `allergenenUitBatch` /
+  `ingredientVoorBatchRegel` / `risicoVoorBatch`, anders zien de kaart en CCP 3
+  iets anders.
+- **Webshop.** `afgeleideBierInfo` voor de push leest alleen productwaarden
+  (nooit stil een batchwaarde). Bij elke push en pull bewaart de app de
+  `_cf_`-meta als `wc.meta_stand` + `meta_stand_op` op het artikel; "website
+  loopt achter" vergelijkt die stand met het product, nooit met de batch. De
+  Bevat-regel (vereniging van de etiketversies die nog op voorraad liggen,
+  `webshopBevatRegel`) gaat als laatste zin achter `_cf_ingredienten` en gaat er
+  bij een pull weer af. Nooit automatisch pushen; nooit prijs of voorraad in de
+  etiketstap.
+
+---
+
 ## Key Domain Concepts
 
 | Dutch term | English equivalent |
@@ -819,6 +962,29 @@ vragen). `TANK_STATUSSEN` (mét `Brouwen`) is de AGP-blik "bier in proces", niet
 de fysieke bezetting. server.py (tankbewaking, auto-metingen) kijkt alleen naar
 `Vergisten`/`Conditioneren` — houd die twee kanten gelijk.
 
+### Recepten "in gebruik" en de keten
+
+- **Eenheid = het hoofdrecept.** Een Brewfather-versie (`is_huidige: false`,
+  id `<parent>__v<_id>`) telt voor zijn hoofdrecept en staat nooit als eigen
+  regel in een lijst of kiezer. `batch.recept_id` is altijd het hoofdrecept;
+  een gekozen versie staat in `batch.recept_versie_id`.
+- **In gebruik** (`receptGebruik`, eerste regel die geldt): verborgen (wint
+  altijd) → vastgepind (`recept.vastgepind`, sync-bestendig) → gepland/lopend →
+  huidig recept van een niet-gearchiveerd product → gekoppeld → gebrouwen in de
+  laatste 18 maanden → archief. Uit roulatie telt mee (seizoensbier).
+- **Sync:** `voegReceptSyncSamen` bewaart een recept dat uit Brewfather
+  verdwijnt zolang een batch of product ernaar verwijst of het vastgepind is
+  (`niet_in_brewfather: true`); een mislukte Brewfather-pagina breekt de sync
+  af (`bfGetRecipes` gooit) — nooit stil recepten weggooien.
+- **Product bij een batch:** een nieuwe batch krijgt het product van zijn
+  recept als er precies één kandidaat is (met terugweg); `product.recept_ids`
+  wordt nooit automatisch bijgeschreven (`receptenVanProduct` is afgeleid).
+  Een product dat bij het afvullen ontstaat erft naam, stijl en recept, maar
+  geen ABV en geen allergenen.
+- **Nieuwe batch** gaat altijd via het blad *Wat brouw je?*
+  (`useNieuweBatch()?.open({receptId?, versieId?, productId?, tank?, datum?})`)
+  en `receptNaarBatch` — er is geen tweede planformulier.
+
 ### Data keys (opgeslagen in SQLite, `/data/brewadmin.db`)
 
 Key names are alphanumeric + underscore only (enforced by server). All active keys:
@@ -827,7 +993,9 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 |-----|------|--------|
 | `ingredienten` | array | Ingrediënten |
 | `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
-| `batches` | array | Brouwbatches |
+| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie) |
+| `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
+| `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull) |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
 | `afvullingen` | array | Afvullingen / releases |
 | `uitslagen` | array | Biervoorraaduitslagen |
@@ -837,7 +1005,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `voorraad_log` | array | Mutatielog ingrediënten én bier: `afvullen`, `uitslaan` (AGP → vrije voorraad, met accijns), `verkoop` (uitlevering aan een klant; vóór v1.12.80 stond een verkoop óók als `uitslaan` gelogd; een teruggedraaide pick krijgt een tegenregel `verkoop` met negatieve hoeveelheid), `afboeking`, `rebrand` |
 | `voorraad_archief` | array | Gearchiveerde voorraadmutaties |
 | `voorraad_gesloten_bieren` | array | Afgesloten biersoorten |
-| `recepten` | array | Recepten (lokaal + Brewfather). Eigen velden van de app (`kostprijs_overig` = vaste kosten per brouw, `kostprijs_verlies_pct` = handmatig verliespercentage) blijven bij een Brewfather-sync behouden — zie `EIGEN_VELDEN` in `runSync` |
+| `recepten` | array | Recepten (lokaal + Brewfather; versies als `<parent>__v<_id>` met `parent_id`/`is_huidige: false`). Eigen velden van de app (`kostprijs_overig` = vaste kosten per brouw, `kostprijs_verlies_pct` = handmatig verliespercentage, `vastgepind`) blijven bij een Brewfather-sync behouden — zie `RECEPT_EIGEN_VELDEN` in `utils/receptSync.ts`; `niet_in_brewfather` = verdwenen uit Brewfather maar nog verwezen, dus bewaard |
 | `recepten_verborgen` | array | Verborgen recept-IDs |
 | `recepten_gearchiveerde_tags` | array | Gearchiveerde recepttags |
 | `recepten_tag_volgorde` | array | Volgorde recepttags |
@@ -859,7 +1027,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_vrijgaven` | array | **CCP 1** — vrijgave voor afvullen per batch: stabiliteitstoets, forced fermentation, sensorisch oordeel. Server-side append-only; correctie via een nieuwe registratie met `vervangt_id`. Zonder vrijgegeven registratie kan er niet afgevuld worden |
 | `afvul_sessies` | array | Afvulsessie met lotcode `L<batchnr>-B<n>` (bijv. `L2431-B1`) en berekende THT; anker voor CCP 2 en CCP 3. Bewust **niet** append-only: een sessie wordt afgesloten |
 | `haccp_sluitcontroles` | array | **CCP 2** — sluitcontroles per sessie (visueel + omkeerproef). Append-only. Bij afkeur worden de afvullingen sinds de laatste goedkeuring geblokkeerd |
-| `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket. Append-only |
+| `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket. Nieuwe records bevriezen ook `etiket_versie_gelezen`/`_verwacht`, `abv_batch`, `abv_etiket_verwacht`, `abv_marge`. Append-only |
 | `haccp_afwijkingen` | array | Expliciete afwijkingsregistraties: de enige manier om langs een harde CCP-blokkade te komen, altijd met onderbouwing + CAPA. Append-only |
 | `haccp_trace_oefeningen` | array | **Traceeroefeningen** (hoofdstuk 11): periodieke mock recall met bevroren omvang (lotcodes, afnemers), massabalans, traceergaten, doorlooptijd en conclusie. Append-only — een tegenvallende oefening mag niet achteraf bijgesteld worden |
 | `haccp_instellingen` | object | Kritische grenzen uit het handboek: stabiliteitsdagen, forced-fermentation-marge, THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |

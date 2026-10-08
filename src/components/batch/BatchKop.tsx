@@ -21,6 +21,8 @@ interface BatchKopProps {
   /** EBC voor de bierkleur (`batchEbc`). */
   ebc?: number | string | null
   status: string
+  /** Gepland en de brouwdag is voorbij: een oranje chip "over tijd" naast de fase. */
+  overTijd?: boolean
   stijl?: string
   /** Knoppen rechts in de kop. */
   acties?: React.ReactNode
@@ -34,7 +36,7 @@ interface BatchKopProps {
   children?: React.ReactNode
 }
 
-const BatchKop: React.FC<BatchKopProps> = ({ titel, nummer, ebc, status, stijl, acties, melding, keten, strook, children }) => (
+const BatchKop: React.FC<BatchKopProps> = ({ titel, nummer, ebc, status, overTijd, stijl, acties, melding, keten, strook, children }) => (
   <div className="bg-white rounded-xl shadow-card p-4 space-y-3">
     <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 min-w-0">
@@ -42,6 +44,9 @@ const BatchKop: React.FC<BatchKopProps> = ({ titel, nummer, ebc, status, stijl, 
         <h2 className="hidden md:block text-2xl font-bold text-gray-900 leading-tight min-w-0 break-words">{titel}</h2>
         {nummer && <span className="hidden md:inline text-base font-medium text-gray-500 tabular-nums">#{nummer}</span>}
         <Badge s={status} />
+        {overTijd && (
+          <span className="px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 ring-1 ring-orange-200 text-xs font-medium">{t('batches_over_tijd')}</span>
+        )}
         {stijl && <span className="text-sm text-gray-600 min-w-0 break-words">{stijl}</span>}
       </div>
       {acties && <div className="flex flex-wrap items-center justify-end gap-2">{acties}</div>}

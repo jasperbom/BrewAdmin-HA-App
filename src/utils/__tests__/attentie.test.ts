@@ -267,6 +267,27 @@ describe('attentiePosten — facturen per e-mail', () => {
   })
 })
 
+describe('attentiePosten — THT-lots als toelichting', () => {
+  it('noemt per lot het ingrediënt en de THT; de post zelf blijft naar de gefilterde lijst gaan', () => {
+    const bron = leegBron()
+    bron.lots = [
+      { id: 7, ingredient_id: 14, lotnummer: 'L-77', beschikbaar: true, hoeveelheid: 2, houdbaarheid: '2026-05-25' },
+      { id: 8, ingredient_id: 99, lotnummer: 'L-88', beschikbaar: true, hoeveelheid: 1, houdbaarheid: '2026-05-01' },
+    ]
+    bron.etiket = { recepten: [], batchIngredienten: [], ingredienten: [{ id: 14, naam: 'SafAle US-05', type: 'Gist' }] as any, lots: [] }
+    const posten = attentiePosten(bron).productie
+    const binnenkort = posten.find(p => p.id === 'tht_binnenkort')!
+    expect(binnenkort.details).toEqual([{
+      sleutel: 'attentie_tht_lot', kortSleutel: 'attentie_tht_lot_kort',
+      params: { naam: 'SafAle US-05', datum: '2026-05-25' },
+      doel: { pagina: 'ingredienten', tab: 'ingredienten', lotId: 7 },
+    }])
+    // Een lot zonder bekend ingrediënt noemt zijn lotnummer.
+    expect(posten.find(p => p.id === 'tht_verlopen')!.details![0].params.naam).toBe('L-88')
+    expect(attentieDoel(binnenkort)).toEqual({ pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_binnenkort' })
+  })
+})
+
 describe('attentiePosten — product en voorraad (Verkoop en Productie)', () => {
   // De demo-brouwerij van de schermspecificatie: Kadeblond mist tarwe op het
   // etiket, Pils noemt een te laag alcoholgehalte, Sluiswit fust heeft geen
@@ -306,6 +327,20 @@ describe('attentiePosten — product en voorraad (Verkoop en Productie)', () => 
     // In Productie dezelfde post, vooraan, maar naar de batch waartegen getoetst is.
     expect(productie[0]).toMatchObject({ id: 'etiket', aantal: 2, kleur: 'rood', pagina: 'batches' })
     expect(productie[0].details?.map(d => d.doel)).toEqual([{ pagina: 'batches', id: 2609 }, { pagina: 'batches', id: 2602 }])
+  })
+
+  it('in Productie staat de verwachte afvuldag van de batch in de tank naast het etiketprobleem', () => {
+    const { productie, verkoop } = attentiePosten(metDemo())
+    const details = productie.find(p => p.id === 'etiket')!.details!
+    // Kadeblond #2609 conditioneert: afvullen ± vr 16-10. Pils #2602 is gesloten: geen afvuldag.
+    expect(details.map(d => [d.params.product, d.afvullen ?? null, d.afvullenOverTijd ?? false])).toEqual([
+      ['Kadeblond', '2026-10-16', false], ['Pils', null, false],
+    ])
+    // In Verkoop gaat het over het product: geen afvuldag.
+    expect(verkoop.find(p => p.id === 'etiket')!.details!.every(d => d.afvullen == null)).toBe(true)
+    // Voorbij de afvuldag terwijl de batch nog in de tank ligt: over tijd.
+    const laat = attentiePosten(metDemo({ vandaag: new Date('2026-10-20T00:00:00'), vandaagIso: '2026-10-20' }))
+    expect(laat.productie.find(p => p.id === 'etiket')!.details![0]).toMatchObject({ afvullen: '2026-10-16', afvullenOverTijd: true })
   })
 
   it('één etiketprobleem: de post opent het product (Verkoop) of de batch (Productie)', () => {

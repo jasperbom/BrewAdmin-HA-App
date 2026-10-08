@@ -507,7 +507,7 @@ const productBlok = (
     tegels,
     allergenen: {
       batch: allergenen.batch.chips || [],
-      etiketLabel: pe?.etiketVersie ? vul(t, 'etiket_tegel_etiket_versie', {versie: pe.etiketVersie}) : t('etiket_bron_etiket'),
+      etiketLabel: pe?.etiketVersie ? vul(t, 'etiket_tegel_etiket_versie', {versie: pe.etiketVersie}) : t('etiket_tegel_etiket_label'),
       etiket: allergenen.etiket?.chips || [],
       etiketTekst: allergenen.etiket?.chips?.length ? '' : (allergenen.etiket?.waarde || allergenen.etiket?.bron || ''),
       oordeel: allergenen.oordeel,

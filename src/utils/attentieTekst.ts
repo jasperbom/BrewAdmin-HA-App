@@ -10,7 +10,7 @@
 import type { AttentieDetail, AttentiePost } from './attentie'
 import { allergeenNamen } from './etiket'
 import type { Vertaal } from './etiket'
-import { fmtD, fmtDagMaand } from './format'
+import { fmtD, fmtDagMaand, fmtWeekdagDatum } from './format'
 
 /** Elke `{naam}` vervangen door zijn waarde (alle voorkomens). */
 export const vulIn = (s: string, params: Record<string, string | number> | null | undefined): string =>
@@ -64,7 +64,15 @@ export const detailTekst = (d: AttentieDetail, t: Vertaal, opties: DetailOpties 
     params.datum = fmtD(params.datum)
   }
   if (d.allergenen) params.allergenen = allergeenNamen(d.allergenen, t).join(', ')
-  return vulIn(t(sleutel), params)
+  const zin = vulIn(t(sleutel), params)
+  // Het etiket in Productie: de afvuldag erachter ("· afvullen ± vr 16-10"),
+  // alleen in de lange vorm — op een telefoon blijft de regel kort.
+  if (!d.afvullen || opties.kort) return zin
+  const taal = String(opties.taal || 'nl').slice(0, 2).toLowerCase()
+  const af = d.afvullenOverTijd
+    ? t('attentie_etiket_afvullen_over_tijd')
+    : vulIn(t('attentie_etiket_afvullen'), { dag: fmtWeekdagDatum(d.afvullen, { jaar: false, lang: taal }) })
+  return `${zin} · ${af}`
 }
 
 /**

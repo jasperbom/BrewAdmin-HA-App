@@ -29,10 +29,12 @@ export interface AbvVastzettenProps {
   labOpen?: boolean
   onLabOpen?: (open: boolean) => void
   alleenLezen?: boolean
+  /** Telefoon: de ActieBalk onderin draagt *ABV vastzetten* al — dan niet nog eens een knop in de regel (SPEC F). */
+  zonderKnop?: boolean
 }
 
 const AbvVastzetten: React.FC<AbvVastzettenProps> = ({
-  abv, onVastzetten, onLosmaken, heeftAfvullingen = false, labOpen: labOpenProp, onLabOpen, alleenLezen = false,
+  abv, onVastzetten, onLosmaken, heeftAfvullingen = false, labOpen: labOpenProp, onLabOpen, alleenLezen = false, zonderKnop = false,
 }) => {
   const taal = getLang()
   const [labEigen, setLabEigen] = React.useState(false)
@@ -103,7 +105,7 @@ const AbvVastzetten: React.FC<AbvVastzettenProps> = ({
               </BevestigKnop>
             ) : (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <Btn onClick={zetVast} disabled={abv.waarde === null} cls="flex-1 sm:flex-none">{t('abv_vast_knop')}</Btn>
+                {!zonderKnop && <Btn onClick={zetVast} disabled={abv.waarde === null} cls="flex-1 sm:flex-none">{t('abv_vast_knop')}</Btn>}
                 {!labOpen && (
                   <button type="button" onClick={() => zetLab(true)}
                     className="min-h-tap sm:min-h-0 text-sm font-medium t-accent-text hover:underline">

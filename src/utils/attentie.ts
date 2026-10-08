@@ -10,7 +10,7 @@
 // product, een voorraadregel, een factuur), nooit vinkjes; `details` zegt
 // welke, voor de toelichting op een dashboard (utils/attentieTekst.ts).
 
-import { telThtAlerts, telOpenAccijnsMaanden } from './calculations'
+import { telThtAlerts, thtAlertLots, telOpenAccijnsMaanden } from './calculations'
 import { telNieuweWebshopOrders, telWebshopAfgebroken } from './wcOrderImport'
 import { telOpenstaandeBtwPerioden, BtwPeriodeType } from './btw'
 import { openstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './taken'
@@ -24,7 +24,7 @@ import type { VerkoopCtx } from './verkoopOverzicht'
 import type { EtiketCtx } from './etiket'
 import type { BatchesStand, NavDoel } from './route'
 import { batchTitel } from './productKeten'
-import { normaliseerStatus } from './volgendeStap'
+import { normaliseerStatus, verwachteAfvulDatum } from './volgendeStap'
 
 export type WerkruimteId = 'productie' | 'verkoop' | 'administratie'
 
@@ -71,6 +71,14 @@ export interface AttentieDetail {
   allergenen?: string[]
   /** Waar een klik op dit ene ding landt (rechtstreeks voor `gaNaar`). */
   doel: NavDoel
+  /**
+   * Productie, etiket: de verwachte afvuldag (JJJJ-MM-DD) van de batch in de
+   * tank waartegen getoetst is — het etiketprobleem staat naast de dag waarop
+   * het op de fles gaat ("afvullen ± vr 16-10"), niet pas bij CCP 3.
+   */
+  afvullen?: string
+  /** Die afvuldag is al voorbij (de batch staat nog in de tank). */
+  afvullenOverTijd?: boolean
 }
 
 export interface AttentiePost extends AttentieDoel {
@@ -178,14 +186,21 @@ const ETIKET_DETAIL_SLEUTEL: Record<string, string> = {
   etiket_status_ontbreken: 'attentie_etiket_ontbreken',
   etiket_status_buiten_marge: 'attentie_etiket_marge',
 }
-const etiketPost = (problemen: EtiketProbleem[], naar: 'product' | 'batch'): AttentiePost => {
-  const details: AttentieDetail[] = problemen.map(p => ({
-    sleutel: ETIKET_DETAIL_SLEUTEL[p.statusSleutel] || 'attentie_detail_product',
-    kortSleutel: 'attentie_detail_product',
-    params: { product: p.naam },
-    allergenen: p.allergenen,
-    doel: naar === 'product' ? { pagina: 'producten', id: p.productId } : { pagina: 'batches', id: p.batchId },
-  }))
+const etiketPost = (
+  problemen: EtiketProbleem[], naar: 'product' | 'batch',
+  afvullen: (batchId: number) => { datum: string; overTijd: boolean } | null = () => null,
+): AttentiePost => {
+  const details: AttentieDetail[] = problemen.map(p => {
+    const af = naar === 'batch' ? afvullen(p.batchId) : null
+    return {
+      sleutel: ETIKET_DETAIL_SLEUTEL[p.statusSleutel] || 'attentie_detail_product',
+      kortSleutel: 'attentie_detail_product',
+      params: { product: p.naam },
+      allergenen: p.allergenen,
+      doel: naar === 'product' ? { pagina: 'producten', id: p.productId } : { pagina: 'batches', id: p.batchId },
+      ...(af ? { afvullen: af.datum, ...(af.overTijd ? { afvullenOverTijd: true } : {}) } : {}),
+    }
+  })
   return {
     id: 'etiket', sleutel: 'attentie_etiket', kleur: 'rood', aantal: problemen.length, details,
     ...doelVanDetails(details, { pagina: naar === 'product' ? 'producten' : 'batches' }),
@@ -265,14 +280,34 @@ const verkoopVoorraadPosten = (ctx: VerkoopCtx): AttentiePost[] => {
 
 export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, AttentiePost[]> {
   const tht = telThtAlerts(bron.lots, bron.vandaag)
+  // De lots achter de THT-telling (dezelfde selectie), met de naam van hun ingrediënt.
+  const thtLots = thtAlertLots(bron.lots, bron.vandaag)
+  const ingredientNaam = (l: any): string => {
+    const ing = (bron.etiket?.ingredienten || []).find((i: any) => i && i.id === l?.ingredient_id)
+    return String(ing?.naam || l?.ingredient_naam || l?.lotnummer || '').trim()
+  }
+  const thtDetails = (lijst: Array<{ lot: any }>): AttentieDetail[] => lijst.map(({ lot }) => ({
+    sleutel: 'attentie_tht_lot', kortSleutel: 'attentie_tht_lot_kort',
+    params: { naam: ingredientNaam(lot), datum: String(lot?.houdbaarheid || '').slice(0, 10) },
+    doel: { pagina: 'ingredienten', tab: 'ingredienten', lotId: lot?.id },
+  }))
   const verkoop = bron.verkoop || null
   const producten: any[] = bron.producten || (verkoop?.producten as any[] | null | undefined) || []
   const etiket = bron.etiket ? etiketProblemen({ ...bron.etiket, producten, batches: bron.batches }) : []
+  // De afvuldag van een batch die nog in de tank ligt (Vergisten of
+  // Conditioneren) — dezelfde projectie als de tankkaart en Komende 14 dagen.
+  const afvuldag = (batchId: number): { datum: string; overTijd: boolean } | null => {
+    const b = (bron.batches || []).find((x: any) => x && Number(x.id) === Number(batchId))
+    const status = normaliseerStatus(b?.status)
+    if (!b || (status !== 'Vergisten' && status !== 'Conditioneren')) return null
+    const datum = verwachteAfvulDatum(b, verkoop?.conditionerenDagen)
+    return datum ? { datum, overTijd: !!bron.vandaagIso && datum < bron.vandaagIso } : null
+  }
   return {
     productie: nietLeeg([
       // Eerst wat op de fles fout gaat: het etiket mist een allergeen of de
       // alcohol ligt buiten de marge — vóór het afvullen op te lossen.
-      etiketPost(etiket, 'batch'),
+      etiketPost(etiket, 'batch', afvuldag),
       // Batches › Lopend, alleen de batches met open taken; per batch een regel.
       batchTakenPost(bron, producten),
       {
@@ -280,9 +315,11 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
         id: 'schoonmaak', sleutel: 'attentie_schoonmaak', pagina: 'haccp', tab: 'reiniging',
         aantal: telAchterstalligeSchoonmaakTaken(bron.schoonmaakTaken, bron.schoonmaakLog, bron.vandaag),
       },
-      // Ingrediënten → THT-overzicht, gefilterd op precies deze groep lots.
-      { id: 'tht_verlopen', sleutel: 'attentie_tht_verlopen', pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_verlopen', aantal: tht.verlopen },
-      { id: 'tht_binnenkort', sleutel: 'attentie_tht_binnenkort', pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_binnenkort', aantal: tht.binnenkort },
+      // Ingrediënten → THT-overzicht, gefilterd op precies deze groep lots. De
+      // details noemen de lots ("SafAle US-05 · 25-10"); de post zelf blijft
+      // naar de gefilterde lijst gaan.
+      { id: 'tht_verlopen', sleutel: 'attentie_tht_verlopen', pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_verlopen', aantal: tht.verlopen, details: thtDetails(thtLots.verlopen) },
+      { id: 'tht_binnenkort', sleutel: 'attentie_tht_binnenkort', pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_binnenkort', aantal: tht.binnenkort, details: thtDetails(thtLots.binnenkort) },
     ]),
     verkoop: nietLeeg([
       {

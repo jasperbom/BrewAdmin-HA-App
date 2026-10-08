@@ -50,6 +50,22 @@ describe('detailTekst / attentieToelichting', () => {
     params: { product: 'Havenbok', verpakking: 'Fles 33 cl', n: 58, datum: '2026-11-02' }, doel: { pagina: 'producten', id: 4 },
   }
 
+  it('het etiket in Productie: de afvuldag erachter (alleen de lange vorm), of "over tijd"', () => {
+    const metDag: AttentieDetail = { ...etiket, doel: { pagina: 'batches', id: 2609 }, afvullen: '2026-10-16' }
+    expect(detailTekst(metDag, t, { taal: 'nl' })).toBe('Kadeblond: tarwe ontbreekt · afvullen ± vr 16-10')
+    expect(detailTekst(metDag, t, { kort: true })).toBe('Kadeblond')
+    expect(detailTekst({ ...metDag, afvullenOverTijd: true }, t)).toBe('Kadeblond: tarwe ontbreekt · afvullen over tijd')
+  })
+
+  it('een lot met een THT: naam en dag', () => {
+    const lot: AttentieDetail = {
+      sleutel: 'attentie_tht_lot', kortSleutel: 'attentie_tht_lot_kort',
+      params: { naam: 'SafAle US-05', datum: '2026-10-25' }, doel: { pagina: 'ingredienten', tab: 'ingredienten', lotId: 4 },
+    }
+    expect(detailTekst(lot, t)).toBe('SafAle US-05 · 25-10')
+    expect(detailTekst(lot, t, { kort: true })).toBe('SafAle US-05')
+  })
+
   it('de zinnen van SPEC O en P', () => {
     expect(detailTekst(etiket, t)).toBe('Kadeblond: tarwe ontbreekt')
     expect(detailTekst(etiket, t, { kort: true })).toBe('Kadeblond')
