@@ -70,7 +70,8 @@ BrewAdmin-HA-App/
 │   │   ├── batch/                  # De batchpagina in delen: BatchKop + KetenRegel (Recept › Product ›
 │   │   │                           # Tank), EtiketKaart (etiket & website; modi batch/product/recept),
 │   │   │                           # EtiketBijwerken (de énige schrijfweg voor het etiket, overal te openen
-│   │   │                           # met `useEtiketBijwerken()?.open({productId, batchId?})`), AbvVastzetten,
+│   │   │                           # met `useEtiketBijwerken()?.open({productId, batchId?})`; bovenaan
+│   │   │                           # EtiketVoorschriftLijst: "Zet dit op het etiket"), AbvVastzetten,
 │   │   │                           # NieuweBatchBlad ("Wat brouw je?", overal via `useNieuweBatch()?.open(…)`),
 │   │   │                           # MetingBlad, AfvulSessieSectie (CCP 2/3), useProductKoppeling, FaseKop
 │   │   │                           # (bureau: compacte stappenbalk; telefoon: "Fase 4 van 6" met een lijst)
@@ -171,7 +172,10 @@ BrewAdmin-HA-App/
 │   │   │                   # `abvBalling`, + suiker na de kook), `energiePer100ml` (kcal én kJ), `abvMarge`,
 │   │   │                   # `vergelijkEtiket`/`etiketStatus`, `allergeenRegel` ("Bevat: …"),
 │   │   │                   # `referentieBatch`, `productEtiketWaarden`, `legEtiketVast` (énige schrijfweg),
-│   │   │                   # `volgendeEtiketVersie`, `websiteLooptAchter`, `webshopBevatRegel`
+│   │   │                   # `volgendeEtiketVersie`, `websiteLooptAchter`, `webshopBevatRegel`,
+│   │   │                   # `etiketVoorschrift` (wat er op het etiket moet: per verplicht onderdeel de tekst,
+│   │   │                   # de stand t.o.v. het vastgelegde etiket en de uitleg; vrijwillig: energie en de
+│   │   │                   # ingrediëntenlijst met `ingredientenMetNadruk`) en `allergeenKeuzeTegenBatch`
 │   │   ├── etiketKaart.ts  # Het model van de EtiketKaart (blokken, rijen, oordelen) bovenop etiket.ts
 │   │   ├── afvulControle.ts # De afvulcontrole (tankvolume, ABV): fout = knop uit, waarschuwing = bevestigen in de knop
 │   │   ├── productKeten.ts # De keten recept › batch › product: `receptHoofdId`/`hoofdIdResolver` (een
@@ -729,7 +733,12 @@ het scangeheugen, de totaal- en dubbelecontrole, de foto-omzetting
 Het opzoeken van allergenen (`allergeenOpzoeken.test.ts`): de vaste regels (mout,
 graansoorten in vijf talen, glutenvrij graan, melkzuur/nootmuskaat/kokos,
 plantaardige melk, suiker, wat onzeker blijft), de gluten-conventie, het schema
-en het antwoord van Claude, voorstellen, aanpassen en overnemen.
+en het antwoord van Claude, voorstellen, aanpassen en overnemen. Wat er op het
+etiket moet (`etiketVoorschrift.test.ts`): elk verplicht onderdeel met de tekst
+en de stand tegen het vastgelegde etiket, wat nog ontbreekt (allergenen,
+brouwerij, verpakking), "overig" is geen etikettekst, ≥ 10 % vol geen THT, tot
+1,2 % vol de ingrediëntenlijst verplicht, nadruk in de ingrediëntenlijst en de
+vinkjes tegen de ingrediënten.
 De administratie (v1.12.89/90) heeft een eigen blok: de periodekeuze
 (`periode.test.ts`), de factuurfilter (`factuurFilter.test.ts`: een vervallen
 factuur van vorig jaar staat onder Te laat terwijl de periode "dit jaar" is, en
@@ -1183,6 +1192,20 @@ website hoort (zie `docs/OPZET-PRODUCTIE-VERKOOP.md` hoofdstuk 5). Regels:
   (nooit voorgevinkt). Het voorstel volgt de gluten-conventie van wat al
   vastligt (`glutenConventie`), want CCP 3 normaliseert gluten niet. Het etiket
   van het product blijft daarbuiten: dat gaat alleen via `legEtiketVast`.
+- **Wat er op het etiket moet** (`etiketVoorschrift`, blok *Zet dit op het
+  etiket* bovenaan `EtiketBijwerken`): per verplicht onderdeel van een
+  bieretiket (benaming, alcohol, allergenen, inhoud per verpakking, THT,
+  lotcode, naam en adres, statiegeldlogo bij een SNd-verpakking) de tekst die
+  erop hoort, uit de batch of het recept, met de stand tegen het vastgelegde
+  etiket (`klopt`/`aanpassen`/`nieuw`) en een korte uitleg; vrijwillig: energie
+  en de ingrediëntenlijst met de allergenen vet. Een aanwijzing, geen
+  invulhulp: er wordt niets voorgevinkt en er is geen "neem over". Onder de
+  vinkjes zegt `allergeenKeuzeTegenBatch` wat er volgens de ingrediënten nog
+  mist of te veel staat (in de namen van de vinkjes, gluten los). "Overige
+  allergenen" en "noten" zijn geen etikettekst (noem het allergeen of de noot
+  zelf); zijn de allergenen van de ingrediënten niet compleet, dan geen
+  Bevat-regel maar *Allergenen opzoeken* — het venster gaat dan even weg
+  (`verborgen`) en komt met zijn keuzes terug.
 - **Webshop.** `afgeleideBierInfo` voor de push leest alleen productwaarden
   (nooit stil een batchwaarde). Bij elke push en pull bewaart de app de
   `_cf_`-meta als `wc.meta_stand` + `meta_stand_op` op het artikel; "website

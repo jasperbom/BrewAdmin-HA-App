@@ -38,6 +38,7 @@ import { batchesVanProduct, huidigReceptVoorProduct, receptVoorBatch } from './p
 import { fmtSg, tod } from './format'
 import { bouwWcPayload } from './wcProduct'
 import type { WcMetaWaarde } from './wcProduct'
+import { allergenenVolgensRegels } from './allergeenOpzoeken'
 
 /** Vertaalfunctie van de aanroeper (`t` uit `i18n`). */
 export type Vertaal = (sleutel: string, fallback?: string) => string
@@ -1960,6 +1961,288 @@ export const etiketKopieTekst = (invoer: EtiketKopieInvoer, t: Vertaal): string 
     voeg(t('etiket_kopie_energie').replace('{kj}', String(Math.round(kj))).replace('{kcal}', String(Math.round(kcal))))
   }
   return regels.join('\n')
+}
+
+// ── 12b. Wat er op het etiket moet ──────────────────────────────────────────
+//
+// De aanwijzing bovenaan "Etiket bijwerken": per verplicht onderdeel van een
+// bieretiket (Vo. 1169/2011 art. 9 en 21, bijlagen II, X en XII; de partijcode
+// uit richtlijn 2011/91/EU) wat er op moet staan, met de waarden van de batch
+// of het recept, en of het vastgelegde etiket dat al heeft. Alleen tekst:
+// niets gaat vanzelf naar het etiket — vastleggen blijft wat er op het
+// gedrukte etiket staat, zodat CCP 3 een echte controle blijft.
+
+export type VoorschriftVeld =
+  | 'benaming' | 'alcohol' | 'allergenen' | 'inhoud' | 'tht' | 'lot' | 'adres' | 'statiegeld'
+  | 'energie' | 'ingredienten'
+
+/** `klopt` = het vastgelegde etiket heeft dit al; `aanpassen` = het wijkt af;
+ *  `nieuw` = nog niet vastgelegd; `onbekend` = de app weet het (nog) niet;
+ *  `info` = zet dit erop (de app legt het niet vast, dus vergelijkt niet). */
+export type VoorschriftStand = 'klopt' | 'aanpassen' | 'nieuw' | 'onbekend' | 'info'
+
+export interface VoorschriftRegel {
+  veld: VoorschriftVeld
+  /** Het onderdeel ("Alcohol"). */
+  label: string
+  /** Wat er op het etiket komt ("5,3 % vol", "Bevat: gerst, tarwe."); leeg = (nog) onbekend. */
+  tekst: string
+  stand: VoorschriftStand
+  /** Waar het vandaan komt, wat er nog moet, en hoe het erop hoort. */
+  uitleg: string[]
+}
+
+export interface IngredientDeel {
+  tekst: string
+  /** Draagt een allergeen: vet op het etiket (art. 21). */
+  nadruk: boolean
+}
+
+export interface EtiketVoorschrift {
+  verplicht: VoorschriftRegel[]
+  vrijwillig: VoorschriftRegel[]
+  /** De ingrediëntenlijst per ingrediënt, met nadruk op wat een allergeen draagt. */
+  ingredienten: IngredientDeel[]
+  /** Ingrediënten van de batch zonder beoordeelde allergenen (om op te zoeken). */
+  opTeZoeken: number[]
+}
+
+export interface EtiketVoorschriftCtx {
+  productArtikelen?: Array<Pick<ProductArtikel, 'product_id'> & Partial<ProductArtikel>> | null
+  verpakkingen?: Array<Pick<Verpakking, 'id'> & Partial<Verpakking>> | null
+  brouwerij?: Partial<BreweryDetails> | null
+  taal?: string | null
+}
+
+/** Tot en met dit alcoholgehalte gelden de regels van een gewoon levensmiddel
+ *  (ingrediëntenlijst en voedingswaarde verplicht, alcohol niet; art. 16 lid 4). */
+export const ABV_ALCOHOLHOUDEND = 1.2
+
+/**
+ * De ingrediëntenlijst in delen (komma's buiten haakjes), met nadruk op elk
+ * ingrediënt dat een allergeen draagt — volgens dezelfde brouwkennis als het
+ * opzoeken van allergenen, ook in het deel tussen haakjes ("chocolade (soja)").
+ */
+export const ingredientenMetNadruk = (lijst: unknown): IngredientDeel[] => {
+  const s = tekst(lijst).replace(/[.\s]+$/, '')
+  if (!s) return []
+  const delen: string[] = []
+  let diepte = 0
+  let huidig = ''
+  for (const c of s) {
+    if (c === '(') diepte++
+    if (c === ')') diepte = Math.max(0, diepte - 1)
+    if (c === ',' && diepte === 0) { delen.push(huidig); huidig = ''; continue }
+    huidig += c
+  }
+  delen.push(huidig)
+  const draagt = (naam: string): boolean => (allergenenVolgensRegels({naam, type: ''})?.allergenen.length ?? 0) > 0
+  return delen.map(d => d.trim()).filter(Boolean).map(d => {
+    const tussen = /\(([^)]*)\)/.exec(d)?.[1] || ''
+    return {tekst: d, nadruk: draagt(d) || (!!tussen && draagt(tussen))}
+  })
+}
+
+const verpakkingenVoorEtiket = (
+  product: ProductEtiketWaarden | null,
+  batch: EtiketWaarden | null,
+  ctx: EtiketVoorschriftCtx,
+): Array<Pick<Verpakking, 'id'> & Partial<Verpakking> & {inhoud: number | null}> => {
+  const pid = product ? Number(product.productId) : null
+  const artikelen = (ctx.productArtikelen || []).filter(a => !!a && pid !== null && Number(a.product_id) === pid)
+  const ids = new Set<number>()
+  for (const a of artikelen) if (num(a.verpakking_id) !== null) ids.add(Number(a.verpakking_id))
+  for (const l of (batch?.lots || [])) {
+    if (l.verpakkingId !== null && (pid === null || !l.productIds.length || l.productIds.includes(pid))) ids.add(l.verpakkingId)
+  }
+  const uit: Array<Pick<Verpakking, 'id'> & Partial<Verpakking> & {inhoud: number | null}> = []
+  for (const id of ids) {
+    const vp = (ctx.verpakkingen || []).find(v => Number(v.id) === id)
+    const artikel = artikelen.find(a => Number(a.verpakking_id) === id)
+    uit.push({...(vp || {id}), inhoud: pos(vp?.inhoud_liter) ?? pos(artikel?.inhoud_liter)})
+  }
+  return uit
+}
+
+/**
+ * Wat er op het etiket van dit bier moet, per onderdeel: de tekst zoals hij
+ * erop komt, of het vastgelegde etiket dat al heeft, en een korte uitleg.
+ * `batch` = de waarden van de batch (of het recept) waartegen; `product` = het
+ * etiket zoals het nu is vastgelegd.
+ */
+export const etiketVoorschrift = (
+  batch: EtiketWaarden | null,
+  product: ProductEtiketWaarden | null,
+  ctx: EtiketVoorschriftCtx,
+  t: Vertaal,
+): EtiketVoorschrift => {
+  const taal = ctx.taal
+  const regel = (veld: VoorschriftVeld, tekstWaarde: string, stand: VoorschriftStand, uitleg: string[]): VoorschriftRegel =>
+    ({veld, label: t(`etiket_voorschrift_${veld}`), tekst: tekstWaarde, stand, uitleg: uitleg.filter(Boolean)})
+  const v = batch && product ? vergelijkEtiket(batch, product) : null
+  const abv = batch?.abv.waarde ?? null
+  const alcoholvrij = abv !== null && rond(abv, 1) <= ABV_ALCOHOLHOUDEND
+
+  // ── Alcohol ──
+  let alcohol: VoorschriftRegel
+  const etiketAbv = product?.abv.waarde ?? null
+  if (abv === null) {
+    alcohol = regel('alcohol', fmtAbv(etiketAbv, taal), 'onbekend', [t('etiket_voorschrift_alcohol_onbekend')])
+  } else {
+    const bron = vulIn(t, batch?.abv.bronSleutel || 'etiket_bron_geen', batch?.abv.bronParams || {})
+    const herkomst = batch?.abv.bron === 'verwacht'
+      ? t('etiket_voorschrift_alcohol_verwacht') : vulIn(t, 'etiket_voorschrift_alcohol_bron', {bron})
+    const o = v?.abv.oordeel
+    if (alcoholvrij) {
+      alcohol = regel('alcohol', fmtAbv(abv, taal), 'info', [t('etiket_voorschrift_alcohol_laag')])
+    } else if (etiketAbv === null || !o || o === 'leeg' || o === 'onbekend') {
+      alcohol = regel('alcohol', fmtAbv(abv, taal), 'nieuw', [herkomst])
+    } else if (o === 'klopt') {
+      alcohol = regel('alcohol', fmtAbv(etiketAbv, taal), 'klopt', [herkomst])
+    } else if (o === 'binnen_marge') {
+      alcohol = regel('alcohol', fmtAbv(etiketAbv, taal), 'klopt', [
+        vulIn(t, 'etiket_voorschrift_alcohol_binnen', {batch: fmtAbv(abv, taal), marge: fmtGetal(v?.abv.marge ?? 0.5, 1, taal)}),
+      ])
+    } else {
+      alcohol = regel('alcohol', fmtAbv(abv, taal), 'aanpassen', [
+        vulIn(t, 'etiket_voorschrift_alcohol_aanpassen', {etiket: fmtAbv(etiketAbv, taal), marge: fmtGetal(v?.abv.marge ?? 0.5, 1, taal)}),
+        herkomst,
+      ])
+    }
+  }
+
+  // ── Allergenen ──
+  let allergenen: VoorschriftRegel
+  const pe = product?.allergenen
+  const etiketRegel = pe?.gezet ? (allergeenRegel(pe.lijst, t) || t('etiket_allergenen_geen')) : ''
+  if (!batch) {
+    allergenen = regel('allergenen', etiketRegel, 'onbekend', [t('etiket_voorschrift_geen_batch')])
+  } else if (!batch.allergenen.volledig) {
+    const al = batch.allergenen
+    const onvolledig = [...al.nietBeoordeeld, ...al.nietInCatalogus]
+    allergenen = regel('allergenen', '', 'onbekend', [onvolledig.length
+      ? vulIn(t, 'etiket_voorschrift_allergenen_onvolledig', {namen: onvolledig.join(', ')})
+      : t('etiket_voorschrift_allergenen_geen_regels')])
+  } else {
+    const al = batch.allergenen
+    const lijst = sorteerAllergenen(al.lijst)
+    const stand: VoorschriftStand = !pe || !pe.gezet ? 'nieuw'
+      : vergelijkAllergenen(lijst, pe.lijst, true).gelijk ? 'klopt' : 'aanpassen'
+    const namen = (a: Allergeen): string => (al.perAllergeen[a] || []).join(', ')
+    const heeftGraan = lijst.some(a => GRAANSOORTEN.includes(a))
+    allergenen = regel('allergenen', lijst.length ? allergeenRegel(lijst, t) : t('etiket_voorschrift_geen_allergenen'), stand, [
+      stand === 'aanpassen' ? vulIn(t, 'etiket_voorschrift_allergenen_nu', {regel: etiketRegel}) : '',
+      lijst.length ? t('etiket_voorschrift_allergenen_hoe') : t('etiket_voorschrift_allergenen_geen'),
+      lijst.includes('gluten') && !heeftGraan ? vulIn(t, 'etiket_voorschrift_gluten', {namen: namen('gluten')}) : '',
+      lijst.includes('noten') ? vulIn(t, 'etiket_voorschrift_noten', {namen: namen('noten')}) : '',
+      lijst.includes('overig') ? vulIn(t, 'etiket_voorschrift_overig', {namen: namen('overig')}) : '',
+      lijst.includes('sulfiet') ? t('etiket_voorschrift_sulfiet') : '',
+    ])
+  }
+
+  // ── Inhoud en statiegeld (per verpakking) ──
+  const verpakkingen = verpakkingenVoorEtiket(product, batch, ctx)
+  const inhouden = Array.from(new Set(verpakkingen.map(vp => fmtInhoud(vp.inhoud, taal)).filter(Boolean)))
+  const inhoud = inhouden.length
+    ? regel('inhoud', inhouden.join(' · '), 'info', [t('etiket_voorschrift_inhoud_uitleg')])
+    : regel('inhoud', '', 'onbekend', [t('etiket_voorschrift_inhoud_geen')])
+  const snd = verpakkingen.filter(vp => vp.statiegeld_soort === 'snd')
+  const bedrag = pos(snd[0]?.statiegeld_bedrag)
+  const statiegeld = snd.length ? regel('statiegeld', t('etiket_voorschrift_statiegeld_tekst'), 'info', [
+    vulIn(t, 'etiket_voorschrift_statiegeld_uitleg', {
+      verpakkingen: snd.map(vp => tekst(vp.naam) || fmtInhoud(vp.inhoud, taal)).filter(Boolean).join(', '),
+      bedrag: bedrag !== null ? `€ ${fmtGetal(bedrag, 2, taal)}` : '—',
+    }),
+  ]) : null
+
+  // ── Houdbaarheid en partij (per afvulsessie) ──
+  const lots = batch?.lots || []
+  let tht: VoorschriftRegel
+  let lot: VoorschriftRegel
+  if (!lots.length) {
+    tht = regel('tht', '', 'onbekend', [t('etiket_voorschrift_volgt')])
+    lot = regel('lot', '', 'onbekend', [t('etiket_voorschrift_volgt')])
+  } else {
+    const voorspeld = lots.some(l => l.voorspeld)
+    if (lots.every(l => l.thtBron === 'geen')) {
+      tht = regel('tht', '', 'info', [t('etiket_voorschrift_tht_geen')])
+    } else {
+      const metDatum = lots.filter(l => !!l.tht)
+      const datums = Array.from(new Set(metDatum.map(l => tekst(l.tht))))
+      const tekstTht = !datums.length ? ''
+        : datums.length === 1 ? vulIn(t, 'etiket_kopie_tht', {datum: fmtDatum(datums[0])})
+        : metDatum.map(l => `${l.lotcode}: ${fmtDatum(l.tht)}`).join(' · ')
+      const maanden = lots.find(l => l.thtMaanden !== null)?.thtMaanden
+      tht = regel('tht', tekstTht, tekstTht ? 'info' : 'onbekend', [
+        voorspeld && maanden != null ? vulIn(t, 'etiket_voorschrift_tht_voorspeld', {maanden}) : '',
+        t('etiket_voorschrift_tht_uitleg'),
+      ])
+    }
+    const codes = Array.from(new Set(lots.map(l => (l.voorspeld ? vulIn(t, 'etiket_lot_ev', {lotcode: l.lotcode}) : l.lotcode)).filter(Boolean)))
+    lot = regel('lot', codes.join(', '), codes.length ? 'info' : 'onbekend', [
+      voorspeld ? t('etiket_voorschrift_lot_voorspeld') : '',
+      t('etiket_voorschrift_lot_uitleg'),
+    ])
+  }
+
+  // ── Naam en adres ──
+  const b = ctx.brouwerij || {}
+  const adresDelen = [
+    tekst(b.naam),
+    [tekst(b.straat), tekst(b.huisnummer)].filter(Boolean).join(' '),
+    [tekst(b.postcode), tekst(b.stad)].filter(Boolean).join(' '),
+  ].filter(Boolean)
+  const adresCompleet = !!tekst(b.naam) && !!(tekst(b.straat) || tekst(b.stad))
+  const adres = regel('adres', adresDelen.join(', '), adresCompleet ? 'info' : 'onbekend', [
+    adresCompleet ? t('etiket_voorschrift_adres_uitleg') : t('etiket_voorschrift_adres_geen'),
+  ])
+
+  const benaming = regel('benaming', t('etiket_voorschrift_bier'), 'info', [t('etiket_voorschrift_benaming_uitleg')])
+
+  // ── Vrijwillig: energie en ingrediënten ──
+  const e = batch?.energie
+  let energie: VoorschriftRegel
+  if (!e || e.kcal === null || e.kj === null) {
+    energie = regel('energie', '', 'onbekend', [t('etiket_voorschrift_energie_geen')])
+  } else {
+    const tekstE = vulIn(t, 'etiket_kopie_energie', {kj: Math.round(e.kj), kcal: Math.round(e.kcal)})
+    if (product?.energie.vermeld) {
+      const gelijk = v?.energie.oordeel === 'gelijk'
+      energie = regel('energie', tekstE, gelijk ? 'klopt' : 'aanpassen', [
+        gelijk ? '' : vulIn(t, 'etiket_voorschrift_energie_nu', {kcal: product.energie.kcal ?? '—'}),
+        t('etiket_voorschrift_energie_uitleg'),
+      ])
+    } else {
+      energie = regel('energie', tekstE, 'info', [t('etiket_voorschrift_energie_uitleg')])
+    }
+  }
+  const ingredienten = ingredientenMetNadruk(batch?.ingredienten.tekst)
+  const ingredientenRegel = regel('ingredienten', ingredienten.map(d => d.tekst).join(', '),
+    ingredienten.length ? 'info' : 'onbekend', [
+      alcoholvrij ? t('etiket_voorschrift_ingredienten_verplicht') : t('etiket_voorschrift_ingredienten_uitleg'),
+    ])
+
+  const verplicht = [
+    benaming, ...(alcoholvrij ? [] : [alcohol]), allergenen, inhoud, tht, lot, adres, ...(statiegeld ? [statiegeld] : []),
+    ...(alcoholvrij ? [ingredientenRegel] : []),
+  ]
+  const vrijwillig = [...(alcoholvrij ? [alcohol] : []), energie, ...(alcoholvrij ? [] : [ingredientenRegel])]
+  return {verplicht, vrijwillig, ingredienten, opTeZoeken: batch?.allergenen.nietBeoordeeldIds || []}
+}
+
+/**
+ * De vinkjes in "Etiket bijwerken" tegen wat de ingrediënten van de batch (of
+ * het recept) vragen: wat er nog mist en wat er te veel staat — dezelfde
+ * vergelijking als CCP 3 (gluten telt los mee). `null` zolang de allergenen
+ * van de ingrediënten niet compleet zijn: dan valt er niets te zeggen.
+ */
+export const allergeenKeuzeTegenBatch = (
+  batch: EtiketWaarden | null,
+  keuze: readonly Allergeen[] | null,
+): {klopt: boolean; ontbreekt: Allergeen[]; teveel: Allergeen[]} | null => {
+  if (!batch || !batch.allergenen.volledig) return null
+  const v = vergelijkAllergenen(sorteerAllergenen(batch.allergenen.lijst), sorteerAllergenen(keuze || []), keuze !== null)
+  return {klopt: v.gelijk, ontbreekt: sorteerAllergenen(v.ontbreektOpEtiket), teveel: sorteerAllergenen(v.teveelOpEtiket)}
 }
 
 // ── 13. CCP 3: de versie op de rol en de getallen bij de controle ───────────

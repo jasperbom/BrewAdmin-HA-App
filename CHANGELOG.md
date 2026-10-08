@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.0] — 2026-10-08
+
+### Etiket bijwerken: "Zet dit op het etiket"
+
+"Etiket bijwerken" vroeg om aan te vinken wat er op het gedrukte etiket staat,
+maar zei nergens wat er óp moet. Nu staat dat bovenaan.
+
+- **Zet dit op het etiket**: per verplicht onderdeel van een bieretiket de tekst
+  die erop hoort, met de waarden van de batch (of het recept): benaming, alcohol
+  ("5,3 % vol"), allergenen ("Bevat: gerst, tarwe, melk (lactose)."), inhoud per
+  verpakking, houdbaarheid, lotcode, naam en adres van de brouwerij, en het
+  statiegeldlogo bij een blik of fles met statiegeld. Per regel staat of je
+  huidige etiket het al goed heeft ("staat erop") of dat het anders moet
+  ("aanpassen", met wat er nu op staat), en waar het getal vandaan komt.
+- **Hoe het erop moet**: zonder ingrediëntenlijst de regel "Bevat: …"; met een
+  lijst de allergenen daarin vet. De ingrediëntenlijst staat er (vrijwillig) bij
+  met de allergenen al vet, net als de energie in kJ én kcal. "Overige
+  allergenen" en "noten" zijn geen etikettekst: de app zegt dat je het allergeen
+  of de noot zelf noemt, en in welk ingrediënt het zit. Sulfieten pas boven
+  10 mg/l; vanaf 10 % vol geen houdbaarheidsdatum; tot 1,2 % vol is juist de
+  ingrediëntenlijst verplicht.
+- **Onder de vinkjes**: wat er volgens de ingrediënten nog aangevinkt moet
+  worden, wat er te veel staat, of "Klopt met de ingrediënten".
+- Zijn de allergenen van een ingrediënt nog niet bekend, dan staat er geen
+  Bevat-regel maar **Allergenen opzoeken**; het venster komt daarna met je
+  keuzes terug.
+- Nog steeds een aanwijzing, geen invulhulp: er wordt niets voorgevinkt. Wat je
+  vastlegt is wat er op het gedrukte etiket staat, zodat de controle bij het
+  afvullen (CCP 3) echt blijft.
+
+---
+
 ## [1.12.99] — 2026-10-08
 
 ### Allergenen opzoeken: de app zoekt de allergenen van ingrediënten op

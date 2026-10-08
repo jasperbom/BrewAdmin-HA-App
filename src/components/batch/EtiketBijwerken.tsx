@@ -7,10 +7,10 @@ import { wcFoutMelding } from '../../utils/wcFout'
 import { CRAFTERY_SLEUTELS } from '../../utils/craftery'
 import { wcArtikelPush, wcMetaStandNaPush, wcMetStand } from '../../utils/wcProduct'
 import {
-  allergeenRegel, energieKeuze, etiketDialoogKop, etiketGetalReden, etiketGetalTekst, etiketGetalVoorstellen,
-  etiketWaarden, etiketWijzigingUitKeuze, keuzeVraagtNieuweVersie, legEtiketVast, metEtiketVan, productEtiketWaarden,
-  receptEtiketWaarden, referentieBatch, sorteerAllergenen, volgendeEtiketVersie, webshopBevatRegel, webshopPayload,
-  webshopVoorstel,
+  allergeenKeuzeTegenBatch, allergeenRegel, energieKeuze, etiketDialoogKop, etiketGetalReden, etiketGetalTekst,
+  etiketGetalVoorstellen, etiketVoorschrift, etiketWaarden, etiketWijzigingUitKeuze, keuzeVraagtNieuweVersie,
+  legEtiketVast, metEtiketVan, productEtiketWaarden, receptEtiketWaarden, referentieBatch, sorteerAllergenen,
+  volgendeEtiketVersie, webshopBevatRegel, webshopPayload, webshopVoorstel,
 } from '../../utils/etiket'
 import type {
   EtiketCtx, EtiketGetalVoorstel, EtiketKeuze, EtiketWaarden, WebshopArtikelVoorstel, WebshopVoorraadCtx,
@@ -18,13 +18,15 @@ import type {
 } from '../../utils/etiket'
 import { datumKort, websiteOordeelVoorProduct } from '../../utils/etiketKaart'
 import { huidigReceptVoorProduct } from '../../utils/productKeten'
-import type { Allergeen, Product } from '../../types'
+import type { Allergeen, BreweryDetails, Product } from '../../types'
 import Modal from '../ui/Modal'
 import Onderblad from '../ui/Onderblad'
 import Segment from '../ui/Segment'
 import Btn from '../ui/Btn'
 import Inp from '../ui/Inp'
 import EtiketAllergenen from '../ui/EtiketAllergenen'
+import EtiketVoorschriftLijst from './EtiketVoorschriftLijst'
+import { useAllergenenOpzoeken } from '../AllergenenOpzoeken'
 import { useUndo } from '../ui/UndoBar'
 import { useSmalScherm } from '../ui/useSmalScherm'
 
@@ -34,8 +36,12 @@ import { useSmalScherm } from '../ui/useSmalScherm'
 // vanaf de etiketkaart op de batch, vanaf het product, vanuit de
 // HACCP-allergenenmatrix en vanuit CCP 3 — overal dezelfde dialoog.
 //
-// Drie blokken: (1) de allergenen zoals ze op het nieuwe etiket gedrukt
-// staan — beginnend bij het huidige etiket, nooit bij de batch; (2) de
+// Bovenaan "Zet dit op het etiket" (`etiketVoorschrift`): per verplicht
+// onderdeel de tekst die erop hoort, uit de batch of het recept — als
+// aanwijzing, niets wordt vanzelf aangevinkt. Dan drie blokken: (1) de
+// allergenen zoals ze op het nieuwe etiket gedrukt staan — beginnend bij het
+// huidige etiket, nooit bij de batch, met eronder wat er volgens de
+// ingrediënten nog mist; (2) de
 // getallen oud → nieuw uit de referentiebatch, alleen aangevinkt bij een leeg
 // veld of een ABV buiten de marge, en de energie (niet vermeld | vermeld);
 // (3) de etiketversie, verplicht nieuw als allergenen of alcohol wijzigen, met
@@ -55,6 +61,8 @@ type BatchLike = {id: number} & Partial<Record<string, any>>
 export interface EtiketBijwerkenData extends EtiketCtx, WebshopVoorraadCtx {
   batches?: BatchLike[] | null
   producten?: ProductLike[] | null
+  /** Naam en adres op het etiket ("Zet dit op het etiket"). */
+  brouwerij?: Partial<BreweryDetails> | null
 }
 
 /** Wat een pagina vraagt. */
@@ -115,6 +123,8 @@ export interface EtiketBijwerkenProps {
   setProducten: (fn: (prev: any[]) => any[]) => void
   auditLog: any[]
   setAuditLog: (fn: (prev: any[]) => any[]) => void
+  /** Tijdelijk weg terwijl "Allergenen opzoeken" erboven open is (de keuzes blijven staan). */
+  verborgen?: boolean
   /** WooCommerce aan (met themavelden): dan volgt de webshopstap. Zonder: niet. */
   webshop?: {
     setProductArtikelen: (fn: (prev: any[]) => any[]) => void
@@ -138,9 +148,11 @@ const LABEL: Record<EtiketGetalVoorstel['veld'], string> = {
 
 const EtiketBijwerken: React.FC<EtiketBijwerkenProps> = ({
   product, batch, data, stap: beginStap = 'etiket', setProducten, auditLog, setAuditLog, webshop, onSluit,
+  verborgen = false,
 }) => {
   const smal = useSmalScherm()
   const undo = useUndo()
+  const opzoeken = useAllergenenOpzoeken()
   const taal = getLang()
   const naam = tekst(product.naam) || t('lbl_naamloos')
   const [stap, setStap] = React.useState<'etiket' | 'webshop'>(beginStap === 'webshop' && webshop ? 'webshop' : 'etiket')
@@ -161,6 +173,11 @@ const EtiketBijwerken: React.FC<EtiketBijwerkenProps> = ({
   const productW = React.useMemo(() => productEtiketWaarden(begin, data), [begin, data])
   const voorstellen = React.useMemo(
     () => (batchW ? etiketGetalVoorstellen(batchW, productW) : []), [batchW, productW])
+  // Wat er op het etiket moet: uit de batch of het recept, tegen het etiket
+  // zoals het bij het openen was.
+  const voorschrift = React.useMemo(() => etiketVoorschrift(batchW, productW, {
+    productArtikelen: data.productArtikelen, verpakkingen: data.verpakkingen, brouwerij: data.brouwerij, taal,
+  }, t), [batchW, productW, data.productArtikelen, data.verpakkingen, data.brouwerij, taal])
 
   // ── De keuzes: allergenen vanaf het huidige etiket, nooit vanaf de batch ──
   const gezet = Array.isArray(begin.allergenen)
@@ -243,9 +260,23 @@ const EtiketBijwerken: React.FC<EtiketBijwerkenProps> = ({
 
   const blokKop = (s: string) => <h4 className="text-base font-semibold text-gray-900">{s}</h4>
 
+  // ── Bovenaan: wat er op het etiket moet ──
+  const blokVoorschrift = (
+    <section className="space-y-2">
+      {blokKop(t('etiket_voorschrift_titel'))}
+      <p className="text-sm text-gray-600">{t('etiket_voorschrift_sub')}</p>
+      <EtiketVoorschriftLijst voorschrift={voorschrift} smal={smal}
+        onOpzoeken={opzoeken ? () => opzoeken.open(voorschrift.opTeZoeken) : undefined} />
+    </section>
+  )
+
   // ── Blok 1: allergenen ──
   const bevatVoorbeeld = allergenenKeuze === null ? t('etiket_oordeel_leeg')
     : (allergeenRegel(allergenenKeuze, t) || t('etiket_allergenen_geen'))
+  // Wat de ingrediënten vragen tegen wat er aangevinkt staat — in de namen van
+  // de vinkjes (gluten telt los, zoals bij CCP 3).
+  const tegen = allergeenKeuzeTegenBatch(batchW, allergenenKeuze)
+  const vinkNamen = (xs: Allergeen[]) => xs.map(a => t(`haccp_allergen_${a}`, a)).join(', ')
   const blokAllergenen = (
     <section className="space-y-2">
       {blokKop(t('etiket_bijwerken_allergenen'))}
@@ -262,6 +293,18 @@ const EtiketBijwerken: React.FC<EtiketBijwerkenProps> = ({
       <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 text-sm text-gray-700">
         {t('etiket_bijwerken_op_etiket')} <strong className="font-semibold text-gray-900">{bevatVoorbeeld}</strong>
       </div>
+      {tegen && (tegen.klopt ? (
+        <p className="text-sm text-green-700">✓ {t('etiket_bijwerken_ingredienten_klopt')}</p>
+      ) : (
+        <>
+          {tegen.ontbreekt.length > 0 && (
+            <p className="text-sm text-orange-700 break-words">{vul('etiket_bijwerken_ingredienten_mist', {allergenen: vinkNamen(tegen.ontbreekt)})}</p>
+          )}
+          {tegen.teveel.length > 0 && (
+            <p className="text-sm text-gray-600 break-words">{vul('etiket_bijwerken_ingredienten_teveel', {allergenen: vinkNamen(tegen.teveel)})}</p>
+          )}
+        </>
+      ))}
     </section>
   )
 
@@ -365,6 +408,8 @@ const EtiketBijwerken: React.FC<EtiketBijwerkenProps> = ({
   const etiketInhoud = (
     <div className="space-y-5">
       {!smal && <p className="text-sm text-gray-600 -mt-1">{kop}</p>}
+      {blokVoorschrift}
+      <div className="border-t border-gray-100" />
       {blokAllergenen}
       <div className="border-t border-gray-100" />
       {blokGetallen}
@@ -398,6 +443,10 @@ const EtiketBijwerken: React.FC<EtiketBijwerkenProps> = ({
     el.focus({preventScroll: true})
   }, [stap])
   const webInhoud = <div ref={webRef} tabIndex={-1} className="outline-none">{web.inhoud}</div>
+
+  // "Allergenen opzoeken" ligt erbovenop: dit venster even weg, de keuzes
+  // blijven staan (de component blijft bestaan).
+  if (verborgen) return null
 
   if (smal) {
     return (

@@ -2059,9 +2059,9 @@ function App() {
   const etiketData = React.useMemo((): EtiketBijwerkenData => ({
     recepten, batchIngredienten: bi, ingredienten: ing, lots, afvulSessies, afvullingen: av, haccpInst,
     batches: bat, producten, productArtikelen, verpakkingen, etiketcontroles: haccpEtiketcontroles,
-    uitleveringen: uit, verplaatsingen, afboekingen, locaties,
+    uitleveringen: uit, verplaatsingen, afboekingen, locaties, brouwerij: breweryDetails,
   }), [recepten, bi, ing, lots, afvulSessies, av, haccpInst, bat, producten, productArtikelen, verpakkingen,
-    haccpEtiketcontroles, uit, verplaatsingen, afboekingen, locaties]);
+    haccpEtiketcontroles, uit, verplaatsingen, afboekingen, locaties, breweryDetails]);
   // De webshopstap alleen als WooCommerce aan staat én de app de themavelden beheert.
   const etiketWebshopAan = !!(wcCreds?.enabled && wcCreds?.storeUrl && wcCreds?.themaVelden !== false);
   const etiketDienst = React.useMemo(() => maakEtiketDienst(etiketData, setEtiketVerzoek, etiketWebshopAan),
@@ -2619,6 +2619,7 @@ function App() {
           batch={etiketOpen.batch}
           stap={etiketVerzoek?.stap}
           data={etiketData}
+          verborgen={!!allergenenVerzoek}
           setProducten={setProducten}
           auditLog={auditLog}
           setAuditLog={setAuditLog}
