@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { brouwKosten } from '../brouwKosten'
 import {
   accijnsCalc, tariefVoorDatum, accijnsMaandGesloten, berekenWinstVerlies,
   voorraadPerLocatie, ouderdomsAnalyse, berekenBatchKostprijs,
@@ -10,6 +11,7 @@ import {
   registreerTankReiniging, laatsteTankReiniging,
   berekenVoorcalcVoorAfvulling, agpValueAt, agpOverzicht, berekenAccijnsImpact,
   lotKostenVoorRegel, batchRegelKosten, accijnsVoorKostprijs,
+  abvBalling, schatABV, vasteKostenVoorBatch, tankAccijnsWaarde,
 } from '../calculations'
 
 describe('accijnsCalc', () => {
@@ -1085,5 +1087,82 @@ describe('laatsteTankReiniging', () => {
   it('geeft null als er nooit gereinigd is', () => {
     expect(laatsteTankReiniging('T3', log)).toBeNull()
     expect(laatsteTankReiniging('T1', null)).toBeNull()
+  })
+})
+
+
+describe('abvBalling en schatABV', () => {
+  it('rekent volgens Balling — dezelfde getallen als de etiketkaart', () => {
+    expect(abvBalling(1.064, 1.012)?.abv.toFixed(2)).toBe('6.96')
+    expect(abvBalling(1.090, 1.018)?.abv.toFixed(2)).toBe('9.76')
+    expect(abvBalling(1.050, 1.010)?.abv.toFixed(2)).toBe('5.32')
+  })
+  it('weigert onzin: FG niet lager dan OG, OG ≤ 1 of > 1,2, FG onder 0,98', () => {
+    expect(abvBalling(1.012, 1.064)).toBeNull()
+    expect(abvBalling(1, 0.99)).toBeNull()
+    expect(abvBalling(1.25, 1.01)).toBeNull()
+    expect(abvBalling(1.05, 0.97)).toBeNull()
+  })
+  it('een heel droog bier (FG onder 1.000) telt het negatieve extract mee', () => {
+    expect(abvBalling(1.050, 0.998)!.abv).toBeGreaterThan(abvBalling(1.050, 1.000)!.abv)
+  })
+  it('schatABV: de vastgezette ABV, anders de gemeten FG (Balling), anders OG − 1.010', () => {
+    expect(schatABV({ABV: 7.1, OG: 1.064, FG: 1.012})).toEqual({abv: 7.1, geschat: false})
+    const metFg = schatABV({OG: 1.064, FG: 1.012})
+    expect(metFg.geschat).toBe(true)
+    expect(metFg.abv.toFixed(2)).toBe('6.96')
+    expect(schatABV({OG: 1.064})).toEqual({abv: (1.064 - 1.010) * 131.25, geschat: true})
+    expect(schatABV({})).toEqual({abv: 0, geschat: true})
+  })
+  it('de accijnswaarde in de tank rekent met die schatting', () => {
+    const b = {id: 1, OG: 1.064, FG: 1.012, liter_vergist: 100}
+    expect(tankAccijnsWaarde(b, []).abv.toFixed(2)).toBe('6.96')
+  })
+})
+
+describe('vaste brouwkosten — alleen voor schermen (opzet hoofdstuk 7)', () => {
+  // Twee eerdere brouwsels noteerden elektra; de energiefactuur staat in de
+  // boekhouding. Batch 3 noteert zelf niets.
+  const batches = [
+    {id: 1, datum: '2026-05-01', status: 'Gesloten', liter_vergist: 300, electra_kosten: 30},
+    {id: 2, datum: '2026-06-01', status: 'Gesloten', liter_vergist: 300, electra_kosten: 36},
+    {id: 3, datum: '2026-07-01', status: 'Gesloten', liter_vergist: 150},
+  ]
+  const facturen = [{datum: '2026-06-15', regels: [{kostensoort: 'Water', netto: 30}]}]
+  const afgeleid = brouwKosten({batches, inkoopFacturen: facturen})
+
+  it('per post: genoteerd op de batch wint, anders de afleiding met zijn bron', () => {
+    const posten = vasteKostenVoorBatch(batches[2], afgeleid)
+    expect(posten.find(p => p.key === 'elektra')).toMatchObject({bron: 'gemeten', geschaald: true, bedrag: 16.5})
+    // € 30 water over de 750 L van het venster: € 0,04/L × 150 L.
+    expect(posten.find(p => p.key === 'water')).toMatchObject({bron: 'boekhouding', geschaald: true, bedrag: 6})
+    expect(posten.find(p => p.key === 'schoonmaak')).toMatchObject({bron: 'geen', bedrag: 0})
+    // Een bewuste 0 op de batch is een overschrijving.
+    expect(vasteKostenVoorBatch({...batches[2], electra_kosten: 0}, afgeleid).find(p => p.key === 'elektra'))
+      .toMatchObject({bron: 'batch', bedrag: 0})
+  })
+
+  it('zonder afleiding: precies de oude optelling van de batchvelden', () => {
+    expect(vasteKostenVoorBatch({electra_kosten: 10, water_kosten: '5'}).map(p => p.bedrag)).toEqual([10, 5, 0, 0])
+  })
+
+  it('berekenBatchKostprijs telt de afleiding alleen mee als je hem meegeeft', () => {
+    const afv = [{id: 1, batch_id: 3, verpakking_type: 'Fust 20L', inhoud_per_eenheid: 20, hoeveelheid: 5}]
+    const zonder = berekenBatchKostprijs(batches[2], [], [], afv, [], [], [])
+    const met = berekenBatchKostprijs(batches[2], [], [], afv, [], [], [], null, afgeleid)
+    expect(zonder.overhead_kosten).toBe(0)
+    expect(met.overhead_kosten).toBeCloseTo(22.5, 9)
+    expect(met.totaal_kosten - zonder.totaal_kosten).toBeCloseTo(22.5, 9)
+    expect(met.overhead_posten?.map(p => p.bron)).toEqual(['gemeten', 'boekhouding', 'geen', 'geen'])
+  })
+
+  it('berekenProductKostprijs geeft de afleiding door, en zonder opties is alles als vanouds', () => {
+    const b = {...batches[2], product_id: 9}
+    const afv = [{id: 1, batch_id: 3, product_id: 9, verpakking_type: 'Fust 20L', inhoud_per_eenheid: 20, hoeveelheid: 5}]
+    const bi = [{batch_id: 3, kosten: 100}]
+    const zonder = berekenProductKostprijs(9, [b], bi, [], afv, [], [], [])
+    const met = berekenProductKostprijs(9, [b], bi, [], afv, [], [], [], {vasteKosten: afgeleid})
+    expect(zonder.kostprijs_per_liter).toBeCloseTo(100 / 100, 9)
+    expect(met.kostprijs_per_liter).toBeCloseTo(122.5 / 100, 9)
   })
 })

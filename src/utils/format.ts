@@ -57,6 +57,19 @@ export const fmtD = (d: any): string => {
   return isNaN(date.getTime()) ? '' : date.toLocaleDateString('nl-NL')
 }
 
+// Dag en maand zonder jaar en zonder voorloopnul, zoals de overzichten een
+// datum dichtbij noemen: "16-10". Met `tijd` ook het uur ("7-10 09:15", lokale
+// tijd van een ISO-tijdstempel). Leeg of onleesbaar = ''.
+export const fmtDagMaand = (d: unknown, opties: { tijd?: boolean } = {}): string => {
+  if (d === null || d === undefined || d === '') return ''
+  const s = String(d)
+  const date = s.includes('T') ? new Date(s) : new Date(s + 'T12:00:00')
+  if (isNaN(date.getTime())) return ''
+  const dm = `${date.getDate()}-${date.getMonth() + 1}`
+  if (!opties.tijd) return dm
+  return `${dm} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
 // Datum met de dag van de week ervoor, zoals de schermen hem noemen: "di
 // 15-9-2026", of zonder jaar "vr 16-10". Het weekdagwoord volgt de taal
 // (`lang`: nl/en/de/fr/es); de datum zelf blijft d-m-jjjj, net als `fmtD`

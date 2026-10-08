@@ -401,3 +401,88 @@ describe('rapportBestandsnaam', () => {
     expect(rapportBestandsnaam(r)).toBe('Batchdossier-5')
   })
 })
+
+
+describe('bouwBatchRapport — etiket & website (zoals de kaart in Gereed)', () => {
+  const metEtiket = (extra: Partial<BatchRapportInvoer> = {}): BatchRapportInvoer => invoer({
+    ingredienten: [{id: 1, naam: 'Pilsmout', type: 'Mout', allergenen: ['gluten', 'gerst']},
+      {id: 2, naam: 'Citra', type: 'Hop'}] as any,
+    producten: [{id: 3, naam: 'James Blond', abv: 5.5, allergenen: ['gluten', 'gerst'], etiket_versie: 'v2'}] as any,
+    recepten: [{id: 'r-9', naam: 'James Blond V3', is_huidige: true, IBU: 25, kleur: 12}] as any,
+    ...extra,
+  })
+
+  it('bevriest de waarden van de batch en per product het etiket', () => {
+    const r = bouwBatchRapport(metEtiket())
+    expect(r.etiket?.waarden.abv.waarde).toBe(5.5)
+    expect(r.etiket?.waarden.abv.bron).toBe('handmatig')
+    expect(r.etiket?.waarden.ebc.waarde).toBe(12)
+    expect(r.etiket?.waarden.allergenen.lijst).toEqual(['gluten', 'gerst'])
+    expect(r.etiket?.producten.map(p => p.product.id)).toEqual([3])
+    expect(r.etiket?.producten[0].etiket.etiketVersie).toBe('v2')
+  })
+
+  it('lotcode en THT per verpakking uit de sessies', () => {
+    const lots = bouwBatchRapport(metEtiket()).etiket?.waarden.lots
+    expect(lots?.map(l => [l.lotcode, l.tht])).toEqual([['L2614-B1', '2027-06-20'], ['L2614-B2', null]])
+  })
+})
+
+describe('bouwBatchRapport — CCP 3 met de getallen erbij', () => {
+  const controle = (extra: Record<string, unknown>): any => ({
+    id: 1, sessie_id: 51, batch_id: 7, product_id: 3, aanleiding: 'start',
+    allergenen_recept: ['gerst', 'gluten'], allergenen_etiket: ['gluten', 'gerst'], allergenen_gelijk: true,
+    lotcode_ok: true, tht_ok: true, alcohol_ok: true, resultaat: 'goedgekeurd',
+    paraaf: {gebruiker: 'jasper', tijdstip: '2026-06-20T09:05:00Z', bron: 'whoami'}, ...extra,
+  })
+
+  it('een nieuw record: versie op de rol, verwacht, ABV van batch en etiket, marge', () => {
+    const r = bouwBatchRapport(invoer({producten: [{id: 3, naam: 'James Blond'}] as any, etiketcontroles: [controle({
+      etiket_versie: 'v2', etiket_versie_gelezen: 'v2', etiket_versie_verwacht: 'v2',
+      abv_batch: 5.5, abv_etiket_verwacht: 5.4, abv_marge: 0.5,
+    })]}))
+    expect(r.etiketcontroles).toEqual([{
+      moment: '2026-06-20T09:05:00Z', lotcode: 'L2614-B1', product: 'James Blond',
+      versieGelezen: 'v2', versieVerwacht: 'v2', abvBatch: 5.5, abvEtiket: 5.4, abvMarge: 0.5,
+      allergenenBatch: ['gluten', 'gerst'], allergenenEtiket: ['gluten', 'gerst'],
+      goedgekeurd: true, afwijking: false, snapshot: true,
+      paraaf: {gebruiker: 'jasper', tijdstip: '2026-06-20T09:05:00Z'},
+    }])
+  })
+
+  it('een oud record (zonder snapshots) blijft zoals het was', () => {
+    const r = bouwBatchRapport(invoer({etiketcontroles: [controle({etiket_versie: 'v1', afwijking_id: 4, resultaat: 'afgekeurd'})]}))
+    expect(r.etiketcontroles[0]).toMatchObject({versieGelezen: 'v1', versieVerwacht: '', abvBatch: null,
+      snapshot: false, goedgekeurd: false, afwijking: true})
+  })
+
+  it('alleen controles van deze batch', () => {
+    expect(bouwBatchRapport(invoer({etiketcontroles: [controle({batch_id: 8})]})).etiketcontroles).toEqual([])
+  })
+})
+
+describe('bouwBatchRapport — vaste kosten zoals op de batchpagina', () => {
+  it('met de afgeleide vaste kosten dezelfde kostprijs als het scherm, met de bron per post', () => {
+    const kaal = {...batch, electra_kosten: '', water_kosten: '', schoonmaak_kosten: '', overige_kosten: ''}
+    const vasteKosten = {posten: [
+      {key: 'elektra', label: 'batch_costs_electricity', perBrouw: 20, perLiter: 0.1, bron: 'gemeten' as const, batches: 3},
+      {key: 'water', label: 'batch_costs_water', perBrouw: 0, perLiter: 0, bron: 'geen' as const, batches: 0},
+      {key: 'schoonmaak', label: 'batch_costs_cleaning', perBrouw: 0, perLiter: 0, bron: 'geen' as const, batches: 0},
+      {key: 'overig', label: 'batch_costs_other', perBrouw: 0, perLiter: 0, bron: 'geen' as const, batches: 0},
+    ], perBrouw: 20, perLiter: 0.1, bron: 'gemeten' as const, van: '', tot: '', batches: 3}
+    const r = bouwBatchRapport(invoer({batch: kaal, vasteKosten}))
+    // 200 L × € 0,10 = € 20 elektra, afgeleid.
+    expect(r.financieel.overhead).toBeCloseTo(20, 9)
+    expect(r.financieel.overheadPosten[0]).toMatchObject({key: 'elektra', bedrag: 20, bron: 'gemeten'})
+    const i = invoer()
+    const scherm = berekenBatchKostprijs(kaal, i.batchIngredienten as any, i.lots as any, i.afvullingen as any,
+      (i.verpakkingen || []) as any, (i.onderdelen || []) as any, (i.accijns || []) as any, null, vasteKosten)
+    expect(r.financieel.totaal).toBeCloseTo(scherm.totaal_kosten, 9)
+  })
+
+  it('zonder afleiding: de genoteerde kosten van de batch, met bron "batch"', () => {
+    const r = bouwBatchRapport(invoer())
+    expect(r.financieel.overhead).toBe(30)
+    expect(r.financieel.overheadPosten.map(p => p.bron)).toEqual(['batch', 'batch', 'batch', 'batch'])
+  })
+})

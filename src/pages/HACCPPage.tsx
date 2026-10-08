@@ -180,14 +180,14 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
   )
 }
 
-function AllergenenTab({ing, bat, setBat, bi, setIng, producten, setProducten, auditLog, setAuditLog}: any) {
+function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, setProducten, auditLog, setAuditLog}: any) {
   const {useState} = React
   const [selBatch, setSelBatch] = useState<number>(0)
 
-  // Dezelfde afleiding als CCP 3 (ook regels die alleen op naam aan een
-  // ingrediënt hangen) — anders toont dit overzicht iets anders dan de
-  // etiketcontrole toetst.
-  const batchAllergenen = (batchId:number): string[] => allergenenUitBatch(batchId, bi || [], ing || [])
+  // Dezelfde afleiding als CCP 3 en de etiketkaart (ook regels die alleen op
+  // naam of via hun lot aan een ingrediënt hangen) — anders toont dit
+  // overzicht iets anders dan de etiketcontrole toetst.
+  const batchAllergenen = (batchId:number): string[] => allergenenUitBatch(batchId, bi || [], ing || [], lots)
 
   const selAllergs = selBatch ? batchAllergenen(selBatch) : []
   const selBatchObj = selBatch ? (bat||[]).find((b:any)=>b.id===selBatch) : null

@@ -4,6 +4,60 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.93] — 2026-10-08
+
+### Productie & Verkoop, deel 4: etiket & website, verkoopoverzicht, bestellingen op de telefoon
+
+**Etiket & website in de batch**
+- Nieuwe kaart **Etiket & website** op de batch (Conditioneren zodra de FG
+  gemeten is, Afvullen, en alleen-lezen in Gereed en het batchdossier). Per
+  waarde wat deze batch heeft, met bron, naast wat er nu op het etiket staat en
+  een oordeel:
+  - *Verplicht op het etiket:* alcohol ("7,0 % vol", met de wettelijke marge
+    ±0,5/±1,0 % vol), allergenen met de Bevat-regel ("Moet worden: Bevat:
+    gerst, tarwe"), lotcode en THT per verpakking.
+  - *Voor de website:* bitterheid (berekend, Tinseth), kleur (recept, niet
+    gemeten), energie per 100 ml in kcal én kJ (berekend uit OG/FG),
+    ingrediënten.
+  - Eén statuschip: "Etiket klopt", "Etiket: tarwe ontbreekt", "Etiket nog
+    niet vastgelegd". *Kopieer etiketgegevens* zet alles voor de drukker op het
+    klembord. Op de telefoon een blok van vier tegels; een tik toont de bron.
+- **ABV vastzetten** in Conditioneren: de berekende ABV (Balling, uit OG/FG)
+  of een labwaarde. Verplicht vóór de eerste afvulsessie, net als de CCP 1-
+  vrijgave, omdat accijns en THT-klasse erop rekenen. Batches die al afgevuld
+  of al in een sessie zijn, worden niet geblokkeerd.
+- **CCP 3:** het veld etiketversie begint leeg met "verwacht: v3" ernaast
+  (de versie op de rol in je hand); naast het alcoholvinkje staan de getallen.
+  Nieuwe controles leggen die getallen vast. Allergenen via het lot tellen nu
+  ook in CCP 3, de vrijgave en de HACCP-pagina.
+- Het **batchdossier** toont IBU, EBC en energie met bron, de etiketregels en
+  de getallen bij CCP 3. Gereed toont de vaste brouwkosten met hun bron (alleen
+  tonen, niets wegschrijven).
+- Geen browservragen meer bij de afvulcontrole en de fase-overgangen.
+
+**Verkoop › Overzicht**
+- **Vraagt om aandacht** met nieuwe posten: etiket klopt niet, afgevuld zonder
+  artikel, bier-THT binnen 60 dagen, dubbele SKU. Batchtaken tellen per batch.
+- **Te picken:** wat er besteld is, het bedrag en of het geleverd kan worden
+  ("kan geleverd", "eerst uitslaan", "tekort 12 · komt ± 8-10").
+- **Voorraad en komt eraan:** per product en verpakking (nooit opgeteld), met
+  wat er in de tanks ligt en wanneer het afgevuld wordt. Eén telling, dezelfde
+  als in de kassa. De vaste drempel van 12 is weg.
+
+**Bestellingen op de telefoon**
+- Zoeken en statuschips met tellers; bestellingen als kaarten.
+- Een bestelling heeft één volgende stap onderin (*Picken*, *Markeer
+  verzonden*, *Factuur maken*); de rest in ⋯.
+- Per orderregel "46 vrij · tekort 2" en "Komt eraan: #2609 … ›"; nooit meer
+  "Markeer als merch" voor eigen bier dat in de tank ligt.
+- De **lotcode** staat op de pickregel, de pakbon (Lot · THT · Batch) en de
+  picklijst; er is ook een picklijst per bestelling.
+- Wat er geboekt wordt is ongewijzigd (vergeleken met de vorige versie: geen
+  verschil). Het totaal in lijst en detail is nu gelijk aan de factuur
+  (inclusief statiegeld bij een handmatige order).
+
+---
+
 ## [1.12.92] — 2026-10-08
 
 ### Productie & Verkoop, deel 3: de keten, recepten in gebruik, kassa op de telefoon

@@ -14,6 +14,8 @@ import {
   metBevatRegel, zonderBevatRegel, webshopAllergenen, etiketKopieTekst, batchRegelsAlsRecept,
   fmtAbv, fmtInhoud, sorteerAllergenen, ALLERGEEN_VOLGORDE, ETIKET_VELDEN,
   etiketGetalVoorstellen, abvVastzetten, bronKortSleutel,
+  zelfdeEtiketVersie, etiketVersieBlokkade, etiketBlokMetVersie, etiketControleGetallen, ccp3AbvRegel,
+  etiketDoelStrook, ingredientenVerschil,
 } from '../etiket'
 import type { EtiketWaarden, ProductEtiketWaarden } from '../etiket'
 import { bierIngredienten } from '../bierinfo'
@@ -412,6 +414,11 @@ describe('etiketWaarden — lotcode en THT per verpakking', () => {
     expect(w.lots[0]).toMatchObject({voorspeld: false, verpakkingNaam: 'Fles 33 cl', aantal: 600,
       tht: '2027-07-02', thtBron: 'sessie', artikelOntbreekt: false, productIds: [3]})
     expect(w.lots[1]).toMatchObject({verpakkingNaam: 'Fust 20 L', aantal: 3, artikelOntbreekt: true})
+  })
+
+  it('in Afvullen, vóór de eerste sessie: nog steeds de voorspelling (de sessie komt nu)', () => {
+    const w = etiketWaarden({...b2609, status: 'Afgevuld'}, ctx2609)
+    expect(w.lots.map(l => [l.lotcode, l.voorspeld])).toEqual([['L2609-B1', true]])
   })
 
   it('een afgeronde batch zonder sessies krijgt geen voorspelde lotcode', () => {
@@ -1152,5 +1159,103 @@ describe('i18n-sleutels van etiket.ts', () => {
       for (const [taal, d] of Object.entries(TALEN)) if (!d[k]) ontbreekt.push(`${taal}:${k}`)
     }
     expect(ontbreekt).toEqual([])
+  })
+})
+
+
+// ── 13. CCP 3: versie op de rol en de getallen ──────────────────────────────
+
+describe('zelfdeEtiketVersie', () => {
+  it('"v4", "V4", "4" en " v 4 " zijn dezelfde versie', () => {
+    expect(zelfdeEtiketVersie('v4', '4')).toBe(true)
+    expect(zelfdeEtiketVersie('V4', ' v 4 ')).toBe(true)
+    expect(zelfdeEtiketVersie('v3', 'v4')).toBe(false)
+    expect(zelfdeEtiketVersie('lente', 'Lente')).toBe(true)
+  })
+})
+
+describe('etiketVersieBlokkade', () => {
+  it('blokkeert een andere versie op de rol dan verwacht', () => {
+    expect(etiketVersieBlokkade('v3', 'v4')).toEqual({
+      code: 'etiket_versie_wijkt_af', i18nKey: 'haccp_blok_etiket_versie', params: {gelezen: 'v3', verwacht: 'v4'}})
+  })
+  it('geen blokkade bij dezelfde versie, zonder invoer of zonder verwachte versie', () => {
+    expect(etiketVersieBlokkade('4', 'v4')).toBeNull()
+    expect(etiketVersieBlokkade('', 'v4')).toBeNull()
+    expect(etiketVersieBlokkade('v3', '')).toBeNull()
+  })
+  it('telt mee in de etiketblokkade van CCP 3 (zelfde afwijkingsroute als de allergenen)', () => {
+    const ok = {toegestaan: true, redenen: []}
+    expect(etiketBlokMetVersie(ok, 'v4', 'v4')).toBe(ok)
+    const r = etiketBlokMetVersie(ok, 'v3', 'v4')
+    expect(r.toegestaan).toBe(false)
+    expect(r.redenen.map(x => x.code)).toEqual(['etiket_versie_wijkt_af'])
+    const allergeen = {toegestaan: false, redenen: [{code: 'allergeen_ontbreekt', i18nKey: 'x'}]}
+    expect(etiketBlokMetVersie(allergeen, 'v3', 'v4').redenen.map(x => x.code))
+      .toEqual(['allergeen_ontbreekt', 'etiket_versie_wijkt_af'])
+  })
+  it('de tekst van de blokkade heeft dezelfde plaatshouders in elke taal', () => {
+    for (const taal of Object.keys(TALEN)) {
+      expect(TALEN[taal].haccp_blok_etiket_versie).toContain('{gelezen}')
+      expect(TALEN[taal].haccp_blok_etiket_versie).toContain('{verwacht}')
+    }
+  })
+})
+
+describe('etiketControleGetallen — de bevroren getallen op een nieuwe etiketcontrole', () => {
+  it('gelezen en verwachte versie, ABV van batch en etiket, en de marge', () => {
+    expect(etiketControleGetallen({gelezen: ' v3 ', product: kadeblond, abvBatch: 6.96})).toEqual({
+      etiket_versie_gelezen: 'v3', etiket_versie_verwacht: 'v3',
+      abv_batch: 6.96, abv_etiket_verwacht: 6.2, abv_marge: 1,
+    })
+  })
+  it('rond 5,5 % de strengste marge', () => {
+    expect(etiketControleGetallen({product: {abv: 5.6}, abvBatch: 5.2}).abv_marge).toBe(0.5)
+  })
+  it('laat weg wat er niet is (geen lege velden in een append-only record)', () => {
+    expect(etiketControleGetallen({gelezen: '', product: {}, abvBatch: null})).toEqual({})
+    expect(etiketControleGetallen({product: {abv: 6.2}})).toEqual({abv_etiket_verwacht: 6.2})
+  })
+})
+
+describe('ccp3AbvRegel — naast "Alcoholgehalte op het etiket klopt"', () => {
+  it('batch 7,0 · vastgelegd etiket 6,2 · kijk op de fles', () => {
+    expect(ccp3AbvRegel(6.96, 6.2, t, 'nl')).toBe('batch 7,0 · vastgelegd etiket 6,2 · kijk op de fles')
+  })
+  it('zonder etiketwaarde of zonder batchwaarde', () => {
+    expect(ccp3AbvRegel(6.96, null, t, 'nl')).toBe('batch 7,0 · etiket nog niet vastgelegd · kijk op de fles')
+    expect(ccp3AbvRegel(null, 6.2, t, 'nl')).toBe('vastgelegd etiket 6,2 · kijk op de fles')
+  })
+})
+
+// ── 14. De strook in de batchkop ────────────────────────────────────────────
+
+describe('etiketDoelStrook — Gepland t/m Vergisten', () => {
+  it('Doel 6,8 % · 22 IBU · 9 EBC · Bevat: gerst, tarwe (uit het recept, de allergenen uit de batch)', () => {
+    const w = etiketWaarden({...b2611, product_id: 1}, {...ctx2609, batchIngredienten: [
+      ...regels2609.map((r: any) => ({...r, batch_id: 2611})),
+    ]})
+    expect(etiketDoelStrook(w, t, 'nl')).toBe('Doel 6,8 % · 22 IBU · 9 EBC · Bevat: gerst, tarwe')
+  })
+  it('ook als de brouwdag al een IBU berekende: het doel blijft het recept', () => {
+    const w = etiketWaarden({...b2609, FG: ''}, ctx2609)
+    expect(etiketDoelStrook(w, t, 'nl')).toBe('Doel 6,8 % · 22 IBU · 9 EBC · Bevat: gerst, tarwe')
+  })
+  it('in het Engels', () => {
+    const w = etiketWaarden(b2611, {...ctx2609, batchIngredienten: []})
+    expect(etiketDoelStrook(w, vertaal('en'), 'en')).toBe('Target 6.8% · 22 IBU · 9 EBC · Contains: barley, wheat')
+  })
+  it('leeg zonder waarden', () => {
+    expect(etiketDoelStrook(null, t)).toBe('')
+    const w = etiketWaarden({id: 5, status: 'Gepland'}, {})
+    expect(etiketDoelStrook(w, t)).toBe('')
+  })
+})
+
+describe('ingredientenVerschil', () => {
+  it('wat in de batch zit en niet in de vastgelegde tekst, en andersom', () => {
+    expect(ingredientenVerschil('water, gerstemout, tarwemout, hop, gist', 'Ingrediënten: water, gerstemout, hop, gist. Bevat: gerst.'))
+      .toEqual({ontbreekt: ['tarwemout'], teveel: []})
+    expect(ingredientenVerschil('water, hop', 'water, hop, lactose')).toEqual({ontbreekt: [], teveel: ['lactose']})
   })
 })

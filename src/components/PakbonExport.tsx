@@ -6,8 +6,8 @@
 import { t } from '../i18n'
 import { fmtQty, fmtEuroDoc, fmtDatumDoc, tod } from '../utils/format'
 import { renderTemplateOfFallback, escapeHtml } from '../utils/template'
-import { onGepickteRegels } from '../utils/picking'
-import type { Picklijst, PicklijstRegel, PicklijstOrder } from '../utils/picking'
+import { onGepickteRegels, herkomstVanPick, orderNummer } from '../utils/picking'
+import type { Picklijst, PicklijstRegel, PicklijstOrder, PickHerkomstData } from '../utils/picking'
 import {
   FACTUUR_CSS_DEFAULT,
   FACTUUR_HTML_DEFAULT,
@@ -69,6 +69,7 @@ export const DOC_CSS = `
   .muted { color: #9ca3af; font-size: 8.5pt; }
   .tekort { color: #b91c1c; font-weight: bold; font-size: 9pt; }
   th.chk, td.chk { width: 7mm; padding-left: 2mm; padding-right: 0; }
+  .lotcode { font-family: 'Courier New', Courier, monospace; font-weight: bold; white-space: nowrap; }
   .box { display: inline-block; width: 4.5mm; height: 4.5mm; border: 1.5px solid #6b7280; border-radius: 1mm; vertical-align: middle; }
   .sub-title { font-size: 9pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin: 6mm 0 2mm; }
   .remarks { margin-top: 3mm; font-size: 9pt; color: #555; border-left: 2px solid #ddd; padding-left: 3mm; }
@@ -96,15 +97,30 @@ export const esc = escapeHtml
 const fmtEuro = fmtEuroDoc
 const fmtDate = fmtDatumDoc
 
-export function openPrint(html: string, filename: string, css: string = DOC_CSS): void {
+// Opent het printvenster. Geblokkeerd (pop-ups uit): wie een melding op de
+// pagina kan tonen geeft `onGeblokkeerd` mee en krijgt de tekst terug; zonder
+// die callback blijft het de oude alert (batchdossier, boekhouding, kassa).
+export function openPrint(html: string, filename: string, css: string = DOC_CSS, onGeblokkeerd?: (melding: string) => void): boolean {
   const w = window.open('', '_blank', 'width=900,height=700')
-  if (!w) { alert(t('err_popup_blocked')); return }
+  if (!w) {
+    if (onGeblokkeerd) onGeblokkeerd(t('err_popup_blocked'))
+    else alert(t('err_popup_blocked'))
+    return false
+  }
   w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(filename)}</title><style>${css}</style></head><body>${html}</body></html>`)
   w.document.close()
   w.focus()
   // Sluit popup automatisch na opslaan/annuleren print
   w.onafterprint = () => w.close()
   setTimeout(() => { w.print() }, 400)
+  return true
+}
+
+/** Extra's voor pakbon en picklijst: de afvulsessies (lotcode) en waar een geblokkeerd printvenster gemeld wordt. */
+export interface PrintExtra {
+  /** Afvulsessies: de lotcode van een afvulling zonder eigen code (`L<batch>-B<n>`). */
+  sessies?: PickHerkomstData['afvulSessies']
+  onGeblokkeerd?: (melding: string) => void
 }
 
 export function breweryBlock(brewery: any, appName: string, logo: string | null | undefined): string {
@@ -222,14 +238,16 @@ function buildPakbonBody(
   bat: any[],
   brewery: any,
   appName: string,
-  factuurLogo: string | null | undefined
+  factuurLogo: string | null | undefined,
+  sessies?: PickHerkomstData['afvulSessies']
 ): {bodyHtml: string, filename: string, pakbonNr: string} {
   const pakbonNr = order.pakbon_nummer || `P-${order.id}`
   // Pakbon-datum = datum van picken (`pakbon_datum` of `pick_datum`).
   // Verzend-/orderdatum zijn alleen fallback voor oude records waar het
   // pickmoment niet vastgelegd was.
   const datum = fmtDate(order.pakbon_datum || order.pick_datum || order.verzend_datum || order.datum)
-  const orderRef = order.wc_order_nummer ? `WC #${order.wc_order_nummer}` : `M-${order.id}`
+  // Hetzelfde nummer als in de app (lijst, kopbalk, klantkaart): `orderNummer`.
+  const orderRef = orderNummer(order)
 
   const pickRows = picks.map((p: any) => {
     const afvulling = av.find((a: any) => a.id === p.afvulling_id)
@@ -239,12 +257,17 @@ function buildPakbonBody(
     // Fallback-keten: orderregel.bier_naam → batch.biernaam → batch.naam.
     const regel = (order?.regels || []).find((r: any) => r.id === p.regel_id)
     const bierNaam = regel?.bier_naam || batch?.biernaam || batch?.naam || '—'
+    // De lotcode zoals op de verpakking (afvulling, anders de afvulsessie)
+    // naast de THT; het batchnummer apart. Zo is elke fles bij een
+    // terugroepactie naar de afnemer te herleiden (handboek hoofdstuk 11).
+    const herkomst = herkomstVanPick(p, {afvullingen: av, batches: bat, afvulSessies: sessies})
     return `<tr>
       <td>${esc(bierNaam)}</td>
-      <td>${esc(batch?.batch_nummer || '—')}</td>
       <td>${esc(afvulling?.verpakking_type || '—')}</td>
       <td>${afvulling?.inhoud_per_eenheid ? `${esc(afvulling.inhoud_per_eenheid)}L` : '—'}</td>
+      <td class="lotcode">${herkomst.lotcode ? esc(herkomst.lotcode) : '—'}</td>
       <td>${afvulling?.tht ? esc(fmtDate(afvulling.tht)) : '—'}</td>
+      <td>${herkomst.batchNummer ? `#${esc(herkomst.batchNummer)}` : '—'}</td>
       <td class="r">${esc(p.aantal)}</td>
     </tr>`
   })
@@ -256,8 +279,9 @@ function buildPakbonBody(
   const openRegels = onGepickteRegels(order, picks)
   const openRows = openRegels.map((r: any) => `<tr class="open">
       <td>${esc(r.bier_naam || '—')}</td>
-      <td class="muted">${t('lbl_pakbon_nog_te_picken')}</td>
       <td>${esc(r.verpakking_type || '—')}</td>
+      <td>—</td>
+      <td class="muted">${t('lbl_pakbon_nog_te_picken')}</td>
       <td>—</td>
       <td>—</td>
       <td class="r">${esc(r.aantal)}</td>
@@ -288,15 +312,16 @@ function buildPakbonBody(
       <thead>
         <tr>
           <th>${t('lbl_pakbon_bier')}</th>
-          <th>${t('lbl_batch_nr')}</th>
           <th>${t('lbl_pakbon_verpakking')}</th>
           <th>${t('lbl_pakbon_inhoud')}</th>
+          <th>${t('picking_lot')}</th>
           <th>${t('lbl_tht')}</th>
+          <th>${t('picking_batch')}</th>
           <th class="r">${t('lbl_kol_aantal')}</th>
         </tr>
       </thead>
       <tbody>
-        ${rows || `<tr><td colspan="6" style="text-align:center;color:#888;padding:4mm;">${t('msg_geen_picks')}</td></tr>`}
+        ${rows || `<tr><td colspan="7" style="text-align:center;color:#888;padding:4mm;">${t('msg_geen_picks')}</td></tr>`}
       </tbody>
     </table>
 
@@ -327,10 +352,11 @@ export function printPakbon(
   bat: any[],
   brewery: any,
   appName: string,
-  factuurLogo: string | null | undefined
+  factuurLogo: string | null | undefined,
+  extra: PrintExtra = {}
 ): void {
-  const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo)
-  openPrint(r.bodyHtml, r.filename)
+  const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo, extra.sessies)
+  openPrint(r.bodyHtml, r.filename, DOC_CSS, extra.onGeblokkeerd)
 }
 
 // Geeft volledige standalone HTML (incl. <html>/<head>/<style>) terug — voor
@@ -342,9 +368,10 @@ export function buildPakbonHTML(
   bat: any[],
   brewery: any,
   appName: string,
-  factuurLogo: string | null | undefined
+  factuurLogo: string | null | undefined,
+  extra: Pick<PrintExtra, 'sessies'> = {}
 ): {html: string, filename: string} {
-  const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo)
+  const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo, extra.sessies)
   const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${DOC_CSS}</style></head><body>${r.bodyHtml}</body></html>`
   return {html, filename: r.filename}
 }
@@ -368,8 +395,9 @@ function buildPicklijstBody(
   const datum = fmtDate(vandaag)
 
   const regelRows = lijst.regels.map((g: PicklijstRegel) => {
+    // Lotcode (zoals op de krat/het etiket) eerst, dan het batchnummer en de THT.
     const pakUit = g.suggesties.map(s =>
-      `<div>${esc(s.batch_nummer || '—')} · ${t('lbl_tht')} ${s.tht ? esc(fmtDate(s.tht)) : '—'} · <strong>${esc(s.aantal)}×</strong></div>`)
+      `<div>${s.lotcode ? `<span class="lotcode">${esc(s.lotcode)}</span> · ` : ''}${s.batch_nummer ? `#${esc(String(s.batch_nummer).replace(/^#/, ''))}` : '—'} · ${t('lbl_tht')} ${s.tht ? esc(fmtDate(s.tht)) : '—'} · <strong>${esc(s.aantal)}×</strong></div>`)
     if (g.tekort > 0) {
       pakUit.push(`<div class="tekort">${esc(g.suggesties.length
         ? t('lbl_picklijst_tekort').replace('{n}', String(g.tekort))
@@ -457,10 +485,11 @@ export function printPicklijst(
   lijst: Picklijst,
   brewery: any,
   appName: string,
-  factuurLogo: string | null | undefined
+  factuurLogo: string | null | undefined,
+  extra: Pick<PrintExtra, 'onGeblokkeerd'> = {}
 ): void {
   const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo)
-  openPrint(r.bodyHtml, r.filename)
+  openPrint(r.bodyHtml, r.filename, DOC_CSS, extra.onGeblokkeerd)
 }
 
 // Volledige standalone HTML (voor tests en een eventuele mail-PDF).
@@ -527,11 +556,12 @@ export function printFactuur(
   factuur: any,
   brewery: any,
   appName: string,
-  factuurLogo: string | null | undefined
+  factuurLogo: string | null | undefined,
+  extra: Pick<PrintExtra, 'onGeblokkeerd'> = {}
 ): void {
   const result = buildFactuurBody(order, factuur, brewery, appName, factuurLogo)
   if (!result) return
-  openPrint(result.bodyHtml, result.filename, factuurCss(brewery))
+  openPrint(result.bodyHtml, result.filename, factuurCss(brewery), extra.onGeblokkeerd)
 }
 
 // ─────────────────────────────────────────────

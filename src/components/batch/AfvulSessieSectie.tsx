@@ -1,5 +1,5 @@
 import React from 'react'
-import { t } from '../../i18n'
+import { t, getLang } from '../../i18n'
 import { newId } from '../../utils/api'
 import { fmtD, tod } from '../../utils/format'
 import { logAudit } from '../../utils/audit'
@@ -10,7 +10,7 @@ import Btn from '../ui/Btn'
 import BevestigKnop from '../ui/BevestigKnop'
 import Inp from '../ui/Inp'
 import Sel from '../ui/Sel'
-import BlokkadeKaart, { blokkadeSamenvatting } from '../haccp/BlokkadeKaart'
+import BlokkadeKaart, { blokkadeSamenvatting, blokkadeTekst } from '../haccp/BlokkadeKaart'
 import AfwijkingModal from '../haccp/AfwijkingModal'
 import EtiketAllergenen from '../haccp/EtiketAllergenen'
 import {
@@ -26,6 +26,9 @@ import {
   verwachteControleMomenten, controleDekking,
 } from '../../utils/afvulsessie'
 import { verpakkingVoorraad } from '../../utils/verpakkingVoorraad'
+import { ccp3AbvRegel, etiketBlokMetVersie as metVersie, etiketControleGetallen } from '../../utils/etiket'
+import { afvulMeldingTekst } from '../../utils/afvulControle'
+import type { AfvulControle } from '../../utils/afvulControle'
 import { productVoorBatch } from '../../utils/productKeten'
 import { productenVoorBatchKeuze } from '../../utils/batchKeten'
 import { productSelOpties } from './ProductOpties'
@@ -49,6 +52,13 @@ interface Props {
   batch: any
   bi: any[]
   ing: any[]
+  /** De lots: een batchregel met een lot hoort bij het ingrediënt van dat lot
+   *  (risico en allergenen), zodat CCP 3 hetzelfde ziet als de etiketkaart. */
+  lots?: any[]
+  /** De ABV van de batch zoals de etiketkaart hem toont (de vastgezette,
+   *  anders de beste waarde) — voor de regel bij "Alcoholgehalte op het
+   *  etiket klopt" en de bevroren getallen van CCP 3. */
+  abvBatch?: number | null
   av: any[]
   setAv: (fn: any) => void
   producten: any[]
@@ -89,11 +99,12 @@ interface Props {
    *  voorcalculatie, logregels). Gebruikt door het achteraf vastleggen, pas
    *  nadat `onAchterafControleren` akkoord gaf — zelf vraagt hij niets meer. */
   onAchterafAfvullen?: (velden: any, sessie: AfvulSessie) => boolean
-  /** Alle controles van de afvulling (verpakkingsvoorraad, tankvolume, ABV-
-   *  bevestiging) zónder iets weg te schrijven. Het achteraf vastleggen
-   *  schrijft sessie en CCP-registraties (append-only) pas als dit akkoord is:
-   *  anders bleef er bij onvoldoende voorraad een spooksessie achter. */
-  onAchterafControleren?: (velden: any) => boolean
+  /** Alle controles van de afvulling (utils/afvulControle.ts: verpakkings-
+   *  voorraad, tankvolume, ABV) zónder iets weg te schrijven. Het achteraf
+   *  vastleggen schrijft sessie en CCP-registraties (append-only) pas als er
+   *  geen fout is en de waarschuwingen in de knop bevestigd zijn: anders bleef
+   *  er bij onvoldoende voorraad een spooksessie achter. */
+  onAchterafControleren?: (velden: any) => AfvulControle
   /** Verse serverstand van de afvulsessies ophalen vóór er een lotcode wordt
    *  uitgegeven — een tweede apparaat met een oude stand kiest anders
    *  hetzelfde sessienummer. Geeft de verse lijst terug, of null. */
@@ -216,8 +227,8 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   }, [sessie?.id])
 
   const risico = React.useMemo(
-    () => risicoVoorBatch(p.batch, p.bi || [], p.ing || [], inst),
-    [p.batch, p.bi, p.ing, p.haccpInstellingen])
+    () => risicoVoorBatch(p.batch, p.bi || [], p.ing || [], inst, p.lots),
+    [p.batch, p.bi, p.ing, p.lots, p.haccpInstellingen])
 
   // ── Sessie starten ───────────────────────────────────────────────────────
   const [start, setStart] = React.useState({
@@ -231,10 +242,12 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const gekozenVp = (p.verpakkingen || []).find((v: any) => v.id === Number(start.verpakking_id))
   const thtKlasse = thtKlasseVoorBatch(p.batch?.ABV, risico, inst)
   const thtBerekend = berekenTht(tod(), thtKlasse, inst)
+  // Ook de vastgezette ABV hoort bij de eerste sessie (net als CCP 1); een
+  // batch die al een sessie of afvulling had, wordt niet alsnog geblokkeerd.
   const startBlok = magSessieStarten(p.batch?.id, p.vrijgaven || [], {
     reiniging_bevestigd: start.reiniging_bevestigd,
     verpakking_id: start.verpakking_id ? Number(start.verpakking_id) : null,
-  }, p.sessies || [])
+  }, p.sessies || [], {batch: p.batch, afvullingen: p.av})
   // Handmatige THT: altijd met reden, en onder de alcoholgrens ook met een
   // datum — anders start de sessie zonder THT en erven alle afvullingen dat.
   const thtBlok = thtHandmatigBlokkade(start.tht_handmatig, start.tht, start.tht_reden, thtKlasse)
@@ -384,19 +397,25 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         ? t('product_keuze_gearchiveerd').replace('{naam}', product.naam || t('lbl_naamloos'))
         : (product.naam || t('lbl_naamloos')))
   const receptAllergenen = React.useMemo(
-    () => allergenenUitBatch(p.batch?.id, p.bi || [], p.ing || []),
-    [p.batch, p.bi, p.ing])
+    () => allergenenUitBatch(p.batch?.id, p.bi || [], p.ing || [], p.lots),
+    [p.batch, p.bi, p.ing, p.lots])
   const etiketInfo = allergenenVanProduct(gekozenProduct)
   const vergelijking = vergelijkAllergenen(receptAllergenen, etiketInfo.allergenen, etiketInfo.gezet)
-  const etiketBlok = magEtiketterenDoorgaan(vergelijking)
+  // De versie op de rol: het veld begint leeg, de verwachte versie (die van
+  // het product) staat ernaast. Wijkt hij af, dan is dat een blokkade met
+  // hetzelfde mechanisme als de allergenen (afwijking registreren).
+  const verwachteVersie = String(gekozenProduct?.etiket_versie ?? '').trim()
+  const etiketBlok = metVersie(magEtiketterenDoorgaan(vergelijking), ec.etiket_versie, verwachteVersie)
   const etiketOnvolledig = !ec.product_id || !ec.lotcode_ok || !ec.tht_ok || !ec.alcohol_ok
+    || (!!verwachteVersie && !ec.etiket_versie.trim())
+  const abvRegel = (product: any) => ccp3AbvRegel(p.abvBatch, product?.abv, t, getLang())
   const allergeenLabel = (a: string) =>
     t(ALLERGENEN_LIJST.find(x => x.key === a)?.label || a)
 
   // De allergenenredenen dragen hun allergenen als parameter; zonder invullen
   // leest de afvuller letterlijk "{allergenen}" en weet hij niet wat er mist.
   const etiketRedenTekst = (
-    r: {code: string; i18nKey: string},
+    r: {code: string; i18nKey: string; params?: Record<string, string | number>},
     v: {ontbreektOpEtiket: string[]; teveelOpEtiket: string[]}
   ): string =>
     r.code === 'allergeen_ontbreekt'
@@ -405,7 +424,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       : r.code === 'allergeen_teveel'
       ? t('haccp_blok_allergeen_teveel')
           .replace('{allergenen}', v.teveelOpEtiket.map(allergeenLabel).join(', '))
-      : t(r.i18nKey)
+      : blokkadeTekst({code: r.code, i18nKey: r.i18nKey, params: r.params})
 
   // Etiketallergenen horen bij het product (masterdata), maar worden hier
   // vastgelegd omdat CCP 3 het hier mist. Een lege lijst is een geldig
@@ -432,6 +451,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       product_id: Number(ec.product_id),
       etiket_artikel: gekozenProduct?.etiket_artikel,
       etiket_versie: ec.etiket_versie.trim() || gekozenProduct?.etiket_versie,
+      // De gelezen en de verwachte versie en de getallen van dat moment
+      // (alleen nieuwe records; append-only blijft gelden).
+      ...etiketControleGetallen({gelezen: ec.etiket_versie, product: gekozenProduct, abvBatch: p.abvBatch}),
       aanleiding: ec.aanleiding,
       allergenen_recept: receptAllergenen,
       allergenen_etiket: etiketInfo.allergenen,
@@ -612,11 +634,13 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const naProduct = (p.producten || []).find((x: any) => x.id === Number(na.product_id))
   const naEtiket = allergenenVanProduct(naProduct)
   const naVergelijking = vergelijkAllergenen(receptAllergenen, naEtiket.allergenen, naEtiket.gezet)
-  const naEtiketBlok = magEtiketterenDoorgaan(naVergelijking)
+  // Ook achteraf: de versie op de rol begint leeg, de verwachte staat ernaast.
+  const naVerwachteVersie = String(naProduct?.etiket_versie ?? '').trim()
+  const naEtiketBlok = metVersie(magEtiketterenDoorgaan(naVergelijking), na.etiket_versie, naVerwachteVersie)
   const naBlok = magSessieStarten(p.batch?.id, p.vrijgaven || [], {
     reiniging_bevestigd: na.reiniging_bevestigd,
     verpakking_id: na.verpakking_id ? Number(na.verpakking_id) : null,
-  }, p.sessies || [])
+  }, p.sessies || [], {batch: p.batch, afvullingen: p.av})
   const naThtKlasse = thtKlasse
   const naTht = berekenTht(na.datum || tod(), naThtKlasse, inst)
   const naCompleet = !!na.product_id && Number(na.hoeveelheid) > 0
@@ -628,32 +652,39 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     // bij, en die lopen via de gewone sluitcontrole.
     && naBeoordeling.resultaat === 'goedgekeurd'
     && na.lotcode_ok && na.tht_ok && na.alcohol_ok
+    && (!naVerwachteVersie || !!na.etiket_versie.trim())
   const naToegestaan = naBlok.toegestaan && naCompleet && naEtiketBlok.toegestaan
 
-  const legAchterafVast = async () => {
-    if (!naToegestaan || !naVp || bezig) return
-    const datum = na.datum || tod()
+  // De afvulling zelf loopt via de pagina: die kent voorraad, accijns en logs.
+  const naDatum = na.datum || tod()
+  const naVelden = naVp ? {
+    product_id: Number(na.product_id),
+    verpakking_id: Number(na.verpakking_id),
+    verpakking_type: naVp.naam,
+    inhoud_per_eenheid: Number(naVp.inhoud_liter || 0),
+    hoeveelheid: Number(na.hoeveelheid),
+    datum: naDatum,
+    tijd: na.tot || na.van || '',
+    tht: naTht.tht,
+    gn_code: '',
+  } : null
+  // De controles van de afvulling (verpakkingsvoorraad, tankvolume, ABV):
+  // een fout zet de knop uit, een waarschuwing bevestig je in de knop.
+  const naControle: AfvulControle | null = naVelden && p.onAchterafControleren
+    ? p.onAchterafControleren(naVelden) : null
+
+  const legAchterafVast = async (bevestigd = false) => {
+    if (!naToegestaan || !naVp || !naVelden || bezig) return
+    const datum = naDatum
     const startMoment = `${datum}T${na.van || '12:00'}:00`
     const eindMoment = `${datum}T${na.tot || na.van || '12:00'}:00`
-
-    // De afvulling zelf loopt via de pagina: die kent voorraad, accijns en logs.
-    const velden = {
-      product_id: Number(na.product_id),
-      verpakking_id: Number(na.verpakking_id),
-      verpakking_type: naVp.naam,
-      inhoud_per_eenheid: Number(naVp.inhoud_liter || 0),
-      hoeveelheid: Number(na.hoeveelheid),
-      datum,
-      tijd: na.tot || na.van || '',
-      tht: naTht.tht,
-      gn_code: '',
-    }
+    const velden = naVelden
     // Eerst alle controles van de afvulling (verpakkingsvoorraad, tankvolume,
-    // ABV-bevestiging). De sessie en de CCP-registraties hieronder zijn
-    // append-only bewijs: die gaan pas weg als de afvulling er ook komt —
-    // anders bleef er bij te weinig voorraad een spooksessie met controles
-    // maar zonder verpakkingen achter, en kreeg de volgende poging B2.
-    if (p.onAchterafControleren && !p.onAchterafControleren(velden)) return
+    // ABV). De sessie en de CCP-registraties hieronder zijn append-only
+    // bewijs: die gaan pas weg als de afvulling er ook komt — anders bleef er
+    // bij te weinig voorraad een spooksessie met controles maar zonder
+    // verpakkingen achter, en kreeg de volgende poging B2.
+    if (naControle && (naControle.fout || (naControle.waarschuwingen.length && !bevestigd))) return
 
     setBezig(true)
     let sessiesNu: AfvulSessie[]
@@ -718,6 +749,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       product_id: Number(na.product_id),
       etiket_artikel: naProduct?.etiket_artikel,
       etiket_versie: na.etiket_versie.trim() || naProduct?.etiket_versie,
+      ...etiketControleGetallen({gelezen: na.etiket_versie, product: naProduct, abvBatch: p.abvBatch}),
       aanleiding: 'start',
       uitgevoerd_op: startMoment,
       allergenen_recept: receptAllergenen,
@@ -867,16 +899,24 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         {([['lotcode_ok', 'haccp_ccp3_lotcode_ok'],
            ['tht_ok', 'haccp_ccp3_tht_ok'],
            ['alcohol_ok', 'haccp_ccp3_alcohol_ok']] as const).map(([veld, key]) => (
-          <label key={veld} className="flex items-center gap-2 text-sm text-gray-700">
+          <label key={veld} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-gray-700">
             <input type="checkbox" className="t-checkbox" checked={na[veld]}
               onChange={e => setNa({...na, [veld]: e.target.checked})} />
             {t(key)}
+            {veld === 'alcohol_ok' && naProduct && (
+              <span className="text-xs text-gray-500">{abvRegel(naProduct)}</span>
+            )}
           </label>
         ))}
         <div className="grid sm:grid-cols-2 gap-2 pt-1">
-          <Inp label={t('haccp_ccp3_etiket_versie')}
-            value={na.etiket_versie || naProduct?.etiket_versie || ''}
-            onChange={v => setNa({...na, etiket_versie: v})} />
+          <div>
+            <Inp label={t('haccp_ccp3_versie_rol')} value={na.etiket_versie}
+              placeholder={t('haccp_ccp3_versie_rol_ph')}
+              onChange={v => setNa({...na, etiket_versie: v})} />
+            {naVerwachteVersie && (
+              <div className="text-xs text-gray-500 mt-0.5">{t('haccp_ccp3_versie_verwacht').replace('{versie}', naVerwachteVersie)}</div>
+            )}
+          </div>
           <Inp label={t('lbl_opmerking')} value={na.opmerking}
             onChange={v => setNa({...na, opmerking: v})} />
         </div>
@@ -918,11 +958,26 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       {(na.verpakking_id || na.product_id || na.hoeveelheid) && (
         <BlokkadeKaart blok={naBlok} compact />
       )}
+      {/* De controles van de afvulling zelf: een fout zet de knop uit, een
+          waarschuwing bevestig je in de knop (geen confirm()). */}
+      {naControle?.fout && (na.verpakking_id || na.hoeveelheid) && (
+        <div className="text-xs text-gray-600">{afvulMeldingTekst(naControle.fout, t)}</div>
+      )}
+      {naControle && !naControle.fout && naControle.waarschuwingen.length > 0 && (
+        <div className="rounded-lg border border-orange-200 bg-orange-50 p-2.5 text-sm text-orange-800 space-y-1">
+          {naControle.waarschuwingen.map((w, i) => <div key={i}>{afvulMeldingTekst(w, t)}</div>)}
+        </div>
+      )}
 
       <div className="flex justify-end">
-        <Btn s="sm" disabled={!naToegestaan || bezig} onClick={legAchterafVast}>
-          {t('haccp_achteraf_vastleggen')}
-        </Btn>
+        {naControle && !naControle.fout && naControle.waarschuwingen.length > 0 && naToegestaan
+          ? <BevestigKnop v="primary" s="sm" vraag={t('afvul_toch_vastleggen')} disabled={bezig}
+              onBevestig={() => legAchterafVast(true)}>
+              {t('haccp_achteraf_vastleggen')}
+            </BevestigKnop>
+          : <Btn s="sm" disabled={!naToegestaan || bezig || !!naControle?.fout} onClick={() => legAchterafVast()}>
+              {t('haccp_achteraf_vastleggen')}
+            </Btn>}
       </div>
     </div>
   )
@@ -1129,9 +1184,16 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           <Sel label={t('lbl_afvulling_product')} value={String(ec.product_id)}
             onChange={(v: string) => setEc({...ec, product_id: v})}
             ph={t('ph_select_product')} opts={productOpties(ec.product_id)} />
-          <Inp label={t('haccp_ccp3_etiket_versie')}
-            value={ec.etiket_versie || gekozenProduct?.etiket_versie || ''}
-            onChange={v => setEc({...ec, etiket_versie: v})} />
+          {/* Leeg: de afvuller vult de versie in van de rol in zijn hand. De
+              verwachte versie staat ernaast als tekst — zo valt een oude rol op. */}
+          <div>
+            <Inp label={t('haccp_ccp3_versie_rol')} value={ec.etiket_versie}
+              placeholder={t('haccp_ccp3_versie_rol_ph')}
+              onChange={v => setEc({...ec, etiket_versie: v})} />
+            {verwachteVersie && (
+              <div className="text-xs text-gray-500 mt-0.5">{t('haccp_ccp3_versie_verwacht').replace('{versie}', verwachteVersie)}</div>
+            )}
+          </div>
         </div>
         <Sel label={t('haccp_ccp2_aanleiding')} value={ec.aanleiding}
           onChange={(v: string) => setEc({...ec, aanleiding: v as EtiketControle['aanleiding']})}
@@ -1190,13 +1252,20 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           {([['lotcode_ok', 'haccp_ccp3_lotcode_ok'],
              ['tht_ok', 'haccp_ccp3_tht_ok'],
              ['alcohol_ok', 'haccp_ccp3_alcohol_ok']] as const).map(([veld, key]) => (
-            <label key={veld} className="flex items-center gap-2 text-sm text-gray-700">
+            <label key={veld} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-gray-700">
               <input type="checkbox" className="t-checkbox" checked={ec[veld]}
                 onChange={e => setEc({...ec, [veld]: e.target.checked})} />
               {t(key)}
+              {/* Het vinkje blijft handwerk: de app zet de getallen ernaast. */}
+              {veld === 'alcohol_ok' && gekozenProduct && (
+                <span className="text-xs text-gray-500">{abvRegel(gekozenProduct)}</span>
+              )}
             </label>
           ))}
         </div>
+        {!!verwachteVersie && !ec.etiket_versie.trim() && !!ec.product_id && (
+          <div className="text-xs text-gray-500">{t('haccp_ccp3_versie_nodig')}</div>
+        )}
         <Inp label={t('lbl_opmerking')} value={ec.opmerking}
           onChange={v => setEc({...ec, opmerking: v})} />
 

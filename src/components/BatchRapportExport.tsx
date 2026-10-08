@@ -13,13 +13,16 @@
  * hoort er gewoon niet te staan. De vaste uitzondering is de kop met de
  * kerncijfers — die is het dossier.
  */
-import { t } from '../i18n'
+import { t, getLang } from '../i18n'
 import { fmtEuroDoc, fmtDatumDoc, fmtQty, fmtSg, tod } from '../utils/format'
 import { DOC_CSS, esc, breweryBlock, openPrint } from './PakbonExport'
 import { htmlNaarPdfDownload } from '../utils/pdf'
 import { rapportBestandsnaam } from '../utils/batchRapport'
+import { etiketKaartBlokken } from '../utils/etiketKaart'
+import type { KaartCel, KaartProductBlok, KaartRegel } from '../utils/etiketKaart'
+import { fmtAbv, fmtGetal } from '../utils/etiket'
 import type {
-  BatchRapport, RapportAfvulling, RapportIngredient, RapportMeting,
+  BatchRapport, RapportAfvulling, RapportEtiketControle, RapportIngredient, RapportMeting,
   RapportParaaf, RapportSessie, RapportVrijgave,
 } from '../utils/batchRapport'
 
@@ -48,6 +51,23 @@ const DOSSIER_CSS = `${DOC_CSS}
   .cijfer { border: 1px solid #e5e7eb; border-radius: 2mm; padding: 2.5mm 4mm; min-width: 28mm; }
   .cijfer .cl { font-size: 8pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
   .cijfer .cv { font-size: 13pt; font-weight: bold; color: #111; }
+  .cijfer .cb { font-size: 8pt; color: #888; margin-top: 0.5mm; }
+  /* Etiket & website: de bron onder elke waarde, het oordeel in zijn kleur. */
+  .bron { display: block; font-size: 8.5pt; color: #888; }
+  .o-rood { color: #b91c1c; font-weight: bold; }
+  .o-oranje { color: #c2410c; }
+  .o-groen { color: #065f46; }
+  .o-grijs { color: #555; }
+  .nadruk { color: #b91c1c; font-weight: bold; }
+  .bevat { margin: 1mm 0 0; font-size: 9pt; color: #7f1d1d; }
+  .etiket-kop { display: flex; flex-wrap: wrap; gap: 3mm; align-items: baseline; margin-bottom: 2mm; font-size: 9.5pt; }
+  .etiket-sub { font-size: 9.5pt; font-weight: bold; color: #111; margin: 3mm 0 1mm; }
+  /* Beide etikettabellen dezelfde kolommen, zodat ze onder elkaar lezen. */
+  .etiket-tabel { table-layout: fixed; width: 100%; }
+  .etiket-tabel th:nth-child(1) { width: 17%; }
+  .etiket-tabel th:nth-child(2) { width: 37%; }
+  .etiket-tabel th:nth-child(3) { width: 23%; }
+  .etiket-tabel td { overflow-wrap: anywhere; }
   .tl { display: flex; flex-wrap: wrap; gap: 0; margin-bottom: 5mm; }
   .tl-stap { flex: 1; min-width: 32mm; border-top: 2px solid #9ca3af; padding: 2mm 3mm 0 0; }
   .tl-stap .tn { font-size: 9.5pt; font-weight: bold; color: #111; }
@@ -119,21 +139,94 @@ const tabel = (koppen: Array<{label: string, r?: boolean, cls?: string}>, rijen:
 
 // ── Hoofdstukken ────────────────────────────────────────────────────────────
 
-const kerncijferBlok = (r: BatchRapport): string => {
+const kerncijferBlok = (r: BatchRapport, blokken: KaartProductBlok[]): string => {
   const k = r.kern
-  const cijfers: Array<{l: string, v: string}> = [
+  // IBU, EBC en energie met hun bron, uit dezelfde regels als de etiketkaart
+  // (de batchkolom is voor elk product gelijk).
+  const regel = (veld: KaartRegel['veld']): KaartRegel | undefined =>
+    [...(blokken[0]?.verplicht || []), ...(blokken[0]?.website || [])].find(x => x.veld === veld)
+  const uitKaart = (veld: KaartRegel['veld'], label: string): {l: string, v: string, b?: string} | null => {
+    const r2 = regel(veld)
+    return r2 && r2.batch.waarde ? {l: label, v: r2.batch.waarde, b: r2.batch.bron} : null
+  }
+  const abvBron = regel('abv')?.batch.bron
+  const cijfers: Array<{l: string, v: string, b?: string} | null> = [
     // SG altijd met drie decimalen en een punt: "1.060", nooit "1.06".
     {l: t('batch_info_og'), v: fmtSg(k.og, LEEG)},
     {l: t('batch_info_fg'), v: fmtSg(k.fg, LEEG)},
-    {l: t('batch_info_alcohol'), v: k.abv != null ? `${k.abv}%` : LEEG},
+    {l: t('etiket_regel_abv'), v: k.abv != null ? fmtAbv(k.abv, getLang()) : LEEG, b: k.abv != null ? abvBron : undefined},
+    uitKaart('ibu', t('etiket_regel_ibu')),
+    uitKaart('ebc', t('etiket_regel_ebc')),
+    uitKaart('energie', t('etiket_regel_energie')),
     {l: t('flow_sum_rendement'), v: k.rendementPct != null ? `${k.rendementPct.toFixed(0)}%` : LEEG},
     {l: t('flow_sum_vergist'), v: `${fmtQty(k.literVergist)} L`},
     {l: t('flow_sum_afgevuld'), v: `${fmtQty(k.literAfgevuld)} L`},
     {l: t('flow_sum_verlies'), v: `${fmtQty(k.literVerlies)} L`},
     {l: t('flow_sum_stuks'), v: String(k.stuks)},
   ]
-  return `<div class="cijfers blok">${cijfers.map(c =>
-    `<div class="cijfer"><div class="cl">${esc(c.l)}</div><div class="cv">${esc(c.v)}</div></div>`).join('')}</div>`
+  return `<div class="cijfers blok">${cijfers.filter((c): c is {l: string, v: string, b?: string} => !!c).map(c =>
+    `<div class="cijfer"><div class="cl">${esc(c.l)}</div><div class="cv">${esc(c.v)}</div>${c.b ? `<div class="cb">${esc(c.b)}</div>` : ''}</div>`).join('')}</div>`
+}
+
+// ── Etiket & website ────────────────────────────────────────────────────────
+// Dezelfde regels als de kaart in Gereed (`etiketKaartBlokken`): per product
+// het oordeel, de waarden van de batch met hun bron en wat het etiket vastlegt.
+
+const celHtml = (c: KaartCel | null): string => {
+  if (!c) return ''
+  const waarde = c.chips && c.chips.length
+    ? c.chips.map(x => x.nadruk ? `<span class="nadruk">${esc(x.tekst)}</span>` : esc(x.tekst)).join(', ')
+    : esc(c.waarde || LEEG)
+  return `${waarde}${c.bron ? `<span class="bron">${esc(c.bron)}</span>` : ''}`
+}
+
+const etiketTabel = (titel: string, regels: KaartRegel[]): string => etiketTabelHtml(titel, regels)
+  .replace('<table>', '<table class="etiket-tabel">')
+
+const etiketTabelHtml = (titel: string, regels: KaartRegel[]): string => tabel(
+  [{label: esc(titel)}, {label: esc(t('etiket_kolom_batch'))}, {label: esc(t('etiket_kolom_vastgelegd'))},
+    {label: esc(t('etiket_kolom_oordeel'))}],
+  regels.map(r => `<tr class="blok">
+    <td><strong>${esc(r.label)}</strong></td>
+    <td>${r.lots
+      ? r.lots.map(l => `${esc(l.lotcode)}${l.verpakking ? ` · ${esc(l.verpakking)}` : ''}<span class="bron">${esc(l.tht)}</span>`).join('')
+      : celHtml(r.volledig ? {...r.batch, waarde: r.volledig.batch || r.batch.waarde} : r.batch)}
+      ${r.bevat ? `<div class="bevat">${esc(t('etiket_bevat_nu'))} ${esc(r.bevat.nu)} → ${esc(t('etiket_bevat_moet'))} <strong>${esc(r.bevat.moet)}</strong></div>` : ''}</td>
+    <td>${r.etiket ? celHtml(r.volledig && r.etiket ? {...r.etiket, waarde: r.volledig.etiket || r.etiket.waarde} : r.etiket) : ''}</td>
+    <td class="o-${r.oordeel.kleur}">${esc(r.oordeel.tekst)}</td>
+  </tr>`))
+
+const etiketBlok = (blokken: KaartProductBlok[]): string => blokken.map(b => `
+  <div class="etiket-kop blok">
+    ${blokken.length > 1 ? `<strong>${esc(b.naam || t('lbl_naamloos'))}</strong>` : ''}
+    <span><span class="muted">${esc(t('batchdossier_etiket_status'))}:</span> <span class="o-${b.status.kleur}">${esc(b.status.tekst)}</span></span>
+    ${b.vergelekenMet ? `<span class="muted">${esc(b.vergelekenMet)}</span>` : ''}
+  </div>
+  <div class="etiket-sub">${esc(t('etiket_kaart_verplicht'))}</div>
+  ${etiketTabel(t('etiket_kolom_waarde'), b.verplicht)}
+  <div class="etiket-sub">${esc(t('etiket_kaart_website'))} <span class="muted">${esc(t('etiket_kaart_website_sub'))}</span></div>
+  ${etiketTabel(t('etiket_kolom_waarde'), b.website)}`).join('')
+
+// CCP 3 — elke etiketcontrole met de versie op de rol en de getallen erbij.
+const ccp3Blok = (rijen: RapportEtiketControle[]): string => {
+  const taal = getLang()
+  const abv = (n: number | null) => (n == null ? LEEG : fmtGetal(Math.round(n * 10) / 10, 1, taal))
+  const allergenen = (lijst: string[]) => lijst.length ? lijst.map(a => t(`etiket_allergeen_${a}`, a)).join(', ') : LEEG
+  return tabel(
+    [
+      {label: esc(t('lbl_date'))}, {label: esc(t('haccp_sessie_lotcode'))}, {label: esc(t('lbl_pakbon_bier'))},
+      {label: esc(t('batchdossier_kol_versie'))}, {label: esc(t('batchdossier_kol_abv'))},
+      {label: esc(t('batchdossier_kol_allergenen'))}, {label: esc(t('batchdossier_kol_resultaat'))},
+    ],
+    rijen.map(c => `<tr class="blok">
+      <td class="nw">${fmtMoment(c.moment)}</td>
+      <td class="nw">${esc(c.lotcode || LEEG)}</td>
+      <td>${esc(c.product || LEEG)}</td>
+      <td>${esc(c.versieGelezen || LEEG)}${c.versieVerwacht ? `<span class="bron">${esc(t('batchdossier_verwacht').replace('{waarde}', c.versieVerwacht))}</span>` : ''}</td>
+      <td class="nw">${c.snapshot ? `${esc(abv(c.abvBatch))} / ${esc(abv(c.abvEtiket))}${c.abvMarge != null ? `<span class="bron">±${esc(fmtGetal(c.abvMarge, 1, taal))} % vol</span>` : ''}` : LEEG}</td>
+      <td>${esc(allergenen(c.allergenenBatch))}<span class="bron">${esc(t('batchdossier_etiket_kort'))}: ${esc(allergenen(c.allergenenEtiket))}</span></td>
+      <td>${c.goedgekeurd ? `<span class="ok">${esc(t('haccp_ccp2_goedgekeurd'))}</span>` : `<span class="nok">${esc(t('haccp_ccp2_afgekeurd'))}</span>`}${c.afwijking ? `<span class="bron">${esc(t('haccp_afw_kort'))}</span>` : ''}</td>
+    </tr>`))
 }
 
 const tijdlijnBlok = (r: BatchRapport): string => {
@@ -249,9 +342,18 @@ const financieelBlok = (r: BatchRapport): string => {
     f.perLiter != null ? `${t('flow_fin_per_liter')}: ${fmtEuro(f.perLiter)}` : '',
     f.perStuk != null ? `${t('flow_fin_per_stuk')}: ${fmtEuro(f.perStuk)}` : '',
   ].filter(Boolean).join(' · ')
+  // De vaste kosten per post met hun bron — dezelfde als op de batchpagina.
+  const bronSleutel: Record<string, string> = {
+    batch: 'flow_fin_bron_batch', gemeten: 'flow_fin_bron_gemeten', boekhouding: 'flow_fin_bron_boekhouding',
+    handmatig: 'flow_fin_bron_handmatig', geen: 'flow_fin_bron_geen',
+  }
+  const vast = f.overheadPosten.filter(p => p.bedrag !== 0)
+    .map(p => `${t(p.label)} ${fmtEuro(p.bedrag)} (${t(bronSleutel[p.bron] || 'flow_fin_bron_geen')})`)
+    .join(' · ')
   return `<div class="blok">
     <div class="totals-block" style="width:auto;max-width:90mm">
       ${regel(t('flow_fin_brouwkosten'), fmtEuro(f.brouwkosten))}
+      ${vast ? `<div class="totals-row muted"><span>${esc(t('flow_fin_vaste_kosten'))}: ${esc(vast)}</span><span></span></div>` : ''}
       ${regel(t('flow_fin_verpakking'), f.verpakking > 0 ? fmtEuro(f.verpakking) : `<span class="muted">${esc(t('lbl_not_specified'))}</span>`)}
       ${regel(t('flow_fin_accijns') + (f.accijnsVoorcalc ? ` (${t('lbl_voorcalc')})` : ''), fmtEuro(f.accijns))}
       <div class="totals-sep"></div>
@@ -288,6 +390,10 @@ function bouwDossierBody(
     meta.splice(1, 0, {l: t('batchdossier_kol_recept'), v: rapport.receptNaam})
   }
 
+  const blokken = rapport.etiket
+    ? etiketKaartBlokken(rapport.etiket.waarden, rapport.etiket.producten, t, getLang())
+    : []
+
   return `<div class="page">
     <div class="hdr">
       ${breweryBlock(brewery, appName, logo)}
@@ -302,12 +408,14 @@ function bouwDossierBody(
       ${meta.map(m => `<div class="meta-block"><div class="ml">${esc(m.l)}</div><div class="mv">${esc(m.v)}</div></div>`).join('')}
     </div>
 
-    ${kerncijferBlok(rapport)}
+    ${kerncijferBlok(rapport, blokken)}
+    ${sectie(esc(t('etiket_kaart_titel')), etiketBlok(blokken))}
     ${sectie(esc(t('flow_tijdlijn_titel')), tijdlijnBlok(rapport))}
     ${sectie(esc(t('batchdossier_sec_ingredienten')), ingredientenBlok(rapport.ingredienten))}
     ${sectie(esc(t('batchdossier_sec_metingen')), metingenBlok(rapport.metingen))}
     ${sectie(esc(t('haccp_ccp1_titel')), vrijgaveBlok(rapport.vrijgaven))}
     ${sectie(esc(t('batchdossier_sec_sessies')), sessieBlok(rapport.sessies))}
+    ${sectie(esc(t('batchdossier_sec_ccp3')), ccp3Blok(rapport.etiketcontroles))}
     ${sectie(esc(t('batchdossier_sec_afvullingen')), afvullingenBlok(rapport.afvullingen))}
     ${sectie(esc(t('batchdossier_sec_verlies')), tabel(
       [{label: t('lbl_date')}, {label: t('lbl_bron')}, {label: t('lbl_liter_kort'), r: true}, {label: t('lbl_opmerking')}],

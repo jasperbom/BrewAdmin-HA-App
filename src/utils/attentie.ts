@@ -5,15 +5,24 @@
 // posten: per werkruimte een lijst {sleutel, aantal, doel}, zodat de header
 // ze kan uitklappen en de gebruiker rechtstreeks naar de juiste plek kan
 // springen. De tellingen zelf blijven waar ze horen (taken.ts, calculations.ts,
-// picking.ts, btw.ts) — hier worden ze alleen gelabeld en gebundeld.
+// picking.ts, btw.ts, productAandacht.ts) — hier worden ze alleen gelabeld en
+// gebundeld. Een post telt dingen waar je iets mee moet (een batch, een
+// product, een voorraadregel, een factuur), nooit vinkjes; `details` zegt
+// welke, voor de toelichting op een dashboard (utils/attentieTekst.ts).
 
 import { telThtAlerts, telOpenAccijnsMaanden } from './calculations'
 import { telNieuweWebshopOrders, telWebshopAfgebroken } from './wcOrderImport'
 import { telOpenstaandeBtwPerioden, BtwPeriodeType } from './btw'
-import { telOpenstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './taken'
+import { telBatchesMetOpenTaken, telAchterstalligeSchoonmaakTaken } from './taken'
 import { telOpenstaandeBestellingen } from './picking'
 import { vervallenVerkoopFacturen, achterstalligeInkoopFacturen } from './facturen'
 import { telInboxOpen } from './inkoopInbox'
+import { afgevuldZonderArtikel, bierThtBinnenkort, etiketProblemen, skuConflictLijst } from './productAandacht'
+import type { EtiketProbleem } from './productAandacht'
+import { BIER_THT_WAARSCHUWING_DAGEN } from './verkoopOverzicht'
+import type { VerkoopCtx } from './verkoopOverzicht'
+import type { EtiketCtx } from './etiket'
+import type { NavDoel } from './route'
 
 export type WerkruimteId = 'productie' | 'verkoop' | 'administratie'
 
@@ -24,13 +33,40 @@ export const WERKRUIMTE_IDS: WerkruimteId[] = ['productie', 'verkoop', 'administ
  * melding over verlopen lots hoort op het THT-overzicht te landen, niet op
  * een ingrediëntenlijst waarin je zelf moet gaan zoeken. `tab` en `filter`
  * zijn eenmalige signalen die de doelpagina bij het openen consumeert;
- * `lotId` wijst één specifiek lot aan (bv. een THT-regel op het dashboard).
+ * `lotId` wijst één specifiek lot aan (bv. een THT-regel op het dashboard);
+ * `recordId` opent één record (een batch, product of bestelling) — in de
+ * route, via `attentieDoel` → `gaNaar({id})`. Niet `id`: dat is op een post
+ * de naam van de post zelf.
  */
 export interface AttentieDoel {
   pagina: string
   tab?: string
   filter?: string
   lotId?: number
+  recordId?: string | number
+}
+
+/**
+ * Eén ding achter het aantal van een post ("Kadeblond: tarwe ontbreekt"), voor
+ * de toelichting op een dashboard en een sprong naar precies dat ding. Teksten
+ * blijven i18n-sleutels met ruwe waarden; utils/attentieTekst.ts maakt er een
+ * zin van in de taal van de gebruiker.
+ */
+export interface AttentieDetail {
+  /** i18n-sleutel van de toelichting, met plaatshouders uit `params`. */
+  sleutel: string
+  /** Kortere toelichting voor een smal scherm (dezelfde `params`). */
+  kortSleutel?: string
+  /**
+   * Ruwe waarden: namen (data, onvertaald), aantallen en datums (`datum`,
+   * JJJJ-MM-DD). `verpakking` is de naam van een verpakking, `soort` haar
+   * type (`fust`) — de korte vorm: "Sluiswit fust".
+   */
+  params: Record<string, string | number>
+  /** Voor `{allergenen}`: de allergenen zelf (de tekstlaag vertaalt ze). */
+  allergenen?: string[]
+  /** Waar een klik op dit ene ding landt (rechtstreeks voor `gaNaar`). */
+  doel: NavDoel
 }
 
 export interface AttentiePost extends AttentieDoel {
@@ -38,7 +74,15 @@ export interface AttentiePost extends AttentieDoel {
   id: string
   /** i18n-sleutel voor het label — de UI vertaalt, deze module nooit. */
   sleutel: string
+  /** Korter label voor een smal scherm ("Bier-THT"). */
+  kortSleutel?: string
+  /** Plaatshouders in het label ("Bier-THT binnen {dagen} dagen"). */
+  params?: Record<string, string | number>
   aantal: number
+  /** `rood` = wettelijk of onveilig (een allergeen dat op het etiket ontbreekt); anders oranje. */
+  kleur?: 'rood'
+  /** Wat er achter het aantal zit, in de volgorde van de lijst. */
+  details?: AttentieDetail[]
 }
 
 export interface AttentieBron {
@@ -73,27 +117,141 @@ export interface AttentieBron {
       formaat als de periodegrenzen en de factuurdatums. */
   vandaag: Date
   vandaagIso: string
+  /**
+   * Verkoop: de context van utils/verkoopOverzicht (producten, artikelen,
+   * verpakkingen, afvullingen, voorraadbewegingen, bestellingen) — dezelfde
+   * voorraadtelling als het Overzicht, de productpagina en de kassa. Geef
+   * hetzelfde object mee als het Overzicht krijgt: de module onthoudt per
+   * context wat hij uitrekende. Zonder context vallen de product- en
+   * voorraadposten weg (etiket, afgevuld zonder artikel, bier-THT, SKU).
+   */
+  verkoop?: VerkoopCtx | null
+  /** De producten (volledige records: etiket, allergenen, alcohol). Zonder
+      deze lijst gelden de producten van `verkoop`. */
+  producten?: any[]
+  /**
+   * Etiket: wat utils/etiket nodig heeft om het etiket van een product aan
+   * zijn referentiebatch te toetsen (de batches komen uit `batches`). Zonder
+   * dit veld valt de post `etiket` weg. Geef `batchIngredienten` en `lots`
+   * mee: anders zijn de allergenen van de batch die van het recept, en zegt
+   * deze post iets anders dan de etiketkaart en CCP 3.
+   */
+  etiket?: Pick<EtiketCtx, 'recepten' | 'batchIngredienten' | 'ingredienten' | 'lots'> | null
 }
 
 // Posten met aantal 0 vallen weg: de uitklap toont alleen wat écht openstaat.
 const nietLeeg = (posten: AttentiePost[]): AttentiePost[] => posten.filter(p => p.aantal > 0)
 
-// Het navigatiedoel van een post, losgeknipt van label en telling.
-export const attentieDoel = (p: AttentiePost): AttentieDoel => ({
+// Het navigatiedoel van een post, losgeknipt van label en telling — klaar
+// voor `gaNaar` (het record gaat als `id` mee, dus in de route).
+export const attentieDoel = (p: AttentieDoel): NavDoel => ({
   pagina: p.pagina,
   ...(p.tab ? { tab: p.tab } : {}),
   ...(p.filter ? { filter: p.filter } : {}),
+  ...(p.lotId != null ? { lotId: p.lotId } : {}),
+  ...(p.recordId != null && p.recordId !== '' ? { id: p.recordId } : {}),
 })
+
+// Eén ding: de post landt waar dat ene ding afgehandeld wordt. Meer dingen:
+// op de lijst waar ze allemaal staan.
+const doelVanDetails = (details: AttentieDetail[], lijst: AttentieDoel): AttentieDoel => {
+  if (details.length !== 1) return lijst
+  const d = details[0].doel
+  return {
+    pagina: d.pagina,
+    ...(d.tab ? { tab: d.tab } : {}),
+    ...(d.filter ? { filter: d.filter } : {}),
+    ...(d.id != null && d.id !== '' ? { recordId: d.id } : {}),
+  }
+}
+
+// Het etiket klopt niet (rood): per product één regel. In Verkoop opent een
+// regel het product, in Productie de batch waartegen het etiket getoetst is
+// (daar staan de etiketkaart en "Etiket bijwerken").
+const ETIKET_DETAIL_SLEUTEL: Record<string, string> = {
+  etiket_status_ontbreekt: 'attentie_etiket_ontbreekt',
+  etiket_status_ontbreken: 'attentie_etiket_ontbreken',
+  etiket_status_buiten_marge: 'attentie_etiket_marge',
+}
+const etiketPost = (problemen: EtiketProbleem[], naar: 'product' | 'batch'): AttentiePost => {
+  const details: AttentieDetail[] = problemen.map(p => ({
+    sleutel: ETIKET_DETAIL_SLEUTEL[p.statusSleutel] || 'attentie_detail_product',
+    kortSleutel: 'attentie_detail_product',
+    params: { product: p.naam },
+    allergenen: p.allergenen,
+    doel: naar === 'product' ? { pagina: 'producten', id: p.productId } : { pagina: 'batches', id: p.batchId },
+  }))
+  return {
+    id: 'etiket', sleutel: 'attentie_etiket', kleur: 'rood', aantal: problemen.length, details,
+    ...doelVanDetails(details, { pagina: naar === 'product' ? 'producten' : 'batches' }),
+  }
+}
+
+// De posten over de biervoorraad en de artikelen (utils/productAandacht.ts).
+// Elke regel opent het product: daar maak je het artikel, sla je uit of zie je
+// de lots en hun THT.
+const verkoopVoorraadPosten = (ctx: VerkoopCtx): AttentiePost[] => {
+  const zonderArtikel: AttentieDetail[] = afgevuldZonderArtikel(ctx).map(r => ({
+    sleutel: 'attentie_zonder_artikel_detail', kortSleutel: 'attentie_zonder_artikel_kort',
+    params: { product: r.naam, verpakking: r.verpakking, soort: r.type || r.verpakking, n: r.stuks },
+    doel: { pagina: 'producten', id: r.productId },
+  }))
+  const tht: AttentieDetail[] = bierThtBinnenkort(ctx).map(r => ({
+    sleutel: r.dagen < 0 ? 'attentie_bier_tht_verlopen_detail' : 'attentie_bier_tht_detail',
+    kortSleutel: 'attentie_bier_tht_kort_detail',
+    params: { product: r.naam, verpakking: r.verpakking, n: r.stuks, datum: r.tht },
+    doel: { pagina: 'producten', id: r.productId },
+  }))
+  const sku: AttentieDetail[] = skuConflictLijst({
+    producten: ctx.producten || [], productArtikelen: ctx.productArtikelen || [],
+    artikelen: ctx.artikelen || [], merchArtikelen: ctx.merchArtikelen || [],
+  }).map(c => ({
+    sleutel: 'attentie_sku_detail', kortSleutel: 'attentie_sku_kort',
+    params: { sku: c.sku, namen: c.namen.join(', ') },
+    doel: c.productId != null ? { pagina: 'producten', id: c.productId } : { pagina: 'producten' },
+  }))
+  return [
+    {
+      // Afgevuld en op voorraad, maar het product heeft voor die verpakking
+      // geen artikel (SKU, prijs): niet te verkopen. Per product × verpakking.
+      id: 'afgevuld_zonder_artikel', sleutel: 'attentie_afgevuld_zonder_artikel',
+      aantal: zonderArtikel.length, details: zonderArtikel,
+      ...doelVanDetails(zonderArtikel, { pagina: 'producten' }),
+    },
+    {
+      // Bier op voorraad met een THT binnen 60 dagen (of verlopen): eerst
+      // verkopen. Per voorraadregel (product × verpakking), niet per lot.
+      id: 'bier_tht', sleutel: 'attentie_bier_tht', kortSleutel: 'attentie_bier_tht_kort',
+      params: { dagen: BIER_THT_WAARSCHUWING_DAGEN },
+      aantal: tht.length, details: tht,
+      ...doelVanDetails(tht, { pagina: 'producten' }),
+    },
+    {
+      // Eén artikelnummer aan twee artikelen: orderregels, reserveringen en de
+      // voorraadpush weten niet welk bier bedoeld is. Per SKU.
+      id: 'sku_conflict', sleutel: 'attentie_sku_conflict',
+      aantal: sku.length, details: sku,
+      ...doelVanDetails(sku, { pagina: 'producten' }),
+    },
+  ]
+}
 
 export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, AttentiePost[]> {
   const tht = telThtAlerts(bron.lots, bron.vandaag)
+  const verkoop = bron.verkoop || null
+  const producten: any[] = bron.producten || (verkoop?.producten as any[] | null | undefined) || []
+  const etiket = bron.etiket ? etiketProblemen({ ...bron.etiket, producten, batches: bron.batches }) : []
   return {
     productie: nietLeeg([
+      // Eerst wat op de fles fout gaat: het etiket mist een allergeen of de
+      // alcohol ligt buiten de marge — vóór het afvullen op te lossen.
+      etiketPost(etiket, 'batch'),
       {
         // Batches-overzicht met het paneel "openstaande batchtaken" open:
         // elke batch met open taken op een rij, klik = de batch op zijn fase.
+        // Telt batches, geen vinkjes (utils/taken → telBatchesMetOpenTaken).
         id: 'batchtaken', sleutel: 'attentie_batchtaken', pagina: 'batches', filter: 'taken',
-        aantal: telOpenstaandeBatchTaken(bron.batches, bron.batchTakenItems, bron.batchTakenGroepen),
+        aantal: telBatchesMetOpenTaken(bron.batches, bron.batchTakenItems, bron.batchTakenGroepen),
       },
       {
         // HACCP → tabblad Reiniging (schoonmaakschema, achterstallig = rood).
@@ -123,6 +281,10 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
         id: 'webshop_afgebroken', sleutel: 'attentie_webshop_afgebroken', pagina: 'bestellingen',
         aantal: telWebshopAfgebroken(bron.bestellingen),
       },
+      // Het etiket klopt niet met wat er gebrouwen is: per product, de regel
+      // opent het product.
+      etiketPost(etiket, 'product'),
+      ...(verkoop ? verkoopVoorraadPosten(verkoop) : []),
     ]),
     // Administratie: eerst wat geld kost als je het laat liggen (vervallen
     // facturen), dan de aangiftes, dan de eigen betalingen. Elke post landt
@@ -173,6 +335,14 @@ export const attentieTotaal = (posten: AttentiePost[]): number =>
 // spreken ze elkaar niet tegen.
 export const attentieVoorPagina = (posten: AttentiePost[], pagina: string): AttentiePost[] =>
   (posten || []).filter(p => p?.pagina === pagina)
+
+// De posten zonder de genoemde — voor een dashboard dat een post al met een
+// eigen kaart toont (het Overzicht van Verkoop: "Te picken" is de post
+// `bestellingen`). Rood eerst, verder in de vaste volgorde van de lijst.
+export const attentieBehalve = (posten: AttentiePost[], ids: readonly string[]): AttentiePost[] => {
+  const lijst = (posten || []).filter(p => p && !ids.includes(p.id))
+  return [...lijst.filter(p => p.kleur === 'rood'), ...lijst.filter(p => p.kleur !== 'rood')]
+}
 
 export function attentieTotalen(
   posten: Record<WerkruimteId, AttentiePost[]>,

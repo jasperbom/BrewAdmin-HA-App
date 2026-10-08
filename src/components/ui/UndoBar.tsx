@@ -56,12 +56,13 @@ export function useUndo(): UndoApi {
  */
 const UndoBar: React.FC<{ undo: UndoApi }> = ({ undo }) => {
   if (!undo.actie) return null
+  // Boven een vaste ActieBalk (die zet --actiebalk op zijn hoogte), niet over de knop heen.
   return (
     <div
       role="status"
       aria-live="polite"
       className="fixed left-1/2 -translate-x-1/2 z-[190] max-w-[calc(100vw-2rem)] w-[26rem] flex items-center gap-3 bg-gray-900 text-white rounded-3xl pl-4 pr-1.5 py-1.5 shadow-xl"
-      style={{ bottom: 'calc(var(--onderbalk, 0px) + 12px)' }}
+      style={{ bottom: 'calc(var(--onderbalk, 0px) + var(--actiebalk, 0px) + 12px)' }}
     >
       {/* Twee regels in plaats van afkappen: een label zegt soms wat er blijft
           staan (voorraad zonder product), en dat moet leesbaar zijn. Met één

@@ -15,6 +15,8 @@
 
 import { productVoorRegel } from './sku'
 import { verkoopbareAfvullingen } from './haccp'
+import { lotcodeVanAfvulling } from './afvulsessie'
+import type { AfvulSessie } from '../types'
 
 export interface PickRefData {
   bat?: any[]
@@ -192,6 +194,48 @@ export const orderNummer = (b: OrderNummerBron | null | undefined): string => {
   return b.id != null && String(b.id) !== '' ? `M-${b.id}` : ''
 }
 
+// ── Herkomst van een pick: lotcode, batch en THT ────────────────────────────
+// Waar het bier de deur uitgaat, staat de lotcode van de afvulling zoals hij
+// op de verpakking staat: de eigen `lotcode` van de afvulling, anders die van
+// de afvulsessie (`L<batch>-B<n>`). Het batchnummer staat er apart naast
+// ("#2607"); een afvulling zonder lotcode krijgt nooit het batchnummer als
+// "lot". Eén afleiding voor de pickmodal, het pickoverzicht van de
+// bestelling, de pakbon en de picklijst.
+export interface PickHerkomst {
+  /** "L2607-B1"; leeg als de afvulling (nog) geen lotcode heeft. */
+  lotcode: string
+  batchId: number | null
+  /** Batchnummer zonder "#" ("2607"); leeg als onbekend. */
+  batchNummer: string
+  /** `YYYY-MM-DD`; leeg als onbekend. */
+  tht: string
+}
+
+export interface PickHerkomstData {
+  afvullingen?: any[] | null
+  batches?: any[] | null
+  afvulSessies?: ReadonlyArray<Pick<AfvulSessie, 'id' | 'lotcode'>> | null
+}
+
+/** Herkomst van een afvulling (of van een pick via zijn `afvulling_id`). */
+export const herkomstVanAfvulling = (afvulling: any, data: PickHerkomstData): PickHerkomst => {
+  const batchId = afvulling?.batch_id ?? null
+  const batch = batchId != null ? (data.batches || []).find((b: any) => b && b.id === batchId) : null
+  return {
+    lotcode: lotcodeVanAfvulling(afvulling, data.afvulSessies),
+    batchId: Number(batchId) > 0 ? Number(batchId) : null,
+    batchNummer: String(batch?.batch_nummer ?? '').trim().replace(/^#/, ''),
+    tht: String(afvulling?.tht ?? '').trim(),
+  }
+}
+
+/** Herkomst van een pick: zijn afvulling, anders (oude pick zonder afvulling) zijn batch. */
+export const herkomstVanPick = (pick: any, data: PickHerkomstData): PickHerkomst => {
+  const afvulling = (data.afvullingen || []).find((a: any) => a && a.id === pick?.afvulling_id)
+  if (afvulling) return herkomstVanAfvulling(afvulling, data)
+  return herkomstVanAfvulling({ batch_id: pick?.batch_id ?? null }, data)
+}
+
 // ── Pakbon vóór het picken ──────────────────────────────────────────────────
 // Het nog niet gepickte restant per bierregel van één bestelling: de bestelde
 // hoeveelheid min wat er al in `bestellingPicks` voor die regel staat. Vrije
@@ -231,6 +275,8 @@ export interface PicklijstSuggestie {
   afvulling_id: any
   batch_id: any
   batch_nummer: string
+  /** Lotcode zoals op de verpakking (`herkomstVanAfvulling`); leeg als die er niet is. */
+  lotcode: string
   tht: string
   beschikbaar: number
   aantal: number
@@ -272,6 +318,8 @@ export interface PicklijstOpties {
   data: PickRefData
   orderRef?: (bestelling: any) => string
   isPrive?: (bestelling: any) => boolean
+  /** Afvulsessies: de lotcode van een afvulling zonder eigen code. */
+  afvulSessies?: PickHerkomstData['afvulSessies']
 }
 
 const standaardOrderRef = (b: any): string =>
@@ -336,7 +384,7 @@ export const verzamelPicklijst = (
       const n = Math.min(rest, vrij)
       const batch = bat.find((x: any) => x.id === a.batch_id)
       g.suggesties.push({afvulling_id: a.id, batch_id: a.batch_id, batch_nummer: String(batch?.batch_nummer || ''),
-        tht: String(a.tht || ''), beschikbaar: vrij, aantal: n})
+        lotcode: lotcodeVanAfvulling(a, opts.afvulSessies), tht: String(a.tht || ''), beschikbaar: vrij, aantal: n})
       gebruikt.set(a.id, (gebruikt.get(a.id) || 0) + n)
       rest -= n
     }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { attentiePosten, attentieTotalen, attentieTotaal, attentieDoel, attentieVoorPagina, AttentieBron } from '../attentie'
+import { attentiePosten, attentieTotalen, attentieTotaal, attentieDoel, attentieVoorPagina, attentieBehalve, AttentieBron } from '../attentie'
+import * as demo from './demoBrouwerij'
 
 const leegBron = (): AttentieBron => ({
   batches: [], batchTakenItems: [], batchTakenGroepen: [],
@@ -36,8 +37,9 @@ describe('attentiePosten', () => {
     ]
 
     const posten = attentiePosten(bron).productie
+    // Eén batch met twee open vinkjes = één batch die om aandacht vraagt.
     expect(posten.map(p => [p.id, p.aantal])).toEqual([
-      ['batchtaken', 2],
+      ['batchtaken', 1],
       ['schoonmaak', 1],
       ['tht_verlopen', 1],
       ['tht_binnenkort', 1],
@@ -236,5 +238,107 @@ describe('attentiePosten — facturen per e-mail', () => {
     expect(attentiePosten(bron).administratie).toEqual([])
     bron.inkoopInbox = undefined
     expect(attentiePosten(bron).administratie).toEqual([])
+  })
+})
+
+describe('attentiePosten — product en voorraad (Verkoop en Productie)', () => {
+  // De demo-brouwerij van de schermspecificatie: Kadeblond mist tarwe op het
+  // etiket, Pils noemt een te laag alcoholgehalte, Sluiswit fust heeft geen
+  // artikel, Havenbok fles gaat binnen 60 dagen over de THT.
+  const metDemo = (extra: Partial<AttentieBron> = {}): AttentieBron => ({
+    ...leegBron(),
+    batches: demo.batches,
+    vandaag: new Date('2026-10-07T00:00:00'), vandaagIso: demo.VANDAAG,
+    verkoop: demo.demoCtx({ bestellingen: [] }),
+    etiket: { recepten: [], batchIngredienten: demo.batchIngredienten, ingredienten: demo.ingredienten, lots: [] },
+    ...extra,
+  })
+
+  it('zet de nieuwe posten na de bestaande, met aantal, sleutel en navigatiedoel', () => {
+    const v = attentiePosten(metDemo()).verkoop
+    expect(v.map(p => [p.id, p.aantal, p.sleutel])).toEqual([
+      ['etiket', 2, 'attentie_etiket'],
+      ['afgevuld_zonder_artikel', 1, 'attentie_afgevuld_zonder_artikel'],
+      ['bier_tht', 1, 'attentie_bier_tht'],
+    ])
+    // Eén ding: de post opent dat ding. Meer: de lijst.
+    expect(Object.fromEntries(v.map(p => [p.id, attentieDoel(p)]))).toEqual({
+      etiket: { pagina: 'producten' },
+      afgevuld_zonder_artikel: { pagina: 'producten', id: 3 },
+      bier_tht: { pagina: 'producten', id: 4 },
+    })
+  })
+
+  it('het etiket telt per product, is rood, en wijst per product naar de plek', () => {
+    const { productie, verkoop } = attentiePosten(metDemo())
+    const inVerkoop = verkoop.find(p => p.id === 'etiket')!
+    expect(inVerkoop).toMatchObject({ kleur: 'rood', aantal: 2 })
+    expect(inVerkoop.details?.map(d => [d.sleutel, d.params.product, d.allergenen, d.doel])).toEqual([
+      ['attentie_etiket_ontbreekt', 'Kadeblond', ['tarwe'], { pagina: 'producten', id: 1 }],
+      ['attentie_etiket_marge', 'Pils', [], { pagina: 'producten', id: 7 }],
+    ])
+    // In Productie dezelfde post, vooraan, maar naar de batch waartegen getoetst is.
+    expect(productie[0]).toMatchObject({ id: 'etiket', aantal: 2, kleur: 'rood', pagina: 'batches' })
+    expect(productie[0].details?.map(d => d.doel)).toEqual([{ pagina: 'batches', id: 2609 }, { pagina: 'batches', id: 2602 }])
+  })
+
+  it('één etiketprobleem: de post opent het product (Verkoop) of de batch (Productie)', () => {
+    const alleenKadeblond = demo.producten.filter(p => p.id !== 7)
+    const posten = attentiePosten(metDemo({ verkoop: demo.demoCtx({ producten: alleenKadeblond, bestellingen: [] }) }))
+    expect(attentieDoel(posten.verkoop.find(p => p.id === 'etiket')!)).toEqual({ pagina: 'producten', id: 1 })
+    expect(attentieDoel(posten.productie.find(p => p.id === 'etiket')!)).toEqual({ pagina: 'batches', id: 2609 })
+  })
+
+  it('de details geven de toelichting van het Overzicht: welke verpakking, hoeveel, welke THT', () => {
+    const v = attentiePosten(metDemo()).verkoop
+    expect(v.find(p => p.id === 'afgevuld_zonder_artikel')!.details).toEqual([{
+      sleutel: 'attentie_zonder_artikel_detail', kortSleutel: 'attentie_zonder_artikel_kort',
+      params: { product: 'Sluiswit', verpakking: 'Fust 20 L', soort: 'fust', n: 3 }, doel: { pagina: 'producten', id: 3 },
+    }])
+    const tht = v.find(p => p.id === 'bier_tht')!
+    expect(tht).toMatchObject({ kortSleutel: 'attentie_bier_tht_kort', params: { dagen: 60 } })
+    expect(tht.details?.[0]).toMatchObject({ sleutel: 'attentie_bier_tht_detail', params: { product: 'Havenbok', n: 58, datum: '2026-11-02' } })
+  })
+
+  it('een dubbele SKU telt per SKU', () => {
+    const ctx = demo.demoCtx({
+      bestellingen: [],
+      productArtikelen: [...demo.productArtikelen, { id: 99, product_id: 2, verpakking_id: 1, artikelnummer: 'KB-33' }],
+    })
+    const sku = attentiePosten(metDemo({ verkoop: ctx })).verkoop.find(p => p.id === 'sku_conflict')!
+    expect(sku).toMatchObject({ aantal: 1, pagina: 'producten', recordId: 1 })
+    expect(sku.details?.[0].params).toEqual({ sku: 'KB-33', namen: 'Kadeblond, Werfhop IPA' })
+  })
+
+  it('zonder verkoopcontext of etiketgegevens vallen deze posten weg (bestaande posten blijven)', () => {
+    const bron = metDemo({ verkoop: null, etiket: null })
+    bron.bestellingen = [{ id: 1, status: 'nieuw', regels: [{ id: 1, type: 'bier', aantal: 6 }] }]
+    expect(attentiePosten(bron).verkoop.map(p => p.id)).toEqual(['bestellingen'])
+    // De batchtaken (standaardtaken van de lopende demo-batches) blijven.
+    expect(attentiePosten(bron).productie.map(p => p.id)).toEqual(['batchtaken'])
+  })
+
+  it('de Verkoop-badge telt de te picken bestellingen én de nieuwe posten (SPEC: 3 + 1 + 1 + 1)', () => {
+    const bron = metDemo({ verkoop: demo.demoCtx({ producten: demo.producten.filter(p => p.id !== 7) }) })
+    bron.bestellingen = demo.bestellingen as any[]
+    const v = attentiePosten(bron).verkoop
+    expect(v.map(p => [p.id, p.aantal])).toEqual([
+      ['bestellingen', 3], ['etiket', 1], ['afgevuld_zonder_artikel', 1], ['bier_tht', 1],
+    ])
+    expect(attentieTotalen(attentiePosten(bron)).verkoop).toBe(6)
+    // Het tabblad Bestellingen telt alleen wat daar landt.
+    expect(attentieTotaal(attentieVoorPagina(v, 'bestellingen'))).toBe(3)
+  })
+})
+
+describe('attentieBehalve', () => {
+  it('laat de posten weg die een dashboard al met een eigen kaart toont, rood eerst', () => {
+    const posten = [
+      { id: 'bestellingen', sleutel: 'a', pagina: 'bestellingen', aantal: 3 },
+      { id: 'webshop_nieuw', sleutel: 'b', pagina: 'bestellingen', aantal: 1 },
+      { id: 'etiket', sleutel: 'c', pagina: 'producten', aantal: 1, kleur: 'rood' as const },
+    ]
+    expect(attentieBehalve(posten, ['bestellingen']).map(p => p.id)).toEqual(['etiket', 'webshop_nieuw'])
+    expect(attentieBehalve(undefined as any, ['x'])).toEqual([])
   })
 })

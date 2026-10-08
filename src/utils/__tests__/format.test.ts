@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtDatumDoc, fmtSg } from '../format'
+import { fmtDatumDoc, fmtSg, fmtDagMaand } from '../format'
 
 describe('fmtDatumDoc', () => {
   it('zet een ISO-datum om naar dd-mm-jjjj', () => {
@@ -40,5 +40,20 @@ describe('fmtSg', () => {
     expect(fmtSg(0)).toBe('—')
     expect(fmtSg('abc')).toBe('—')
     expect(fmtSg('', '')).toBe('')
+  })
+})
+
+describe('fmtDagMaand', () => {
+  it('dag-maand zonder voorloopnul en zonder jaar: "16-10"', () => {
+    expect(fmtDagMaand('2026-10-16')).toBe('16-10')
+    expect(fmtDagMaand('2026-11-02')).toBe('2-11')
+  })
+  it('met tijd het lokale uur van een tijdstempel: "7-10 09:15"', () => {
+    expect(fmtDagMaand(new Date(2026, 9, 7, 9, 15).toISOString(), { tijd: true })).toBe('7-10 09:15')
+  })
+  it('leeg of onleesbaar: een lege tekst', () => {
+    expect(fmtDagMaand('')).toBe('')
+    expect(fmtDagMaand(null)).toBe('')
+    expect(fmtDagMaand('geen datum')).toBe('')
   })
 })

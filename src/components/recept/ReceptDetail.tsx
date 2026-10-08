@@ -2,6 +2,7 @@ import React from 'react'
 import { t, getLang } from '../../i18n'
 import { fmtD, fmtSg } from '../../utils/format'
 import Btn from '../ui/Btn'
+import ActieBalk from '../ui/ActieBalk'
 import RowActions, { type RowActie } from '../ui/RowActions'
 import SectionHeader from '../ui/SectionHeader'
 import ReceptKostprijs from '../ReceptKostprijs'
@@ -228,17 +229,9 @@ const ReceptDetail: React.FC<ReceptDetailProps> = (p) => {
         )}
       </div>
 
-      {/* Telefoon: Brouwen onderin, op duimhoogte (detailscherm: geen onderbalk,
-          `--onderbalk` is dan de safe-area). Weg zolang het toetsenbord open is. */}
-      {p.onBrouwen && (
-        <>
-          <div className="md:hidden h-20" aria-hidden="true" />
-          <div data-onderbalk className="md:hidden fixed inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200 px-3 pt-2 pb-2"
-            style={{ bottom: 'var(--onderbalk, 0px)' }}>
-            <Btn s="lg" cls="w-full" onClick={p.onBrouwen}>{t('btn_brouwen')}</Btn>
-          </div>
-        </>
-      )}
+      {/* Telefoon: Brouwen onderin, op duimhoogte, in de vaste ActieBalk
+          (detailscherm: geen onderbalk). Op het bureau staat hij in de kop. */}
+      {p.onBrouwen && <ActieBalk alleenTelefoon label={t('btn_brouwen')} onClick={p.onBrouwen} />}
     </div>
   )
 }

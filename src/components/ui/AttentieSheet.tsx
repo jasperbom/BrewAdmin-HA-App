@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom'
 import { t } from '../../i18n'
 import Icon from './Icon'
 import type { AttentiePost } from '../../utils/attentie'
+import { attentieLabel } from '../../utils/attentieTekst'
 
 interface AttentieSheetProps {
   /** Naam van de werkruimte waar de posten bij horen. */
@@ -60,7 +61,7 @@ const AttentieSheet: React.FC<AttentieSheetProps> = ({ titel, posten, onSluit, o
               className="w-full flex items-center gap-3 px-4 min-h-[56px] text-left text-sm text-gray-800 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--t-accent)]"
             >
               <span className="bg-orange-700 text-white text-xs rounded-full px-1.5 min-w-[1.4rem] h-6 flex items-center justify-center leading-none font-bold flex-shrink-0">{p.aantal}</span>
-              <span className="flex-1 min-w-0">{t(p.sleutel)}</span>
+              <span className="flex-1 min-w-0">{attentieLabel(p, t)}</span>
               <Icon n="chevronRight" cls="text-gray-400 flex-shrink-0" />
             </button>
           ))}

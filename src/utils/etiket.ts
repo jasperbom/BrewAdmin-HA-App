@@ -23,8 +23,9 @@ import type {
   EtiketControle, HaccpInst, Ingredient, Product, ProductArtikel, Recept,
   ReceptIngredient, ThtKlasse, Verpakking,
 } from '../types'
-import { sgToPlato } from './calculations'
+import { abvBalling } from './calculations'
 import { allergenenUitBatch, haccpInst, risicoVoorBatch, vergelijkAllergenen } from './haccp'
+import type { BlokkadeReden, BlokkadeResultaat } from './haccp'
 import { ingredientVoorBatchRegel } from './batchIngredienten'
 import type { LotKoppeling } from './batchIngredienten'
 import { berekenTht, nieuweLotcode, thtKlasseVoorBatch, thtMaanden } from './afvulsessie'
@@ -130,13 +131,6 @@ export const sorteerAllergenen = (lijst: readonly unknown[] | null | undefined):
 
 // ── 1. ABV uit OG/FG (Balling) ──────────────────────────────────────────────
 
-// °Plato. `sgToPlato` uit calculations.ts geeft onder 1.000 nul; een heel
-// droog bier (FG 0.998) heeft echter een negatief schijnbaar extract, en dat
-// telt mee in de alcohol. Daaronder dus dezelfde polynoom zonder klem.
-const plato = (sg: number): number => sg > 1
-  ? sgToPlato(sg)
-  : -616.868 + 1111.14 * sg - 630.272 * sg * sg + 135.997 * sg * sg * sg
-
 export interface AbvBerekening {
   /** % vol, onafgerond — inclusief de suiker na de kook. */
   abv: number
@@ -160,7 +154,8 @@ export interface AbvBerekening {
  *
  * `suikerGPerL`: suiker die ná de kook in de gisttank ging (zit niet in de
  * OG) telt mee als g/L × 0,51 / 0,789 / 10 % vol. Ongeldige invoer (OG ≤ FG,
- * ontbrekend, buiten 0,98–1,2) = null.
+ * ontbrekend, buiten 0,98–1,2) = null. De formule zelf staat één keer, in
+ * `abvBalling` (calculations.ts); `schatABV` rekent er ook mee.
  */
 export const abvBerekend = (
   og: unknown,
@@ -170,13 +165,10 @@ export const abvBerekend = (
   const o = num(og)
   const f = num(fg)
   if (o === null || f === null) return null
-  if (o <= 1 || o > 1.2 || f < 0.98 || f >= o) return null
-  const oe = plato(o)
-  const ae = plato(f)
-  const re = 0.1808 * oe + 0.8192 * ae
-  const abw = (oe - re) / (2.0665 - 0.010665 * oe)
-  const abvOgFg = abw * f / 0.7907
-  if (!(abvOgFg > 0) || !Number.isFinite(abvOgFg)) return null
+  const kern = abvBalling(o, f)
+  if (!kern) return null
+  const {oe, ae, re} = kern
+  const abvOgFg = kern.abv
   const g = Math.max(0, num(opties?.suikerGPerL) ?? 0)
   const suikerPct = g * SUIKER_ALCOHOL_FACTOR / ETHANOL_DICHTHEID / 10
   return {
@@ -542,6 +534,18 @@ const zelfdeIngredienten = (a: string, b: string): boolean => {
   return x.length === y.length && x.every((v, i) => v === y[i])
 }
 
+/**
+ * Waarin twee ingrediëntenlijsten verschillen, per ingrediënt (zelfde
+ * normalisatie als de vergelijking op de kaart: kopje, Bevat-zin, hoofdletters
+ * en leestekens aan het eind tellen niet). `ontbreekt` = in `batch` maar niet
+ * in `etiket` ("website: zonder tarwemout"), `teveel` = andersom.
+ */
+export const ingredientenVerschil = (batch: unknown, etiket: unknown): {ontbreekt: string[]; teveel: string[]} => {
+  const b = ingredientItems(tekst(batch))
+  const e = ingredientItems(tekst(etiket))
+  return {ontbreekt: b.filter(x => !e.includes(x)), teveel: e.filter(x => !b.includes(x))}
+}
+
 // ── Lotcode en THT per verpakking ───────────────────────────────────────────
 
 export type ThtBron = 'sessie' | 'handmatig' | 'berekend' | 'afvulling' | 'geen' | 'onbekend'
@@ -823,9 +827,11 @@ const lotsVanBatch = (
   if (uit.length) return uit
 
   // Vóór de eerste sessie: de lotcode die de eerste sessie krijgt, en de THT
-  // zoals die bij de verwachte afvuldatum berekend zou worden. Een afgeronde
-  // batch zonder sessies of afvullingen krijgt geen voorspelling meer.
-  if (batch.id == null || AFGEVULD_STATUSSEN.includes(tekst(batch.status))) return []
+  // zoals die bij de verwachte afvuldatum berekend zou worden — ook in de fase
+  // Afvullen, zolang de eerste sessie er nog niet is (dat is precies het
+  // moment waarop hij nodig is). Een gesloten batch zonder sessies of
+  // afvullingen krijgt geen voorspelling meer.
+  if (batch.id == null || tekst(batch.status) === 'Gesloten') return []
   const {lotcode, sessie_nr} = nieuweLotcode(ctx.afvulSessies || [], {id: batch.id, batch_nummer: batch.batch_nummer})
   const risico = risicoVoorBatch(batch, ctx.batchIngredienten || [], ctx.ingredienten || [], inst, ctx.lots)
   const klasse = thtKlasseVoorBatch(abv, risico, inst)
@@ -1631,4 +1637,116 @@ export const etiketKopieTekst = (invoer: EtiketKopieInvoer, t: Vertaal): string 
     voeg(t('etiket_kopie_energie').replace('{kj}', String(Math.round(kj))).replace('{kcal}', String(Math.round(kcal))))
   }
   return regels.join('\n')
+}
+
+// ── 13. CCP 3: de versie op de rol en de getallen bij de controle ───────────
+//
+// De afvuller vult de versie in van de rol die hij in zijn hand heeft; het
+// veld begint leeg en de verwachte versie (die van het product) staat er als
+// tekst naast. Zo valt een oude rol op, in plaats van dat het formulier de
+// verwachte versie al invult en hij er doorheen glipt (opzet 5.5).
+
+const versieSleutel = (v: unknown): string => {
+  const s = tekst(v).toLowerCase().replace(/\s+/g, ' ')
+  const m = /^v?\s*(\d+)$/.exec(s)
+  return m ? `v${Number(m[1])}` : s
+}
+
+/** Dezelfde etiketversie: "v4", "V4", "4" en " v 4 " zijn gelijk. */
+export const zelfdeEtiketVersie = (a: unknown, b: unknown): boolean =>
+  versieSleutel(a) === versieSleutel(b)
+
+/**
+ * Blokkade bij CCP 3 als de gelezen versie afwijkt van de verwachte (die van
+ * het product). Niets ingevuld of geen verwachte versie: geen blokkade — het
+ * formulier vraagt de versie zelf wanneer er een te verwachten valt. Gaat via
+ * het bestaande mechanisme: dezelfde blokkadekaart en dezelfde
+ * afwijkingsregistratie als de allergenen.
+ */
+export const etiketVersieBlokkade = (gelezen: unknown, verwacht: unknown): BlokkadeReden | null => {
+  const g = tekst(gelezen)
+  const v = tekst(verwacht)
+  if (!g || !v || zelfdeEtiketVersie(g, v)) return null
+  return {code: 'etiket_versie_wijkt_af', i18nKey: 'haccp_blok_etiket_versie', params: {gelezen: g, verwacht: v}}
+}
+
+/** De etiketblokkade van CCP 3 (allergenen, `magEtiketterenDoorgaan`) met
+ *  de versie op de rol erbij. */
+export const etiketBlokMetVersie = (blok: BlokkadeResultaat, gelezen: unknown, verwacht: unknown): BlokkadeResultaat => {
+  const reden = etiketVersieBlokkade(gelezen, verwacht)
+  return reden ? {toegestaan: false, redenen: [...blok.redenen, reden]} : blok
+}
+
+/** De bevroren getallen op een nieuwe etiketcontrole (CCP 3). Oude records
+ *  hebben ze niet; append-only blijft gelden. */
+export interface EtiketControleGetallen {
+  etiket_versie_gelezen?: string
+  etiket_versie_verwacht?: string
+  abv_batch?: number
+  abv_etiket_verwacht?: number
+  abv_marge?: number
+}
+
+/**
+ * Wat een nieuwe etiketcontrole bevriest: de gelezen en de verwachte versie,
+ * de ABV van de batch (de vastgezette, anders de beste waarde die er is), wat
+ * het etiket vastlegt en de marge die daarbij hoort. Lege waarden vallen weg.
+ */
+export const etiketControleGetallen = (invoer: {
+  gelezen?: unknown
+  product?: Partial<Pick<Product, 'etiket_versie' | 'abv'>> | null
+  abvBatch?: unknown
+}): EtiketControleGetallen => {
+  const uit: EtiketControleGetallen = {}
+  const gelezen = tekst(invoer.gelezen)
+  const verwacht = tekst(invoer.product?.etiket_versie)
+  if (gelezen) uit.etiket_versie_gelezen = gelezen
+  if (verwacht) uit.etiket_versie_verwacht = verwacht
+  const b = pos(invoer.abvBatch)
+  const e = pos(invoer.product?.abv)
+  if (b !== null) uit.abv_batch = rond(b, 2)
+  if (e !== null) uit.abv_etiket_verwacht = rond(e, 2)
+  if (b !== null && e !== null) uit.abv_marge = abvMarge(e, b)
+  return uit
+}
+
+/**
+ * De regel naast "Alcoholgehalte op het etiket klopt": "batch 7,0 ·
+ * vastgelegd etiket 6,2 · kijk op de fles". Het vinkje blijft handwerk — de
+ * app vergelijkt niet voor de afvuller, hij zet de twee getallen naast elkaar.
+ */
+export const ccp3AbvRegel = (abvBatch: unknown, abvEtiket: unknown, t: Vertaal, taal?: string | null): string => {
+  const delen: string[] = []
+  const b = pos(abvBatch)
+  const e = pos(abvEtiket)
+  if (b !== null) delen.push(t('etiket_ccp3_abv_batch').replace('{abv}', fmtGetal(rond(b, 1), 1, taal)))
+  delen.push(e !== null
+    ? t('etiket_ccp3_abv_etiket').replace('{abv}', fmtGetal(rond(e, 1), 1, taal))
+    : t('etiket_ccp3_abv_etiket_leeg'))
+  delen.push(t('etiket_ccp3_kijk'))
+  return delen.join(' · ')
+}
+
+// ── 14. De strook in de batchkop (Gepland t/m Vergisten) ────────────────────
+
+/**
+ * Vóór er iets te vergelijken valt, staat in de batchkop wat er op het etiket
+ * gaat komen: "Doel 6,8 % · 22 IBU · 9 EBC · Bevat: gerst, tarwe". ABV en IBU
+ * uit het recept (de verwachting, niet een meting), de kleur uit het recept en
+ * de allergenen uit de batchregels (anders het recept). Leeg als er niets is.
+ */
+export const etiketDoelStrook = (w: EtiketWaarden | null | undefined, t: Vertaal, taal?: string | null): string => {
+  if (!w) return ''
+  const delen: string[] = []
+  const abv = w.abv.verwacht ?? (w.abv.bron === 'verwacht' ? w.abv.waarde : null)
+  if (abv !== null && abv > 0) {
+    const getal = fmtGetal(rond(abv, 1), 1, taal)
+    delen.push(decimaalteken(taal) === '.' ? `${getal}%` : `${getal} %`)
+  }
+  const ibu = w.ibu.verwacht ?? w.ibu.waarde
+  if (ibu !== null && ibu > 0) delen.push(`${Math.round(ibu)} IBU`)
+  if (w.ebc.waarde !== null && w.ebc.waarde > 0) delen.push(`${Math.round(w.ebc.waarde)} EBC`)
+  const bevat = allergeenRegel(w.allergenen.lijst, t).replace(/\.\s*$/, '')
+  if (bevat) delen.push(bevat)
+  return delen.length ? `${t('etiket_doel')} ${delen.join(' · ')}` : ''
 }

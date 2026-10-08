@@ -133,6 +133,7 @@ export const openstaandeBatchTaken = (
   return uit
 }
 
+// Het aantal open vinkjes — voor de knop "Taken (n)" op één batch.
 export const telOpenstaandeBatchTaken = (
   batches: any[],
   batchTakenItems: any[],
@@ -140,6 +141,17 @@ export const telOpenstaandeBatchTaken = (
 ): number =>
   openstaandeBatchTaken(batches, batchTakenItems, batchTakenGroepen)
     .reduce((s, r) => s + r.taken.length, 0)
+
+// Het aantal batches met minstens één open taak — de telling van de
+// attentiepost en de werkruimte-badge. Per batch, niet per vinkje: drie open
+// vinkjes op één batch zijn één ding om naar te kijken, en een badge van 14
+// omdat één brouwdag veertien stappen heeft zegt niets.
+export const telBatchesMetOpenTaken = (
+  batches: any[],
+  batchTakenItems: any[],
+  batchTakenGroepen: any[],
+): number =>
+  openstaandeBatchTaken(batches, batchTakenItems, batchTakenGroepen).length
 
 // Vervaldata per schoonmaak-frequentie (dagen sinds de laatste log voordat
 // een taak als achterstallig geldt). Spiegelt HACCPPage's DashTab/

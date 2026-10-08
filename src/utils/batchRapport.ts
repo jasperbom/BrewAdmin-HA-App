@@ -19,15 +19,20 @@
 // erger dan geen dossier.
 
 import type {
-  Afvulling, AfvulSessie, Batch, BatchIngredient, BatchNotitie, EtiketControle,
-  GistMeting, HaccpAfwijking, HaccpVrijgave, Ingredient, Lot, Paraaf,
+  Afvulling, AfvulSessie, Allergeen, Batch, BatchIngredient, BatchNotitie, EtiketControle,
+  GistMeting, HaccpAfwijking, HaccpInst, HaccpVrijgave, Ingredient, Lot, Paraaf, Product,
   SluitControle, VerliesRegistratie, Verpakking,
 } from '../types'
 import { BUILTIN_ING_TYPES, FASE_LABEL_KEYS } from './constants'
 import { bouwBatchTijdlijn, type BatchTijdlijn, type StatusLogRegel } from './vergisting'
 import { lotLabel } from './trace'
 import { berekenBatchKostprijs } from './calculations'
+import type { VasteKostenPost } from './calculations'
+import type { BrouwKosten } from './brouwKosten'
 import { metingWaarde } from './metingen'
+import { etiketWaarden, productEtiketWaarden, sorteerAllergenen } from './etiket'
+import type { EtiketCtx, EtiketWaarden, ProductEtiketCtx, ProductEtiketWaarden } from './etiket'
+import { productenVoorEtiketKaart } from './etiketKaart'
 
 // ── Wanneer is een batch "afgerond"? ────────────────────────────────────────
 // Bij `Afgevuld` zit het bier in de verpakking: vanaf dat moment ligt alles
@@ -190,9 +195,43 @@ export interface RapportNotitie {
   tekst: string
 }
 
+/** De kaart "Etiket & website" zoals in Gereed: de waarden van de batch met
+ *  hun bron en per product wat het etiket vastlegt. De renderer maakt er met
+ *  `etiketKaartBlokken` (utils/etiketKaart.ts) dezelfde regels van als de
+ *  kaart op het scherm. */
+export interface RapportEtiket {
+  waarden: EtiketWaarden
+  producten: Array<{product: Pick<Product, 'id'> & Partial<Product>, etiket: ProductEtiketWaarden}>
+}
+
+/** Eén etiketcontrole (CCP 3) met de getallen die erbij bevroren zijn. Oude
+ *  records (van vóór de snapshots) hebben alleen de versie en de allergenen. */
+export interface RapportEtiketControle {
+  moment: string
+  lotcode: string
+  product: string
+  /** De versie op de rol; bij een oud record de vastgelegde `etiket_versie`. */
+  versieGelezen: string
+  versieVerwacht: string
+  abvBatch: number | null
+  abvEtiket: number | null
+  abvMarge: number | null
+  allergenenBatch: Allergeen[]
+  allergenenEtiket: Allergeen[]
+  goedgekeurd: boolean
+  /** Doorgezet langs een blokkade met een vastgelegde afwijking. */
+  afwijking: boolean
+  /** Het record draagt de snapshotvelden (vanaf v1.12.90). */
+  snapshot: boolean
+  paraaf: RapportParaaf
+}
+
 export interface RapportFinancieel {
   ingredienten: number
   overhead: number
+  /** De vaste kosten per post met hun bron (genoteerd op de batch, of
+   *  afgeleid — `vasteKostenVoorBatch` in calculations.ts). */
+  overheadPosten: VasteKostenPost[]
   brouwkosten: number
   verpakking: number
   accijns: number
@@ -235,6 +274,10 @@ export interface BatchRapport {
   afwijkingen: RapportAfwijking[]
   notities: RapportNotitie[]
   financieel: RapportFinancieel
+  /** Etiket & website; null als er niets te tonen valt. */
+  etiket: RapportEtiket | null
+  /** CCP 3 — de etiketcontroles met hun getallen, op tijdsvolgorde. */
+  etiketcontroles: RapportEtiketControle[]
 }
 
 // ── Invoer ──────────────────────────────────────────────────────────────────
@@ -271,6 +314,14 @@ export interface BatchRapportInvoer {
    *  elke tien minuten een temperatuur weg, dat zijn honderden regels per
    *  batch en ze zeggen niets over wat er gemeten ís. */
   inclusiefAutoMetingen?: boolean
+  /** Alle batches: de referentiebatch en het huidige recept van een product
+   *  (de etiketkaart vergelijkt het etiket daarmee). */
+  batches?: Array<Record<string, unknown>> | null
+  haccpInst?: Partial<HaccpInst> | null
+  /** De afgeleide vaste brouwkosten (`brouwKosten`), zoals het scherm ze
+   *  meetelt — zodat het dossier dezelfde kostprijs noemt als de batchpagina.
+   *  Nooit in de W&V of de COGS. */
+  vasteKosten?: BrouwKosten | null
 }
 
 // ── Deelberekeningen ────────────────────────────────────────────────────────
@@ -408,6 +459,64 @@ const afwijkingRegels = (afwijkingen: HaccpAfwijking[]): RapportAfwijking[] =>
     paraaf: paraafVan(a.paraaf),
   }))
 
+// Etiket & website — dezelfde afleiding als de kaart op de batchpagina
+// (utils/etiket.ts), met de producten van de batch zoals de kaart ze kiest.
+const etiketVanBatch = (
+  batch: Batch,
+  inv: BatchRapportInvoer,
+  sessies: AfvulSessie[],
+  afvullingen: Afvulling[],
+): RapportEtiket => {
+  const ctx: ProductEtiketCtx = {
+    recepten: (inv.recepten || []) as unknown as EtiketCtx['recepten'],
+    batchIngredienten: inv.batchIngredienten || [],
+    ingredienten: inv.ingredienten || [],
+    lots: inv.lots || [],
+    afvulSessies: sessies,
+    afvullingen,
+    productArtikelen: (inv.productArtikelen || []) as unknown as EtiketCtx['productArtikelen'],
+    verpakkingen: (inv.verpakkingen || []) as unknown as EtiketCtx['verpakkingen'],
+    haccpInst: inv.haccpInst || null,
+    batches: (inv.batches || [batch]) as unknown as ProductEtiketCtx['batches'],
+  }
+  const producten = productenVoorEtiketKaart(batch as unknown as {id: number},
+    (inv.producten || []) as unknown as Array<Pick<Product, 'id'> & Partial<Product>>, afvullingen)
+  return {
+    waarden: etiketWaarden(batch, ctx),
+    producten: producten.map(product => ({product, etiket: productEtiketWaarden(product, ctx)})),
+  }
+}
+
+// CCP 3 — elke etiketcontrole met de getallen die erbij zijn bevroren.
+const etiketControleRegels = (
+  controles: EtiketControle[],
+  sessies: AfvulSessie[],
+  producten: Array<Record<string, unknown>>,
+): RapportEtiketControle[] =>
+  controles.map(c => {
+    const sessie = sessies.find(x => zelfdeId(x.id, c.sessie_id))
+    const prod = producten.find(x => zelfdeId(x.id, c.product_id))
+    const snapshot = c.etiket_versie_gelezen !== undefined || c.etiket_versie_verwacht !== undefined
+      || c.abv_batch !== undefined || c.abv_etiket_verwacht !== undefined
+    const getalOfNull = (v: unknown): number | null => (v === undefined || v === null || v === '' ? null : getal(v))
+    return {
+      moment: tekst(c.uitgevoerd_op) || tekst(c.paraaf?.tijdstip),
+      lotcode: tekst(sessie?.lotcode),
+      product: tekst(prod?.naam),
+      versieGelezen: tekst(c.etiket_versie_gelezen ?? c.etiket_versie),
+      versieVerwacht: tekst(c.etiket_versie_verwacht),
+      abvBatch: getalOfNull(c.abv_batch),
+      abvEtiket: getalOfNull(c.abv_etiket_verwacht),
+      abvMarge: getalOfNull(c.abv_marge),
+      allergenenBatch: sorteerAllergenen(c.allergenen_recept),
+      allergenenEtiket: sorteerAllergenen(c.allergenen_etiket),
+      goedgekeurd: c.resultaat === 'goedgekeurd',
+      afwijking: c.afwijking_id != null,
+      snapshot,
+      paraaf: paraafVan(c.paraaf),
+    }
+  }).sort((a, b) => a.moment.localeCompare(b.moment))
+
 // Financieel resultaat — de kosten komen uit `berekenBatchKostprijs`, dezelfde
 // afleiding als het blok "Financieel resultaat" op de batchpagina, de
 // productmarges en de COGS, zodat het dossier geen tweede waarheid wordt.
@@ -423,7 +532,7 @@ const financieel = (
   const artikelen = inv.artikelen || []
 
   const k = berekenBatchKostprijs(batch, regels, inv.lots || [], afvullingen,
-    inv.verpakkingen || [], inv.onderdelen || [], inv.accijns || [])
+    inv.verpakkingen || [], inv.onderdelen || [], inv.accijns || [], null, inv.vasteKosten ?? null)
   const ingredienten = k.ingredienten_kosten ?? 0
   const overhead = k.overhead_kosten ?? 0
   const verpakking = k.verpakking_kosten ?? 0
@@ -448,6 +557,7 @@ const financieel = (
   return {
     ingredienten,
     overhead,
+    overheadPosten: k.overhead_posten || [],
     brouwkosten,
     verpakking,
     accijns,
@@ -529,6 +639,8 @@ export function bouwBatchRapport(inv: BatchRapportInvoer): BatchRapport {
     afwijkingen: afwijkingRegels(afwijkingen),
     notities: notities.map(n => ({ts: tekst(n.ts), tekst: tekst(n.tekst)})),
     financieel: financieel(batch, regels, afvullingen, inv, kern),
+    etiket: etiketVanBatch(batch, inv, sessies, afvullingen),
+    etiketcontroles: etiketControleRegels(vanBatch(inv.etiketcontroles), sessies, inv.producten || []),
   }
 }
 

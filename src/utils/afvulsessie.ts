@@ -12,7 +12,7 @@ import type {
   AfvulSessie, Batch, HaccpInst, HaccpVrijgave, SluitControle, ThtKlasse,
 } from '../types'
 import type { BlokkadeReden, BlokkadeResultaat, EtiketDekking, RisicoResultaat } from './haccp'
-import { etiketDektProduct, haccpInst, magAfvullen } from './haccp'
+import { etiketDektProduct, haccpInst, isLegacyBatch, magAfvullen } from './haccp'
 
 const blokkade = (redenen: BlokkadeReden[]): BlokkadeResultaat =>
   ({toegestaan: redenen.length === 0, redenen})
@@ -195,17 +195,71 @@ export const actieveSessie = (
   return open.find(s => s.id === actiefId) || open[0] || null
 }
 
+/**
+ * "ABV vastzetten" is verplicht vóór de eerste afvulsessie, net als de CCP 1-
+ * vrijgave: de voorcalculatie bij het afvullen, de uitslagaccijns, het
+ * accijnsrecord en de THT-klasse lezen `batch.ABV` (met 0 als terugval), dus
+ * die mag dan niet leeg zijn of nog een schatting (opzet 5.3). Een batch die
+ * al een sessie of een afvulling heeft, wordt niet met terugwerkende kracht
+ * geblokkeerd — net als een legacy-batch bij CCP 1. Geen afwijkingsroute:
+ * vastzetten kan altijd (de berekende waarde, of een labwaarde).
+ */
+export const abvVastgezetBlokkade = (
+  batch: (Pick<Batch, 'id'> & Partial<Pick<Batch, 'ABV' | 'abv_definitief'>>) | null | undefined,
+  sessies: Array<{batch_id?: number | string | null}> | null | undefined,
+  afvullingen?: Array<{batch_id?: number | string | null}> | null,
+): BlokkadeReden | null => {
+  if (!batch) return null
+  if (batch.abv_definitief && Number(batch.ABV) > 0) return null
+  const vanBatch = (r: {batch_id?: number | string | null} | null | undefined) =>
+    !!r && r.batch_id != null && String(r.batch_id) === String(batch.id)
+  if ((sessies || []).some(vanBatch) || (afvullingen || []).some(vanBatch)) return null
+  return {code: 'abv_niet_vastgezet', i18nKey: 'haccp_blok_abv_niet_vastgezet'}
+}
+
+/**
+ * Mag de batch naar de fase Afvullen? Dezelfde twee poorten als de eerste
+ * sessie: de CCP 1-vrijgave (behalve voor een legacy-batch, afgevuld vóór de
+ * sessies) en de vastgezette ABV. De knop "Naar afvullen" staat uit met deze
+ * redenen erbij; doorgaan langs CCP 1 kan alleen via de afwijking op het
+ * vrijgaveformulier zelf.
+ */
+export const magNaarAfvullen = (
+  batch: (Pick<Batch, 'id'> & Partial<Pick<Batch, 'ABV' | 'abv_definitief'>>) | null | undefined,
+  ctx: {
+    vrijgaven?: HaccpVrijgave[] | null
+    sessies?: Array<{batch_id?: number | string | null}> | null
+    afvullingen?: Array<{batch_id: number; sessie_id?: number}> | null
+  },
+): BlokkadeResultaat => {
+  if (!batch) return blokkade([])
+  const redenen: BlokkadeReden[] = []
+  const abv = abvVastgezetBlokkade(batch, ctx.sessies, ctx.afvullingen)
+  if (abv) redenen.push(abv)
+  if (!isLegacyBatch(batch.id, ctx.afvullingen || [])) {
+    redenen.push(...magAfvullen(batch.id, ctx.vrijgaven || []).redenen)
+  }
+  return blokkade(redenen)
+}
+
 /** Een sessie kan niet gestart worden zonder vrijgave (CCP 1) en zonder
  *  bevestigde reiniging en desinfectie van de afvuller. Per verpakkingstype
  *  loopt er hooguit één sessie: twee open sessies op hetzelfde type maken
- *  onnavolgbaar bij welke lotcode een sluitcontrole hoort. */
+ *  onnavolgbaar bij welke lotcode een sluitcontrole hoort. Met `abv` erbij
+ *  geldt ook de poort van de vastgezette ABV (`abvVastgezetBlokkade`). */
 export const magSessieStarten = (
   batchId: number,
   vrijgaven: HaccpVrijgave[],
   invoer: {reiniging_bevestigd?: boolean; verpakking_id?: number | null},
-  sessies: AfvulSessie[]
+  sessies: AfvulSessie[],
+  abv?: {
+    batch: (Pick<Batch, 'id'> & Partial<Pick<Batch, 'ABV' | 'abv_definitief'>>) | null | undefined
+    afvullingen?: Array<{batch_id?: number | string | null}> | null
+  } | null,
 ): BlokkadeResultaat => {
   const redenen: BlokkadeReden[] = [...magAfvullen(batchId, vrijgaven).redenen]
+  const abvReden = abv ? abvVastgezetBlokkade(abv.batch, sessies, abv.afvullingen) : null
+  if (abvReden) redenen.unshift(abvReden)
   if (!invoer.reiniging_bevestigd) {
     redenen.push({code: 'reiniging_niet_bevestigd', i18nKey: 'haccp_blok_reiniging'})
   }
