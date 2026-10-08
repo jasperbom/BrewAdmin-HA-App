@@ -59,6 +59,11 @@ BrewAdmin-HA-App/
 │   │   │                           # lot, lotvenster Ingrediënten), ItemKiezer, InkoopTotalen, Onderblad, Segment
 │   │   ├── InkoopInbox.tsx         # Facturen › Inkoop → status "Te verwerken": de wachtrij met doorgestuurde PDF-facturen
 │   │   ├── InkoopMailInstellingen.tsx # Instellingen → Koppelingen → Facturen per e-mail (`imap_creds`, test, status)
+│   │   ├── AllergenenOpzoeken.tsx  # Blad "Allergenen opzoeken" (één voor de hele app, net als Etiket bijwerken):
+│   │   │                           # per ingrediënt het voorstel met bron, aanvinken, Aanpassen, Overnemen. Open
+│   │   │                           # het met `useAllergenenOpzoeken()?.open(ingredientIds)` — null zonder schrijfrecht
+│   │   │                           # op `ingredienten` (dan geen knop). Ingangen: etiketkaart, Wat brouw je?, recept,
+│   │   │                           # HACCP › Allergenen
 │   │   ├── BatchRapportExport.tsx  # Batchdossier → print-HTML / printvenster / PDF-download
 │   │   └── PakbonExport.tsx        # Pakbon, picklijst, factuur, herinnering. Deelt
 │   │                               # `DOC_CSS`/`esc`/`breweryBlock`/`openPrint` met het dossier
@@ -481,6 +486,14 @@ BrewAdmin-HA-App/
 │   │   │                   # verdelen over de lots), `etiketVoorLot` (bestaand lot), `productKlopt`
 │   │   ├── scanGeheugen.ts # Het scangeheugen (`scan_correcties`): per leverancier + artikelnummer of omschrijving
 │   │   │                   # hoe een regel geboekt is; geleerd bij elk opslaan (`koppelingenUitRegels`)
+│   │   ├── allergeenOpzoeken.ts # Allergenen van ingrediënten opzoeken: eerst vaste brouwkennis
+│   │   │                   # (`allergenenVolgensRegels`: hop/gist geen, mout = gerst, allergeennamen in vijf talen;
+│   │   │                   # melkzuur/nootmuskaat/kokos/boekweit zijn géén allergeen; onzeker = `null`), dan Claude
+│   │   │                   # (`allergeenScanSchema`/`allergeenScanPrompt`/`normaliseerAllergeenScan`, per 40). Per
+│   │   │                   # ingrediënt een `AllergeenVoorstel` (bron, zekerheid, voorgevinkt — "laag" en een al
+│   │   │                   # beoordeeld ingrediënt nooit), `metAanpassing` (zelf = `handmatig`), `glutenConventie`
+│   │   │                   # (gerst + gluten of alleen gerst, zoals al vastgelegd), `neemVoorstellenOver` (de énige
+│   │   │                   # schrijfweg vanuit een voorstel), `handmatigBeoordeeld` (de matrix), `teBeoordelen`
 │   │   ├── inkoopControle.ts # Totaal tegen de factuur (of de afschrijving), "Neem over" → correctieregel,
 │   │   │                   # handmatige totalen (`effectieveTotalen`, `naarTotaalManual`), dubbele factuur
 │   │   ├── afbeelding.ts   # Foto → JPEG op maat (scan 2576 px, archief 1600 px; HEIC alleen in Safari) en
@@ -713,6 +726,10 @@ factuur- en etiketscan (schema's binnen de grenzen van gestructureerde
 uitvoer, opschonen, toepassen zonder invoer van de gebruiker te overschrijven),
 het scangeheugen, de totaal- en dubbelecontrole, de foto-omzetting
 (`afbeelding.ts`) en de regel-zoeker in de PDF (`pdfZoek.ts`).
+Het opzoeken van allergenen (`allergeenOpzoeken.test.ts`): de vaste regels (mout,
+graansoorten in vijf talen, glutenvrij graan, melkzuur/nootmuskaat/kokos,
+plantaardige melk, suiker, wat onzeker blijft), de gluten-conventie, het schema
+en het antwoord van Claude, voorstellen, aanpassen en overnemen.
 De administratie (v1.12.89/90) heeft een eigen blok: de periodekeuze
 (`periode.test.ts`), de factuurfilter (`factuurFilter.test.ts`: een vervallen
 factuur van vorig jaar staat onder Te laat terwijl de periode "dit jaar" is, en
@@ -1157,6 +1174,15 @@ website hoort (zie `docs/OPZET-PRODUCTIE-VERKOOP.md` hoofdstuk 5). Regels:
 - **Allergenen via het lot**: geef `lots` mee aan `allergenenUitBatch` /
   `ingredientVoorBatchRegel` / `risicoVoorBatch`, anders zien de kaart en CCP 3
   iets anders.
+- **Allergenen van een ingrediënt opzoeken** (`utils/allergeenOpzoeken.ts`,
+  blad `AllergenenOpzoeken`): vaste brouwkennis eerst, Claude voor de rest. Er
+  wordt nooit iets vanzelf vastgelegd — wat iemand aanvinkt en overneemt wordt
+  `ingredient.allergenen` (met `allergenen_bron` `regel`/`claude`/`handmatig`,
+  toelichting en model), en het bier neemt het daarna vanzelf mee via de
+  bestaande afleiding. Een eerdere beoordeling wordt niet stil overschreven
+  (nooit voorgevinkt). Het voorstel volgt de gluten-conventie van wat al
+  vastligt (`glutenConventie`), want CCP 3 normaliseert gluten niet. Het etiket
+  van het product blijft daarbuiten: dat gaat alleen via `legEtiketVast`.
 - **Webshop.** `afgeleideBierInfo` voor de push leest alleen productwaarden
   (nooit stil een batchwaarde). Bij elke push en pull bewaart de app de
   `_cf_`-meta als `wc.meta_stand` + `meta_stand_op` op het artikel; "website
@@ -1283,7 +1309,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 
 | Key | Type | Inhoud |
 |-----|------|--------|
-| `ingredienten` | array | Ingrediënten |
+| `ingredienten` | array | Ingrediënten. `allergenen` (ontbrekend = niet beoordeeld, `[]` = geen) met `allergenen_bron` (`regel`/`claude`/`handmatig`), `allergenen_toelichting` en `allergenen_model` (bij `claude`) — gezet door *Allergenen opzoeken* of de matrix (`handmatigBeoordeeld`) |
 | `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
 | `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie) |
 | `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
@@ -1752,8 +1778,10 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 ### Claude AI (Anthropic)
 
 - Used for: de inkoopfactuur (PDF of foto's), foto's van het etiket op een zak (lotnummer, THT, eigenschappen),
-  het waterrapport (Gereedschap → Waterprofiel) en het uitbetalingsverslag van een PSP als de tekstlaag van de
-  PDF niets oplevert (Bank: scan, foto's, onbekende opmaak — `utils/pspVerslagScan.ts`)
+  het waterrapport (Gereedschap → Waterprofiel), het uitbetalingsverslag van een PSP als de tekstlaag van de
+  PDF niets oplevert (Bank: scan, foto's, onbekende opmaak — `utils/pspVerslagScan.ts`) en de allergenen van
+  ingrediënten die de vaste regels niet zeker weten (`utils/allergeenOpzoeken.ts`: alleen naam, type, fabrikant en
+  Brewfather-eigenschappen gaan mee; per ingrediënt allergenen, zekerheid en één zin uitleg)
 - Eén plek: `utils/claudeScan.ts` (`voerScanUit`). Gestructureerde uitvoer via `output_config.format`
   (`json_schema`), **geen temperature** en **geen geforceerde tool-aanroep** (de huidige modellen weigeren
   beide met een 400), `max_tokens` 16k (het nadenken telt mee), `stop_reason` `max_tokens`/`refusal` →

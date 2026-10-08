@@ -16,6 +16,15 @@ export interface Ingredient {
   // Allergenen van dit ingrediënt. Ontbrekend = nog niet beoordeeld; een lege
   // lijst = gecontroleerd, bevat geen allergenen.
   allergenen?: Allergeen[]
+  // Hoe die beoordeling tot stand kwam (utils/allergeenOpzoeken.ts): `regel` =
+  // vaste brouwkennis (mout = gerst), `claude` = voorgesteld door Claude,
+  // `handmatig` = in de allergenenmatrix aangevinkt. Altijd door iemand
+  // overgenomen; wie en wanneer staat in het auditlogboek.
+  allergenen_bron?: 'regel' | 'claude' | 'handmatig'
+  // Waarom: de regel of de toelichting van Claude (in de taal van dat moment).
+  allergenen_toelichting?: string
+  // Het model dat het voorstel deed (alleen bij `claude`).
+  allergenen_model?: string
   // HACCP: markeert dit ingrediënt als toevoeging ná de afdodingsstap. Stuurt
   // de risicoklasse van de batch (CCP 1) en de THT. Leeg = valt terug op de
   // default van het ingrediënttype uit HaccpInst.

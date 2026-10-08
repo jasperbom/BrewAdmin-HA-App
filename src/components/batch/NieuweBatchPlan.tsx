@@ -14,6 +14,7 @@ import Icon from '../ui/Icon'
 import PlanProductKeuze from './PlanProductKeuze'
 import { tankStatusRegel } from './tankOpties'
 import { redenTekst } from '../recept/receptTekst'
+import { useAllergenenOpzoeken } from '../AllergenenOpzoeken'
 
 // Stap 2 van het blad "Wat brouw je?" (SPEC C rechts): de keten (recept ›
 // product), brouwdatum, de tank met zijn status óp die datum, liters,
@@ -116,6 +117,7 @@ const OptieRij: React.FC<{ gekozen: boolean; onKies: () => void; titel: string; 
 
 const NieuweBatchPlan: React.FC<NieuweBatchPlanProps> = (p) => {
   const taal = getLang()
+  const opzoeken = useAllergenenOpzoeken()
   const [optiesOpen, setOptiesOpen] = React.useState(false)
   const tankGroep = React.useId()
 
@@ -176,6 +178,8 @@ const NieuweBatchPlan: React.FC<NieuweBatchPlanProps> = (p) => {
   const ingr = p.ingredienten
   const vb = p.vooruitblik
   const vbProduct = String(p.vooruitProduct?.naam || '')
+  // Ingrediënten van het recept zonder beoordeelde allergenen: meteen opzoeken.
+  const opTeZoeken = vb?.verwacht.allergenen.nietBeoordeeldIds || []
 
   return (
     <div className="space-y-4">
@@ -335,6 +339,12 @@ const NieuweBatchPlan: React.FC<NieuweBatchPlanProps> = (p) => {
           <p className={`text-sm break-words mt-0.5 ${KLEUR_TEKST[vb.allergenen.kleur]}`}>{vooruitTekst(vb.allergenen, vbProduct, vb.versie, taal)}</p>
           {vb.zonderEtiket && (
             <p className="text-xs text-gray-500 mt-1">{vb.zonderEtiket === 'nieuw' ? t('nb_etiket_nieuw_product') : t('nb_etiket_geen_product')}</p>
+          )}
+          {opzoeken && opTeZoeken.length > 0 && (
+            <button type="button" onClick={() => opzoeken.open(opTeZoeken)}
+              className="mt-1 mr-4 text-sm font-medium t-accent-text hover:underline min-h-tap md:min-h-0 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+              {t('allergenen_opzoeken')} <span aria-hidden="true">›</span>
+            </button>
           )}
           {vb.bijwerken && p.vooruitProduct && p.onEtiketBijwerken && (
             <button type="button" onClick={() => p.onEtiketBijwerken?.(Number(p.vooruitProduct.id))}

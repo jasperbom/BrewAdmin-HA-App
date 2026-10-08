@@ -16,6 +16,7 @@ import {
   sorteerAllergenen,
 } from '../../utils/etiket'
 import { voorraadPerProduct, type VerkoopCtx, type VoorraadVerpakking } from '../../utils/verkoopOverzicht'
+import { useAllergenenOpzoeken } from '../AllergenenOpzoeken'
 
 // De verbindingsblokken in het detail van een recept: bij welk product het
 // hoort (met etiket en voorraad), welke batches ermee gebrouwen zijn, wat het
@@ -95,6 +96,7 @@ export interface ReceptVerbindingenProps {
 const ReceptVerbindingen: React.FC<ReceptVerbindingenProps> = (p) => {
   const { recept, gebruik } = p
   const [alleBatches, setAlleBatches] = React.useState(false)
+  const opzoeken = useAllergenenOpzoeken()
   const producten = React.useMemo(
     () => gebruik.producten
       .map(ref => ({ ref, product: (p.producten || []).find((x: any) => Number(x?.id) === ref.productId) }))
@@ -220,6 +222,11 @@ const ReceptVerbindingen: React.FC<ReceptVerbindingenProps> = (p) => {
           </div>
           {onvolledig.length > 0 && (
             <p className="text-xs text-orange-700 mt-2 break-words">{t('recept_allergenen_onvolledig').replace('{ingredienten}', onvolledig.join(', '))}</p>
+          )}
+          {opzoeken && verwacht.allergenen.nietBeoordeeldIds.length > 0 && (
+            <LinkKnop cls="mt-1" onClick={() => opzoeken.open(verwacht.allergenen.nietBeoordeeldIds)}>
+              {t('allergenen_opzoeken')} <span aria-hidden="true">›</span>
+            </LinkKnop>
           )}
           {meldingen.map(({ product, melding }) => (
             <p key={product.id} className={`flex items-start gap-1.5 text-sm mt-2 ${MELDING_KLEUR[melding.kleur]}`}>

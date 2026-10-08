@@ -12,6 +12,7 @@ import RowActions from '../ui/RowActions'
 import type { RowActie } from '../ui/RowActions'
 import Btn from '../ui/Btn'
 import Icon from '../ui/Icon'
+import { useAllergenenOpzoeken } from '../AllergenenOpzoeken'
 
 // De kaart "Etiket & website" (opzet hoofdstuk 5): wat er op het etiket moet
 // (alcohol, allergenen, lotcode en THT) en wat naar de website gaat
@@ -132,9 +133,19 @@ interface TabelProps {
   open: Record<string, boolean>
   setOpen: (veld: string) => void
   artikelMaken?: (productId: number, verpakkingId: number) => void
+  /** Ingrediënten zonder beoordeelde allergenen: de knop in de allergeenregel. */
+  allergenenOpzoeken?: () => void
 }
 
-const Tabel: React.FC<TabelProps> = ({titel, regels, kolomBatch, bronnen, open, setOpen, artikelMaken}) => (
+/** "Allergenen opzoeken ›" onder het oordeel van de allergeenregel. */
+const OpzoekKnop: React.FC<{onClick: () => void}> = ({onClick}) => (
+  <button type="button" onClick={onClick}
+    className="block text-left text-sm font-medium t-accent-text hover:underline min-h-tap md:min-h-0 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+    {t('allergenen_opzoeken')} <span aria-hidden="true">›</span>
+  </button>
+)
+
+const Tabel: React.FC<TabelProps> = ({titel, regels, kolomBatch, bronnen, open, setOpen, artikelMaken, allergenenOpzoeken}) => (
   <div className="border-t border-gray-100 first:border-t-0">
     <div className="px-4 pt-3 pb-1 text-sm font-semibold text-gray-800">{titel}</div>
     <div className={`${KOLOMMEN} px-4 py-1.5 text-xs text-gray-500 border-b border-gray-100`}>
@@ -180,6 +191,7 @@ const Tabel: React.FC<TabelProps> = ({titel, regels, kolomBatch, bronnen, open, 
             ) : <div />}
             <div className="min-w-0 space-y-1.5">
               <Oordeel o={r.oordeel} />
+              {allergenenOpzoeken && r.veld === 'allergenen' && <OpzoekKnop onClick={allergenenOpzoeken} />}
               {artikelMaken && r.lots?.filter(l => l.artikelMaken).map((l, i) => (
                 <button key={i} type="button" onClick={() => artikelMaken(l.artikelMaken!.productId, l.artikelMaken!.verpakkingId)}
                   className="block text-sm font-medium text-orange-700 underline underline-offset-2 hover:text-orange-800">
@@ -225,7 +237,8 @@ const Tegels: React.FC<{blok: KaartProductBlok, onKies: (tg: KaartTegel) => void
 const TegelWeergave: React.FC<{
   blok: KaartProductBlok
   artikelMaken?: (productId: number, verpakkingId: number) => void
-}> = ({blok, artikelMaken}) => {
+  allergenenOpzoeken?: () => void
+}> = ({blok, artikelMaken, allergenenOpzoeken}) => {
   const [tegel, setTegel] = React.useState<KaartTegel | null>(null)
   const a = blok.allergenen
   const lotten = blok.verplicht.find(r => r.veld === 'lot')?.lots || []
@@ -241,6 +254,7 @@ const TegelWeergave: React.FC<{
           {a.etiket.length ? <Chips chips={a.etiket} /> : <span className="text-gray-600">{a.etiketTekst || '—'}</span>}
         </div>
         <Oordeel o={a.oordeel} />
+        {allergenenOpzoeken && <OpzoekKnop onClick={allergenenOpzoeken} />}
         {a.bevat && (
           <div className="text-sm text-gray-800 pl-4">
             {t('etiket_bevat_moet')} <strong className="font-semibold">{a.bevat.moet}</strong>
@@ -284,6 +298,7 @@ const EtiketKaart: React.FC<EtiketKaartProps> = ({
   onEtiketBijwerken, onNaarWebshop, onArtikelMaken, onAbvLab, bijwerkenInMenu = false, weergave = 'auto', cls = '',
 }) => {
   const taal = getLang()
+  const opzoeken = useAllergenenOpzoeken()
   const model: EtiketKaartModel = React.useMemo(
     () => etiketKaartModel({modus, batch, product, recept, data, website, taal}, t),
     [modus, batch, product, recept, data, website, taal])
@@ -324,6 +339,12 @@ const EtiketKaart: React.FC<EtiketKaartProps> = ({
   const eerste = model.producten[0]
   const status = model.status
   const artikelMaken = !alleenLezen && onArtikelMaken ? onArtikelMaken : undefined
+  // Ingrediënten zonder beoordeelde allergenen houden het oordeel op
+  // "onvolledig": opzoeken kan hier meteen (de beoordeling zelf blijft op het
+  // ingrediënt; het etiket leg je daarna vast met Etiket bijwerken).
+  const opTeZoeken = model.waarden?.allergenen.nietBeoordeeldIds || []
+  const allergenenOpzoeken = !alleenLezen && opzoeken && opTeZoeken.length
+    ? () => opzoeken.open(opTeZoeken) : undefined
   // De ene primaire knop van de kaart volgt de zwaarste status.
   const primair = !alleenLezen && status?.actie === 'etiket_bijwerken' && onEtiketBijwerken
     ? {label: t('etiket_actie_bijwerken'), doe: () => onEtiketBijwerken(zwaarsteProduct(model))}
@@ -374,12 +395,12 @@ const EtiketKaart: React.FC<EtiketKaartProps> = ({
             </div>
           )}
           {tegels ? (
-            <TegelWeergave blok={blok} artikelMaken={artikelMaken} />
+            <TegelWeergave blok={blok} artikelMaken={artikelMaken} allergenenOpzoeken={allergenenOpzoeken} />
           ) : (
             <>
               <Tabel titel={t('etiket_kaart_verplicht')} regels={blok.verplicht} kolomBatch={model.kolomBatch}
                 bronnen={bronnen} open={open} setOpen={v => setOpenState(o => ({...o, [v]: !o[v]}))}
-                artikelMaken={artikelMaken} />
+                artikelMaken={artikelMaken} allergenenOpzoeken={allergenenOpzoeken} />
               <Tabel titel={<>{t('etiket_kaart_website')} <span className="font-normal text-gray-600">{t('etiket_kaart_website_sub')}</span></>}
                 regels={blok.website} kolomBatch={model.kolomBatch}
                 bronnen={bronnen} open={open} setOpen={v => setOpenState(o => ({...o, [v]: !o[v]}))} />

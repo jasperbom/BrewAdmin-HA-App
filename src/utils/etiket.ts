@@ -67,7 +67,9 @@ export const ALLERGEEN_VOLGORDE: Allergeen[] = ALLERGENEN_LIJST.map(a => a.key a
 // Granen die gluten bevatten: op het etiket bij naam, en dan geen los "gluten".
 const GRAANSOORTEN: Allergeen[] = ['gerst', 'tarwe', 'rogge', 'haver']
 // Typen waarin een allergeen kan zitten. Hop en gist niet.
-const ALLERGEEN_TYPES = ['mout', 'suiker', 'overig']
+/** Ingrediënttypes die een allergeen kunnen dragen (kleine letters): alleen
+ *  die tellen als "niet beoordeeld" mee in het etiketoordeel. */
+export const ALLERGEEN_TYPES = ['mout', 'suiker', 'overig']
 const AFGEVULD_STATUSSEN = ['Afgevuld', 'Verpakt', 'Gesloten']
 
 // ── Kleine helpers ──────────────────────────────────────────────────────────
@@ -312,6 +314,8 @@ export interface AllergenenAfleiding {
   perAllergeen: Partial<Record<Allergeen, string[]>>
   /** Mout/Suiker/Overig waarvan het ingrediënt geen allergenen heeft vastgelegd. */
   nietBeoordeeld: string[]
+  /** De id's van die ingrediënten — om ze op te zoeken (utils/allergeenOpzoeken.ts). */
+  nietBeoordeeldIds: number[]
   /** Mout/Suiker/Overig zonder ingrediënt in de catalogus. */
   nietInCatalogus: string[]
   /** Alles beoordeeld (en er is iets om te beoordelen). */
@@ -336,6 +340,7 @@ const allergenenUitRegels = (
   const herkomst: string[] = []
   const perAllergeen: Partial<Record<Allergeen, string[]>> = {}
   const nietBeoordeeld: string[] = []
+  const nietBeoordeeldIds: number[] = []
   const nietInCatalogus: string[] = []
   const voeg = (xs: string[], x: string) => { if (x && !xs.includes(x)) xs.push(x) }
   for (const r of regels) {
@@ -348,7 +353,11 @@ const allergenenUitRegels = (
       continue
     }
     if (!Array.isArray(ing.allergenen)) {
-      if (ALLERGEEN_TYPES.includes(type)) voeg(nietBeoordeeld, naam)
+      if (ALLERGEEN_TYPES.includes(type)) {
+        voeg(nietBeoordeeld, naam)
+        const id = Number(ing.id)
+        if (Number.isFinite(id) && !nietBeoordeeldIds.includes(id)) nietBeoordeeldIds.push(id)
+      }
       continue
     }
     const eigen = sorteerAllergenen(ing.allergenen)
@@ -362,7 +371,7 @@ const allergenenUitRegels = (
   }
   return {
     lijst: sorteerAllergenen(lijst ?? gevonden),
-    bron, herkomst, perAllergeen, nietBeoordeeld, nietInCatalogus,
+    bron, herkomst, perAllergeen, nietBeoordeeld, nietBeoordeeldIds, nietInCatalogus,
     volledig: regels.length > 0 && !nietBeoordeeld.length && !nietInCatalogus.length,
   }
 }
