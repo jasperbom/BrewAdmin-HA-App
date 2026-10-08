@@ -25,6 +25,7 @@ import {
   verwachteControleMomenten, controleDekking,
 } from '../../utils/afvulsessie'
 import { verpakkingVoorraad } from '../../utils/verpakkingVoorraad'
+import { productVoorBatch, productenVoorKeuze } from '../../utils/productKeten'
 import type { AfvulSessie, SluitControle, EtiketControle } from '../../types'
 
 // De afvulsessie is het anker voor CCP 2 en CCP 3: één afvulmoment met een
@@ -172,7 +173,11 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   // Achteraf vastleggen is de normale gang van zaken — tijdens het afvullen
   // heb je je handen vol. Live meelopen kan, maar is de tweede keuze.
   const [modus, setModus] = React.useState<'achteraf' | 'live'>('achteraf')
-  const [na, setNa] = React.useState({...leegNa, datum: tod()})
+  // Het product van de batch (`product_id`; bij een oude batch zonder
+  // koppeling het product van zijn afvullingen). CCP 3 en het achteraf-
+  // formulier beginnen daar: het product kies je niet nog eens.
+  const batchProduct = productVoorBatch(p.batch, {afvullingen: p.av, producten: p.producten}).productId
+  const [na, setNa] = React.useState({...leegNa, datum: tod(), product_id: batchProduct ?? ''})
   const [nu, setNu] = React.useState(() => new Date())
   const [afwijking, setAfwijking] = React.useState<{blok: any; titel: string; bron: any} | null>(null)
   // Eén regel tegelijk open. Zonder eigen keuze staat de regel open die aan de
@@ -343,7 +348,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   // ── CCP 3 — etiketcontrole ───────────────────────────────────────────────
   const eigenEtiket = (p.etiketcontroles || []).filter(e => e.sessie_id === sessie?.id)
   const [ec, setEc] = React.useState({
-    product_id: '' as string | number,
+    product_id: (batchProduct ?? '') as string | number,
     etiket_versie: '',
     aanleiding: 'start' as EtiketControle['aanleiding'],
     lotcode_ok: false,
@@ -352,6 +357,22 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     opmerking: '',
   })
   const gekozenProduct = (p.producten || []).find((x: any) => x.id === Number(ec.product_id))
+  // Laden de producten (of de koppeling van de batch) pas na het openen, dan
+  // alsnog het product van de batch — alleen in een nog lege keuze.
+  React.useEffect(() => {
+    if (batchProduct == null) return
+    setEc(e => e.product_id ? e : {...e, product_id: batchProduct})
+    setNa(n => n.product_id ? n : {...n, product_id: batchProduct})
+  }, [p.batch?.id, batchProduct])
+  // Een keuzelijst van producten: zonder gearchiveerde, behalve het product
+  // dat al gekozen is (utils/productKeten.ts → productenVoorKeuze).
+  const productOpties = (gekozenId: string | number) =>
+    productenVoorKeuze(p.producten, gekozenId).map(({product, gearchiveerd}) => ({
+      v: String(product.id),
+      l: gearchiveerd
+        ? t('product_keuze_gearchiveerd').replace('{naam}', product.naam || t('lbl_naamloos'))
+        : (product.naam || t('lbl_naamloos')),
+    }))
   const receptAllergenen = React.useMemo(
     () => allergenenUitBatch(p.batch?.id, p.bi || [], p.ing || []),
     [p.batch, p.bi, p.ing])
@@ -717,9 +738,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         {/* Sel zet zelf al een lege keuze bovenaan — geen tweede '—' erbij. */}
         <Sel label={t('lbl_afvulling_product')} value={String(na.product_id)}
           onChange={(v: string) => setNa({...na, product_id: v})}
-          opts={(p.producten || [])
-            .filter((x: any) => x.status !== 'gearchiveerd')
-            .map((x: any) => ({v: String(x.id), l: x.naam}))} />
+          ph={t('ph_select_product')} opts={productOpties(na.product_id)} />
         {/* Met voorraad erbij, net als het live-formulier: zonder voorraad
             kan er niets worden afgevuld. */}
         <Sel label={t('lbl_packaging')} value={String(na.verpakking_id)}
@@ -1092,9 +1111,11 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const ccp3Inhoud = (
     <>
         <div className="grid sm:grid-cols-2 gap-2">
-          <Sel label={t('nav_producten')} value={String(ec.product_id)}
+          {/* Sel zet zelf al een lege keuze bovenaan — geen tweede '—' erbij.
+              Eén product per controle: het label in het enkelvoud. */}
+          <Sel label={t('lbl_afvulling_product')} value={String(ec.product_id)}
             onChange={(v: string) => setEc({...ec, product_id: v})}
-            opts={[{v: '', l: '—'}, ...(p.producten || []).map((x: any) => ({v: String(x.id), l: x.naam}))]} />
+            ph={t('ph_select_product')} opts={productOpties(ec.product_id)} />
           <Inp label={t('haccp_ccp3_etiket_versie')}
             value={ec.etiket_versie || gekozenProduct?.etiket_versie || ''}
             onChange={v => setEc({...ec, etiket_versie: v})} />

@@ -14,7 +14,7 @@
  * kerncijfers — die is het dossier.
  */
 import { t } from '../i18n'
-import { fmtEuroDoc, fmtDatumDoc, fmtQty, tod } from '../utils/format'
+import { fmtEuroDoc, fmtDatumDoc, fmtQty, fmtSg, tod } from '../utils/format'
 import { DOC_CSS, esc, breweryBlock, openPrint } from './PakbonExport'
 import { htmlNaarPdfDownload } from '../utils/pdf'
 import { rapportBestandsnaam } from '../utils/batchRapport'
@@ -122,8 +122,9 @@ const tabel = (koppen: Array<{label: string, r?: boolean, cls?: string}>, rijen:
 const kerncijferBlok = (r: BatchRapport): string => {
   const k = r.kern
   const cijfers: Array<{l: string, v: string}> = [
-    {l: t('batch_info_og'), v: k.og != null ? String(k.og) : LEEG},
-    {l: t('batch_info_fg'), v: k.fg != null ? String(k.fg) : LEEG},
+    // SG altijd met drie decimalen en een punt: "1.060", nooit "1.06".
+    {l: t('batch_info_og'), v: fmtSg(k.og, LEEG)},
+    {l: t('batch_info_fg'), v: fmtSg(k.fg, LEEG)},
     {l: t('batch_info_alcohol'), v: k.abv != null ? `${k.abv}%` : LEEG},
     {l: t('flow_sum_rendement'), v: k.rendementPct != null ? `${k.rendementPct.toFixed(0)}%` : LEEG},
     {l: t('flow_sum_vergist'), v: `${fmtQty(k.literVergist)} L`},
@@ -179,7 +180,7 @@ const metingenBlok = (rijen: RapportMeting[]): string => tabel(
   ],
   rijen.map(m => `<tr class="blok">
     <td class="nw">${esc(fmtDate(m.datum))}${m.tijd ? ` ${esc(m.tijd)}` : ''}</td>
-    <td class="r">${getalOfLeeg(m.sg)}</td>
+    <td class="r">${fmtSg(m.sg, LEEG)}</td>
     <td class="r">${getalOfLeeg(m.temp)}</td>
     <td class="r">${getalOfLeeg(m.ph)}</td>
     <td>${esc(m.opmerking)}</td>

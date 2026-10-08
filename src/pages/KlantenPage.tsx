@@ -14,12 +14,14 @@ import { nextKlantnummer, ordersTeKoppelenBijOpslaan, koppelOrderAanKlant, KLANT
 import { landOpties, normaliseerLand } from '../utils/btwCategorie'
 import { fmt, fmtD } from '../utils/format'
 import Btn from '../components/ui/Btn'
+import BevestigKnop from '../components/ui/BevestigKnop'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import SearchInput from '../components/ui/SearchInput'
 import SectionHeader from '../components/ui/SectionHeader'
 import MailModal from '../components/MailModal'
 import { logAudit } from '../utils/audit'
+import { orderNummer } from '../utils/picking'
 import type { GaNaar } from '../utils/route'
 
 interface Props {
@@ -309,8 +311,9 @@ const KlantenPage: React.FC<Props> = ({
     setView('detail')
   }
 
+  // Niet-opgeslagen wijzigingen: de terugknop wordt dan zelf de vraag
+  // (BevestigKnop hieronder), geen los bevestigingsvenster.
   const goBack = () => {
-    if (dirty && !confirm(t('klanten_unsaved_confirm'))) return
     setView('list')
     setSelectedId(null)
     setSynthSourceKey(null)
@@ -320,7 +323,8 @@ const KlantenPage: React.FC<Props> = ({
   const update = (patch: any) => { setForm((f: any) => ({...f, ...patch})); setDirty(true) }
 
   const save = () => {
-    if (!form.naam.trim()) { alert(t('klanten_err_no_name')); return }
+    // De opslaanknop staat uit zolang de naam leeg is; dit is het tweede slot.
+    if (!form.naam.trim()) return
     // Klantnummer wordt ALTIJD automatisch bepaald — nooit door de gebruiker
     // ingevoerd. Voorkomt dubbele nummers per definitie. Bij een nieuwe klant
     // pakken we het volgende vrije nummer; bij een bestaande klant behouden
@@ -459,8 +463,9 @@ const KlantenPage: React.FC<Props> = ({
     if (!selected) return
     const toLink = bestellingen.filter((b: any) =>
       matchOngekoppeldeOrder(b, selected.email || '', selected.naam || ''))
-    if (toLink.length === 0) { alert(t('klanten_no_unlinked_orders')); return }
-    if (!confirm(t('klanten_link_orders_confirm').replace('{n}', String(toLink.length)))) return
+    // De knop staat er alleen als er iets te koppelen valt, en vraagt zelf om
+    // bevestiging (BevestigKnop), geen los venster.
+    if (toLink.length === 0) return
     const ids = new Set(toLink.map((b: any) => b.id))
     setBestellingen((prev: any[]) => prev.map((b: any) =>
       ids.has(b.id) ? {...b, klant_id: selected.id} : b
@@ -469,7 +474,8 @@ const KlantenPage: React.FC<Props> = ({
   }
 
   const mailKlant = () => {
-    if (!selected?.email) { alert(t('mail_no_recipient')); return }
+    // De mailknop staat uit zonder opgeslagen e-mailadres.
+    if (!selected?.email) return
     setMailModal({
       to: selected.email,
       subject: '',
@@ -499,10 +505,16 @@ const KlantenPage: React.FC<Props> = ({
     return (
       <div>
         <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <button onClick={goBack}
-            className="flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 transition-colors">
-            {t('btn_back')}
-          </button>
+          {dirty ? (
+            <BevestigKnop v="secondary" vraag={t('klanten_unsaved_confirm')} onBevestig={goBack}>
+              {t('btn_back')}
+            </BevestigKnop>
+          ) : (
+            <button onClick={goBack}
+              className="flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 transition-colors">
+              {t('btn_back')}
+            </button>
+          )}
           <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
             {selectedId !== null && selected?.klantnummer && (
               <span className="font-mono text-base text-gray-400">{selected.klantnummer}</span>
@@ -516,8 +528,8 @@ const KlantenPage: React.FC<Props> = ({
           )}
           <div className="ml-auto flex items-center gap-2">
             {selectedId !== null && (
-              <Btn v="secondary" onClick={mailKlant} disabled={!smtpCreds?.enabled || !form.email || !emailValid}
-                title={!smtpCreds?.enabled ? t('mail_no_smtp') : (!form.email ? t('mail_no_recipient') : '')}>
+              <Btn v="secondary" onClick={mailKlant} disabled={!smtpCreds?.enabled || !form.email || !emailValid || !selected?.email}
+                title={!smtpCreds?.enabled ? t('mail_no_smtp') : (!form.email || !selected?.email ? t('mail_no_recipient') : '')}>
                 ✉ {t('klanten_mail_klant')}
               </Btn>
             )}
@@ -644,7 +656,10 @@ const KlantenPage: React.FC<Props> = ({
                 : t('klanten_unlinked_hint_new').replace('{n}', String(ongekoppeldeOrders))}
             </div>
             {selectedId !== null && (
-              <Btn v="blue" onClick={koppelOrders}>{t('klanten_link_orders_btn')}</Btn>
+              <BevestigKnop v="secondary" onBevestig={koppelOrders}
+                vraag={t('klanten_link_orders_confirm').replace('{n}', String(ongekoppeldeOrders))}>
+                {t('klanten_link_orders_btn')}
+              </BevestigKnop>
             )}
           </div>
         )}
@@ -658,11 +673,13 @@ const KlantenPage: React.FC<Props> = ({
                 <div className="p-6 text-center text-sm text-gray-400">{t('klanten_no_orders')}</div>
               ) : (
                 <div className="overflow-x-auto">
+                  {/* Telefoon: de datum onder het nummer, zodat de tabel niet
+                      zijwaarts hoeft te scrollen. */}
                   <table className="w-full text-sm">
                     <thead className="text-xs text-gray-500 bg-gray-50">
                       <tr>
-                        <th className="px-3 py-2 text-left">{t('lbl_date')}</th>
-                        <th className="px-3 py-2 text-left">{t('factuur_number')}</th>
+                        <th className="hidden sm:table-cell px-3 py-2 text-left">{t('lbl_date')}</th>
+                        <th className="px-3 py-2 text-left">{t('lbl_bestelnummer')}</th>
                         <th className="px-3 py-2 text-left">{t('lbl_status')}</th>
                         <th className="px-3 py-2 text-right">{t('lbl_bruto')}</th>
                       </tr>
@@ -671,14 +688,17 @@ const KlantenPage: React.FC<Props> = ({
                       {[...selectedStats.bestellingen]
                         .sort((a: any, b: any) => (b.datum || '').localeCompare(a.datum || ''))
                         .map((b: any) => {
-                          const totaal = (b.regels || []).reduce(
-                            (s: number, r: any) => s + (r.aantal || 0) * (r.prijs_per_stuk || 0) * (1 + (r.btw_pct || 0) / 100), 0)
+                          const totaal = orderBruto(b)
                           return (
                             <tr key={b.id} className="hover:bg-gray-50 cursor-pointer"
                               onClick={() => gaNaar({ pagina: 'bestellingen', id: b.id })}>
-                              <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtD(b.datum)}</td>
-                              <td className="px-3 py-2 font-mono text-xs text-gray-700">
-                                {b.wc_order_nummer ? `WC-${b.wc_order_nummer}` : `M-${b.id}`}
+                              <td className="hidden sm:table-cell px-3 py-2 text-gray-600 whitespace-nowrap">{fmtD(b.datum)}</td>
+                              {/* Hetzelfde nummer als op de bestelling, de pakbon en
+                                  in de kopbalk (utils/picking.ts): een handmatige
+                                  order heet "M-0015", niet "M-<interne id>". */}
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                <div className="font-mono text-xs text-gray-700">{orderNummer(b)}</div>
+                                <div className="sm:hidden text-xs text-gray-500">{fmtD(b.datum)}</div>
                               </td>
                               <td className="px-3 py-2">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[b.status] || 'bg-gray-100'}`}>
@@ -704,7 +724,7 @@ const KlantenPage: React.FC<Props> = ({
                   <table className="w-full text-sm">
                     <thead className="text-xs text-gray-500 bg-gray-50">
                       <tr>
-                        <th className="px-3 py-2 text-left">{t('lbl_date')}</th>
+                        <th className="hidden sm:table-cell px-3 py-2 text-left">{t('lbl_date')}</th>
                         <th className="px-3 py-2 text-left">{t('factuur_number')}</th>
                         <th className="px-3 py-2 text-left">{t('lbl_status')}</th>
                         <th className="px-3 py-2 text-right">{t('lbl_bruto')}</th>
@@ -715,8 +735,11 @@ const KlantenPage: React.FC<Props> = ({
                         .sort((a: any, b: any) => (b.datum || '').localeCompare(a.datum || ''))
                         .map((f: any) => (
                           <tr key={f.id}>
-                            <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtD(f.datum)}</td>
-                            <td className="px-3 py-2 font-mono text-xs text-gray-700">{f.factuurnummer || '—'}</td>
+                            <td className="hidden sm:table-cell px-3 py-2 text-gray-600 whitespace-nowrap">{fmtD(f.datum)}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <div className="font-mono text-xs text-gray-700">{f.factuurnummer || '—'}</div>
+                              <div className="sm:hidden text-xs text-gray-500">{fmtD(f.datum)}</div>
+                            </td>
                             <td className="px-3 py-2">
                               <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
                                 f.status === 'betaald' ? 'bg-green-100 text-green-700'

@@ -1,24 +1,32 @@
 import React from 'react'
 import { t } from '../i18n'
-import { fmtD } from '../utils/format'
+import { fmtSg } from '../utils/format'
 import { bfGetRecipesWithVersions } from '../utils/api'
 import Btn from '../components/ui/Btn'
 import SearchInput from '../components/ui/SearchInput'
 import ReceptKostprijs from '../components/ReceptKostprijs'
+import IngredientSectie, { type ReceptSectie } from '../components/recept/IngredientSectie'
+import ReceptTagLijst from '../components/recept/ReceptTagLijst'
 import { logAudit, logAuditVeld } from '../utils/audit'
-import { ingredientenVoorType } from '../utils/ingTypes'
-import { receptRegelVoorraad } from '../utils/ingredientVoorraad'
+import { receptRegelVoorraad, type ReceptRegelVoorraad } from '../utils/ingredientVoorraad'
 import { voegReceptSyncSamen, pasReceptRegelAan, wisLokaal } from '../utils/receptSync'
-import Icon from '../components/ui/Icon'
+import { receptTagIndeling, versiesPerRecept, verborgenId } from '../utils/receptLijst'
 import LegeStaat from '../components/ui/LegeStaat'
 import { _fetchedKeys } from '../utils/api'
+
+const SECTIES: ReceptSectie[] = ['mout', 'hop', 'gist', 'overig']
 
 // recordId/onOpenRecord: het geopende recept staat in de route
 // (`#/productie/recepten/<id>`, App.tsx) — terug, herladen en een gedeelde link
 // werken. producten en bat (batches) zijn er voor "in gebruik" (F4); gaNaar
 // voor de ketenlinks naar product en batch.
+//
+// De lijst per Brewfather-tag staat in utils/receptLijst.ts (elk recept één
+// keer, "Zonder tag" echt de recepten zonder tag, zoeken klapt open), de
+// onderdelen ervan in components/recept/ — buiten deze render, zodat typen in
+// de hoptijd de focus houdt.
 function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistraties=[], inkoopFacturen=[], verpakkingen=[], onderdelen=[], accijnsInst=null, bfCreds, recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde, setTagVolgorde, geslotenGroepen, setGeslotenGroepen, setPage, setPreNieuwBatch, auditLog=[], setAuditLog=()=>{}, recordId=null, onOpenRecord}: any) {
-  const {useState} = React;
+  const {useState, useMemo} = React;
   // Het geopende recept: uit de route als de schil die meegeeft, anders lokaal.
   // Id's worden als tekst vergeleken (een Brewfather-id is tekst, de route ook).
   const [lokaalSel, setLokaalSel] = useState<any>(null);
@@ -35,32 +43,19 @@ function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistrati
   const [syncing, setSyncing] = useState(false);
   const [msg, setMsg]         = useState('');
   const [zoek, setZoek]       = useState('');
-  const [verborgenOpen, setVerborgenOpen] = useState(false);
-  const [gearchiveerdTagsOpen, setGearchiveerdTagsOpen] = useState(false);
-  const [versiesOpen, setVersiesOpen] = useState<Record<string, boolean>>({});
-  const toggleGroep = (tag: any) => setGeslotenGroepen((prev: any) =>
-    prev.includes(tag) ? prev.filter((t: any)=>t!==tag) : [...prev, tag]
-  );
-  const toggleTagArchief = (tag: any, e: any) => {
-    e.stopPropagation();
-    setGearchiveerdeTags((prev: any) => prev.includes(tag) ? prev.filter((t: any)=>t!==tag) : [...prev, tag]);
-  };
-  const moveTag = (tag: any, dir: any, allTags: any, e: any) => {
-    e.stopPropagation();
-    setTagVolgorde(() => {
-      const ordered = [...new Set([...tagVolgorde, ...allTags])].filter((t: any) => allTags.includes(t));
-      const idx = ordered.indexOf(tag);
-      if (idx === -1) return tagVolgorde;
-      const next = [...ordered];
-      if (dir === 'up' && idx > 0)              [next[idx-1], next[idx]] = [next[idx], next[idx-1]];
-      else if (dir === 'down' && idx < next.length-1) [next[idx+1], next[idx]] = [next[idx], next[idx+1]];
-      return next;
-    });
-  };
 
-  const toggleVerbergen = (id: any, e: any) => {
-    e.stopPropagation();
-    setVerborgen((prev: any) => prev.includes(id) ? prev.filter((x: any)=>x!==id) : [...prev, id]);
+  const toggleGroep = (sleutel: string) => setGeslotenGroepen((prev: any) =>
+    (prev || []).includes(sleutel) ? prev.filter((x: any) => x !== sleutel) : [...(prev || []), sleutel]
+  );
+  const toggleTagArchief = (tag: string) =>
+    setGearchiveerdeTags((prev: any) => (prev || []).includes(tag) ? prev.filter((x: any) => x !== tag) : [...(prev || []), tag]);
+  // Id's als tekst vergelijken (`verborgenId`, zoals de lijst ze leest): het id
+  // komt als tekst uit de kaart, de opgeslagen lijst kan getallen bevatten.
+  const toggleVerbergen = (id: string) => {
+    setVerborgen((prev: any) => {
+      const lijst = prev || [];
+      return lijst.some((x: any) => verborgenId(x) === id) ? lijst.filter((x: any) => verborgenId(x) !== id) : [...lijst, id];
+    });
     if (isSel(id)) setSel(null);
   };
 
@@ -93,43 +88,53 @@ function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistrati
     setSyncing(false);
   };
 
-  // Splits huidige recepten (working versions) van versie-snapshots.
-  // Oude data zonder is_huidige-flag wordt als huidige behandeld (backward compat).
-  const huidige = recepten.filter((r: any) => r.is_huidige !== false);
-  const versiesPerParent: Record<string, any[]> = {};
-  recepten.filter((r: any) => r.is_huidige === false).forEach((v: any) => {
-    if (!v.parent_id) return;
-    (versiesPerParent[v.parent_id] ||= []).push(v);
-  });
-  const gefilterd = huidige.filter((r: any) =>
-    !zoek || r.naam.toLowerCase().includes(zoek.toLowerCase()) || (r.stijl||'').toLowerCase().includes(zoek.toLowerCase())
-  );
-  const zichtbaar     = gefilterd.filter((r: any) => !verborgen.includes(r.id));
-  const verborgenLijst = huidige.filter((r: any) => verborgen.includes(r.id));
-  const selRec = sel == null ? undefined : recepten.find((r: any) => String(r.id) === sel);
+  // De lijst per tag (elk recept één keer) en de versies per recept.
+  const indeling = useMemo(() => receptTagIndeling(recepten || [], {
+    verborgen, gearchiveerdeTags, tagVolgorde, geslotenGroepen, zoek,
+  }), [recepten, verborgen, gearchiveerdeTags, tagVolgorde, geslotenGroepen, zoek]);
+  const versies = useMemo(() => versiesPerRecept(recepten || []), [recepten]);
+  const selRec = sel == null ? undefined : (recepten || []).find((r: any) => String(r.id) === sel);
 
-  // Type van een recipe-sectie naar het ingredient.type in de catalogus.
-  const CAT_TO_TYPE: Record<string, string> = {mout:'Mout', hop:'Hop', gist:'Gist', overig:'Overig'};
+  // Groepen ordenen gaat over alle actieve tags, ook als er gezocht wordt.
+  const verplaatsTag = (tag: string, richting: 'omhoog' | 'omlaag') => {
+    const alle = indeling.actieveTags;
+    setTagVolgorde((prev: any) => {
+      const geordend = [...new Set([...(prev || []), ...alle])].filter((x: any) => alle.includes(x));
+      const i = geordend.indexOf(tag);
+      if (i === -1) return prev;
+      const j = richting === 'omhoog' ? i - 1 : i + 1;
+      if (j < 0 || j >= geordend.length) return prev;
+      [geordend[i], geordend[j]] = [geordend[j], geordend[i]];
+      return geordend;
+    });
+  };
 
   // Vindt het matchende ingredient voor een receptregel: expliciete koppeling
   // via ingredient_id heeft voorrang boven naam-match.
   const findIngMatch = (item: any) => {
     if (item?.ingredient_id != null) {
-      const m = ing.find((i: any) => i.id === item.ingredient_id);
+      const m = (ing || []).find((i: any) => i.id === item.ingredient_id);
       if (m) return m;
     }
     if (item?.naam) {
-      return ing.find((i: any) => i.naam.toLowerCase() === String(item.naam).toLowerCase()) || null;
+      return (ing || []).find((i: any) => String(i.naam || '').toLowerCase() === String(item.naam).toLowerCase()) || null;
     }
     return null;
   };
 
   // Voorraadcheck per receptregel (utils/ingredientVoorraad.ts): elk lot wordt
   // omgerekend naar de eenheid van de regel (hop in het recept in g, het lot
-  // in kg), en met `recept` erbij tellen alle regels die naar hetzelfde
+  // in kg), en met het recept erbij tellen alle regels die naar hetzelfde
   // ingredient verwijzen samen, zodat een ingredient over meerdere regels
-  // gespreid niet vals groen wordt.
-  const checkStock = (item: any, recept?: any) => receptRegelVoorraad(item, recept, lots, findIngMatch);
+  // gespreid niet vals groen wordt. Eén keer per recept, niet per render van
+  // elke regel.
+  const voorraad = useMemo((): Record<ReceptSectie, ReceptRegelVoorraad[]> | null => {
+    if (!selRec) return null;
+    const uit = {} as Record<ReceptSectie, ReceptRegelVoorraad[]>;
+    for (const cat of SECTIES) uit[cat] = ((selRec as any)[cat] || []).map((item: any) => receptRegelVoorraad(item, selRec, lots, findIngMatch));
+    return uit;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selRec, lots, ing]);
 
   // Wijzig eigen velden op het geselecteerde recept (bijv. de vaste kosten per
   // brouw). Blijft bij een Brewfather-sync behouden — zie `runSync`.
@@ -149,7 +154,7 @@ function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistrati
 
   // Wijzig een enkele ingredient-entry in het geselecteerde recept.
   // cat = 'mout'|'hop'|'gist'|'overig'; idx = index binnen die array.
-  const updateReceptIng = (cat: string, idx: number, patch: any) => {
+  const updateReceptIng = (cat: ReceptSectie, idx: number, patch: any) => {
     if (!selRec) return;
     const huidig = (selRec as any)[cat]?.[idx] || {};
     for (const [veld, waarde] of Object.entries(patch)) {
@@ -171,7 +176,7 @@ function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistrati
 
   // Brewfather weer leidend maken voor deze regel: de lokale markering weg,
   // de volgende sync zet gebruik/tijd terug naar de waarde uit Brewfather.
-  const wisLokaleAanpassing = (cat: string, idx: number) => {
+  const wisLokaleAanpassing = (cat: ReceptSectie, idx: number) => {
     if (!selRec) return;
     const huidig = (selRec as any)[cat]?.[idx] || {};
     logAudit(auditLog, setAuditLog, {entiteit:'Recept', entiteit_id:selRec.id, actie:'gewijzigd',
@@ -185,192 +190,16 @@ function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistrati
     }));
   };
 
-  // Lijst van beschikbare ingredienten voor een receptregel. Het type van de
-  // regel zelf gaat voor op de sectie: een kandijsuiker in de moutlijst
-  // (Brewfather zet suiker bij de fermentables) hoort bij de suikers. Verwante
-  // typen blijven kiesbaar (zie `verwanteIngTypes`), zodat ook een recept dat
-  // nog niet opnieuw gesynct is aan het juiste ingredient te koppelen is.
-  const ingOptions = (cat: string, item?: any): any[] =>
-    ingredientenVoorType(ing, item?.ingredient_type || CAT_TO_TYPE[cat]);
-
-  const IngRow = ({item, cat, idx, readOnly}: any) => {
-    const {ok, bijna, totaal, ingLots, ingMatch, totaalNodig, gedeeld, eenheidMismatch} = checkStock(item, selRec);
-    const [open, setOpen] = useState(false);
-    const [editKoppel, setEditKoppel] = useState(false);
-    const dot = ok===null ? <span className="text-gray-300">●</span>
-              : ok        ? <span className="text-green-500">●</span>
-              : bijna     ? <span className="text-yellow-500">●</span>
-                          : <span className="text-red-500">●</span>;
-    const explicit = item.ingredient_id != null && ingMatch;
-    const koppelCel = (
-      <>
-        {editKoppel && !readOnly ? (
-          <select autoFocus value={item.ingredient_id ?? ''}
-            onClick={(e: any) => e.stopPropagation()}
-            onBlur={() => setEditKoppel(false)}
-            onChange={(e: any) => {
-              const v = e.target.value;
-              updateReceptIng(cat, idx, { ingredient_id: v === '' ? null : Number(v) });
-              setEditKoppel(false);
-            }}
-            className="text-xs border rounded px-1 py-0.5 bg-white">
-            <option value="">{t('recipe_link_auto')}</option>
-            {ingOptions(cat, item).map((i: any) => (
-              <option key={i.id} value={i.id}>{i.naam}{i.fabrikant ? ` (${i.fabrikant})` : ''}</option>
-            ))}
-          </select>
-        ) : ingMatch ? (
-          <span onClick={(e: any) => { e.stopPropagation(); if (!readOnly) setEditKoppel(true); }}
-            className={`text-xs px-1.5 py-0.5 rounded ${readOnly?'':'cursor-pointer hover:bg-gray-100'} ${explicit?'bg-blue-50 text-blue-700':'text-gray-500'}`}
-            title={readOnly ? '' : t('recipe_link_edit')}>
-            {explicit && <span className="mr-1"><Icon n="link" /></span>}{ingMatch.naam}
-          </span>
-        ) : (
-          <button onClick={(e: any) => { e.stopPropagation(); if (!readOnly) setEditKoppel(true); }}
-            disabled={readOnly}
-            className={`text-xs px-1.5 py-0.5 rounded ${readOnly?'text-gray-300':'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>
-            {t('recipe_link_none')}
-          </button>
-        )}
-      </>
-    );
-    return (
-      <>
-        <tr className={`border-b border-gray-100 ${ingLots.length>0?'cursor-pointer hover:bg-gray-50':''}`}
-            onClick={()=>ingLots.length>0&&setOpen((o: any)=>!o)}>
-          <td className="px-3 py-2 text-sm text-gray-800">{item.naam}</td>
-          <td className="px-3 py-2 text-sm text-left">{koppelCel}</td>
-          <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap"
-              title={gedeeld ? t('recipe_total_in_recipe').replace('{n}', Number(totaalNodig).toLocaleString('nl-NL',{maximumFractionDigits:3})).replace('{u}', String(item.eenheid||'')) : ''}>
-            {Number(item.hoeveelheid||0).toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
-            {gedeeld && (
-              <span className="ml-1 text-xs text-gray-400">
-                ({t('recipe_total_short')}: {Number(totaalNodig).toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid})
-              </span>
-            )}
-          </td>
-          <td className="px-3 py-2 text-xs text-gray-400">
-            {cat === 'hop' && !readOnly ? (
-              <div className="flex items-center gap-1" onClick={(e: any) => e.stopPropagation()}>
-                <select value={String(item.gebruik || 'boil').toLowerCase()}
-                  onChange={(e: any) => {
-                    const g = e.target.value
-                    updateReceptIng('hop', idx, { gebruik: g, tijdEenheid: g === 'dry hop' ? 'day' : 'min' })
-                  }}
-                  className="border border-gray-200 rounded px-1 py-0.5 text-xs t-input">
-                  <option value="boil">{t('hop_gebruik_boil')}</option>
-                  <option value="whirlpool">{t('hop_gebruik_whirlpool')}</option>
-                  <option value="dry hop">{t('hop_gebruik_dryhop')}</option>
-                  <option value="mash">{t('hop_gebruik_mash')}</option>
-                </select>
-                <input type="number" step="1" min="0" value={item.tijd ?? ''}
-                  onChange={(e: any) => updateReceptIng('hop', idx, { tijd: e.target.value === '' ? '' : Number(e.target.value) })}
-                  className="w-14 border border-gray-200 rounded px-1 py-0.5 text-right t-input"
-                  placeholder="—" />
-                <span className="text-gray-300">{String(item.gebruik || '').toLowerCase() === 'dry hop' ? t('lbl_dagen') : t('lbl_minuten')}</span>
-                {Array.isArray(item._lokaal) && item._lokaal.length > 0 && (
-                  <button type="button" onClick={() => wisLokaleAanpassing('hop', idx)}
-                    className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 hover:bg-blue-100"
-                    title={t('recipe_lokaal_title')}>{t('recipe_lokaal')}</button>
-                )}
-              </div>
-            ) : (
-              <>
-                {/* Wijkt het type van de regel af van de sectie (suiker in de
-                    moutlijst), toon dat dan — anders lijkt het mout. */}
-                {item.ingredient_type && item.ingredient_type !== CAT_TO_TYPE[cat]
-                  ? <span className="text-gray-500">{t('ing_type_' + String(item.ingredient_type).toLowerCase())}</span>
-                  : (item.gebruik || '')}
-                {item.tijd != null && item.tijd !== '' ? <span className="ml-1 text-gray-300">· {item.tijd} {item.tijdEenheid === 'day' ? t('lbl_dagen') : t('lbl_minuten')}</span> : null}
-              </>
-            )}
-          </td>
-          <td className="px-3 py-2 text-sm text-right whitespace-nowrap">
-            {ok!==null
-              ? <span className={ok?'text-green-600':bijna?'text-yellow-600':'text-red-600'}
-                  title={eenheidMismatch ? t('recipe_unit_mismatch') : undefined}>
-                  {eenheidMismatch && '⚠ '}{totaal.toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
-                </span>
-              : eenheidMismatch
-                ? <span className="text-gray-500 text-xs" title={t('recipe_unit_mismatch')}>
-                    ⚠ {totaal.toLocaleString('nl-NL',{maximumFractionDigits:3})} {item.eenheid}
-                  </span>
-                : <span className="text-gray-300 text-xs">—</span>}
-          </td>
-          <td className="px-3 py-2 text-center">{dot}</td>
-          <td className="px-3 py-2 text-xs text-gray-300 text-center">{ingLots.length>0?(open?'▲':'▼'):''}</td>
-        </tr>
-        {open && ingLots.map((l: any)=>(
-          <tr key={l.id} className="bg-orange-50 text-xs border-b border-orange-100">
-            <td className="pl-6 pr-3 py-1.5 text-gray-500">
-              <span className="font-mono text-gray-700">{l.lotnummer||'—'}</span>
-              {l.leverancier&&<span className="text-gray-400 ml-2">({l.leverancier})</span>}
-            </td>
-            <td className="px-3 py-1.5"></td>
-            <td className="px-3 py-1.5 text-right font-medium text-gray-700 whitespace-nowrap">
-              {Number(l.hoeveelheid||0).toLocaleString('nl-NL',{maximumFractionDigits:3})} {l.eenheid}
-            </td>
-            <td className="px-3 py-1.5 text-gray-400">{l.aankoop_datum?fmtD(l.aankoop_datum):''}</td>
-            <td className="px-3 py-1.5 whitespace-nowrap" colSpan={3}>
-              {t('lbl_tht')}: {l.houdbaarheid
-                ? <span className={`font-medium ${new Date(l.houdbaarheid)<new Date()?'text-red-600':'text-gray-700'}`}>{fmtD(l.houdbaarheid)}</span>
-                : <span className="text-gray-300">—</span>}
-            </td>
-          </tr>
-        ))}
-      </>
-    );
+  const allStock: ReceptRegelVoorraad[] = voorraad ? SECTIES.flatMap(cat => voorraad[cat]) : [];
+  const overallOk  = allStock.length>0 && allStock.every(s=>s.ok===true);
+  const overallRed = allStock.some(s=>s.ok===false&&!s.bijna);
+  const overallYel = !overallRed && allStock.some(s=>s.bijna);
+  const readOnly = selRec?.is_huidige === false;
+  const sectieTitel: Record<ReceptSectie, string> = {
+    mout: t('recipe_section_grains'), hop: t('recipe_section_hops'), gist: t('recipe_section_yeast'), overig: t('recipe_section_other'),
   };
-
-  const IngSection = ({titel, items, cat}: any) => {
-    if (!items?.length) return null;
-    const stocks = items.map((i: any)=>checkStock(i, selRec));
-    const anyRed = stocks.some((s: any)=>s.ok===false&&!s.bijna);
-    const anyYellow = stocks.some((s: any)=>s.bijna);
-    const allGreen = stocks.length>0 && stocks.every((s: any)=>s.ok===true);
-    const badge = anyRed   ? <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{t('recipe_badge_tekort')}</span>
-                : anyYellow? <span className="text-xs bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">{t('recipe_badge_bijna')}</span>
-                : allGreen ? <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">{t('recipe_badge_beschikbaar')}</span>
-                : null;
-    const readOnly = selRec?.is_huidige === false;
-    return (
-      <div className="mb-5">
-        <div className="flex items-center gap-2 mb-1.5">
-          <h4 className="text-sm font-semibold text-gray-700">{titel}</h4>
-          {badge}
-        </div>
-        <div className="rounded-lg border border-gray-200 overflow-x-auto">
-          <table className="w-full min-w-[640px]">
-            <thead>
-              <tr className="bg-gray-50 text-xs text-gray-400">
-                <th className="px-3 py-2 text-left font-medium">{t('log_ingredient')}</th>
-                <th className="px-3 py-2 text-left font-medium">{t('recipe_linked_to')}</th>
-                <th className="px-3 py-2 text-right font-medium">{t('recipe_needed')}</th>
-                <th className="px-3 py-2 text-left font-medium">{t('recipe_use')}</th>
-                <th className="px-3 py-2 text-right font-medium">{t('stock_available')}</th>
-                <th className="px-3 py-2 text-center font-medium w-8">●</th>
-                <th className="px-3 py-2 w-6"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item: any,i: any)=><IngRow key={i} item={item} cat={cat} idx={i} readOnly={readOnly}/>)}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  };
-
-  const cardStocks = (r: any) => [
-    ...r.mout.map((i: any)=>checkStock(i, r)),
-    ...r.hop.map((i: any)=>checkStock(i, r)),
-    ...r.gist.map((i: any)=>checkStock(i, r)),
-    ...r.overig.map((i: any)=>checkStock(i, r)),
-  ];
-  const allStock   = selRec ? cardStocks(selRec) : [];
-  const overallOk  = allStock.length>0 && allStock.every((s: any)=>s.ok===true);
-  const overallRed = allStock.some((s: any)=>s.ok===false&&!s.bijna);
-  const overallYel = !overallRed && allStock.some((s: any)=>s.bijna);
+  // Duur in het maisch- en vergistingsprofiel: minuten, dagen, uren.
+  const minuten = (n: any) => `${n} ${t('lbl_minuten')}`;
 
   return (
     <div>
@@ -393,162 +222,38 @@ function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistrati
             <SearchInput placeholder={t('search_recipe')} value={zoek} onChange={setZoek} />
           </div>
           <div className="bg-white rounded-xl shadow-card overflow-hidden">
-          <div className="flex justify-between px-3 py-1.5 bg-gray-50 text-xs text-gray-500 border-b">
-            <span>{t('lbl_name')}</span><span>{t('lbl_stock')}</span>
+            <ReceptTagLijst
+              indeling={indeling}
+              versies={versies}
+              geselecteerdId={sel}
+              onOpen={(id: string) => setSel(isSel(id) ? null : id)}
+              zoek={zoek}
+              onZoekWissen={() => setZoek('')}
+              geenRecepten={(recepten || []).length === 0}
+              gearchiveerdeTags={gearchiveerdeTags || []}
+              onToggleGroep={toggleGroep}
+              onVerplaats={verplaatsTag}
+              onTagArchief={toggleTagArchief}
+              onVerbergen={toggleVerbergen}
+            />
           </div>
-          {zichtbaar.length===0 && verborgenLijst.length===0 && (
-            <div className="text-center text-gray-400 text-xs py-8">
-              {recepten.length===0 ? t('recipe_no_recipes') : t('recipe_no_results')}
-            </div>
-          )}
-          {(()=>{
-            const RecepKaart = ({r}: any) => {
-              const stocks = cardStocks(r);
-              const anyRed  = stocks.some((s: any)=>s.ok===false&&!s.bijna);
-              const anyYel  = stocks.some((s: any)=>s.bijna);
-              const allGreen= stocks.length>0 && stocks.every((s: any)=>s.ok===true);
-              const versies = versiesPerParent[r.id] || [];
-              const open = !!versiesOpen[r.id];
-              return (
-                <>
-                  <div onClick={()=>setSel(isSel(r.id)?null:r.id)}
-                    className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors group ${isSel(r.id)?'t-sel border-l-2':''}`}>
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="font-medium text-sm truncate">{r.naam}</span>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {versies.length > 0 && (
-                          <button onClick={(e: any)=>{e.stopPropagation(); setVersiesOpen((o: any)=>({...o, [r.id]: !o[r.id]}));}}
-                            className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full hover:bg-blue-200 transition-colors"
-                            title={t('recipe_versions_count').replace('{n}', String(versies.length))}>
-                            {versies.length + 1}v {open?'▲':'▼'}
-                          </button>
-                        )}
-                        <button onClick={(e: any)=>toggleVerbergen(r.id,e)}
-                          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-gray-500 text-xs leading-none px-0.5 transition-opacity"
-                          title={t('btn_hide')}>✕</button>
-                      </div>
-                    </div>
-                    {r.stijl&&<div className="text-xs text-gray-500 mt-0.5 truncate">{r.stijl}</div>}
-                    <div className="flex gap-2 mt-0.5 text-xs text-gray-400">
-                      {r.batch_size?<span>{r.batch_size}L</span>:null}
-                      {r.ABV?<span>{Number(r.ABV).toFixed(1)}%</span>:null}
-                    </div>
-                  </div>
-                  {open && versies.map((v: any) => (
-                    <div key={v.id} onClick={()=>setSel(isSel(v.id)?null:v.id)}
-                      className={`pl-6 pr-3 py-1.5 border-b cursor-pointer t-hover transition-colors text-xs ${isSel(v.id)?'t-sel border-l-2':''}`}>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-blue-600 font-medium">{v.versie}</span>
-                        <span className="text-gray-600 truncate flex-1">{v.naam}</span>
-                        {v.versie_datum && <span className="text-gray-300 flex-shrink-0">{fmtD(v.versie_datum)}</span>}
-                      </div>
-                    </div>
-                  ))}
-                </>
-              );
-            };
-            const allTagsRaw = [...new Set(zichtbaar.flatMap((r: any)=>r.tags||[]))];
-            const sortedTags = [...new Set([...tagVolgorde, ...allTagsRaw])].filter((tg: any) => allTagsRaw.includes(tg));
-            const activeTags = sortedTags.filter((tg: any) => !gearchiveerdeTags.includes(tg));
-            const archiefTags = sortedTags.filter((tg: any) => gearchiveerdeTags.includes(tg));
-            const metTag    = (tag: any) => zichtbaar.filter((r: any)=>(r.tags||[]).includes(tag));
-            const zonderTag = zichtbaar.filter((r: any)=>!r.tags||r.tags.length===0);
-            const TagGroep = ({tag, gearchiveerd}: any) => {
-              const items  = metTag(tag);
-              const gesloten = geslotenGroepen.includes(tag);
-              const stocks = items.flatMap((r: any)=>cardStocks(r));
-              const anyRed   = stocks.some((s: any)=>s.ok===false&&!s.bijna);
-              const allGreen = stocks.length>0 && stocks.every((s: any)=>s.ok===true);
-              const idxInActive = activeTags.indexOf(tag);
-              return (
-                <div>
-                  <div className="flex items-center group/tag bg-gray-50 border-b px-3 py-1.5 hover:bg-gray-100">
-                    <button onClick={()=>toggleGroep(tag)}
-                      className="flex-1 flex items-center justify-between text-xs font-medium text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <span className="text-gray-400 inline-block" style={{transition:'transform 150ms ease',transform:gesloten?'none':'rotate(90deg)'}}>▶</span>
-                        <span>{tag}</span>
-                        <span className="font-normal text-gray-400">({items.length})</span>
-                      </span>
-                    </button>
-                    {!gearchiveerd && (
-                      <span className="opacity-0 group-hover/tag:opacity-100 flex transition-opacity flex-shrink-0">
-                        <button onClick={(e: any)=>moveTag(tag,'up',activeTags,e)} disabled={idxInActive===0}
-                          className="px-1 text-gray-300 hover:text-gray-600 text-xs disabled:opacity-20"
-                          title={t('btn_up')}>▴</button>
-                        <button onClick={(e: any)=>moveTag(tag,'down',activeTags,e)} disabled={idxInActive===activeTags.length-1}
-                          className="px-1 text-gray-300 hover:text-gray-600 text-xs disabled:opacity-20"
-                          title={t('btn_down')}>▾</button>
-                      </span>
-                    )}
-                    <button onClick={(e: any)=>toggleTagArchief(tag,e)}
-                      className="opacity-0 group-hover/tag:opacity-100 ml-0.5 px-1 text-gray-300 hover:text-gray-500 text-xs transition-opacity flex-shrink-0"
-                      title={gearchiveerd?t('btn_tag_restore'):t('btn_tag_archive')}>
-                      {gearchiveerd?'↩':'↓'}
-                    </button>
-                  </div>
-                  {!gesloten&&items.map((r: any)=><RecepKaart key={r.id} r={r}/>)}
-                </div>
-              );
-            };
-            return (
-              <div>
-                {activeTags.length > 0
-                  ? activeTags.map((tag: any)=><TagGroep key={tag} tag={tag} gearchiveerd={false}/>)
-                  : zichtbaar.filter((r: any)=>!r.tags||r.tags.every((tg: any)=>!gearchiveerdeTags.includes(tg))).map((r: any)=><RecepKaart key={r.id} r={r}/>)
-                }
-                {zonderTag.length>0 && activeTags.length>0 && (
-                  <TagGroep tag={t('lbl_without_tag')} gearchiveerd={false}/>
-                )}
-                {archiefTags.length>0 && (
-                  <div className="border-t">
-                    <button onClick={()=>setGearchiveerdTagsOpen((o: any)=>!o)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
-                      <span className="text-gray-400 text-sm">{gearchiveerdTagsOpen?'▼':'▶'}</span>
-                      <span>{t('lbl_archived_tags')} ({archiefTags.length})</span>
-                    </button>
-                    {gearchiveerdTagsOpen&&archiefTags.map((tag: any)=><TagGroep key={tag} tag={tag} gearchiveerd={true}/>)}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-          {verborgenLijst.length>0&&(
-            <div className="border-t">
-              <button onClick={()=>setVerborgenOpen((o: any)=>!o)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
-                <span className="text-gray-400 text-sm">{verborgenOpen?'▼':'▶'}</span>
-                <span>{t('lbl_hidden')} ({verborgenLijst.length})</span>
-              </button>
-              {verborgenOpen&&verborgenLijst.map((r: any)=>(
-                <div key={r.id} onClick={()=>setSel(isSel(r.id)?null:r.id)}
-                  className={`px-3 py-2.5 border-b cursor-pointer t-hover transition-colors group opacity-60 hover:opacity-100 ${isSel(r.id)?'t-sel border-l-2':''}`}>
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-medium text-sm truncate">{r.naam}</span>
-                    <button onClick={(e: any)=>toggleVerbergen(r.id,e)}
-                      className="text-gray-400 hover:text-green-600 text-xs leading-none px-0.5 transition-colors flex-shrink-0"
-                      title={t('btn_restore')}>↩</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          </div>{/* /bg-white recept card */}
         </div>
         {/* Detail */}
         {selRec ? (<>
           {/* Met de route terug via de kopbalk (één terugweg); zonder route de eigen knop. */}
           {!gestuurd && <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors" onClick={()=>setSel(null)}>{t('btn_back')}</button>}
           <div className="flex-1 bg-white rounded-xl shadow-card p-4 min-w-0">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div>
+            {/* De kop mag omslaan: op een telefoon staan voorraadstatus en
+                "Brouwen" onder de naam in plaats van rechts buiten de kaart. */}
+            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 mb-4">
+              <div className="min-w-0 flex-1 basis-56">
                 <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2 flex-wrap">
-                  <span>{selRec.naam}</span>
+                  <span className="min-w-0 break-words">{selRec.naam}</span>
                   {selRec.is_huidige === false ? (
                     <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-normal">
                       {selRec.versie || t('recipe_version_snapshot')}
                     </span>
-                  ) : (versiesPerParent[selRec.id]?.length > 0 && (
+                  ) : ((versies.get(String(selRec.id))?.length || 0) > 0 && (
                     <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-normal">
                       {t('recipe_version_current')}
                     </span>
@@ -557,18 +262,18 @@ function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistrati
                 {selRec.stijl&&<div className="text-sm text-gray-500 mt-0.5">{selRec.stijl}</div>}
                 {selRec.auteur&&<div className="text-xs text-gray-400 mt-0.5">{t('recipe_door').replace('{auteur}', selRec.auteur)}</div>}
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <div className={`text-sm font-medium px-3 py-1.5 rounded-full whitespace-nowrap ${overallOk?'bg-green-100 text-green-700':overallRed?'bg-red-100 text-red-700':overallYel?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-500'}`}>
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                <div className={`text-sm font-medium px-3 py-1.5 rounded-full ${overallOk?'bg-green-100 text-green-700':overallRed?'bg-red-100 text-red-700':overallYel?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-500'}`}>
                   {overallOk?t('recept_klaar_brouwen'):overallRed?t('recept_tekort'):overallYel?t('recept_controleer'):t('recept_onbekend_voorraad')}
                 </div>
-                {selRec.is_huidige === false && (
-                  <span className="text-xs text-gray-400 italic whitespace-nowrap">{t('recipe_version_readonly')}</span>
+                {readOnly && (
+                  <span className="text-xs text-gray-400 italic">{t('recipe_version_readonly')}</span>
                 )}
-                {setPage && setPreNieuwBatch && selRec.is_huidige !== false && (
+                {setPage && setPreNieuwBatch && !readOnly && (
                   <Btn s="sm" v="primary" onClick={() => {
-                    // Alleen het recept voorselecteren: maakNieuweBatch in
-                    // BatchFlowPage bouwt de batch (verwacht_*, liters, kleur,
-                    // profielen) en de ingrediëntregels zelf uit het recept op.
+                    // Alleen het recept voorselecteren: de batchpagina bouwt de
+                    // batch (verwacht_*, liters, kleur, profielen) en de
+                    // ingrediëntregels zelf uit het recept op.
                     setPreNieuwBatch({ recept_id: selRec.id, naam: selRec.naam })
                     setPage('batches')
                   }}>{t('btn_brouwen')}</Btn>
@@ -576,18 +281,18 @@ function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistrati
               </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-4">
-              {[{l:'Batch',v:selRec.batch_size?`${selRec.batch_size} L`:'—'},
-                {l:'OG',  v:selRec.OG?Number(selRec.OG).toFixed(3):'—'},
-                {l:'FG',  v:selRec.FG?Number(selRec.FG).toFixed(3):'—'},
-                {l:'ABV', v:selRec.ABV?`${Number(selRec.ABV).toFixed(1)}%`:'—'},
-                {l:'IBU', v:selRec.IBU?String(selRec.IBU):'—'},
+              {[{l:t('recipe_batchgrootte'), v:selRec.batch_size?`${selRec.batch_size} L`:'—'},
+                {l:t('batch_info_og'), v:fmtSg(selRec.OG)},
+                {l:t('batch_info_fg'), v:fmtSg(selRec.FG)},
+                {l:t('bier_veld_abv'), v:Number(selRec.ABV)>0?`${Number(selRec.ABV).toFixed(1)}%`:'—'},
+                {l:t('bier_veld_ibu'), v:selRec.IBU?String(selRec.IBU):'—'},
                 {l:t('recipe_kleur'), v:selRec.kleur?`${selRec.kleur} EBC`:'—'},
-                {l:t('recipe_kooktijd'), v:selRec.kooktijd?`${selRec.kooktijd} min`:'—'},
+                {l:t('recipe_kooktijd'), v:selRec.kooktijd?minuten(selRec.kooktijd):'—'},
                 {l:t('recipe_kook_volume'), v:selRec.kook_volume?`${selRec.kook_volume} L`:'—'},
               ].map((s: any)=>(
-                <div key={s.l} className="bg-gray-50 rounded-lg p-3 text-center">
+                <div key={s.l} className="bg-gray-50 rounded-lg p-3 text-center min-w-0">
                   <div className="text-xs text-gray-400 mb-0.5">{s.l}</div>
-                  <div className="text-lg font-bold text-gray-800">{s.v}</div>
+                  <div className="text-lg font-bold text-gray-800 break-words">{s.v}</div>
                 </div>
               ))}
             </div>
@@ -609,8 +314,8 @@ function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistrati
                       <tr key={i} className="border-b border-gray-100 last:border-0">
                         <td className="py-1 text-gray-700">{s.naam || s.type || t('lbl_stap_n').replace('{n}', String(i+1))}</td>
                         <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
-                        <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} min` : '—'}</td>
-                        <td className="py-1 text-right text-gray-700">{s.rampTijd ? `${s.rampTijd} min` : '—'}</td>
+                        <td className="py-1 text-right text-gray-700">{s.tijd ? minuten(s.tijd) : '—'}</td>
+                        <td className="py-1 text-right text-gray-700">{s.rampTijd ? minuten(s.rampTijd) : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -629,13 +334,15 @@ function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistrati
               verpakkingen={verpakkingen}
               onderdelen={onderdelen}
               accijnsInst={accijnsInst}
-              readOnly={selRec.is_huidige === false}
+              readOnly={readOnly}
               onWijzig={updateRecept}
             />
-            <IngSection titel={t('recipe_section_grains')} items={selRec.mout}   cat="mout"/>
-            <IngSection titel={t('recipe_section_hops')}   items={selRec.hop}    cat="hop"/>
-            <IngSection titel={t('recipe_section_yeast')}  items={selRec.gist}   cat="gist"/>
-            <IngSection titel={t('recipe_section_other')}  items={selRec.overig} cat="overig"/>
+            {SECTIES.map(cat => (
+              <IngredientSectie key={cat} titel={sectieTitel[cat]} cat={cat}
+                items={(selRec as any)[cat]} voorraad={voorraad?.[cat] || []}
+                ingredienten={ing || []} readOnly={readOnly}
+                onWijzig={updateReceptIng} onWisLokaal={wisLokaleAanpassing} />
+            ))}
             {selRec.vergistingsprofiel && selRec.vergistingsprofiel.length > 0 && (
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <div className="text-xs font-semibold text-gray-400 mb-2">{t('recipe_ferm_profile')}</div>
@@ -654,8 +361,8 @@ function ReceptenPage({ing, lots, bat=[], producten=[], av=[], verliesRegistrati
                       <tr key={i} className="border-b border-gray-100 last:border-0">
                         <td className="py-1 text-gray-700">{s.type || t('lbl_stap_n').replace('{n}', String(i+1))}</td>
                         <td className="py-1 text-right text-gray-700">{s.temp ? `${s.temp} °C` : '—'}</td>
-                        <td className="py-1 text-right text-gray-700">{s.tijd ? `${s.tijd} d` : '—'}</td>
-                        <td className="py-1 text-right text-gray-700">{s.ramp ? `${s.ramp} u` : '—'}</td>
+                        <td className="py-1 text-right text-gray-700">{s.tijd ? t('duur_dagen_kort').replace('{n}', String(s.tijd)) : '—'}</td>
+                        <td className="py-1 text-right text-gray-700">{s.ramp ? t('duur_uren_kort').replace('{n}', String(s.ramp)) : '—'}</td>
                       </tr>
                     ))}
                   </tbody>

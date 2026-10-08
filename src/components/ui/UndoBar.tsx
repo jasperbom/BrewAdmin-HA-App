@@ -58,10 +58,13 @@ const UndoBar: React.FC<{ undo: UndoApi }> = ({ undo }) => {
     <div
       role="status"
       aria-live="polite"
-      className="fixed left-1/2 -translate-x-1/2 z-[190] max-w-[calc(100vw-2rem)] w-[26rem] flex items-center gap-3 bg-gray-900 text-white rounded-full pl-4 pr-1.5 py-1.5 shadow-xl"
+      className="fixed left-1/2 -translate-x-1/2 z-[190] max-w-[calc(100vw-2rem)] w-[26rem] flex items-center gap-3 bg-gray-900 text-white rounded-3xl pl-4 pr-1.5 py-1.5 shadow-xl"
       style={{ bottom: 'calc(var(--onderbalk, 0px) + 12px)' }}
     >
-      <span className="flex-1 min-w-0 truncate text-sm">{undo.actie.label}</span>
+      {/* Twee regels in plaats van afkappen: een label zegt soms wat er blijft
+          staan (voorraad zonder product), en dat moet leesbaar zijn. Met één
+          regel blijft het een pil: de ronding past zich aan de hoogte aan. */}
+      <span className="flex-1 min-w-0 line-clamp-2 break-words text-sm leading-snug" title={undo.actie.label}>{undo.actie.label}</span>
       <button
         type="button"
         onClick={undo.ongedaan}

@@ -609,6 +609,21 @@ const zoekTermen = (zoek: string | null | undefined): string[] =>
 const receptHooi = (g: ReceptGebruik<ReceptLike>): string =>
   normaliseer([g.naam, g.recept.stijl ?? '', ...g.tags].join(' '))
 
+/**
+ * Staan alle woorden van de zoektekst in deze velden? Zonder accenten en
+ * hoofdletterongevoelig, net als `receptPastBijZoek`. Een lege zoektekst past
+ * altijd.
+ */
+export const tekstPastBijZoek = (velden: ReadonlyArray<unknown>, zoek: string | null | undefined): boolean => {
+  const termen = zoekTermen(zoek)
+  if (!termen.length) return true
+  const hooi = normaliseer(velden.map(v => String(v ?? '')).join(' '))
+  return termen.every(t => hooi.includes(t))
+}
+
+/** Is er een zoekterm (meer dan alleen spaties)? */
+export const heeftZoekterm = (zoek: string | null | undefined): boolean => zoekTermen(zoek).length > 0
+
 /** Past dit recept bij de zoektekst (alle woorden, in naam, stijl of tags)? */
 export const receptPastBijZoek = (g: ReceptGebruik<ReceptLike>, zoek: string | null | undefined, extra = ''): boolean => {
   const termen = zoekTermen(zoek)

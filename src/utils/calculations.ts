@@ -1485,6 +1485,58 @@ export const vrijeTanksMetStatus = (
     return String(a.tank?.naam || a.tank?.id || '').localeCompare(String(b.tank?.naam || b.tank?.id || ''))
   })
 
+// ── Buiten de tanks ─────────────────────────────────────────────────────────
+// De brouwzaal toont per tank de batch die hem bezet (`tankBezetter`). Wat
+// loopt maar daar geen kaart krijgt, staat onder "Buiten de tanks": Gepland,
+// Brouwen en Afgevuld/Verpakt — en ook een batch in Vergisten of
+// Conditioneren die geen tankkaart heeft. Anders verdween zo'n batch helemaal
+// uit beeld: zonder tank, met een tank die niet (meer) bestaat, of in een tank
+// waarvan de kaart al een andere batch toont. De reden gaat mee, zodat het
+// scherm kan zeggen waarom hij hier staat. Gesloten batches horen in het
+// archief.
+export type BuitenTankReden = 'geen_tank' | 'tank_onbekend' | 'tank_gedeeld'
+
+export interface BuitenTankBatch<B> {
+  batch: B
+  /** Alleen bij Vergisten/Conditioneren: waarom er geen tankkaart is. */
+  reden: BuitenTankReden | null
+}
+
+const BUITEN_TANKS_VOLGORDE: Record<string, number> = {
+  Brouwen: 0, Vergisten: 1, Conditioneren: 2, Gepland: 3, Afgevuld: 4, Verpakt: 4,
+}
+
+export const batchesBuitenTanks = <B extends { id?: unknown; status?: unknown; tank?: unknown; datum?: unknown }>(
+  batches: ReadonlyArray<B | null | undefined> | null | undefined,
+  tanks: ReadonlyArray<{ id?: unknown } | null | undefined> | null | undefined,
+): BuitenTankBatch<B>[] => {
+  const lijst = (batches || []).filter((b): b is B => !!b)
+  const tankLijst = (tanks || []).filter((tk): tk is { id?: unknown } => !!tk && tk.id != null && tk.id !== '')
+  const tankIds = new Set(tankLijst.map(tk => String(tk.id)))
+  // Dezelfde keuze als de tankkaarten: per tank de eerste bezetter, met het
+  // id zoals de tank het heeft.
+  const opKaart = new Set<B>()
+  for (const tk of tankLijst) {
+    const b = tankBezetter(tk.id as string, lijst as any[]) as B | null
+    if (b) opKaart.add(b)
+  }
+  const uit: BuitenTankBatch<B>[] = []
+  for (const b of lijst) {
+    const status = String(b.status ?? '')
+    if (!(status in BUITEN_TANKS_VOLGORDE)) continue
+    if (isTankBezetStatus(status)) {
+      if (opKaart.has(b)) continue
+      const tank = b.tank == null ? '' : String(b.tank)
+      uit.push({ batch: b, reden: !tank ? 'geen_tank' : !tankIds.has(tank) ? 'tank_onbekend' : 'tank_gedeeld' })
+    } else {
+      uit.push({ batch: b, reden: null })
+    }
+  }
+  return uit.sort((a, b) =>
+    (BUITEN_TANKS_VOLGORDE[String(a.batch.status)] - BUITEN_TANKS_VOLGORDE[String(b.batch.status)]) ||
+    String(a.batch.datum ?? '').localeCompare(String(b.batch.datum ?? '')))
+}
+
 // Helpers voor uniforme veld-toegang op afvullingen (oude data kan
 // `aantal`/`inhoud_liter` gebruiken, nieuwe `hoeveelheid`/`inhoud_per_eenheid`).
 const afvAantal = (a: any): number =>

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { t } from '../i18n'
-import { fmtD, fmtQty, tod } from '../utils/format'
-import { tankBezetter, telThtAlerts, resolveTankHistorie, tankRestVolume, effectiefOG, effectiefFG, vrijeTanksMetStatus, laatsteTankReiniging } from '../utils/calculations'
+import { fmtD, fmtQty, fmtSg, tod } from '../utils/format'
+import { tankBezetter, telThtAlerts, resolveTankHistorie, tankRestVolume, effectiefOG, effectiefFG, vrijeTanksMetStatus, laatsteTankReiniging, batchesBuitenTanks, type BuitenTankReden } from '../utils/calculations'
 import { TANK_REINIGING_LABEL_KEY, STATUSSEN } from '../utils/constants'
 import type { TankStatusMap } from '../types'
 import { telOpenstaandeBatchTaken } from '../utils/taken'
@@ -152,13 +152,17 @@ function ProductieDashboard({
   // ── Buiten de tanks ────────────────────────────────────────────────────────
   // Gepland (brouwdag nog te starten), Brouwen (brouwdag bezig, bier nog niet
   // in de tank) en Afgevuld (klaar voor verkoop/afsluiten) — alles wat loopt
-  // maar geen tankkaart heeft. Gesloten batches zijn een archieflink.
-  const buitenTanks = useMemo(() => {
-    const volgorde: Record<string, number> = { Brouwen: 0, Gepland: 1, Afgevuld: 2, Verpakt: 2 }
-    return bat
-      .filter((b: any) => b?.status && b.status in volgorde)
-      .sort((a: any, b: any) => (volgorde[a.status] - volgorde[b.status]) || String(a.datum || '').localeCompare(String(b.datum || '')))
-  }, [bat])
+  // maar geen tankkaart heeft. Ook een batch in Vergisten of Conditioneren
+  // zonder tankkaart (geen tank, een tank die niet meer bestaat, of een tank
+  // waarvan de kaart al een andere batch toont): die verdween anders helemaal
+  // (utils/calculations.ts → batchesBuitenTanks). Gesloten batches zijn een
+  // archieflink.
+  const buitenTanks = useMemo(() => batchesBuitenTanks(bat, tanks), [bat, tanks])
+  const redenTekst = (reden: BuitenTankReden | null, tank: string | null): string | null =>
+    reden === 'geen_tank' ? t('dash_buiten_geen_tank')
+      : reden === 'tank_onbekend' ? t('dash_buiten_tank_onbekend').replace('{tank}', tank || '')
+      : reden === 'tank_gedeeld' ? t('dash_buiten_tank_gedeeld').replace('{tank}', tank || '')
+      : null
   const geslotenAantal = useMemo(() => bat.filter((b: any) => b?.status === 'Gesloten').length, [bat])
 
   // Inline meting-form per tankkaart — één tegelijk open.
@@ -283,7 +287,7 @@ function ProductieDashboard({
 
                   {/* Drie grote meetwaarden — wat de brouwer op de vloer wil zien. */}
                   <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100">
-                    <Metriek label="SG" waarde={mSg ? Number(mSg.sg).toFixed(3) : null}
+                    <Metriek label={t('flow_meting_sg')} waarde={mSg ? fmtSg(mSg.sg, '') || null : null}
                       sub={mSg ? fmtD(mSg.datum) : t('dash_geen_meting')} />
                     <Metriek label="°C"
                       waarde={sensorTemp != null ? sensorTemp.toFixed(1) : mTemp ? Number(mTemp.temp).toFixed(1) : null}
@@ -295,9 +299,9 @@ function ProductieDashboard({
                   {sgPct !== null && (
                     <div className="mt-2">
                       <div className="flex justify-between text-[11px] text-gray-500 mb-1">
-                        <span>OG {effectiefOG(batch)}</span>
+                        <span>{t('batch_info_og')} {fmtSg(effectiefOG(batch))}</span>
                         <span className="font-medium text-gray-700">{t('dashboard_sg_progress').replace('{pct}', String(Math.round(sgPct)))}</span>
-                        <span>FG {effectiefFG(batch)}</span>
+                        <span>{t('batch_info_fg')} {fmtSg(effectiefFG(batch))}</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
                         <div className="bg-blue-500 h-2 rounded-full transition-all duration-500" style={{ width: `${sgPct}%` }} />
@@ -416,13 +420,23 @@ function ProductieDashboard({
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
           <SectionHeader title={t('dash_buiten_tanks')} info={buitenTanks.length || undefined} rounded="top" />
           <div className="divide-y divide-gray-100">
-            {buitenTanks.map((b: any) => {
+            {buitenTanks.map(({ batch: b, reden }: { batch: any, reden: BuitenTankReden | null }) => {
               const taken = openTaken(b)
               const stap = b.status === 'Brouwen' ? volgendeBrouwdagStap(b.id, brouwdagStappen) : null
               const tank = b.tank ? (tanks.find((tk: any) => tk.id === b.tank)?.naam || b.tank) : null
+              // Lopend bier zonder tankkaart: zeg waarom, in de kleur van een
+              // waarschuwing — waar het bier ligt, moet kloppen. De tank bij
+              // zijn naam; een tank die niet meer bestaat bij zijn id.
+              const waarom = redenTekst(reden, tank ? String(tank) : null)
+              const details = [b.datum ? fmtD(b.datum) : null, waarom ? null : tank, Number(b.liter_vergist) > 0 ? `${b.liter_vergist} L` : null,
+                stap ? (stap.label || t('dash_volgende_stap')) : taken > 0 ? t('dash_taken_open_n').replace('{n}', String(taken)) : null]
+                .filter(Boolean).join(' · ')
               return (
+                // Op een telefoon schuift een brede knop ("Brouwdag starten")
+                // naar een eigen regel in plaats van de naam af te kappen, en de
+                // details mogen omslaan: de reden hoort leesbaar te blijven.
                 <div key={b.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:px-5 py-3 min-h-[44px]">
-                  <button type="button" className="flex-1 min-w-0 flex items-center gap-2 text-left" onClick={() => openBatch(b.id)}>
+                  <button type="button" className="flex-1 min-w-[15rem] flex items-center gap-2 text-left" onClick={() => openBatch(b.id)}>
                     <BierKleur ebc={batchEbc(b, producten, recepten)} s="md" />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 min-w-0">
@@ -430,14 +444,13 @@ function ProductieDashboard({
                         {b.batch_nummer && <span className="text-xs text-gray-500 flex-shrink-0">#{b.batch_nummer}</span>}
                         <Badge s={b.status} />
                       </div>
-                      <div className="text-xs text-gray-500 mt-0.5 truncate">
-                        {[b.datum ? fmtD(b.datum) : null, tank, Number(b.liter_vergist) > 0 ? `${b.liter_vergist} L` : null,
-                          stap ? (stap.label || t('dash_volgende_stap')) : taken > 0 ? t('dash_taken_open_n').replace('{n}', String(taken)) : null]
-                          .filter(Boolean).join(' · ')}
+                      <div className="text-xs text-gray-500 mt-0.5 break-words">
+                        {waarom && <span className="text-orange-700 font-medium">{waarom}</span>}
+                        {waarom && details ? ' · ' : ''}{details}
                       </div>
                     </div>
                   </button>
-                  <Btn s="sm" v={b.status === 'Gepland' || b.status === 'Brouwen' ? 'primary' : 'secondary'} cls="min-h-[36px]" onClick={() => openBatch(b.id)}>
+                  <Btn s="sm" v={b.status === 'Gepland' || b.status === 'Brouwen' ? 'primary' : 'secondary'} cls="min-h-[36px] ml-auto" onClick={() => openBatch(b.id)}>
                     {actieLabelVoor(b)}
                   </Btn>
                 </div>

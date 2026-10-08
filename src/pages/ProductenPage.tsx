@@ -22,6 +22,12 @@ import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
+import RowActions, { RowActie } from '../components/ui/RowActions'
+import BevestigKnop from '../components/ui/BevestigKnop'
+import Badge from '../components/ui/Badge'
+import { useUndo } from '../components/ui/UndoBar'
+import { batchStatusLabel } from '../utils/constants'
+import { voorraadLogVanProduct, webshopLogVanProduct } from '../utils/productLogboek'
 import VerplaatsModal from '../components/VerplaatsModal'
 import UitslagModal from '../components/UitslagModal'
 import { logAudit } from '../utils/audit'
@@ -72,11 +78,25 @@ const REDEN_COLORS: Record<AfboekingReden, string> = {
 
 // M-1: bijlagen (foto's / PDF) bij bijzondere mutaties via utils/bijlage.ts
 
+// Verwijderen gaat met vijf seconden terugweg (UndoBar) in plaats van een
+// vraag vooraf. Zolang die loopt is het record al uit beeld; pas daarna wordt
+// het echt weggeschreven. Het id van de geplande actie zegt welk record.
+const PRODUCT_UNDO = 'product-verwijder-'
+const ARTIKEL_UNDO = 'artikel-verwijder-'
+
 // recordId/onOpenRecord: het geopende product staat in de route
 // (`#/verkoop/producten/<id>`, App.tsx) — terug, herladen en een gedeelde link
 // werken. gaNaar is er voor de ketenlinks naar recept en batch (F10).
 function ProductenPage({producten, setProducten, ing=[], productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], setVerplaatsingen=()=>{}, btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[], recordId=null, onOpenRecord}: any) {
   const {useState, useMemo, useEffect, useRef} = React;
+  const undo = useUndo();
+  // Het product of artikel waarvan het verwijderen nog terug kan.
+  const wachtendOp = (prefix: string): number | null => {
+    const id = String(undo.actie?.id || '');
+    return id.startsWith(prefix) ? Number(id.slice(prefix.length)) : null;
+  };
+  const productWeg = wachtendOp(PRODUCT_UNDO);
+  const artikelWeg = wachtendOp(ARTIKEL_UNDO);
   // Het geopende product: uit de route als de schil die meegeeft, anders
   // lokaal. `setSel` opent of sluit een product (een history-entry).
   const [lokaalSel, setLokaalSel] = useState<number|null>(null);
@@ -155,14 +175,14 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
   };
 
   const actieveProducten = useMemo(() => {
-    const list = ((producten||[]) as any[]).filter((p: any) => p.status !== 'gearchiveerd');
+    const list = ((producten||[]) as any[]).filter((p: any) => p.status !== 'gearchiveerd' && p.id !== productWeg);
     return filterProducten(list).sort((a: any, b: any) => (a.naam||'').localeCompare(b.naam||''));
-  }, [producten, zoek]);
+  }, [producten, zoek, productWeg]);
 
   const gearchiveerdeProducten = useMemo(() => {
-    const list = ((producten||[]) as any[]).filter((p: any) => p.status === 'gearchiveerd');
+    const list = ((producten||[]) as any[]).filter((p: any) => p.status === 'gearchiveerd' && p.id !== productWeg);
     return filterProducten(list).sort((a: any, b: any) => (a.naam||'').localeCompare(b.naam||''));
-  }, [producten, zoek]);
+  }, [producten, zoek, productWeg]);
 
   // Desktop: selecteer bij het openen van de pagina automatisch het eerste
   // actieve product, zodat de rechterkolom niet leeg staat. Mobiel houdt de
@@ -180,6 +200,17 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     setSel(actieveProducten[0].id, {vervang: true});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actieveProducten]);
+  // "Ongedaan maken" na verwijderen: het product staat er nog, dus open het
+  // weer — je komt terug waar je was. Is het verwijderen uitgevoerd, dan is
+  // het product in dezelfde render al weg (UndoBar en opslag wijzigen samen).
+  const vorigeWegRef = useRef<number | null>(productWeg);
+  useEffect(() => {
+    const vorige = vorigeWegRef.current;
+    vorigeWegRef.current = productWeg;
+    if (vorige == null || productWeg != null) return;
+    if ((producten||[]).some((p: any) => Number(p.id) === vorige)) setSel(vorige, {vervang: true});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productWeg]);
   // Een ander product via de route (terugknop, link): een open artikelformulier
   // en het bewerkformulier van het vorige product sluiten. Een formulier voor
   // een nieuw product blijft staan. Ook de vensters van het vorige product
@@ -325,7 +356,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     return stats;
   }, [producten, bat, av, uit, bi, lots, verpakkingen, onderdelen, acc, bestellingen, bestellingPicks, afboekingen, productArtikelen, artikelen]);
 
-  const selArtikelen = useMemo(() => (productArtikelen||[]).filter((a: any) => a.product_id === sel), [productArtikelen, sel]);
+  const selArtikelen = useMemo(() => (productArtikelen||[]).filter((a: any) => a.product_id === sel && a.id !== artikelWeg), [productArtikelen, sel, artikelWeg]);
   const selRecepten = useMemo(() => {
     if (!selProduct?.recept_ids?.length) return [];
     return (recepten||[]).filter((r: any) => selProduct.recept_ids.includes(r.id));
@@ -352,11 +383,19 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
       .sort((a: any, b: any) => String(b.datum||'').localeCompare(String(a.datum||'')) || Number(b.id||0) - Number(a.id||0));
   }, [bat, selBatches, sel]);
 
+  // De afvullingen van het geopende product: met zijn eigen product_id, of (oud)
+  // zonder product maar uit een batch van dit bier. Eén verzameling voor het
+  // blok Voorraad en het logboek, zodat die nooit iets anders zeggen.
+  const selAv = useMemo(() => {
+    if (!sel) return [];
+    const batchIds = new Set(selBatches.map((b: any) => b.id));
+    return (av||[]).filter((a: any) => a.product_id === sel || (!a.product_id && batchIds.has(a.batch_id)));
+  }, [av, sel, selBatches]);
+
   // Voorraad voor geselecteerd product: afvullingen gegroepeerd per verpakkingstype
   const selVoorraad = useMemo(() => {
     if (!sel) return [];
-    const batchIds = new Set(selBatches.map((b: any) => b.id));
-    const pAv = (av||[]).filter((a: any) => a.product_id === sel || (!a.product_id && batchIds.has(a.batch_id)));
+    const pAv = selAv;
     const vTypes = [...new Set(pAv.map((a: any) => a.verpakking_type).filter(Boolean))].sort() as string[];
     const prodReserveringen = reserveringenVoorProduct(selProduct);
     return vTypes.map(vt => {
@@ -386,7 +425,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
       }
       return {vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totInBestelling, totBeschikbaar, totInAgp, totVrij};
     });
-  }, [sel, selProduct, selBatches, av, uit, bestellingPicks, bestellingen, afboekingen, productArtikelen, artikelen, verpakkingen, locaties, verplaatsingen]);
+  }, [sel, selProduct, selAv, uit, bestellingPicks, bestellingen, afboekingen, productArtikelen, artikelen, verpakkingen, locaties, verplaatsingen]);
 
   // Alle afvullingen van het geselecteerde product (over verpakkingstypes heen)
   // + wat daarvan al voor open bestellingen gepickt is. Voer voor de
@@ -438,37 +477,49 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     setMsg('');
   };
 
+  // Verwijderen zonder vraag vooraf: het product gaat meteen uit beeld en de
+  // UndoBar biedt vijf seconden "Ongedaan maken"; pas daarna wordt het echt
+  // verwijderd (ook als je intussen naar een andere pagina gaat). Alles wat
+  // daarbij gebeurt hangt aan het id van nú — niet aan wat er over vijf
+  // seconden geselecteerd is.
   const deleteProduct = () => {
+    if (sel == null) return;
+    const id = Number(sel);
+    const naam = selProduct?.naam || t('lbl_naamloos');
     // Afvullingen die aan dit product hangen. Die werden tot 1.12.63 níét
     // opgeruimd: hun `product_id` bleef naar het verdwenen product wijzen, en
     // omdat de productlijsten matchen op "eigen product_id óf (geen
     // product_id én de batch hoort erbij)", vielen ze daarna buiten élk
     // product. De flesjes stonden er nog, maar waren nergens meer te zien —
     // precies het beeld van 1.12.58.
-    const eigenAv = ((av||[]) as any[]).filter((a: any) => Number(a.product_id) === Number(sel));
+    const eigenAv = ((av||[]) as any[]).filter((a: any) => Number(a.product_id) === id);
     const nogVoorraad = eigenAv.reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
-    const vraag = nogVoorraad > 0
-      ? `${t('confirm_product_verwijderen')}\n\n${t('confirm_product_verwijderen_voorraad').replace('{n}', String(nogVoorraad))}`
-      : t('confirm_product_verwijderen');
-    if (!confirm(vraag)) return;
-    logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: sel!, actie: 'verwijderd', omschrijving: `Product "${selProduct?.naam || ''}" verwijderd`});
-    setProducten((prev: any[]) => prev.filter((p: any) => p.id !== sel));
-    setProductArtikelen((prev: any[]) => prev.filter((a: any) => Number(a.product_id) !== Number(sel)));
-    // De koppeling losmaken in plaats van hem laten hangen: de afvulling valt
-    // dan terug op de batch en blijft vindbaar.
-    if (eigenAv.length) {
-      setAv((prev: any[]) => (prev||[]).map((a: any) =>
-        Number(a.product_id) === Number(sel) ? {...a, product_id: undefined} : a));
-    }
-    setBat((prev: any[]) => prev.map((b: any) => {
-      const heeftExtra = (b.product_ids||[]).some((id: any) => Number(id) === Number(sel));
-      if (Number(b.product_id) !== Number(sel) && !heeftExtra) return b;
-      return {
-        ...b,
-        ...(Number(b.product_id) === Number(sel) ? {product_id: undefined} : {}),
-        product_ids: (b.product_ids||[]).filter((id: any) => Number(id) !== Number(sel)),
-      };
-    }));
+    // Ligt er nog voorraad, dan zegt de balk dat die voortaan zonder product
+    // staat — dat was de waarschuwing van de oude vraag vooraf.
+    const label = (nogVoorraad > 0 ? t('undo_product_verwijderd_voorraad') : t('undo_product_verwijderd'))
+      .replace('{naam}', naam).replace('{n}', String(nogVoorraad));
+    undo.plan(`${PRODUCT_UNDO}${id}`, label, () => {
+      logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: id, actie: 'verwijderd', omschrijving: `Product "${selProduct?.naam || ''}" verwijderd`});
+      setProducten((prev: any[]) => (prev||[]).filter((p: any) => Number(p.id) !== id));
+      setProductArtikelen((prev: any[]) => (prev||[]).filter((a: any) => Number(a.product_id) !== id));
+      // De koppeling losmaken in plaats van hem laten hangen: de afvulling valt
+      // dan terug op de batch en blijft vindbaar.
+      if (eigenAv.length) {
+        setAv((prev: any[]) => (prev||[]).map((a: any) =>
+          Number(a.product_id) === id ? {...a, product_id: undefined} : a));
+      }
+      const raaktBatch = (b: any) => Number(b.product_id) === id || (b.product_ids||[]).some((x: any) => Number(x) === id);
+      if (((bat||[]) as any[]).some(raaktBatch)) {
+        setBat((prev: any[]) => (prev||[]).map((b: any) => {
+          if (!raaktBatch(b)) return b;
+          return {
+            ...b,
+            ...(Number(b.product_id) === id ? {product_id: undefined} : {}),
+            product_ids: (b.product_ids||[]).filter((x: any) => Number(x) !== id),
+          };
+        }));
+      }
+    });
     // Terug naar de lijst; de history-entry van het verwijderde product wordt
     // vervangen.
     setSel(null, {vervang: true});
@@ -613,11 +664,30 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     setArtForm(null);
   };
 
+  // Een artikel (SKU met prijzen en webshopkaart) verdween met één tik. Nu:
+  // meteen uit beeld, vijf seconden terugweg, daarna echt weg.
   const deleteArtikel = (id: number) => {
     const art = (productArtikelen||[]).find((a: any) => a.id === id);
-    logAudit(auditLog, setAuditLog, {entiteit: 'Artikel', entiteit_id: id, actie: 'verwijderd', omschrijving: `Artikel "${art?.verpakking_naam || art?.artikelnummer || ''}" verwijderd`});
-    setProductArtikelen((prev: any[]) => prev.filter((a: any) => a.id !== id));
+    if (!art) return;
+    if (artForm?.id === id) setArtForm(null);
+    const naam = [art.verpakking_naam, art.artikelnummer].filter(Boolean).join(' · ') || t('lbl_naamloos');
+    undo.plan(`${ARTIKEL_UNDO}${id}`, t('undo_artikel_verwijderd').replace('{naam}', naam), () => {
+      logAudit(auditLog, setAuditLog, {entiteit: 'Artikel', entiteit_id: id, actie: 'verwijderd', omschrijving: `Artikel "${art.verpakking_naam || art.artikelnummer || ''}" verwijderd`});
+      setProductArtikelen((prev: any[]) => (prev||[]).filter((a: any) => a.id !== id));
+    });
   };
+
+  // Eén zichtbare actie per artikel (Bewerken); de webshopkaart en
+  // verwijderen staan in het ⋯-menu.
+  const artikelActies = (a: any): {primair: RowActie, acties: RowActie[]} => ({
+    primair: {id: 'bewerken', label: t('btn_edit'), onClick: () => startArtEdit(a)},
+    acties: [
+      ...(wcCreds?.enabled && a.artikelnummer
+        ? [{id: 'webshop', label: t('wc_btn_kaart'), onClick: () => setWcModalArt(a)}]
+        : []),
+      {id: 'verwijderen', label: t('btn_delete'), soort: 'gevaar' as const, onClick: () => deleteArtikel(a.id)},
+    ],
+  });
 
   // Marge op een prijs excl. BTW t.o.v. de kostprijs per eenheid.
   const margeVoorPrijs = (kostprijsPerEenheid: number, prijsExcl: number) =>
@@ -1074,8 +1144,12 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
   };
 
   // --- WooCommerce push ---
-  const addWcLog = (type: string, msg: string, details?: string) => {
-    const entry = {id: newId(wcSyncLog||[]), ts: new Date().toISOString(), type, msg, details: details||''};
+  // `productId`: de regel gaat over een artikel van dit bier — dan staat hij
+  // ook in het logboek van dat product (utils/productLogboek.ts). Een
+  // samenvatting van de hele push of pull krijgt er geen.
+  const addWcLog = (type: string, msg: string, details?: string, productId?: number | null) => {
+    const entry = {id: newId(wcSyncLog||[]), ts: new Date().toISOString(), type, msg, details: details||'',
+      ...(productId != null && Number(productId) ? {product_id: Number(productId)} : {})};
     setWcSyncLog((prev: any[]) => [entry, ...(prev||[])].slice(0, 100));
   };
 
@@ -1242,13 +1316,15 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
         // wil geen negatieve voorraad, dus daar wordt nul gepusht. Wat voor
         // open orders klaarligt gaat eraf, net als bij bier (utils/merch).
         const beschikbaar = art._merch ? merchBeschikbaarVoorWc(art, merchKlaar) : wcBeschikbaarVoorArt(art);
-        addWcLog('debug', `${naam} → ${beschikbaar}×`, '');
+        // Het bier van deze regel, voor het logboek van dat product.
+        const logProduct = art._merch ? null : art._product_id;
+        addWcLog('debug', `${naam} → ${beschikbaar}×`, '', logProduct);
         try {
           const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
           if (!prods?.length) {
             // Stil overslaan verbergt configuratiefouten — log het zodat de
             // gebruiker in het WC-logboek ziet welke SKU niet gevonden is.
-            addWcLog('fout', t('msg_wc_sku_onbekend').replace('{sku}', art.artikelnummer).replace('{naam}', naam));
+            addWcLog('fout', t('msg_wc_sku_onbekend').replace('{sku}', art.artikelnummer).replace('{naam}', naam), '', logProduct);
             mislukt.push(naam);
             continue;
           }
@@ -1268,7 +1344,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           bijgewerkt++;
         } catch(e: any) {
           mislukt.push(naam);
-          addWcLog('fout', `${naam} — ${wcFoutMelding(e, t)}`, e.message);
+          addWcLog('fout', `${naam} — ${wcFoutMelding(e, t)}`, e.message, logProduct);
         }
       }
       setWcCreds((prev: any) => ({...prev, lastSync: new Date().toISOString()}));
@@ -1308,11 +1384,11 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
    * één keer over te stappen: wat er nu in de webshop staat wordt de lokale
    * startwaarde. Overschrijft alleen het `wc`-blok (de spiegel van de winkel);
    * de eigen prijs wordt alleen ingevuld wanneer die nog leeg is — een
-   * bestaande calculatie mag de webshop niet zomaar overrulen.
+   * bestaande calculatie mag de webshop niet zomaar overrulen. De bevestiging
+   * zit in de knop zelf (BevestigKnop in de kop van de pagina).
    */
   const wcPullAll = async () => {
     if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcSyncMsg(t('error_no_woocommerce')); return; }
-    if (!confirm(t('wc_bevestig_pull_alles'))) return;
     setWcSyncing(true); setWcSyncMsg('');
     const nu = new Date().toISOString();
     const updates: Record<number, any> = {};
@@ -1339,7 +1415,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           gevonden++;
         } catch(e: any) {
           onbekend.push(art.artikelnummer);
-          addWcLog('fout', `${art.artikelnummer} — ${wcFoutMelding(e, t)}`, e.message);
+          addWcLog('fout', `${art.artikelnummer} — ${wcFoutMelding(e, t)}`, e.message, art.product_id);
         }
       }
       setProductArtikelen((prev: any[]) => prev.map((a: any) => {
@@ -1376,10 +1452,18 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     setTimeout(() => setWcSyncMsg(''), 6000);
   };
 
-  // --- Logboek data ---
-  const beerLogEntries = [...(log||[])]
-    .filter((l: any) => ['afvullen','uitslaan','verkoop','afboeking','rebrand'].includes(l.type))
-    .sort((a: any, b: any) => (b.datum||'').localeCompare(a.datum||''));
+  // --- Logboek van het geopende product ---
+  // Alleen de mutaties van dít bier, niet die van alle bieren: dezelfde
+  // afvullingen en batches als het blok Voorraad (utils/productLogboek.ts).
+  // Van het webshoplog alleen de regels over zijn artikelen; de samenvattingen
+  // van een hele push of pull staan in het synchronisatielog bij de koppeling.
+  const productLog = useMemo(() => sel == null ? [] : voorraadLogVanProduct(log, {
+    productId: Number(sel),
+    afvullingIds: selAv.map((a: any) => a.id),
+    batchIds: selBatches.map((b: any) => b.id),
+    afvullingen: av,
+  }), [log, sel, selAv, selBatches, av]);
+  const productWcLog = useMemo(() => sel == null ? [] : webshopLogVanProduct(wcSyncLog, Number(sel)), [wcSyncLog, sel]);
 
   const LOG_TYPE_STYLES: Record<string, {icon: React.ReactNode, cls: string, label: string}> = {
     afvullen:  {icon: <Icon n="beer" />, cls:'text-green-700 bg-green-50',  label: t('log_type_afvullen')},
@@ -1391,31 +1475,53 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
   };
 
   const WC_TYPE_STYLES: Record<string, {icon: string, cls: string, label: string}> = {
-    push:  {icon: '↑', cls: 'text-purple-700 bg-purple-50', label: 'WC Push'},
-    pull:  {icon: '↓', cls: 'text-blue-700 bg-blue-50',   label: 'WC Pull'},
-    fout:  {icon: '⚠', cls: 'text-red-700 bg-red-50',     label: 'WC Fout'},
-    debug: {icon: '·', cls: 'text-gray-500 bg-gray-100',  label: 'WC Debug'},
+    push:  {icon: '↑', cls: 'text-purple-700 bg-purple-50', label: t('log_type_wc_push')},
+    pull:  {icon: '↓', cls: 'text-blue-700 bg-blue-50',   label: t('log_type_wc_pull')},
+    fout:  {icon: '⚠', cls: 'text-red-700 bg-red-50',     label: t('log_type_wc_fout')},
+    debug: {icon: '·', cls: 'text-gray-500 bg-gray-100',  label: t('log_type_wc_debug')},
   };
 
   const logCombined = useMemo(() => {
-    const wcEntries = (wcSyncLog || []).map((l: any) => ({
+    const wcEntries = (productWcLog as any[]).map((l: any) => ({
       _src: 'wc' as const, id: l.id, datum: l.ts ? l.ts.slice(0, 10) : '—',
       sortKey: l.ts || '', type: l.type, msg: l.msg, details: l.details,
     }));
-    const voorraadEntries = beerLogEntries.map((l: any) => ({
+    const voorraadEntries = (productLog as any[]).map((l: any) => ({
       _src: 'voorraad' as const, ...l,
       sortKey: (l.datum || '') + (l.id ? String(l.id).padStart(10, '0') : ''),
     }));
     if (logFilter === 'voorraad') return voorraadEntries;
     if (logFilter === 'woocommerce') return wcEntries;
     return [...voorraadEntries, ...wcEntries].sort((a, b) => b.sortKey.localeCompare(a.sortKey));
-  }, [log, wcSyncLog, logFilter]);
+  }, [productLog, productWcLog, logFilter]);
+
+  // Eén weergave per logregel, voor de tabel (bureau) en de lijst (telefoon).
+  const logRijen = logCombined.slice(0, 50).map((l: any) => {
+    if (l._src === 'wc') {
+      const ws = WC_TYPE_STYLES[l.type] || WC_TYPE_STYLES.debug;
+      return {key: `wc-${l.id}`, datum: fmtD(l.datum) || '—', stijl: ws, titel: String(l.msg || ''),
+        sub: String(l.details || ''), vet: false, qty: '—', qtyCls: 'text-gray-400 font-normal'};
+    }
+    const ts = LOG_TYPE_STYLES[l.type] || {icon: '•', cls: 'text-gray-600 bg-gray-100', label: l.type};
+    // `stuks` is de opgeslagen eenheid; in beeld in de gekozen taal.
+    const eenheid = !l.eenheid || l.eenheid === 'stuks' ? t('unit_stuks') : l.eenheid;
+    const qty = l.hoeveelheid != null
+      // Uitgaand (afboeking/verkoop) is een min — behalve een tegenregel met
+      // negatieve hoeveelheid (teruggedraaide pick): die komt juist terug in
+      // de voorraad.
+      ? `${(l.type === 'afboeking' || l.type === 'verkoop') && Number(l.hoeveelheid) >= 0 ? '−' : '+'}${fmtQty(Math.abs(Number(l.hoeveelheid)))} ${eenheid}`
+      : '—';
+    return {key: `v-${l.id}`, datum: fmtD(l.datum) || '—', stijl: ts,
+      titel: `${l.batch_naam || '—'}${l.verpakking_type ? ` · ${l.verpakking_type}` : ''}`,
+      sub: String(l.omschrijving || l.referentie || ''), vet: true, qty,
+      qtyCls: l.type === 'afboeking' ? 'text-red-600' : l.type === 'uitslaan' ? 'text-purple-600' : l.type === 'verkoop' ? 'text-emerald-700' : 'text-green-600'};
+  });
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-xl font-bold text-gray-800">{t('title_producten')}</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {wcSyncMsg && <span className={`text-xs font-medium ${wcSyncMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{wcSyncMsg}</span>}
           {wcCreds?.enabled && (<>
             <button onClick={() => wcPushAll(false)} disabled={wcSyncing}
@@ -1428,9 +1534,12 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
               className="wc-btn flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40">
               {t('btn_wc_push_alles')}
             </button>
-            <Btn onClick={wcPullAll} v="secondary" disabled={wcSyncing} title={t('wc_pull_alles_title')}>
+            {/* Overschrijft de webshopkaarten van alle artikelen: de vraag
+                staat in de knop zelf (geen los bevestigingsvenster). */}
+            <BevestigKnop onBevestig={wcPullAll} v="secondary" disabled={wcSyncing}
+              vraag={t('wc_pull_alles_vraag')} title={t('wc_pull_alles_title')}>
               {t('btn_wc_pull_alles')}
-            </Btn>
+            </BevestigKnop>
           </>)}
           {/* Op een telefoon is een product in de route een eigen scherm met
               de naam in de kopbalk: "+ Product" hoort bij de lijst. Anders kwam
@@ -1548,15 +1657,15 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="text-xs font-semibold text-gray-500">{t('lbl_product_abv')}</label>
-                    <input type="number" step="0.1" value={form.abv||''} onChange={e => setForm((f: any) => ({...f, abv: e.target.value}))} placeholder="5.5" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+                    <input type="number" step="0.1" value={form.abv||''} onChange={e => setForm((f: any) => ({...f, abv: e.target.value}))} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-500">{t('lbl_product_ebc')}</label>
-                    <input type="number" step="1" value={form.ebc||''} onChange={e => setForm((f: any) => ({...f, ebc: e.target.value}))} placeholder="12" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+                    <input type="number" step="1" value={form.ebc||''} onChange={e => setForm((f: any) => ({...f, ebc: e.target.value}))} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-500">{t('lbl_product_ibu')}</label>
-                    <input type="number" step="1" value={form.ibu||''} onChange={e => setForm((f: any) => ({...f, ibu: e.target.value}))} placeholder="35" className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
+                    <input type="number" step="1" value={form.ibu||''} onChange={e => setForm((f: any) => ({...f, ibu: e.target.value}))} className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm t-input mt-1" />
                   </div>
                 </div>
               </div>
@@ -1647,18 +1756,25 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           <div className="space-y-4">
             {/* Header */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              {/* Eén knop in de kop, de rest in ⋯: drie knoppen drukten de
+                  naam op een telefoon weg tot "Ha". De naam loopt door over
+                  meer regels in plaats van af te kappen. */}
               <SectionHeader
                 solid
-                title={<span className="flex items-center gap-2">
+                wrap
+                title={<span className="flex items-center gap-2 min-w-0">
                   <BierKleur ebc={productEbc(selProduct, recepten)} s="lg" />
-                  <span>{selProduct.naam}</span>
-                  {selProduct.status === 'gearchiveerd' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20">{t('lbl_product_gearchiveerd')}</span>}
+                  <span className="min-w-0 break-words">
+                    {selProduct.naam}
+                    {selProduct.status === 'gearchiveerd' && <span className="ml-2 inline-block align-middle text-[10px] font-medium px-1.5 py-0.5 rounded bg-white/20 whitespace-nowrap">{t('lbl_product_gearchiveerd')}</span>}
+                  </span>
                 </span>}
-                info={<>
-                  <Btn onClick={() => startEdit(selProduct)} s="sm" v="header">{t('btn_bewerken')}</Btn>
-                  <Btn onClick={toggleArchiveer} s="sm" v="header">{selProduct.status === 'gearchiveerd' ? t('btn_product_activeren') : t('btn_product_archiveren')}</Btn>
-                  <Btn onClick={deleteProduct} s="sm" v="header-danger">{t('btn_product_verwijderen')}</Btn>
-                </>}
+                info={<RowActions v="header"
+                  primair={{id: 'bewerken', label: t('btn_bewerken'), onClick: () => startEdit(selProduct)}}
+                  acties={[
+                    {id: 'archiveren', label: selProduct.status === 'gearchiveerd' ? t('btn_restore') : t('btn_product_archiveren'), onClick: toggleArchiveer},
+                    {id: 'verwijderen', label: t('btn_product_verwijderen'), soort: 'gevaar', onClick: deleteProduct},
+                  ]} />}
               />
 
               <div className="p-4">
@@ -1732,12 +1848,13 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                   onToggle={() => setVoorraadOpen(!voorraadOpen)}
                   rounded={voorraadOpen ? 'top' : 'full'}
                   title={t('lbl_product_voorraad')}
+                  // Een gewone secundaire knop: deze kop is wit (niet solid),
+                  // dus de oude witte knop was onzichtbaar.
                   info={agpTotaalProduct > 0 && (
-                    <button
-                      onClick={e => { e.stopPropagation(); setUitslagOpen(true) }}
-                      className="text-xs px-2.5 py-1 rounded bg-white/20 hover:bg-white/30 text-white font-medium transition-colors whitespace-nowrap">
-                      {t('uitslag_knop')} ({agpTotaalProduct}× {t('uitslag_in_agp')})
-                    </button>
+                    <Btn s="sm" v="secondary" cls="whitespace-nowrap" title={t('uitslag_knop')}
+                      onClick={() => setUitslagOpen(true)}>
+                      {t('uitslag_knop_agp').replace('{n}', String(agpTotaalProduct))}
+                    </Btn>
                   )}
                 />
                 {voorraadOpen && selVoorraad.map(({vt, rows, totAfgevuld, totGepickt, totUitgeleverd, totAfgeboekt, totInBestelling, totBeschikbaar, totInAgp, totVrij}) => (
@@ -2091,13 +2208,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                                 />
                               )}
                             </div>
-                            <div className="flex gap-2 flex-shrink-0">
-                              {wcCreds?.enabled && a.artikelnummer && (
-                                <Btn onClick={() => setWcModalArt(a)} s="sm" v="secondary" title={t('wc_btn_kaart')}>WC</Btn>
-                              )}
-                              <Btn onClick={() => startArtEdit(a)} s="sm" v="secondary">{t('btn_edit')}</Btn>
-                              <Btn onClick={() => deleteArtikel(a.id)} s="sm" v="danger">{t('btn_delete')}</Btn>
-                            </div>
+                            <RowActions cls="flex-shrink-0" {...artikelActies(a)} />
                           </div>
                           <div className="mt-2 space-y-1">
                             {rij(t('lbl_product_sku'), (
@@ -2140,7 +2251,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                         <th className="text-right py-1 font-medium">{t('lbl_product_btw')}</th>
                         <th className="text-right py-1 font-medium">{t('lbl_kostprijs_stuk')}</th>
                         <th className="text-right py-1 font-medium">{t('lbl_product_marge')}</th>
-                        <th className="w-16"></th>
+                        <th className="w-1"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2179,22 +2290,8 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                                 </div>
                               )}
                             </td>
-                            <td className="py-1.5 text-right whitespace-nowrap">
-                              {wcCreds?.enabled && a.artikelnummer && (
-                                <button onClick={() => setWcModalArt(a)} title={t('wc_btn_kaart')}
-                                  className="mr-1.5 text-xs font-semibold align-middle"
-                                  style={{color: '#7f54b3'}}>WC</button>
-                              )}
-                              <button onClick={() => startArtEdit(a)} aria-label={t('btn_edit')} className="text-gray-400 hover:text-gray-600 mr-1">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5 inline">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
-                                </svg>
-                              </button>
-                              <button onClick={() => deleteArtikel(a.id)} aria-label={t('btn_delete')} className="text-red-400 hover:text-red-600">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5 inline">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                                </svg>
-                              </button>
+                            <td className="py-1.5 pl-2 text-right whitespace-nowrap">
+                              <RowActions {...artikelActies(a)} />
                             </td>
                           </tr>
                         );
@@ -2237,7 +2334,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                         {sam.liters > 0 && <span>{fmtQty(sam.liters)} L {t('batch_stat_gebrouwen')}</span>}
                         {sam.laatste && <span>{t('batch_stat_laatst')} {fmtD(sam.laatste)}</span>}
                         {Object.entries(sam.perStatus).map(([status, n]) => (
-                          <span key={status} className="text-gray-400">{n}× {status}</span>
+                          <span key={status} className="text-gray-400">{n}× {batchStatusLabel(status)}</span>
                         ))}
                       </div>
 
@@ -2362,7 +2459,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                                 );
                               })()}
                               <td className="py-1.5 pl-3">
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.status === 'Afgevuld' || b.status === 'Verpakt' || b.status === 'Gesloten' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{b.status}</span>
+                                <span className="whitespace-nowrap"><Badge s={b.status} /></span>
                               </td>
                               <td className="py-1.5 text-right">
                                 {direct && setBat && (
@@ -2404,82 +2501,83 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                 )}
               </div>
             </div>
-          </div>
-        )}
-      </div>
-      </div>
 
-      {/* Logboek */}
-      <div className={`mt-4 bg-white rounded-xl border border-gray-200 shadow-sm ${logboekOpen?'':'overflow-hidden'}`}>
-        <SectionHeader
-          open={logboekOpen}
-          onToggle={() => setLogboekOpen(!logboekOpen)}
-          rounded={logboekOpen ? 'top' : 'full'}
-          title={t('tab_logboek')}
-          info={beerLogEntries.length > 0 ? beerLogEntries.length : null}
-        />
-        {logboekOpen && (
-          <div>
-            <div className="px-3 py-2 bg-gray-50 border-b flex items-center gap-1">
-              {(['alle', 'voorraad', ...(wcCreds?.enabled ? ['woocommerce'] : [])] as const).map(f => (
-                <button key={f} onClick={() => setLogFilter(f as any)}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${logFilter === f ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
-                  {f === 'alle' ? t('orders_filter_alle') : f === 'voorraad' ? t('log_filter_voorraad').replace('{n}', String(beerLogEntries.length)) : t('log_filter_woocommerce').replace('{n}', String((wcSyncLog||[]).length))}
-                </button>
-              ))}
-            </div>
-            {logCombined.length === 0 ? (
-              <div className="p-6 text-center text-gray-400 text-sm">{t('log_no_mutations')}</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium">{t('lbl_date')}</th>
-                    <th className="px-3 py-2 text-left font-medium">{t('lbl_type')}</th>
-                    <th className="px-3 py-2 text-left font-medium">{t('lbl_description')}</th>
-                    <th className="px-3 py-2 text-right font-medium">{t('lbl_quantity')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {logCombined.slice(0, 50).map((l: any) => {
-                    if (l._src === 'wc') {
-                      const ws = WC_TYPE_STYLES[l.type] || WC_TYPE_STYLES.debug;
-                      return (
-                        <tr key={`wc-${l.id}`} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.datum}</td>
-                          <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ws.cls}`}>{ws.icon} {ws.label}</span></td>
-                          <td className="px-3 py-2 text-xs text-gray-600 max-w-[200px]">
-                            <div className="truncate">{l.msg}</div>
-                            {l.details && <div className="text-gray-400 truncate" title={l.details}>{l.details}</div>}
-                          </td>
-                          <td className="px-3 py-2 text-right text-xs text-gray-400">—</td>
-                        </tr>
-                      );
-                    }
-                    const ts = LOG_TYPE_STYLES[l.type] || {icon: '•', cls: 'text-gray-600 bg-gray-100', label: l.type};
-                    const qty = l.hoeveelheid != null
-                      // Uitgaand (afboeking/verkoop) is een min — behalve een
-                      // tegenregel met negatieve hoeveelheid (teruggedraaide
-                      // pick): die komt juist terug in de voorraad.
-                      ? `${(l.type === 'afboeking' || l.type === 'verkoop') && Number(l.hoeveelheid) >= 0 ? '−' : '+'}${fmtQty(Math.abs(Number(l.hoeveelheid)))} ${l.eenheid || t('unit_stuks')}`
-                      : '—';
-                    return (
-                      <tr key={`v-${l.id}`} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.datum || '—'}</td>
-                        <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${ts.cls}`}>{ts.icon} {ts.label}</span></td>
-                        <td className="px-3 py-2 text-xs text-gray-600 max-w-[200px]">
-                          <div className="font-medium text-gray-700 truncate">{l.batch_naam || '—'}{l.verpakking_type ? ` · ${l.verpakking_type}` : ''}</div>
-                          {(l.omschrijving || l.referentie) && <div className="text-gray-400 truncate" title={l.omschrijving || l.referentie}>{l.omschrijving || l.referentie}</div>}
-                        </td>
-                        <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.type === 'afboeking' ? 'text-red-600' : l.type === 'uitslaan' ? 'text-purple-600' : l.type === 'verkoop' ? 'text-emerald-700' : 'text-green-600'}`}>{qty}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            {/* Logboek van dít product (niet van alle bieren): de mutaties van
+                zijn afvullingen en de webshopregels over zijn artikelen. Geen
+                regels = geen blok. */}
+            {(productLog.length + productWcLog.length) > 0 && (
+              <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${logboekOpen?'':'overflow-hidden'}`}>
+                <SectionHeader
+                  open={logboekOpen}
+                  onToggle={() => setLogboekOpen(!logboekOpen)}
+                  rounded={logboekOpen ? 'top' : 'full'}
+                  title={t('product_logboek_titel').replace('{naam}', selProduct.naam || t('lbl_naamloos'))}
+                  info={productLog.length + productWcLog.length}
+                />
+                {logboekOpen && (
+                  <div>
+                    <div className="px-3 py-2 bg-gray-50 border-b flex flex-wrap items-center gap-1">
+                      {(['alle', 'voorraad', ...(wcCreds?.enabled ? ['woocommerce'] : [])] as const).map(f => (
+                        <button key={f} type="button" onClick={() => setLogFilter(f as any)}
+                          className={`px-3 py-1 min-h-tap sm:min-h-0 text-xs font-medium rounded-md transition-colors ${logFilter === f ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
+                          {f === 'alle' ? t('orders_filter_alle') : f === 'voorraad' ? t('log_filter_voorraad').replace('{n}', String(productLog.length)) : t('log_filter_woocommerce').replace('{n}', String(productWcLog.length))}
+                        </button>
+                      ))}
+                    </div>
+                    {logRijen.length === 0 ? (
+                      <div className="p-6 text-center text-gray-400 text-sm">{t('log_no_mutations')}</div>
+                    ) : (<>
+                      {/* Bureau: een tabel met vaste kolommen, zodat een lange
+                          omschrijving afkapt in plaats van de pagina te
+                          verbreden. Telefoon: dezelfde regels onder elkaar. */}
+                      <table className="w-full text-sm table-fixed hidden sm:table">
+                        <thead className="text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
+                          <tr>
+                            <th className="w-24 px-3 py-2 text-left font-medium">{t('lbl_date')}</th>
+                            <th className="w-40 px-3 py-2 text-left font-medium">{t('lbl_type')}</th>
+                            <th className="px-3 py-2 text-left font-medium">{t('lbl_description')}</th>
+                            <th className="w-28 px-3 py-2 text-right font-medium">{t('lbl_quantity')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {logRijen.map(r => (
+                            <tr key={r.key} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{r.datum}</td>
+                              <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${r.stijl.cls}`}>{r.stijl.icon} {r.stijl.label}</span></td>
+                              <td className="px-3 py-2 text-xs text-gray-600">
+                                <div className={`truncate ${r.vet ? 'font-medium text-gray-700' : ''}`} title={r.titel}>{r.titel}</div>
+                                {r.sub && <div className="text-gray-400 truncate" title={r.sub}>{r.sub}</div>}
+                              </td>
+                              <td className={`px-3 py-2 text-right font-mono text-xs font-semibold whitespace-nowrap ${r.qtyCls}`}>{r.qty}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <ul className="sm:hidden divide-y divide-gray-100">
+                        {logRijen.map(r => (
+                          <li key={r.key} className="px-3 py-2.5 text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={`inline-flex items-center gap-1 font-medium px-1.5 py-0.5 rounded ${r.stijl.cls}`}>{r.stijl.icon} {r.stijl.label}</span>
+                              <span className="text-gray-500 whitespace-nowrap">{r.datum}</span>
+                            </div>
+                            <div className="mt-1 flex items-start justify-between gap-3">
+                              <div className="min-w-0 text-gray-600">
+                                <div className={`break-words ${r.vet ? 'font-medium text-gray-700' : ''}`}>{r.titel}</div>
+                                {r.sub && <div className="text-gray-400 break-words">{r.sub}</div>}
+                              </div>
+                              <span className={`font-mono font-semibold whitespace-nowrap ${r.qtyCls}`}>{r.qty}</span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </>)}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
+      </div>
       </div>
 
       {/* Volledige WooCommerce-productkaart van één artikel */}
@@ -2504,7 +2602,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
               recepten: receptenVoorProduct((producten||[]).find((p: any) => p.id === wcModalArt.product_id)),
               ingredienten: ing,
             }) : null}
-            onLog={addWcLog}
+            onLog={(type, msg, details) => addWcLog(type, msg, details, wcModalArt.product_id)}
             onOpslaan={(velden) => bewaarWcVelden(wcModalArt.id, velden)}
             onClose={() => setWcModalArt(null)}
           />

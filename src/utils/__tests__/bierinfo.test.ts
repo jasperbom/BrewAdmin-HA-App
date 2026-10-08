@@ -29,6 +29,9 @@ describe('velddefinities', () => {
     expect(invul).toContain('smaakprofiel')
     expect(bierInvulVelden('artikel').map(v => v.veld)).not.toContain('inhoud')
   })
+  it('zet geen voorbeeldgetal in het kcal-veld — dat las als een ingevulde waarde', () => {
+    expect(BIER_VELDEN.find(v => v.veld === 'kcal')?.placeholder).toBeUndefined()
+  })
 })
 
 describe('weergave-indeling', () => {

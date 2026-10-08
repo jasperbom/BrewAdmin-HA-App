@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   receptGebruik, receptenPerProduct, receptenVoorKiezer, tellingen, tagFilter, receptTags,
   recentGrens, hoofdIdResolver, gebruikIndex, receptPastBijZoek, isInGebruik,
+  tekstPastBijZoek, heeftZoekterm,
   RECEPT_LOPENDE_STATUSSEN, IN_GEBRUIK_STATUSSEN, ZONDER_TAG,
   type ReceptGebruikCtx, type ReceptStatus,
 } from '../receptGebruik'
@@ -468,5 +469,20 @@ describe('prestatie', () => {
     const duur = performance.now() - start
     expect(g).toHaveLength(140)
     expect(duur).toBeLessThan(50)
+  })
+})
+
+describe('tekstPastBijZoek / heeftZoekterm', () => {
+  it('alle woorden, zonder accenten, hoofdletterongevoelig', () => {
+    expect(tekstPastBijZoek(['Kölsch probeersel', 'Kölsch'], 'KOLSCH probeer')).toBe(true)
+    expect(tekstPastBijZoek(['Kölsch probeersel'], 'kolsch ipa')).toBe(false)
+    expect(tekstPastBijZoek([null, undefined, 3], '3')).toBe(true)
+  })
+  it('een lege zoektekst past altijd', () => {
+    expect(tekstPastBijZoek(['x'], '')).toBe(true)
+    expect(tekstPastBijZoek([], '  ')).toBe(true)
+    expect(heeftZoekterm('  ')).toBe(false)
+    expect(heeftZoekterm(null)).toBe(false)
+    expect(heeftZoekterm(' a ')).toBe(true)
   })
 })

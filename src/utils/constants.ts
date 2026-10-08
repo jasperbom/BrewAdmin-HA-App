@@ -14,6 +14,29 @@ export const STATUS_CLR: Record<string, string> = {
 }
 
 export const STATUSSEN = ["Gepland","Brouwen","Vergisten","Conditioneren","Afgevuld","Gesloten"]
+
+// i18n-sleutel per batchstatus: de labels van de statusbadge (Badge.tsx), ook
+// voor elke andere plek die een status als tekst toont.
+export const BATCH_STATUS_LABEL_KEYS: Record<string, string> = {
+  Gepland: 'status_planning',
+  Brouwen: 'status_brewing',
+  Vergisten: 'status_fermenting',
+  Conditioneren: 'status_conditioning',
+  Afgevuld: 'status_packaged',
+  // Backwards-compat: oude data met status='Verpakt' krijgt hetzelfde label
+  Verpakt: 'status_packaged',
+  Gesloten: 'status_closed',
+}
+
+/** Het label van een batchstatus in de gekozen taal. Een status die de app niet
+ *  kent (oude data, een eigen waarde) blijft zichzelf staan — nooit een
+ *  sleutelnaam in beeld. */
+export const batchStatusLabel = (status: string | null | undefined): string => {
+  const s = String(status ?? '')
+  const sleutel = Object.prototype.hasOwnProperty.call(BATCH_STATUS_LABEL_KEYS, s) ? BATCH_STATUS_LABEL_KEYS[s] : ''
+  return sleutel ? t(sleutel, s) : s
+}
+
 export const BUILTIN_ING_TYPES = ["Mout","Hop","Gist","Suiker","Overig"]
 export const BUILTIN_KOSTEN_SOORTEN = ['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig']
 

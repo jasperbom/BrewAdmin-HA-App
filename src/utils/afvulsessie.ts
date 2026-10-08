@@ -63,6 +63,25 @@ export const nieuweLotcode = (
   return {sessie_nr: nr, lotcode: code}
 }
 
+/** De lotcode van een afvulling zoals hij op de verpakking staat: haar eigen
+ *  `lotcode` (bevroren bij het afvullen), anders die van haar afvulsessie.
+ *  Leeg voor een afvulling van vóór de sessies zonder eigen code — dan is er
+ *  geen lotcode, en het batchnummer is iets anders: dat hoort er nooit voor in
+ *  de plaats te staan. Voor alles in de verkoop dat de lotcode toont (de
+ *  pickmodal, straks pakbon en picklijst); de tracering (trace.ts) volgt
+ *  dezelfde regel. */
+export const lotcodeVanAfvulling = (
+  afvulling: {lotcode?: string | null; sessie_id?: number | null} | null | undefined,
+  sessies: ReadonlyArray<Pick<AfvulSessie, 'id' | 'lotcode'>> | null | undefined,
+): string => {
+  if (!afvulling) return ''
+  const eigen = String(afvulling.lotcode ?? '').trim()
+  if (eigen) return eigen
+  if (afvulling.sessie_id == null) return ''
+  const sessie = (sessies || []).find(s => !!s && s.id === afvulling.sessie_id)
+  return String(sessie?.lotcode ?? '').trim()
+}
+
 // ── Houdbaarheidsdatum (handboek §3.3) ──────────────────────────────────────
 
 /** De THT is een garantie, geen inschatting. Omdat het product levend is en er

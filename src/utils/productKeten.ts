@@ -233,6 +233,36 @@ const productIdGetal = (v: unknown): number | null => {
   return Number.isFinite(n) && n !== 0 ? n : null
 }
 
+export interface ProductKeuze<P> {
+  product: P
+  /** Een gearchiveerd product — staat alleen in de lijst omdat het al gekozen is. */
+  gearchiveerd: boolean
+}
+
+/**
+ * De producten voor een keuzelijst (Batchgegevens, CCP 3, het afvulformulier):
+ * de niet-gearchiveerde, op naam. Een gearchiveerd product dat al gekozen is
+ * (`gekozenId`) blijft er als laatste in, gemarkeerd — anders toont de keuze
+ * een lege waarde terwijl er wel een product vastligt. Een gekozen id dat niet
+ * (meer) bestaat komt er niet in.
+ */
+export const productenVoorKeuze = <P extends ProductLike>(
+  producten: ReadonlyArray<P | null | undefined> | null | undefined,
+  gekozenId?: number | string | null,
+): ProductKeuze<P>[] => {
+  const lijst = (producten || []).filter((p): p is P => !!p && p.id != null)
+  const uit: ProductKeuze<P>[] = lijst
+    .filter(p => productActief(p))
+    .sort((a, b) => String(a.naam || '').localeCompare(String(b.naam || ''), 'nl'))
+    .map(product => ({ product, gearchiveerd: false }))
+  const gekozen = productIdGetal(gekozenId)
+  if (gekozen != null && !uit.some(k => Number(k.product.id) === gekozen)) {
+    const p = lijst.find(x => Number(x.id) === gekozen)
+    if (p) uit.push({ product: p, gearchiveerd: true })
+  }
+  return uit
+}
+
 export type ProductVoorBatchBron = 'batch' | 'afvullingen' | 'geen'
 
 export interface AfvullingLike {

@@ -4,6 +4,43 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.91] — 2026-10-08
+
+### Productie & Verkoop, deel 2: snelle winst
+
+**Productie**
+- **Recepten:** de groep "Zonder tag" toont echt de recepten zonder tag; een
+  recept met meer tags staat één keer (met "ook ipa"); zoeken klapt de groepen
+  met treffers open en zegt het als er niets is. Verbergen en tagbeheer zitten
+  in een ⋯-menu en werken ook met een tik op de telefoon. Typen in een hoptijd
+  houdt de focus vast. Op de telefoon staan de ingrediënten van een recept als
+  regels in plaats van een tabel die zijwaarts scrolde, en *Brouwen* past in de
+  kaart.
+- **SG, OG en FG overal met drie decimalen** (Gereed-tegels, brouwzaal,
+  brouwdag, batchdossier).
+- **Brouwzaal "Buiten de tanks"** toont ook een batch in Vergisten of
+  Conditioneren zonder (bestaande) tank, met de reden erbij.
+- **Receptkeuze** bij een nieuwe batch en bij *Recept opnieuw toepassen* laat
+  verborgen recepten, recepten met alleen gearchiveerde tags en versies weg.
+  Geen browservensters meer: de reden staat in het formulier en toepassen
+  bevestig je in de knop.
+- **CCP 3 en het afvulformulier** beginnen op het product van de batch;
+  gearchiveerde producten staan niet meer in de keuze.
+- Batchgegevens kopiëren geen GN-code meer van een product; de kop van de
+  receptkostprijs is weer leesbaar.
+
+**Verkoop**
+- **Productpagina:** kop met *Bewerken* en ⋯ (archiveren, verwijderen); de naam
+  is op de telefoon volledig leesbaar. Product en artikel verwijderen met vijf
+  seconden terugweg in plaats van een browservraag. *Uitslaan (n× in AGP)* is
+  weer een zichtbare knop. Het logboek toont alleen dit product.
+- **Pickmodal:** onder "Lot" de lotcode, het batchnummer apart; meldingen in de
+  modal zelf.
+- **Klanten:** bestellingen met hun echte ordernummer (M-0014).
+- De voorbeeldwaarden in het productformulier (o.a. "67" kcal) zijn weg.
+
+---
+
 ## [1.12.90] — 2026-10-07
 
 ### Productie & Verkoop, deel 1: routes, schil en het rekenfundament

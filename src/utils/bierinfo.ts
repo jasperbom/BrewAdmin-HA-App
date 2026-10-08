@@ -78,7 +78,9 @@ export const BIER_VELDEN: BierVeld[] = [
   {veld: 'ebc',    niveau: 'product', afgeleid: true, weergave: 'cijfer', soort: 'tekst', label: 'bier_veld_ebc',    groep: 'bier_groep_kern'},
   {veld: 'stijl',  niveau: 'product', afgeleid: true, weergave: 'spec',   soort: 'tekst', label: 'bier_veld_stijl',  groep: 'bier_groep_kern'},
   {veld: 'inhoud', niveau: 'artikel', afgeleid: true, weergave: 'spec',   soort: 'tekst', label: 'bier_veld_inhoud', groep: 'bier_groep_kern'},
-  {veld: 'kcal',   niveau: 'product', weergave: 'cijfer', soort: 'tekst', label: 'bier_veld_kcal', groep: 'bier_groep_kern', placeholder: '67'},
+  // Geen voorbeeldgetal als placeholder: een grijze "67" in een leeg veld las
+  // als een ingevulde (of door de app berekende) waarde.
+  {veld: 'kcal',   niveau: 'product', weergave: 'cijfer', soort: 'tekst', label: 'bier_veld_kcal', groep: 'bier_groep_kern'},
 
   // ── Wat erin zit en hoe je het drinkt ───────────────────────────────────
   {veld: 'ingredienten', niveau: 'product', weergave: 'kaart', soort: 'lang', label: 'bier_veld_ingredienten',

@@ -51,10 +51,15 @@ import {
 } from '../utils/merch'
 import BierKleur from '../components/ui/BierKleur'
 import Icon from '../components/ui/Icon'
+import { lotcodeVanAfvulling } from '../utils/afvulsessie'
+import { batchNummer } from '../utils/productKeten'
+import type { AfvulSessie } from '../types'
 
 interface BestellingenPageProps {
   bat: any[]
   av: any[]
+  /** Afvulsessies: de lotcode van een afvulling zonder eigen code (pickmodal). */
+  afvulSessies?: AfvulSessie[]
   uit: any[]
   setUit: any
   acc: any[]
@@ -143,7 +148,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 const BestellingenPage: React.FC<BestellingenPageProps> = ({
-  bat, av, uit, setUit, acc, setAcc,
+  bat, av, afvulSessies=[], uit, setUit, acc, setAcc,
   artikelen, verpakkingen=[], bestellingen, setBestellingen,
   bestellingPicks, setBestellingPicks,
   verkoopFacturen, setVerkoopFacturen,
@@ -204,6 +209,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [wcMsg, setWcMsg] = useState('')
   const [showManualModal, setShowManualModal] = useState(false)
   const [showPickModal, setShowPickModal] = useState(false)
+  // Waarom "Bevestigen" in de pickmodal niet doorging: in de modal zelf, naast
+  // de knop, in plaats van een alert().
+  const [pickFout, setPickFout] = useState('')
   const [showAfrondModal, setShowAfrondModal] = useState(false)
   // Leeg = "neem de klant van de order over" (zie bouwVerkoopRecords). Het
   // formulier wordt bij het wisselen van order teruggezet: een geadresseerde
@@ -724,13 +732,17 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [uitslagDoel, setUitslagDoel] = useState<{naam: string, afvullingen: any[], aantal: number, terug: 'pick' | 'manual'} | null>(null)
 
   const openUitslagVanuit = (terug: 'pick' | 'manual', naam: string, afvullingen: any[], aantal: number) => {
+    // Vanuit de pickmodal staat de melding in de modal zelf (pickFout).
+    const meld = (tekst: string) => { if (terug === 'pick') setPickFout(tekst); else alert(tekst) }
     // Periode-lock (ERP-plan 0.4): een uitslag boekt accijns op de uitslagdatum.
     if (accijnsMaandGesloten(tod(), accijnsAangiftes || [])) {
-      alert(t('err_accijns_maand_gesloten_boeking')); return
+      meld(t('err_accijns_maand_gesloten_boeking')); return
     }
     if (!(locaties || []).some((l: any) => !l.is_agp)) {
-      alert(t('pos_uitslag_geen_locatie')); return
+      meld(t('pos_uitslag_geen_locatie')); return
     }
+    // Een eerdere melding geldt niet meer na het uitslaan.
+    setPickFout('')
     if (terug === 'pick') setShowPickModal(false)
     else setShowManualModal(false)
     setUitslagDoel({naam, afvullingen, aantal, terug})
@@ -832,12 +844,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // --- Picking opslaan ---
   const savePicks = () => {
     if (!selectedOrder) return
+    setPickFout('')
     // Al uitgeleverd (de modal stond nog open, of een tweede tabblad pickte
     // al): opnieuw picken zou een tweede uitlevering maken terwijl de eerste
-    // blijft staan — de voorraad dubbel afgeboekt. Eerst terugdraaien.
+    // blijft staan — de voorraad dubbel afgeboekt. Eerst terugdraaien. De
+    // melding staat in de modal; opslaan kan niet, alleen sluiten.
     if (orderUitgeleverd(bestellingPicks, selectedOrder.id)) {
-      alert(t('err_picks_al_uitgeleverd'))
-      setShowPickModal(false)
+      setPickFout(t('err_picks_al_uitgeleverd'))
       return
     }
     // Verkopen gaat uit vrije voorraad — voor privé én zakelijk. Wat nog in de
@@ -850,7 +863,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         for (const p of picks as any[]) {
           if (!p.aantal || p.aantal <= 0) continue
           if (p.bron_locatie_id != null && p.bron_locatie_id === agpLoc.id) {
-            alert(t('err_verkoop_geen_agp'))
+            setPickFout(t('err_verkoop_geen_agp'))
             return
           }
         }
@@ -872,7 +885,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
         : beschikbaarVoorAfvulling(afvItem, selectedOrder.id)
       if (totaal > beschik) {
         const errKey = zonderAgp ? 'err_verkoop_vrij_ontoereikend' : 'agp_voorraad_ontoereikend'
-        alert(t(errKey).replace('{beschikbaar}', `${beschik}× ${afvItem.verpakking_type||''}`))
+        setPickFout(t(errKey).replace('{beschikbaar}', `${beschik}× ${afvItem.verpakking_type||''}`))
         return
       }
     }
@@ -894,8 +907,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       const beschik = perLoc[Number(locIdStr)] || 0
       if (totaal > beschik) {
         const loc = (locaties||[]).find((l: any) => l.id === Number(locIdStr))
-        alert(t('err_locatie_voorraad_ontoereikend')
-          .replace('{locatie}', loc?.naam || '?')
+        setPickFout(t('err_locatie_voorraad_ontoereikend')
+          .replace('{locatie}', loc?.naam || t('lbl_onbekend'))
           .replace('{beschikbaar}', String(beschik))
           .replace('{verpakking}', afvItem.verpakking_type||''))
         return
@@ -934,7 +947,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       // uitslaan uit de AGP al geboekt (export/intra-EU: onder schorsing).
       const {uitleveringen: nieuweUitleveringen, pickResult, tekort} =
         bouwVerkoopRecords(newPicks, uitleveringForm)
-      if (tekort > 0) { alert(t('err_verkoop_vrij_tekort')); return }
+      if (tekort > 0) { setPickFout(t('err_verkoop_vrij_tekort')); return }
 
       const picksWithIds = newPicks.map((p: any) => {
         const res = pickResult[p.id]
@@ -1634,6 +1647,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const btwOpts = ((btwTarieven && btwTarieven.length ? btwTarieven : [0, 9, 21]))
     .map((p: any) => ({v: String(p), l: `${p}%`}))
 
+  // Herkomst van een afvulling in de pickmodal: de lotcode zoals hij op de
+  // verpakking staat (eigen code, anders die van de afvulsessie) en apart het
+  // batchnummer ("#2607", zoals overal). Tot nu toe stond het batchnummer
+  // onder "Lot"; een afvulling zonder lotcode krijgt nu géén "Lot".
+  const lotEnBatch = (afv: any): {lot: string, batch: string} => {
+    const b = afv ? (bat || []).find((x: any) => x.id === afv.batch_id) : null
+    const nr = batchNummer(b)
+    return {lot: lotcodeVanAfvulling(afv, afvulSessies), batch: nr ? `#${nr}` : ''}
+  }
+
   const openPickModal = () => {
     if (!selectedOrder) return
     // Initialiseer draft picks vanuit bestaande picks (concepten; een order
@@ -1646,6 +1669,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       bestaand[p.regel_id].push({afvulling_id: p.afvulling_id, aantal: p.aantal, bron_locatie_id: p.bron_locatie_id ?? undefined})
     })
     setDraftPicks(bestaand)
+    setPickFout('')
     setShowPickModal(true)
   }
 
@@ -2042,7 +2066,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
           {/* Orderinfo */}
           <div className="bg-white rounded-xl shadow-card p-4">
-            <div className="text-xs font-semibold text-gray-500 mb-2">Order</div>
+            <div className="text-xs font-semibold text-gray-500 mb-2">{t('lbl_order_ref')}</div>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">{t('orders_date')}</span><span>{fmtD(selectedOrder.datum)}</span></div>
               {(() => {
@@ -2224,14 +2248,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   <div key={r.id} className="flex items-center gap-2 flex-wrap text-xs text-purple-900">
                     <span className="font-medium">{r.omschrijving || r.bier_naam}</span>
                     {r.sku && <span className="font-mono text-purple-500">[{r.sku}]</span>}
-                    <button
-                      onClick={() => {
-                        if (!confirm(t('picking_merch_bevestig').replace('{artikel}', r.omschrijving || r.bier_naam))) return
-                        updateRegelType(r.id, true)
-                      }}
-                      className="px-2 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors">
+                    <BevestigKnop s="sm" v="secondary" vraag={t('picking_merch_vraag')}
+                      onBevestig={() => updateRegelType(r.id, true)}>
                       {t('picking_merch_knop')}
-                    </button>
+                    </BevestigKnop>
                   </div>
                 ))}
               </div>
@@ -2544,17 +2564,21 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
 
                 return (
                   <div key={r.id} className="border rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-gray-800 flex items-center gap-1.5">
+                    {/* Naam en tellers mogen onder elkaar vallen; een SKU of
+                        een teller breekt nooit midden in een woord. */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-2">
+                      <span className="min-w-0 font-semibold text-gray-800 flex items-center gap-1.5">
                         <BierKleur ebc={ebcVoorRegel(r)} s="sm" />
-                        {r.bier_naam} – {r.verpakking_type}{r.sku && <span className="ml-1 font-mono text-xs font-normal text-gray-400">[{r.sku}]</span>}
+                        <span className="min-w-0">
+                          {r.bier_naam} – {r.verpakking_type}{r.sku && <span className="ml-1 font-mono text-xs font-normal text-gray-400 whitespace-nowrap">[{r.sku}]</span>}
+                        </span>
                       </span>
-                      <div className="flex gap-3 text-xs">
-                        <span className="text-gray-500">{t('picking_needed')}: <strong>{r.aantal}×</strong></span>
-                        <span className={totaalGepickt >= r.aantal ? 'text-green-600 font-semibold' : 'text-orange-500 font-semibold'}>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                        <span className="text-gray-500 whitespace-nowrap">{t('picking_needed')}: <strong>{r.aantal}×</strong></span>
+                        <span className={`whitespace-nowrap ${totaalGepickt >= r.aantal ? 'text-green-600 font-semibold' : 'text-orange-500 font-semibold'}`}>
                           {t('picking_picked')}: {totaalGepickt}×
                         </span>
-                        {resterend > 0 && <span className="text-red-500">{t('picking_remaining')}: {resterend}×</span>}
+                        {resterend > 0 && <span className="text-red-500 whitespace-nowrap">{t('picking_remaining')}: {resterend}×</span>}
                       </div>
                     </div>
 
@@ -2569,6 +2593,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         ? beschikbaarBuitenAgpVoorAfvulling(avItem||{}, selectedOrder.id)
                         : beschikbaarVoorAfvulling(avItem||{}, selectedOrder.id)) + Number(dp.aantal||0)
                       const locLabel = avItem ? voorraadPerLocLabel(avItem) : ''
+                      const herkomst = lotEnBatch(avItem)
                       const perLoc = avItem ? beschikbaarPerLocatieVoorAfvulling(avItem, selectedOrder.id) : {}
                       const locOpties = (locaties||[])
                         .filter((l: any) => (perLoc[l.id] || 0) + (dp.bron_locatie_id === l.id ? Number(dp.aantal||0) : 0) > 0)
@@ -2576,13 +2601,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         .filter((l: any) => !zonderAgp || !l.is_agp)
                       return (
                         <div key={idx} className="mt-1 text-sm">
+                          {/* Telefoon: de herkomst over de hele breedte, de
+                              locatiekeuze en het aantal eronder. */}
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="flex-1 min-w-0 text-gray-600">
+                            <span className="w-full sm:w-auto sm:flex-1 min-w-0 text-gray-600">
                               <span className="font-medium text-gray-800">{avArt?.biernaam || avBatch?.naam}</span>
-                              {avArt?.artikelnummer && <span className="font-mono text-xs text-gray-500 ml-1">[{avArt.artikelnummer}]</span>}
+                              {avArt?.artikelnummer && <span className="font-mono text-xs text-gray-500 ml-1 whitespace-nowrap">[{avArt.artikelnummer}]</span>}
                               {' · '}{avItem?.verpakking_type}
                               {' · '}{t('lbl_tht')}: {avItem?.tht ? fmtD(avItem.tht) : '—'}
-                              {avBatch?.batch_nummer && <span className="text-xs text-gray-400"> · {t('lbl_lot')} {avBatch.batch_nummer}</span>}
+                              {/* Eigen regel: de lotcode onder "Lot" (zoals op
+                                  de verpakking), het batchnummer onder "Batch". */}
+                              {(herkomst.lot || herkomst.batch) && (
+                                <span className="block text-xs text-gray-500">
+                                  {herkomst.lot && <>{t('picking_lot')} <span className="font-mono text-gray-700">{herkomst.lot}</span></>}
+                                  {herkomst.lot && herkomst.batch && ' · '}
+                                  {herkomst.batch && <>{t('picking_batch')} {herkomst.batch}</>}
+                                </span>
+                              )}
                             </span>
                             {(locaties||[]).length > 1 && (
                               <select value={dp.bron_locatie_id ?? ''}
@@ -2615,10 +2650,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                                 })
                               }}
                               className="w-16 border border-gray-300 rounded px-1 py-0.5 text-sm text-center" />
-                            <button onClick={() => setDraftPicks(prev => {
+                            <button type="button" onClick={() => setDraftPicks(prev => {
                               const list = (prev[r.id]||[]).filter((_: any, i: number) => i !== idx)
                               return {...prev, [r.id]: list}
-                            })} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                            })} title={t('btn_delete')} aria-label={t('btn_delete')}
+                              className="text-red-400 hover:text-red-600 text-xs">✕</button>
                           </div>
                           {locLabel && <div className="text-xs text-gray-400 ml-1">{t('picking_voorraad_per_locatie')}: {locLabel}</div>}
                         </div>
@@ -2641,7 +2677,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                             [r.id]: [...(prev[r.id]||[]), {afvulling_id: avId, aantal}]
                           }))
                           e.target.value = ''
-                        }} className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm bg-white" defaultValue="">
+                        }} className="flex-1 min-w-0 w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white" defaultValue="">
                           <option value="">+ {t('picking_afvulling_toevoegen')}</option>
                           {afvullingen.map((a: any) => {
                             const avBatch = bat.find((b: any) => b.id === a.batch_id)
@@ -2652,9 +2688,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                               ? beschikbaarBuitenAgpVoorAfvulling(a, selectedOrder.id)
                               : beschikbaarVoorAfvulling(a, selectedOrder.id)
                             const locLabel = voorraadPerLocLabel(a)
+                            const herkomst = lotEnBatch(a)
                             return (
                               <option key={a.id} value={a.id}>
-                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · {t('lbl_tht')}: {a.tht ? fmtD(a.tht) : '—'}{avBatch?.batch_nummer ? ` · ${t('lbl_lot')} ${avBatch.batch_nummer}` : ''} · {t('picking_x_beschikbaar').replace('{n}', String(beschik))}{locLabel ? ` · ${locLabel}` : ''}
+                                {avArt?.biernaam || avBatch?.naam}{avArt?.artikelnummer ? ` [${avArt.artikelnummer}]` : ''} · {a.verpakking_type} · {t('lbl_tht')}: {a.tht ? fmtD(a.tht) : '—'}{herkomst.lot ? ` · ${t('picking_lot')} ${herkomst.lot}` : ''}{herkomst.batch ? ` · ${t('picking_batch')} ${herkomst.batch}` : ''} · {t('picking_x_beschikbaar').replace('{n}', String(beschik))}{locLabel ? ` · ${locLabel}` : ''}
                               </option>
                             )
                           })}
@@ -2673,26 +2710,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       </div>
                     )}
                     {resterend > 0 && afvullingen.length === 0 && !alleenInAgp && (
-                      <div className="mt-2 text-xs text-red-500">{t('err_no_stock_available').replace('{bier}', r.bier_naam).replace('{verpakking}', r.verpakking_type)}{r.sku ? ` · SKU: ${r.sku}` : ''}</div>
+                      <div className="mt-2 text-xs text-red-500">{t('err_no_stock_available').replace('{bier}', r.bier_naam).replace('{verpakking}', r.verpakking_type)}{r.sku ? ` · ${t('wc_veld_sku')}: ${r.sku}` : ''}</div>
                     )}
                     {/* Uitweg voor merch: dit artikel komt niet uit
                         de eigen voorraad, dus picken kan nooit lukken. Eén klik
                         zet de regel om naar een vrije (factuur-)regel én
                         onthoudt het artikel voor volgende imports. */}
                     {resterend > 0 && afvullingen.length === 0 && !alleenInAgp && gepicktVoorRegel(selectedOrder.id, r.id) === 0 && (
-                      <div className="mt-2 flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-2">
-                        <div className="flex-1 text-[11px] text-purple-800">
+                      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-2">
+                        <div className="flex-1 min-w-[12rem] text-[11px] text-purple-800">
                           <div className="font-semibold">{t('picking_merch_titel')}</div>
                           <div>{t('picking_merch_uitleg')}</div>
                         </div>
-                        <button
-                          onClick={() => {
-                            if (!confirm(t('picking_merch_bevestig').replace('{artikel}', r.omschrijving || r.bier_naam))) return
-                            updateRegelType(r.id, true)
-                          }}
-                          className="shrink-0 px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold transition-colors">
+                        {/* De bevestiging zit in de knop zelf, geen los venster. */}
+                        <BevestigKnop s="sm" v="secondary" vraag={t('picking_merch_vraag')}
+                          onBevestig={() => updateRegelType(r.id, true)}>
                           {t('picking_merch_knop')}
-                        </button>
+                        </BevestigKnop>
                       </div>
                     )}
                   </div>
@@ -2700,6 +2734,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
               })}
             </div>
 
+            {pickFout && (
+              <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {pickFout}
+              </div>
+            )}
             <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
               <Btn v="secondary" onClick={() => setShowPickModal(false)}>{t('btn_cancel')}</Btn>
               <Btn onClick={savePicks}>{t('picking_confirm')}</Btn>

@@ -4,7 +4,7 @@ import {
   voorraadPerLocatie, ouderdomsAnalyse, berekenBatchKostprijs,
   berekenProductKostprijs, berekenCogs, telThtAlerts, thtAlertLots, laatsteOpenAccijnsMaand,
   openAccijnsMaanden, telOpenAccijnsMaanden,
-  productIdsVoorBatch, batchHoortBijProduct, vrijeTanksMetStatus,
+  productIdsVoorBatch, batchHoortBijProduct, vrijeTanksMetStatus, batchesBuitenTanks,
   tankBezetter, tankReserveringen, tankClaimCheck, isTankBezetStatus,
   markTankVuilBijVertrek, markTankVuilBijVerwijderen,
   registreerTankReiniging, laatsteTankReiniging,
@@ -839,6 +839,48 @@ describe('vrijeTanksMetStatus', () => {
   it('is robuust voor lege input', () => {
     expect(vrijeTanksMetStatus([], [], null)).toEqual([])
     expect(vrijeTanksMetStatus(tanks, [], undefined)).toHaveLength(4)
+  })
+})
+
+describe('batchesBuitenTanks — "Buiten de tanks" op de brouwzaal', () => {
+  const tanks = [{ id: 'FV1' }, { id: 'FV2' }, { id: 'BBT1' }]
+  const batches = [
+    { id: 1, status: 'Gesloten', tank: 'FV1', datum: '2026-05-01' },
+    { id: 2, status: 'Afgevuld', tank: 'FV1', datum: '2026-09-01' },
+    { id: 3, status: 'Gepland', tank: 'FV2', datum: '2026-10-14' },
+    { id: 4, status: 'Brouwen', tank: 'FV2', datum: '2026-10-07' },
+    { id: 5, status: 'Vergisten', tank: 'FV1', datum: '2026-09-30' },     // tankkaart FV1
+    { id: 6, status: 'Conditioneren', tank: 'BBT1', datum: '2026-09-10' }, // tankkaart BBT1
+    { id: 7, status: 'Vergisten', tank: '', datum: '2026-10-01' },         // zonder tank
+    { id: 8, status: 'Conditioneren', tank: 'FV9', datum: '2026-09-20' },  // tank bestaat niet
+    { id: 9, status: 'Vergisten', tank: 'FV1', datum: '2026-10-02' },      // FV1 toont al #5
+    { id: 10, status: 'Verpakt', datum: '2026-08-01' },
+    { id: 11, status: 'Vergisten', datum: '2026-10-03' },                  // geen tank-veld
+  ]
+
+  it('Gepland, Brouwen en Afgevuld/Verpakt — en elke lopende batch zonder tankkaart', () => {
+    const res = batchesBuitenTanks(batches, tanks)
+    expect(res.map(r => r.batch.id)).toEqual([4, 7, 9, 11, 8, 3, 10, 2])
+  })
+
+  it('zegt waarom een batch in Vergisten/Conditioneren geen tankkaart heeft', () => {
+    const reden = Object.fromEntries(batchesBuitenTanks(batches, tanks).map(r => [r.batch.id, r.reden]))
+    expect(reden).toMatchObject({ 7: 'geen_tank', 11: 'geen_tank', 8: 'tank_onbekend', 9: 'tank_gedeeld' })
+    expect(reden[4]).toBeNull()
+    expect(reden[3]).toBeNull()
+  })
+
+  it('een batch met een tankkaart en gesloten batches staan er niet in', () => {
+    const ids = batchesBuitenTanks(batches, tanks).map(r => r.batch.id)
+    expect(ids).not.toContain(5)
+    expect(ids).not.toContain(6)
+    expect(ids).not.toContain(1)
+  })
+
+  it('zonder tanks staat elke lopende batch hier', () => {
+    const res = batchesBuitenTanks(batches, [])
+    expect(res.find(r => r.batch.id === 5)?.reden).toBe('tank_onbekend')
+    expect(batchesBuitenTanks(null, null)).toEqual([])
   })
 })
 

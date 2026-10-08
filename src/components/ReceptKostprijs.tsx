@@ -144,10 +144,12 @@ const ReceptKostprijs: React.FC<ReceptKostprijsProps> = ({
         title={t('recipe_cost_title')}
         open={open}
         onToggle={() => setOpen(o => !o)}
+        // De kop is niet solid (wit): het getal in donkere tekst, anders is het
+        // belangrijkste cijfer onzichtbaar zolang de sectie dicht staat.
         info={eenheid
-          ? <span className="font-semibold text-white">{eur3(eenheid.totaal)} <span className="font-normal">/{eenheidNaam}</span></span>
+          ? <span className="font-semibold text-gray-800">{eur3(eenheid.totaal)} <span className="font-normal text-gray-500">/{eenheidNaam}</span></span>
           : perLiter !== null
-            ? <span className="font-semibold text-white">{eur3(perLiter)} {t('recipe_cost_per_liter_short')}</span>
+            ? <span className="font-semibold text-gray-800">{eur3(perLiter)} <span className="font-normal text-gray-500">{t('recipe_cost_per_liter_short')}</span></span>
             : <span>{t('recipe_cost_unknown')}</span>}
       />
       {open && (

@@ -17,6 +17,9 @@ interface RowActionsProps {
   primair?: RowActie
   /** De rest — die zit achter het ⋯-menu. */
   acties: RowActie[]
+  /** `header`: op een geverfde themabalk (de kop van de pagina) — lichte
+      knoppen op het thema, zoals `Btn v="header"`. Standaard: in een rij. */
+  v?: 'default' | 'header'
   cls?: string
 }
 
@@ -28,7 +31,7 @@ interface RowActionsProps {
  * ertussen. Alleen de meest gebruikte actie blijft zichtbaar; de rest is één
  * klik weg.
  */
-const RowActions: React.FC<RowActionsProps> = ({ primair, acties, cls = '' }) => {
+const RowActions: React.FC<RowActionsProps> = ({ primair, acties, v = 'default', cls = '' }) => {
   const [open, setOpen] = useState(false)
   const knopRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -67,9 +70,22 @@ const RowActions: React.FC<RowActionsProps> = ({ primair, acties, cls = '' }) =>
     setOpen(v => !v)
   }
 
-  const knopCls = 'px-2 py-0.5 min-h-[40px] sm:min-h-0 rounded text-xs font-medium border transition-colors ' +
-    'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 ' +
-    'disabled:opacity-40 disabled:cursor-not-allowed'
+  // De kop is geen dichte rij: daar krijgen beide knoppen op een telefoon het
+  // volle tapdoel van 44 px, net als een gewone knop.
+  const kop = v === 'header'
+  const knopCls = kop
+    ? 'px-3 h-11 sm:h-7 inline-flex items-center rounded-lg text-xs font-medium border transition-colors ' +
+      'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border-white/40 ' +
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ' +
+      'disabled:opacity-40 disabled:cursor-not-allowed'
+    : 'px-2 py-0.5 min-h-[40px] sm:min-h-0 rounded text-xs font-medium border transition-colors ' +
+      'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 ' +
+      'disabled:opacity-40 disabled:cursor-not-allowed'
+  const meerCls = kop
+    ? 'w-11 h-11 sm:w-8 sm:h-7 flex items-center justify-center rounded-lg border transition-colors ' +
+      'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border-white/40 ' +
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80'
+    : 'w-10 h-10 sm:w-7 sm:h-7 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors'
 
   return (
     <div className={`inline-flex items-center gap-1 ${cls}`} onClick={e => e.stopPropagation()}>
@@ -93,7 +109,7 @@ const RowActions: React.FC<RowActionsProps> = ({ primair, acties, cls = '' }) =>
           aria-expanded={open}
           aria-label={t('btn_meer_acties')}
           title={t('btn_meer_acties')}
-          className="w-10 h-10 sm:w-7 sm:h-7 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+          className={meerCls}
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
             <path d="M6 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM11.5 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM17 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />

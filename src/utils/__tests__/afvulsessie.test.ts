@@ -6,6 +6,7 @@ import {
   magAfvullingRegistreren, vrijgegevenBatches,
   verwachteControleMomenten, controleDekking,
   nieuweLotcode, thtHandmatigBlokkade, productVanLaatsteEtiketcontrole,
+  lotcodeVanAfvulling,
 } from '../afvulsessie'
 
 const codes = (r: {redenen: Array<{code: string}>}) => r.redenen.map(x => x.code)
@@ -342,5 +343,27 @@ describe('hulpfuncties', () => {
                      {id: 2, naam: 'B', status: 'Conditioneren'}] as any
     const r = vrijgegevenBatches(batches, [vrijgave(1, 2)])
     expect(r.map((b: any) => b.id)).toEqual([2])
+  })
+})
+
+describe('lotcodeVanAfvulling', () => {
+  const sessies = [sessie(1, 9, 1), sessie(2, 9, 2)]
+
+  it('neemt de eigen lotcode van de afvulling', () => {
+    expect(lotcodeVanAfvulling({lotcode: 'L2607-B1', sessie_id: 2}, sessies)).toBe('L2607-B1')
+  })
+
+  it('valt terug op de lotcode van de afvulsessie', () => {
+    expect(lotcodeVanAfvulling({sessie_id: 2}, sessies)).toBe('L9-B2')
+    // Een lege of witte eigen code telt als "geen".
+    expect(lotcodeVanAfvulling({lotcode: '  ', sessie_id: 1}, sessies)).toBe('L9-B1')
+  })
+
+  it('verzint niets: zonder eigen code en zonder (bekende) sessie is er geen lotcode', () => {
+    // Een afvulling van vóór de sessies: het batchnummer is geen lotcode.
+    expect(lotcodeVanAfvulling({}, sessies)).toBe('')
+    expect(lotcodeVanAfvulling({sessie_id: 99}, sessies)).toBe('')
+    expect(lotcodeVanAfvulling({sessie_id: 1}, null)).toBe('')
+    expect(lotcodeVanAfvulling(null, sessies)).toBe('')
   })
 })

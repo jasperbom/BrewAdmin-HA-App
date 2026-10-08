@@ -369,6 +369,21 @@ export interface VoorraadLog {
   omschrijving?: string
 }
 
+// Eén regel van het webshoplog (`wc_sync_log`, nieuwste eerst, hooguit 100):
+// een push of pull naar WooCommerce, een fout, of per artikel de voorraad die
+// meeging (`debug`). `product_id` staat op een regel die over één artikel van
+// een bier gaat, zodat het logboek op de productpagina alleen de regels van dát
+// bier toont; een samenvatting van een hele push of pull (en een regel van vóór
+// dit veld) heeft hem niet — die staan in het synchronisatielog bij de koppeling.
+export interface WcSyncLogRegel {
+  id: number
+  ts: string
+  type: 'push' | 'pull' | 'fout' | 'debug'
+  msg: string
+  details?: string
+  product_id?: number
+}
+
 export interface Onderdeel {
   id: number
   naam: string

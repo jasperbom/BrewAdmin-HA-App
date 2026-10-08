@@ -3,7 +3,7 @@ import {
   receptHoofdId, batchNummer, batchTitel, hoofdIdResolver,
   receptenVanProduct, huidigReceptVoorProduct, batchesVanProduct, batchHoortBijProduct,
   productenVanRecept, productVoorstelVoorRecept, productVoorBatch, receptVoorBatch,
-  nieuwProductUitBatch, tankBeschikbaarOp,
+  nieuwProductUitBatch, tankBeschikbaarOp, productenVoorKeuze,
 } from '../productKeten'
 
 const recepten = [
@@ -368,5 +368,34 @@ describe('tankBeschikbaarOp', () => {
     // 14-10 + 42 dagen (tank_dagen) = 25-11, ook als de klok onderweg verzet.
     const lang = [{ ...havenbok, tank_dagen: 42 }]
     expect(tankBeschikbaarOp('GV2', '2026-10-22', lang, opt).tot).toBe('2026-11-25')
+  })
+})
+
+describe('productenVoorKeuze — de productkeuze in Batchgegevens, CCP 3 en het afvulformulier', () => {
+  const lijst = [
+    { id: 3, naam: 'Witte Wieven' },
+    { id: 1, naam: 'Kadeblond', status: 'actief' as const },
+    { id: 2, naam: 'Oud Bruin', status: 'gearchiveerd' as const },
+    { id: 4, naam: 'Kerstbier', uit_roulatie: true },
+  ]
+
+  it('zonder gearchiveerde producten, op naam (uit roulatie telt mee)', () => {
+    expect(productenVoorKeuze(lijst).map(k => k.product.id)).toEqual([1, 4, 3])
+    expect(productenVoorKeuze(lijst).every(k => !k.gearchiveerd)).toBe(true)
+  })
+
+  it('een al gekozen gearchiveerd product blijft zichtbaar, achteraan en gemarkeerd', () => {
+    const keuze = productenVoorKeuze(lijst, 2)
+    expect(keuze.map(k => k.product.id)).toEqual([1, 4, 3, 2])
+    expect(keuze[3].gearchiveerd).toBe(true)
+    // Ook als het id als tekst binnenkomt (een select-waarde).
+    expect(productenVoorKeuze(lijst, '2').map(k => k.product.id)).toEqual([1, 4, 3, 2])
+  })
+
+  it('een gekozen actief product staat er één keer in; een onbekend id of leeg niet', () => {
+    expect(productenVoorKeuze(lijst, 1).map(k => k.product.id)).toEqual([1, 4, 3])
+    expect(productenVoorKeuze(lijst, 99).map(k => k.product.id)).toEqual([1, 4, 3])
+    expect(productenVoorKeuze(lijst, '').map(k => k.product.id)).toEqual([1, 4, 3])
+    expect(productenVoorKeuze(null, 2)).toEqual([])
   })
 })
