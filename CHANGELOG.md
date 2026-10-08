@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.98] — 2026-10-08
+
+### Kostensoort wijzigen, ook als de BTW-aangifte al gedaan is
+
+In de winst-en-verliesrekening stond bij "Overige kosten" van alles wat eigenlijk
+een eigen kostensoort heeft (een koelinstallatie, transport). Bij facturen in een
+periode waarvan de BTW-aangifte al was ingediend of betaald kon je dat niet meer
+aanpassen: de hele factuur zat op slot, terwijl de kostensoort geen bedrag en
+geen BTW verandert.
+
+- **Kostensoort wijzigen** in het detail van een inkoopfactuur (Administratie ›
+  Facturen › Inkoop; ook via W&V › Overige kosten › het journaal › de factuur).
+  Per regel kies je de kostensoort; bedragen, BTW-tarief, datum en BTW-periode
+  blijven precies gelijk. Bij een factuur in een afgesloten periode staat de knop
+  op de plek van Bewerken (dat blijft op slot); bij een open periode staat hij
+  onder Meer.
+- **De aangifte verandert niet.** Het journaal krijgt een storno en een
+  herboeking op dezelfde datum en in dezelfde BTW-periode als de oorspronkelijke
+  boeking, ook als je periodetype sindsdien anders is of de factuur was
+  doorgerold. De app controleert vooraf dat de BTW per periode, tarief en soort
+  exact gelijk blijft; klopt het journaal niet met de regels, dan wijzigt er niets
+  en zegt het venster waarom.
+- Ingrediënt- en verpakkingsregels (voorraad) blijven Grondstoffen en
+  Verpakkingsmateriaal. Een factuur zonder regels met een bedrag (oude
+  bankboekingen) wordt als geheel ingedeeld.
+- Het inkoopdetail toont per regel de kostensoort, en het scangeheugen leert de
+  nieuwe indeling: de volgende factuur van die leverancier met dezelfde
+  omschrijving krijgt meteen de juiste kostensoort.
+- Elke herindeling staat in het auditlogboek.
+
+---
+
 ## [1.12.97] — 2026-10-08
 
 Productie en Verkoop zijn opnieuw ingericht volgens het opzet

@@ -205,6 +205,11 @@ BrewAdmin-HA-App/
 │   │   ├── batchActieBalk.ts # De stap van de fase in de ActieBalk van de batch (telefoon)
 │   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
 │   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
+│   │   ├── kostensoortHerindeling.ts # De kostensoort van inkoopregels achteraf anders ("Overig" →
+│   │   │                   # "Installatie"), óók in een ingediende of betaalde BTW-periode: alleen het
+│   │   │                   # veld `kostensoort` (voorraadregels liggen vast), journaal = storno +
+│   │   │                   # herboeking op dezelfde datum en in dezelfde periode; `null` als dat een
+│   │   │                   # bedrag of de BTW zou verschuiven. UI: `admin/facturen/KostensoortBlad.tsx`
 │   │   ├── balans.ts       # Balansposten uit het journaal: `btwPositieCent` = nog af te dragen
 │   │   │                   # BTW (verkoop − voorbelasting) over de niet-afgerekende periodes;
 │   │   │                   # `btwAfgerekendOp`/`btwPositieOp` = hetzelfde op een peildatum (journaalregels
@@ -721,6 +726,9 @@ uit `bank_koppelingen`, aansluiting per afschrift, verwijderen +
 bij het inlezen (`bankImportKoppeling.test.ts`: dezelfde datumgrens), het uitbetalingsverslag van Mollie (`pspVerslag.test.ts`: bedragen en datums in vijf talen, kolommen uit de kopregel, een streepje is geen minteken, terugstorting tegen betaling, creditnota, in twee keer betaald, kosten per factuur van de PSP), de terugval op Claude (`pspVerslagScan.test.ts`: schema binnen de grenzen en zonder consument, hetzelfde verslag en dezelfde koppeling als de tekstlaag, opschonen, kosten per transactie, bewaren en teruglezen), de factuur bij een bestelling (`orderFactuur.test.ts`: WooCommerce-bedragen cent-exact, betaald = betaald, vooraf factureren alleen als hij betaald is, creditnota precies min de factuur en het journaal valt weg, en de Mollie-uitbetaling die na de factuur vooraf wél uitsplitst) en de kostenverrekening (`pspUitbetaling.test.ts`: vier uitbetalingen dekken de factuur → betaald op de laatste dag, ontkoppelen → weer open, een eigen 'betaald' blijft staan, kostenpost vervalt, nooit meer dan de kosten), de aangiftestappen
 (`aangifteStappen.test.ts`: de telling op het segment = die van de badge, in
 kwartaal- én maandmodus; nihil; controlesleutel en migratie; navigatiedoel), de
+kostensoort-herindeling (`kostensoortHerindeling.test.ts`: BTW per periode
+gelijk en de W&V verschuift, de geboekte periode blijft ook bij een ander
+periodetype of een rollover, nog een keer kan, journaal wijkt af = niets), de
 rapporten (`rapporten.test.ts`: W&V telt op tot `nettowinst`, peildatum, open
 en liquide middelen op een peildatum, openstaande posten, omzet per artikel,
 journaalfilter) en `balans.test.ts` op een peildatum, de accijnswaardering van
@@ -1396,6 +1404,7 @@ Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `ex
 - **Facturen tellen op hun effectieve periode** (`inBtwPeriode`/`inBtwJaar` in `utils/btw.ts`), inkoop én verkoop: een factuur met een datum in een al ingediende of betaalde periode krijgt bij aanmaken `btw_periode` (rollover) en telt in de lopende aangifte. WooCommerce-orders blijven op betaaldatum.
 - **Eén bron per verkoop:** een opgehaalde WooCommerce-order telt alleen mee zolang er in de app geen verkoopfactuur voor bestaat (`wcOrdersNogNietGefactureerd`); een gefactureerde webshoporder (afgerond, of vooraf gefactureerd zodra hij betaald was) telt via zijn factuur.
 - **Handmatige inkooptotalen** worden een correctieregel (`inkoopRegelsMetCorrectie` in `utils/centen.ts`), zodat journaal, W&V, rubriek 5b en de periodekaart dezelfde voorbelasting tellen.
+- **Periode-lock en kostensoort:** een factuur in een ingediende of betaalde periode is niet meer te bewerken of te verwijderen (`magFactuurMuteren`). De kostensoort van een inkoopregel wél (`utils/kostensoortHerindeling.ts`, knop *Kostensoort wijzigen* in het inkoopdetail): die zegt alleen waar de kosten in de W&V staan. De herindeling boekt storno + herboeking in de geboekte periode en weigert (`null`) als dat per datum, periode, tarief en soort een ander bedrag zou geven — verruim deze uitzondering nooit naar bedragen, datum, tarief of leverancier.
 
 ### Periodestatus: vijf stappen (v1.12.90)
 

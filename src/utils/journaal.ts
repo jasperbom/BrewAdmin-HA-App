@@ -69,9 +69,20 @@ export const verkoopFactuurBoeking = (f: any): JournaalRegelData[] => {
     }))
 }
 
+// De kostensoort waarop een inkoopregel geboekt wordt: zijn eigen kostensoort,
+// anders volgt hij de soort (ingrediënt = Grondstoffen, verpakking =
+// Verpakkingsmateriaal), anders Overig. Ook de herindeling
+// (utils/kostensoortHerindeling.ts) rekent hiermee.
+export const inkoopRegelKostensoort = (r: any): string =>
+  r?.kostensoort
+    || (r?.type === 'ingredient' ? 'Grondstoffen'
+      : r?.type === 'verpakking' ? 'Verpakkingsmateriaal'
+      : 'Overig')
+
 // Inkoopfactuur: één regel per combinatie kostensoort + BTW-tarief + btw_soort
 // (verlegde BTW — intracom/import — heeft btw_bedrag 0 op de regels zelf).
-// Valt terug op de factuurtotalen als er geen regels zijn.
+// Valt terug op de factuurtotalen als er geen regels zijn; die regel krijgt
+// de kostensoort van de factuur zelf (een herindeling), anders Overig.
 export const inkoopFactuurBoeking = (f: any, periodeType: BtwPeriodeType): JournaalRegelData[] => {
   const basis = {
     datum: f?.datum || '',
@@ -93,14 +104,11 @@ export const inkoopFactuurBoeking = (f: any, periodeType: BtwPeriodeType): Journ
     const netto = toCent(f?.totaal_netto)
     const btw = toCent(f?.totaal_btw)
     if (!netto && !btw) return []
-    return [{ ...basis, kostensoort: 'Overig', netto_cent: netto, btw_cent: btw, bruto_cent: netto + btw }]
+    return [{ ...basis, kostensoort: f?.kostensoort || 'Overig', netto_cent: netto, btw_cent: btw, bruto_cent: netto + btw }]
   }
   const per: Record<string, JournaalRegelData> = {}
   regels.forEach((r: any) => {
-    const kostensoort = r?.kostensoort
-      || (r?.type === 'ingredient' ? 'Grondstoffen'
-        : r?.type === 'verpakking' ? 'Verpakkingsmateriaal'
-        : 'Overig')
+    const kostensoort = inkoopRegelKostensoort(r)
     const tarief = Number(r?.btw_tarief) || 0
     const soort = (r?.btw_soort === 'intracom_eu' || r?.btw_soort === 'import_niet_eu')
       ? r.btw_soort : 'binnenlands'

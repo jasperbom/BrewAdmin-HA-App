@@ -10,6 +10,9 @@ import { periodeKeyLabel } from '../../../utils/btw'
 import { inkoopCenten } from '../../../utils/factuurFilter'
 import { inkoopRegelExport } from '../../../utils/csv'
 import { inkoopBrutoCent, type PspVerrekening } from '../../../utils/pspUitbetaling'
+import { inkoopRegelKostensoort } from '../../../utils/journaal'
+import { kanHerindelen, regelTeltMee } from '../../../utils/kostensoortHerindeling'
+import { kostensoortLabel } from '../rapporten/hulp'
 import type { BankBetaling, InkoopStand, VerlegdInfo } from '../../../utils/factuurTijdlijn'
 import { fmt } from '../adminContext'
 import { InkoopPil } from './FactuurPil'
@@ -144,7 +147,13 @@ const InkoopDetail: React.FC<InkoopDetailProps> = ({
                 ⇄ {t('title_verlegd_badge').replace('{rubriek}', verlegd.rubriek).replace('{btw}', fmt(verlegd.btw_cent / 100))}
               </p>
             )}
-            {vergrendeld && <p className="text-gray-600 bg-gray-50 rounded-lg px-3 py-2">{t('err_periode_gesloten_mutatie')}</p>}
+            {vergrendeld && (
+              <p className="text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                {t('err_periode_gesloten_mutatie')}
+                {/* De kostensoort verandert geen bedrag of BTW: die kan wel (utils/kostensoortHerindeling.ts). */}
+                {kanHerindelen(f) && <span className="block mt-1">{t('fct_kostensoort_kan_wel')}</span>}
+              </p>
+            )}
           </div>
         )}
 
@@ -154,12 +163,14 @@ const InkoopDetail: React.FC<InkoopDetailProps> = ({
             <ul className="divide-y divide-gray-100 text-sm border-y border-gray-100">
               {regels.map((r, i) => {
                 const x = inkoopRegelExport(r)
-                const hoeveel = hoeveelheidTekst(r)
+                // Onder de regel: hoeveel, en waar hij in de W&V staat.
+                const onder = [hoeveelheidTekst(r), regelTeltMee(r) ? kostensoortLabel(inkoopRegelKostensoort(r)) : '']
+                  .filter(Boolean).join(' · ')
                 return (
                   <li key={i} className="py-1.5 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3">
                     <span className="min-w-0 break-words text-gray-800">{x.omschrijving || '—'}</span>
                     <span className="text-right tabular-nums text-gray-900">{x.netto !== null ? fmt(x.netto) : '—'}</span>
-                    <span className="text-xs text-gray-500">{hoeveel}</span>
+                    <span className="text-xs text-gray-500">{onder}</span>
                     <span className="text-right text-xs text-gray-500 tabular-nums">{x.btwPct !== '' ? `${x.btwPct}%` : ''}</span>
                   </li>
                 )
