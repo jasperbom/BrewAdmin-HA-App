@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   bestellingBron, bestellingPastBijZoek, statusTellingen, pastBijStatus, filterBestellingen,
   regelsKort, volgendeOrderStap, orderTotalen, isStatusFilter, STATUS_FILTERS,
+  bestellingStartFilter, leesBestellingStartFilter,
 } from '../bestelling'
 import { regelBedrag } from '../orderRegel'
 import { statiegeldFactuurRegels } from '../statiegeld'
@@ -197,5 +198,21 @@ describe('orderTotalen — zoals de factuur', () => {
 
   it('geen order of geen regels: nul', () => {
     expect(orderTotalen(null, [])).toEqual({ netto: 0, perTarief: [], btw: 0, statiegeld: 0, bruto: 0 })
+  })
+})
+
+describe('startfilter vanaf een andere pagina (gaNaar filter)', () => {
+  it('een chip met een zoektekst erachter: de productpagina opent de open bestellingen met dit bier', () => {
+    expect(bestellingStartFilter('te_picken', ' Kade   blond ')).toBe('te_picken:Kade blond')
+    expect(bestellingStartFilter('te_picken', '')).toBe('te_picken')
+    expect(leesBestellingStartFilter('te_picken:Kadeblond')).toEqual({ status: 'te_picken', zoek: 'Kadeblond' })
+    expect(leesBestellingStartFilter(bestellingStartFilter('nieuw', 'WC-4321: Kade'))).toEqual({ status: 'nieuw', zoek: 'WC-4321: Kade' })
+  })
+
+  it('een gewone chip werkt zoals altijd; een onbekende of geen filter is null', () => {
+    expect(leesBestellingStartFilter('te_picken')).toEqual({ status: 'te_picken', zoek: '' })
+    expect(leesBestellingStartFilter('onzin:Kadeblond')).toBeNull()
+    expect(leesBestellingStartFilter(undefined)).toBeNull()
+    expect(leesBestellingStartFilter(3)).toBeNull()
   })
 })

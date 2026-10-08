@@ -39,9 +39,8 @@ import {
 import Btn from '../components/ui/Btn'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
-import Modal from '../components/ui/Modal'
+import Blad from '../components/ui/Blad'
 import SectionHeader from '../components/ui/SectionHeader'
-import SearchInput from '../components/ui/SearchInput'
 import BatchNotitiesSection from '../components/batch/BatchNotitiesSection'
 import VernietigingSection from '../components/batch/VernietigingSection'
 import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
@@ -58,7 +57,8 @@ import { downloadBatchDossierPdf, printBatchDossier } from '../components/BatchR
 import { actieveSessie, magAfvullingRegistreren, magNaarAfvullen, abvVastgezetBlokkade, productVanLaatsteEtiketcontrole } from '../utils/afvulsessie'
 import { ingredientVoorBatchRegel, afgeboekteRegels } from '../utils/batchIngredienten'
 import { receptNaarBatch } from '../utils/receptNaarBatch'
-import { receptenVoorKeuzelijst, receptPastBijZoekterm } from '../utils/receptLijst'
+import ReceptKiezer from '../components/recept/ReceptKiezer'
+import { productKeuzeNaKies } from '../utils/nieuweBatch'
 import { batchNummer, batchTitel, nieuwProductUitBatch, productVoorBatch, receptVoorBatch } from '../utils/productKeten'
 import {
   batchKeten, besluitProduct, productBijPlannen, productenVoorBatchKeuze, productNaamBezet,
@@ -80,7 +80,7 @@ import {
 } from '../utils/verpakkingVoorraad'
 import { useUndo } from '../components/ui/UndoBar'
 import { useProductKoppeling } from '../components/batch/useProductKoppeling'
-import { tankKeuzeOpties } from '../components/batch/tankOpties'
+import { tankKeuzeOpties, tankKeuzeOptiesOpDatum } from '../components/batch/tankOpties'
 import BevestigKnop from '../components/ui/BevestigKnop'
 import PrimingSugarCalc from '../components/batch/PrimingSugarCalc'
 import { metingWaarde, metingenMetFg } from '../utils/metingen'
@@ -502,17 +502,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [gegevensOpen, setGegevensOpen] = useState(false)
   const [logIngeklapt, setLogIngeklapt] = useState(true)
   const [receptPickerOpen, setReceptPickerOpen] = useState(false)
-  // In de picker eerst een recept kiezen, dan bevestigen in de knop (geen
-  // confirm()): wat er vervangen wordt staat erbij.
+  // Eerst een recept kiezen (de ReceptKiezer: Jouw producten, andere recepten
+  // in gebruik, het archief via zoeken, versies als keuze bij het recept), dan
+  // bevestigen in de knop (geen confirm()): wat er vervangen wordt staat erbij.
+  // `pickerKeuze` = het receptrecord (een versie-id als er een versie gekozen is).
   const [pickerKeuze, setPickerKeuze] = useState<string | null>(null)
-  const [pickerZoek, setPickerZoek] = useState('')
   // Het product bij het nieuwe recept (utils/batchKeten.ts → productBijPlannen):
   // een batch zonder product krijgt dat van het recept, met een keuze bij meer
   // of geen kandidaten. Leeg = het voorstel volgen.
   const [pickerProduct, setPickerProduct] = useState<ProductKeuzeWaarde | null>(null)
   const [pickerFout, setPickerFout] = useState<string | null>(null)
   const kiesPickerRecept = (id: string | null) => { setPickerKeuze(id); setPickerProduct(null); setPickerFout(null) }
-  const openReceptPicker = () => { kiesPickerRecept(null); setPickerZoek(''); setReceptPickerOpen(true) }
+  const openReceptPicker = () => { kiesPickerRecept(null); setReceptPickerOpen(true) }
   // "Product kiezen" vanuit de ketenregel van een batch zonder product.
   const [productKiezenOpen, setProductKiezenOpen] = useState(false)
   // Melding in de kop: waarom verwijderen niet kan, of dat het dossier mislukte
@@ -713,20 +714,16 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // ── Gedeelde helpers ───────────────────────────────────────────────────────
   const addLog = (entry: any) => setLog((prev: any[]) => [...(prev || []), {id: newId(prev || []), datum: tod(), ...entry}])
 
-  // De receptkeuze (Recept opnieuw toepassen) laat weg wat de receptenpagina
-  // ook weglaat: verborgen recepten, recepten waarvan alle tags gearchiveerd
-  // zijn, en versies (utils/receptLijst.ts). Een recept dat al aan de batch
-  // hangt, blijft kiesbaar.
-  const receptenVoorKeuze = (behoud: Array<string | null | undefined>) =>
-    receptenVoorKeuzelijst(recepten || [], {
-      verborgen: receptenVerborgen, gearchiveerdeTags: receptenGearchiveerdeTags, behoud,
-    })
-
   // De tankkeuze op de brouwdag en bij het plannen (components/batch/tankOpties.ts):
   // een tank met bier erin is niet te kiezen, een gereserveerde wel (met een
   // waarschuwing). `behalveId` = de batch waarvoor gekozen wordt.
   const tankOptiesVoor = (behalveId: number | null) =>
     tankKeuzeOpties(tanks, bat, tankStatussen, behalveId, (b: any) => titelVan(b).label)
+  // In Gepland telt de tank op de brouwdatum: dezelfde regel als het blad
+  // "Wat brouw je?" (bezet op die datum of een lagertank = niet te kiezen).
+  const tankOptiesOpDatum = (b: any) =>
+    tankKeuzeOptiesOpDatum(tanks, bat, tankStatussen, b, (x: any) => titelVan(x).label,
+      { vandaag: tod(), conditionerenDagen: Number(planningInst?.conditioneren_dagen ?? 14) })
 
   // Het product van een batch uit een recept: één kandidaat = automatisch met
   // een terugweg, anders de keuze; een nieuw product erft naam, stijl en
@@ -1612,62 +1609,63 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
-  // ── Recept opnieuw toepassen (picker-modal) ────────────────────────────────
-  // Eerst een recept kiezen (met zoeken), dan staat eronder wat er vervangen
-  // wordt en bevestig je in de knop zelf. Dezelfde receptkeuze als bij een
-  // nieuwe batch; het recept van de batch blijft er altijd in.
+  // ── Recept opnieuw toepassen ──────────────────────────────────────────────
+  // Eerst een recept kiezen met de gedeelde ReceptKiezer (dezelfde regel als
+  // het blad "Wat brouw je?": je producten, de andere recepten in gebruik, het
+  // archief via zoeken; een versie is een keuze bij het recept, nooit een eigen
+  // regel). Dan staat in het blad wat er vervangen wordt en bevestig je in de
+  // knop zelf. Het recept van de batch staat gemarkeerd.
   const renderReceptPicker = () => {
     if (!receptPickerOpen || !selB) return null
+    const sluit = () => setReceptPickerOpen(false)
     const blokkade = receptToepassenBlokkade()
-    const opties = receptenVoorKeuze([selB.recept_id, selB.recept_versie_id])
-    const lijst = opties.filter((r: any) => receptPastBijZoekterm(r, pickerZoek))
-    const gekozen = pickerKeuze ? opties.find((r: any) => String(r.id) === pickerKeuze) || null : null
-    return (
-      <Modal title={t('batch_sync_recept')} onClose={() => setReceptPickerOpen(false)}>
-        {blokkade ? (
+    if (blokkade) {
+      return (
+        <Blad titel={t('batch_sync_recept')} onSluit={sluit} laag>
           <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800">{blokkade}</div>
-        ) : (
-          <div className="space-y-3">
-            <SearchInput value={pickerZoek} onChange={setPickerZoek} placeholder={t('search_recipe')} />
-            <div className="space-y-1 max-h-[45vh] overflow-y-auto overflow-x-hidden">
-              {lijst.length === 0 && (
-                <div className="text-sm text-gray-400 italic p-2">{opties.length ? t('recipe_no_results') : t('flow_geen_recepten')}</div>
-              )}
-              {lijst.map((r: any) => {
-                const isGekozen = String(r.id) === pickerKeuze
-                const huidig = String(r.id) === String(selB.recept_id || '')
-                return (
-                  <button key={r.id} type="button" aria-pressed={isGekozen} onClick={() => kiesPickerRecept(String(r.id))}
-                    className={`w-full text-left px-3 py-2 min-h-tap sm:min-h-0 rounded border flex items-center justify-between gap-2 transition-colors ${
-                      isGekozen ? 't-sel border-l-2' : 'border-gray-100 hover:bg-gray-50'}`}>
-                    <span className="text-sm text-gray-700 min-w-0 break-words">
-                      {r.naam}
-                      {huidig && <span className="block text-xs text-gray-400">{t('batch_sync_recept_huidig')}</span>}
-                    </span>
-                    {r.stijl && <span className="text-xs text-gray-400 text-right">{r.stijl}</span>}
-                  </button>
-                )
-              })}
-            </div>
-            {gekozen && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
-                <p className="text-sm text-gray-700">{t('batch_sync_recept_gevolg').replace('{recept}', gekozen.naam || '')}</p>
-                <PlanProductKeuze
-                  plan={productBijPlannen(gekozen, { producten, batches: bat, recepten, batch: selB })}
-                  keuze={pickerProduct} onKeuze={k => { setPickerProduct(k); setPickerFout(null) }}
-                  standaardNaam={gekozen.naam || ''} recepten={recepten} producten={producten} />
-                {pickerFout && (
-                  <div role="alert" className="text-xs px-2 py-1.5 rounded border border-orange-200 bg-orange-50 text-orange-700">{pickerFout}</div>
-                )}
-                <div className="flex justify-end">
-                  <BevestigKnop v="primary" s="sm" vraag={t('batch_sync_recept_vraag')}
-                    onBevestig={() => applyReceptToBatch(gekozen)}>{t('batch_sync_recept_toepassen')}</BevestigKnop>
-                </div>
-              </div>
-            )}
+        </Blad>
+      )
+    }
+    const gekozen: any = pickerKeuze ? (recepten || []).find((r: any) => String(r.id) === pickerKeuze) || null : null
+    if (!gekozen) {
+      return (
+        <ReceptKiezer titel={t('batch_sync_recept')} recepten={recepten} batches={bat} producten={producten}
+          verborgen={receptenVerborgen} gearchiveerdeTags={receptenGearchiveerdeTags} metVersies metVerborgen
+          gekozenId={selB.recept_versie_id || selB.recept_id || null}
+          voorraad={{ lots, ingredienten: ing }} vandaag={tod()}
+          onKies={k => {
+            const id = k.versieId || k.receptId
+            const r = (recepten || []).find((x: any) => String(x.id) === id) || null
+            if (!r) return
+            kiesPickerRecept(String(r.id))
+            // Gekozen onder een product (Jouw producten): dat product, net als in het blad.
+            if (k.productId != null) {
+              setPickerProduct(productKeuzeNaKies(productBijPlannen(r, { producten, batches: bat, recepten, batch: selB }), k.productId, null))
+            }
+          }}
+          onSluit={sluit} />
+      )
+    }
+    const label = gekozen.versie && (gekozen.is_huidige === false || gekozen.parent_id)
+      ? `${gekozen.naam || ''} · ${gekozen.versie}` : (gekozen.naam || '')
+    return (
+      <Blad titel={t('batch_sync_recept')} onSluit={sluit} laag>
+        <div className="space-y-3">
+          <p className="text-sm text-gray-700">{t('batch_sync_recept_gevolg').replace('{recept}', label)}</p>
+          <PlanProductKeuze
+            plan={productBijPlannen(gekozen, { producten, batches: bat, recepten, batch: selB })}
+            keuze={pickerProduct} onKeuze={k => { setPickerProduct(k); setPickerFout(null) }}
+            standaardNaam={gekozen.naam || ''} recepten={recepten} producten={producten} />
+          {pickerFout && (
+            <div role="alert" className="text-xs px-2 py-1.5 rounded border border-orange-200 bg-orange-50 text-orange-700">{pickerFout}</div>
+          )}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Btn v="secondary" onClick={() => kiesPickerRecept(null)}>{t('batch_sync_ander_recept')}</Btn>
+            <BevestigKnop v="primary" vraag={t('batch_sync_recept_vraag')}
+              onBevestig={() => applyReceptToBatch(gekozen)}>{t('batch_sync_recept_toepassen')}</BevestigKnop>
           </div>
-        )}
-      </Modal>
+        </div>
+      </Blad>
     )
   }
 
@@ -3802,7 +3800,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               <FlowStap title={t('flow_stap_planning')} done={planningDone} detail={planningDetail || undefined} {...so('planning', planningDone)}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Sel label={t('flow_chk_tank')} value={selB.tank || ''} onChange={v => updateBatch({ tank: v })}
-                    opts={tankOptiesVoor(selB.id)} />
+                    opts={tankOptiesOpDatum(selB)} />
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 mb-1">{t('lbl_datum')}</label>
                     <input type="date" value={selB.datum || ''} onChange={e => updateBatch({ datum: e.target.value })}

@@ -27,6 +27,26 @@ export const STATUS_FILTERS: readonly StatusFilter[] = [
 export const isStatusFilter = (v: unknown): v is StatusFilter =>
   typeof v === 'string' && (STATUS_FILTERS as readonly string[]).includes(v)
 
+/**
+ * Een startfilter voor de lijst als één tekst, zoals `gaNaar({pagina:
+ * 'bestellingen', filter})` hem doorgeeft: de chip, en desgewenst een
+ * zoektekst erachter — "te_picken" of "te_picken:Kadeblond" (de productpagina:
+ * open bestellingen met dit bier).
+ */
+export const bestellingStartFilter = (status: StatusFilter, zoek?: string | null): string => {
+  const z = String(zoek ?? '').replace(/\s+/g, ' ').trim()
+  return z ? `${status}:${z}` : status
+}
+
+/** Het omgekeerde van `bestellingStartFilter`; null bij een onbekende chip. */
+export const leesBestellingStartFilter = (filter: unknown): { status: StatusFilter; zoek: string } | null => {
+  if (typeof filter !== 'string') return null
+  const i = filter.indexOf(':')
+  const status = i < 0 ? filter : filter.slice(0, i)
+  if (!isStatusFilter(status)) return null
+  return { status, zoek: i < 0 ? '' : filter.slice(i + 1).trim() }
+}
+
 /** Wat de lijst van een bestelling leest — bewust ruim: de pagina geeft de `useStore`-records door. */
 export interface BestellingLijstBron {
   id?: number | string | null

@@ -393,6 +393,23 @@ const productUitCtx = (productId: number, ctx: VerkoopCtx): VerkoopProduct | nul
   (ctx.producten || []).find(p => p?.id === productId) || null
 
 /**
+ * Een batch zonder productkoppeling (geen `product_id`, geen `product_ids`)
+ * die op naam bij dit bier hoort: zijn biernaam, anders zijn eigen naam, is
+ * die van het product. Zo telt een oude of nog niet gekoppelde batch mee in
+ * "komt eraan" — en noemt de productpagina hem bij de brouwsels.
+ */
+export const batchOpNaamVanProduct = (
+  b: Pick<VerkoopBatch, 'product_id' | 'product_ids' | 'biernaam' | 'naam'> | null | undefined,
+  productNaam: unknown,
+): boolean => {
+  const naam = lower(productNaam)
+  if (!b || !naam) return false
+  return (b.product_id == null || Number(b.product_id) === 0)
+    && !(Array.isArray(b.product_ids) && b.product_ids.length > 0)
+    && (lower(b.biernaam) === naam || (!lower(b.biernaam) && lower(b.naam) === naam))
+}
+
+/**
  * De batches van een product: `batchesVanProduct` (product_id/product_ids),
  * plus — voor batches van vóór de keten, die nog geen product hebben — de
  * batches die naar het product heten (`biernaam`, anders `naam`). Een batch
@@ -401,12 +418,7 @@ const productUitCtx = (productId: number, ctx: VerkoopCtx): VerkoopProduct | nul
 const batchesVoorProduct = (product: VerkoopProduct, alle: VerkoopBatch[]): VerkoopBatch[] => {
   const eigen = batchesVanProduct(product, alle)
   const ids = new Set(eigen.map(b => b.id))
-  const naam = lower(product.naam)
-  if (!naam) return eigen
-  const opNaam = alle.filter(b => b && !ids.has(b.id)
-    && (b.product_id == null || Number(b.product_id) === 0)
-    && !(Array.isArray(b.product_ids) && b.product_ids.length)
-    && (lower(b.biernaam) === naam || (!lower(b.biernaam) && lower(b.naam) === naam)))
+  const opNaam = alle.filter(b => b && !ids.has(b.id) && batchOpNaamVanProduct(b, product.naam))
   return [...eigen, ...opNaam]
 }
 

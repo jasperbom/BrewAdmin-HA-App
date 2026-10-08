@@ -53,6 +53,9 @@ export interface EtiketKaartProps {
   onArtikelMaken?: (productId: number, verpakkingId: number) => void
   /** "ABV handmatig (lab)" in het ⋯-menu. Zonder: niet in het menu. */
   onAbvLab?: () => void
+  /** "Etiket bijwerken" ook als de status er niet om vraagt — dan in het
+   *  ⋯-menu. Voor de productpagina, waar de kaart de ingang tot de dialoog is. */
+  bijwerkenInMenu?: boolean
   /** Standaard volgt de weergave de kaartbreedte. */
   weergave?: 'auto' | 'tabel' | 'tegels'
   cls?: string
@@ -278,7 +281,7 @@ const kopieer = async (tekst: string): Promise<boolean> => {
 
 const EtiketKaart: React.FC<EtiketKaartProps> = ({
   modus, batch, product, recept, data, website, alleenLezen = false,
-  onEtiketBijwerken, onNaarWebshop, onArtikelMaken, onAbvLab, weergave = 'auto', cls = '',
+  onEtiketBijwerken, onNaarWebshop, onArtikelMaken, onAbvLab, bijwerkenInMenu = false, weergave = 'auto', cls = '',
 }) => {
   const taal = getLang()
   const model: EtiketKaartModel = React.useMemo(
@@ -299,11 +302,19 @@ const EtiketKaart: React.FC<EtiketKaartProps> = ({
   const kaartCls = `bg-white rounded-xl shadow-card border-l-4 overflow-hidden ${cls}`
 
   if (model.leeg) {
+    // Niets om tegen te toetsen, maar het etiket vastleggen kan altijd (de
+    // productpagina): dan staat de knop hier.
+    const leegBijwerken = bijwerkenInMenu && !alleenLezen && onEtiketBijwerken && modus === 'product' && product
     return (
       <section ref={ref} className={kaartCls} style={rand} aria-label={model.titel}>
         <div className="px-4 py-3">
           <h3 className="text-base font-semibold text-gray-900">{model.titel}</h3>
           <p className="text-sm text-gray-500 mt-1">{t('etiket_kaart_leeg')}</p>
+          {leegBijwerken && (
+            <div className="mt-2">
+              <Btn v="secondary" s="sm" onClick={() => onEtiketBijwerken!(Number(product.id))}>{t('etiket_actie_bijwerken')}</Btn>
+            </div>
+          )}
         </div>
       </section>
     )
@@ -325,7 +336,10 @@ const EtiketKaart: React.FC<EtiketKaartProps> = ({
     const gelukt = await kopieer(kopie)
     setMelding(gelukt ? {tekst: t('etiket_gekopieerd')} : {tekst: t('etiket_kopieer_mislukt'), kopie})
   }
+  const bijwerkenExtra = bijwerkenInMenu && !alleenLezen && onEtiketBijwerken && status?.actie !== 'etiket_bijwerken'
   const menu: RowActie[] = [
+    ...(bijwerkenExtra ? [{id: 'bijwerken', label: t('etiket_actie_bijwerken'),
+      onClick: () => onEtiketBijwerken!(zwaarsteProduct(model) ?? eerste?.productId ?? null)}] : []),
     ...(tegels ? [] : [{id: 'bronnen', label: t(bronnen ? 'etiket_actie_bronnen_verberg' : 'etiket_actie_bronnen'),
       onClick: () => setBronnen(b => !b)}]),
     ...(tegels && kopie ? [{id: 'kopie', label: t('etiket_actie_kopieer'), onClick: doeKopie}] : []),

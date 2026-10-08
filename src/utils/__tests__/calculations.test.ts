@@ -612,6 +612,34 @@ describe('berekenCogs: verpakking per geleverde eenheid', () => {
 })
 
 describe('berekenProductKostprijs — verdeling naar afgevuld volume per product', () => {
+  it('noemt waar de kostprijs op rust: de batches met liters, en of vaste kosten afgeleid zijn', () => {
+    const batches = [
+      {id: 1, product_id: 9, overige_kosten: 100},
+      {id: 2, product_id: 9},                        // geen kosten: telt niet mee
+      {id: 3, product_id: 8, overige_kosten: 50},    // ander product
+    ]
+    const afvullingen = [
+      {id: 11, batch_id: 1, product_id: 9, inhoud_per_eenheid: 1, hoeveelheid: 100},
+      {id: 12, batch_id: 1, product_id: 9, inhoud_per_eenheid: 20, hoeveelheid: 1},
+      {id: 13, batch_id: 2, product_id: 9, inhoud_per_eenheid: 1, hoeveelheid: 50},
+      {id: 14, batch_id: 3, product_id: 8, inhoud_per_eenheid: 1, hoeveelheid: 50},
+    ]
+    const pk = berekenProductKostprijs(9, batches, [], [], afvullingen, [], [], [])
+    expect(pk.batch_ids).toEqual([1])
+    expect(pk.totaal_liter).toBeCloseTo(120, 9)
+    expect(pk.vaste_kosten_afgeleid).toBe(false)
+    // Met afgeleide vaste kosten (alleen schermen): een post die de batch niet noteert.
+    const afgeleid = brouwKosten({batches: [
+      {id: 5, datum: '2026-05-01', status: 'Gesloten', liter_vergist: 100, electra_kosten: 20},
+      {id: 6, datum: '2026-06-01', status: 'Gesloten', liter_vergist: 100, electra_kosten: 20},
+    ]})
+    const eigen = [{id: 1, product_id: 9, datum: '2026-07-01', status: 'Gesloten', liter_vergist: 100, overige_kosten: 10}]
+    expect(berekenProductKostprijs(9, eigen, [], [], afvullingen.slice(0, 1), [], [], []).vaste_kosten_afgeleid).toBe(false)
+    const met = berekenProductKostprijs(9, eigen, [], [], afvullingen.slice(0, 1), [], [], [], {vasteKosten: afgeleid})
+    expect(met.batch_ids).toEqual([1])
+    expect(met.vaste_kosten_afgeleid).toBe(true)
+  })
+
   it('splitst het batchvolume over de producten van de afvullingen (rebrand)', () => {
     // Eén batch, kostprijs 120 over 53 L. 33 L is als product 8 ge-rebrand;
     // de 20 L-afvulling heeft geen eigen product en valt terug op batch.product_id (9).

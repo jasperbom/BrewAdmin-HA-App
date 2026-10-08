@@ -550,6 +550,33 @@ export const etiketKaartBlokken = (
 ): KaartProductBlok[] => (producten.length ? producten : [null]).map(p =>
   productBlok('batch', w, p ? p.product : null, {}, null, t, taal, p ? p.etiket : null))
 
+/** Waartegen het etiket van een product getoetst wordt. */
+export interface ProductVergelijking {
+  waarden: EtiketWaarden
+  /** De referentiebatch (`referentieBatch`), of null als het recept de maat is. */
+  ref: BatchLike | null
+  /** Zonder referentiebatch: het huidige recept ("Etiket verwacht"). */
+  recept: ReceptLike | null
+}
+
+/**
+ * De waarden waartegen het etiket van een product getoetst wordt: die van de
+ * referentiebatch (de nieuwste met een gemeten FG, anders de laatst
+ * afgevulde), en zonder referentiebatch die van het huidige recept. Null als
+ * er geen van beide is. Eén keuze voor de kaart, de kop van de productpagina,
+ * de ketenstrook en de productlijst — zodat ze nooit iets anders zeggen.
+ */
+export const productVergelijking = (
+  product: ProductLike | null | undefined, data: EtiketKaartData,
+): ProductVergelijking | null => {
+  if (!product) return null
+  const ref = referentieBatch(product, data.batches)
+  if (ref) return {waarden: etiketWaarden(ref, data), ref, recept: null}
+  const huidig = huidigReceptVoorProduct(product, data.batches, data.recepten)
+  const recept = huidig.receptId ? (data.recepten || []).find(r => r.id === huidig.receptId) || null : null
+  return recept ? {waarden: receptEtiketWaarden(recept, data), ref: null, recept} : null
+}
+
 /**
  * Alles wat de kaart "Etiket & website" toont, per product één blok. De
  * statuschip in de kop is de zwaarste over de producten (rood > oranje >
@@ -567,19 +594,15 @@ export const etiketKaartModel = (invoer: EtiketKaartInvoer, t: Vertaal): EtiketK
     producten = productenVoorEtiketKaart(invoer.batch, data.producten, data.afvullingen)
   } else if (modus === 'product' && invoer.product) {
     producten = [invoer.product]
-    const ref = referentieBatch(invoer.product, data.batches)
-    if (ref) {
-      w = etiketWaarden(ref, data)
-      const afgevuld = ['Afgevuld', 'Verpakt', 'Gesloten'].includes(tekst(ref.status))
-      const nr = tekst(ref.batch_nummer) || String(ref.id)
+    const v = productVergelijking(invoer.product, data)
+    if (v?.ref) {
+      w = v.waarden
+      const afgevuld = ['Afgevuld', 'Verpakt', 'Gesloten'].includes(tekst(v.ref.status))
+      const nr = tekst(v.ref.batch_nummer) || String(v.ref.id)
       kolomBatch = vul(t, afgevuld ? 'etiket_kolom_laatste_batch' : 'etiket_kolom_volgende_batch', {nr})
-    } else {
-      const huidig = huidigReceptVoorProduct(invoer.product, data.batches, data.recepten)
-      const recept = huidig.receptId ? (data.recepten || []).find(r => r.id === huidig.receptId) : null
-      if (recept) {
-        w = receptEtiketWaarden(recept, data)
-        kolomBatch = t('etiket_kolom_recept')
-      }
+    } else if (v) {
+      w = v.waarden
+      kolomBatch = t('etiket_kolom_recept')
     }
   } else if (modus === 'recept' && invoer.recept) {
     w = receptEtiketWaarden(invoer.recept, data)

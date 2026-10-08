@@ -21,6 +21,7 @@ import Modal from '../components/ui/Modal'
 import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import TankReinigingForm from '../components/TankReinigingForm'
+import type { NieuweBatchVerzoek } from '../utils/nieuweBatch'
 
 interface ProductieDashboardProps {
   bat: any[]
@@ -48,7 +49,8 @@ interface ProductieDashboardProps {
   recepten?: any[]
   carbSessies?: any[]
   setPage: (id: string) => void
-  setPreNieuwBatch: (v: any) => void
+  /** Het blad "Wat brouw je?" (App.tsx → openNieuweBatch); een vrije tank geeft de tank mee. */
+  onNieuweBatch?: (verzoek?: NieuweBatchVerzoek) => void
   /** Navigatie van de schil (App.tsx): een batch openen (`{pagina: 'batches',
       id}`) of een exact doel (pagina + tabblad/filter/lot, zie utils/attentie.ts). */
   gaNaar: GaNaar
@@ -84,7 +86,7 @@ function ProductieDashboard({
   batchTakenItems = [], batchTakenGroepen = [], brouwdagStappen = [],
   lots = [], ing = [], gistMetingen = [], setGistMetingen = () => {}, auditLog = [], setAuditLog = () => {},
   producten = [], recepten = [],
-  setPreNieuwBatch = () => {},
+  onNieuweBatch,
   gaNaar, metingSignaal = 0,
 }: ProductieDashboardProps) {
   const batchNaam = (b: any) => b?.naam || b?.biernaam || t('lbl_naamloos')
@@ -196,10 +198,9 @@ function ProductieDashboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metingSignaal])
 
-  const nieuweBatch = (tankId?: string) => {
-    setPreNieuwBatch(tankId ? { tank: tankId } : {})
-    gaNaar({ pagina: 'batches' })
-  }
+  // Het blad "Wat brouw je?" opent hier, boven de brouwzaal; na Inplannen
+  // opent de nieuwe batch.
+  const nieuweBatch = (tankId?: string) => onNieuweBatch?.(tankId ? { tank: tankId } : {})
 
   // Eén grote meetwaarde op de kaart: leesbaar op een meter afstand.
   const Metriek = ({ label, waarde, sub, cls = '' }: { label: string, waarde: string | null, sub?: string | null, cls?: string }) => (
@@ -404,7 +405,8 @@ function ProductieDashboard({
                         tankLog={tankLog} setTankLog={setTankLog}
                         auditLog={auditLog} setAuditLog={setAuditLog} />
                     </div>
-                    {!eerste && (
+                    {/* Een lagertank is geen gisttank: daar begint geen brouwsel. */}
+                    {!eerste && tank.soort !== 'bright' && onNieuweBatch && (
                       <Btn s="sm" v="secondary" cls="min-h-[36px]" onClick={() => nieuweBatch(tank.id)}>{t('dash_batch_inplannen')}</Btn>
                     )}
                   </div>

@@ -42,7 +42,7 @@ import { regelBedrag, heeftAutoritair, corrigeerRegelBtw } from '../utils/orderR
 import { matchAfvullingenVoorRegel, bestellingenOmTePicken, verzamelPicklijst, orderNummer, orderProductId, onGepickteRegels, herkomstVanPick } from '../utils/picking'
 import type { PickHerkomstData } from '../utils/picking'
 import {
-  bestellingBron, filterBestellingen, statusTellingen, volgendeOrderStap, orderTotalen, isStatusFilter,
+  bestellingBron, filterBestellingen, statusTellingen, volgendeOrderStap, orderTotalen, leesBestellingStartFilter,
 } from '../utils/bestelling'
 import type { StatusFilter } from '../utils/bestelling'
 import { bestellingLevering, leverLabel } from '../utils/verkoopOverzicht'
@@ -78,6 +78,9 @@ import { batchNummer } from '../utils/productKeten'
 import type { AfvulSessie } from '../types'
 
 interface BestellingenPageProps {
+  /** De gedeelde verkoopcontext uit App.tsx (dezelfde telling als het
+   *  Overzicht en de productpagina); zonder bouwt de pagina een eigen. */
+  verkoopCtx?: VerkoopCtx | null
   bat: any[]
   av: any[]
   /** Afvulsessies: de lotcode van een afvulling zonder eigen code (pickmodal). */
@@ -176,6 +179,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   merchArtikelen=[], setMerchArtikelen=()=>{},
   merchVoorraadLog=[], setMerchVoorraadLog=()=>{},
   navDoel=null, onNavDoelConsumed=()=>{},
+  verkoopCtx: verkoopCtxProp = null,
 }) => {
   // De geopende bestelling. De route is de bron (App.tsx): een bestelling
   // openen of sluiten wijzigt de URL, zodat de terugknop van het toestel, een
@@ -201,14 +205,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // Startfilter uit het navigatiedoel (attentie-badge "Bestellingen om te
   // picken" → filter 'te_picken'). App.tsx mount de pagina per navigatie, dus
   // de useState-initializer volstaat; de callback wist alleen het App-signaal.
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
-    navDoel?.filter && isStatusFilter(navDoel.filter) ? navDoel.filter : 'alle')
+  // Ook met een zoektekst erachter ("te_picken:Kadeblond"): de productpagina
+  // opent zo de open bestellingen met dat bier.
+  const startFilter = leesBestellingStartFilter(navDoel?.filter)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(startFilter?.status ?? 'alle')
   React.useEffect(() => {
     if (navDoel) onNavDoelConsumed()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // Zoeken in de lijst: ordernummer, klant, bier (utils/bestelling).
-  const [zoek, setZoek] = useState('')
+  const [zoek, setZoek] = useState(startFilter?.zoek ?? '')
   // Een melding op de pagina in plaats van een alert(): een mislukte PDF, een
   // geblokkeerd printvenster, een periode die op slot zit.
   const [melding, setMelding] = useState('')
@@ -318,12 +324,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   // Eén voorraadtelling voor Verkoop (utils/verkoopOverzicht): kan een
   // orderregel geleverd worden, en wat komt eraan bij een tekort. Dezelfde
   // matcher en dezelfde vrije voorraad als de pickmodal.
-  const verkoopCtx = React.useMemo((): VerkoopCtx => ({
+  const eigenVerkoopCtx = React.useMemo((): VerkoopCtx => ({
     producten, productArtikelen, artikelen, merchArtikelen, verpakkingen, batches: bat, afvullingen: av,
     uitleveringen: uit, verplaatsingen, afboekingen, locaties, bestellingen, bestellingPicks,
     verliesRegistraties, conditionerenDagen,
   }), [producten, productArtikelen, artikelen, merchArtikelen, verpakkingen, bat, av, uit, verplaatsingen,
     afboekingen, locaties, bestellingen, bestellingPicks, verliesRegistraties, conditionerenDagen])
+  const verkoopCtx: VerkoopCtx = verkoopCtxProp || eigenVerkoopCtx
 
   // Herkomst van een pick (lotcode, batch, THT): pickoverzicht, pakbon, picklijst.
   const herkomstData: PickHerkomstData = {afvullingen: av, batches: bat, afvulSessies}

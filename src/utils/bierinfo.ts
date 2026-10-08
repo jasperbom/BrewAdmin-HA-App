@@ -359,3 +359,92 @@ export function bierInfoVoorArtikel(bron: BierInfoBron): Record<string, any> {
   if (typeof bron.product?.uit_roulatie === 'boolean') uit.uit_roulatie = bron.product.uit_roulatie
   return uit
 }
+
+// ── Weergave op de productpagina ────────────────────────────────────────────
+// `afgeleideBierInfo` en `bierInfoVoorArtikel` zijn wat er met een push naar
+// de webshop meegaat: alleen productwaarden (opzet 5.6), zodat er nooit stil
+// een berekende waarde mee met "Push alles". De productpagina toont het bier
+// zoals de administratie het kent: de energie en de ingrediënten van wat er
+// écht gebrouwen is. Die afleiding staat hier apart. De waarden zelf rekent
+// utils/etiket.ts uit (de referentiebatch, `batchRegelsAlsRecept`, de energie
+// uit OG/FG); dit bestand importeert dat niet, het krijgt ze aangereikt.
+
+/** Wat de app over een bier weet buiten zijn eigen velden. */
+export interface BierAfleiding {
+  /**
+   * Energie per 100 ml: berekend uit OG/FG van de referentiebatch, anders
+   * verwacht uit het huidige recept (`productEtiketWaarden(...).energie`).
+   * `bron` `berekend` of `verwacht`; `geen` (of geen kcal) = onbekend.
+   */
+  energie?: {kcal?: number | null; kj?: number | null; bron?: string | null} | null
+  /** De regels van de referentiebatch in receptvorm (`batchRegelsAlsRecept`). */
+  referentieRegels?: {mout?: any[]; hop?: any[]; gist?: any[]; overig?: any[]} | null
+  /** Het huidige recept: de ingrediënten als de referentiebatch er geen heeft. */
+  huidigRecept?: any | null
+}
+
+export interface BierWeergaveBron extends Omit<BierInfoBron, 'recepten'> {
+  afleiding?: BierAfleiding | null
+}
+
+/** Waar een afgeleide waarde in de weergave vandaan komt (voor het bronlabel). */
+export type BierHerkomst = 'berekend' | 'verwacht' | 'batch' | 'recept'
+
+export interface BierWeergaveInfo {
+  /** Zoals `bierInfoVoorArtikel`: veldnaam → waarde in de notatie van het scherm. */
+  info: Record<string, any>
+  /** Alleen voor wat de app afleidde en niet bij het bier is ingevuld. */
+  herkomst: Record<string, BierHerkomst>
+}
+
+/**
+ * Het bier zoals de productpagina het toont: dezelfde lagen als
+ * `bierInfoVoorArtikel` (afgeleid → bier → verpakking, een leeg veld drukt
+ * niets weg), met twee verschillen in de afgeleide laag:
+ *  - kcal komt uit de energie van de referentiebatch ("berekend"); het veld
+ *    van het product is alleen een overschrijving als de energie op het
+ *    gedrukte etiket staat (`energie_op_etiket === 'vermeld'`);
+ *  - de ingrediëntenlijst komt uit de referentiebatch (wat er gebrouwen is),
+ *    anders uit het huidige recept — niet meer de vereniging van álle
+ *    gekoppelde recepten. Een eigen tekst bij het product wint nog altijd.
+ */
+export function bierInfoWeergave(bron: BierWeergaveBron): BierWeergaveInfo {
+  const af = bron.afleiding || {}
+  const herkomst: Record<string, BierHerkomst> = {}
+  // Zonder recepten: de ingrediënten komen hieronder uit de referentiebatch.
+  const uit: Record<string, any> = afgeleideBierInfo({
+    product: bron.product, inhoudLiter: bron.inhoudLiter, ingredienten: bron.ingredienten,
+  })
+
+  const uitBatch = af.referentieRegels ? bierIngredienten([af.referentieRegels], bron.ingredienten) : ''
+  const uitRecept = !uitBatch && af.huidigRecept ? bierIngredienten([af.huidigRecept], bron.ingredienten) : ''
+  if (uitBatch || uitRecept) {
+    uit.ingredienten = uitBatch || uitRecept
+    herkomst.ingredienten = uitBatch ? 'batch' : 'recept'
+  }
+
+  const kcal = getal(af.energie?.kcal)
+  const energieBron = String(af.energie?.bron || '')
+  if (kcal !== null && kcal > 0 && (energieBron === 'berekend' || energieBron === 'verwacht')) {
+    uit.kcal = String(Math.round(kcal))
+    herkomst.kcal = energieBron
+  }
+
+  const velden = new Set(BIER_VELDEN.map(v => v.veld))
+  const afgeleid = new Set(BIER_VELDEN.filter(v => v.afgeleid).map(v => v.veld))
+  const vermeld = bron.product?.energie_op_etiket === 'vermeld'
+  const voegToe = (bronObject: Record<string, any> | null | undefined) => {
+    for (const [veld, waarde] of Object.entries(bronObject || {})) {
+      if (!velden.has(veld) || afgeleid.has(veld) || leeg(waarde)) continue
+      // kcal van het product geldt alleen als hij op het etiket staat.
+      if (veld === 'kcal' && bronObject === bron.product && !vermeld) continue
+      uit[veld] = waarde
+      delete herkomst[veld]
+    }
+  }
+  voegToe(bron.product)
+  voegToe(bron.artikel)
+
+  if (typeof bron.product?.uit_roulatie === 'boolean') uit.uit_roulatie = bron.product.uit_roulatie
+  return {info: uit, herkomst}
+}

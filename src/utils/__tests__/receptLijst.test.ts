@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  versiesPerRecept, receptenVoorKeuzelijst, receptPastBijZoekterm, verborgenId,
+  versiesPerRecept, verborgenId,
   segmentVan, inGebruikLijst, archiefLijst, verborgenLijst, treffersPerSegment, receptInLijstPastBijZoek,
   receptReden, datumKort,
   zichtbaarheidUndoId, zichtbaarheidUitUndoId, pasZichtbaarheidToe,
@@ -357,15 +357,6 @@ describe('verborgenId', () => {
   })
 })
 
-describe('receptPastBijZoekterm', () => {
-  it('doorzoekt naam, stijl en tags; alle woorden; accenten tellen niet', () => {
-    expect(receptPastBijZoekterm(recepten[0], 'witbier')).toBe(true)
-    expect(receptPastBijZoekterm(recepten[0], 'SEIZOEN')).toBe(true)
-    expect(receptPastBijZoekterm(recepten[6], 'kölsch probeer')).toBe(true)
-    expect(receptPastBijZoekterm(recepten[6], 'kolsch ipa')).toBe(false)
-  })
-})
-
 describe('versiesPerRecept', () => {
   it('per hoofdrecept, nieuwste eerst', () => {
     const v = versiesPerRecept(recepten)
@@ -375,34 +366,5 @@ describe('versiesPerRecept', () => {
   it('herkent een versie ook alleen aan het id', () => {
     const v = versiesPerRecept([{ id: 'p__vx', naam: 'P', is_huidige: false }])
     expect(v.get('p')!.map(x => x.id)).toEqual(['p__vx'])
-  })
-})
-
-describe('receptenVoorKeuzelijst — de receptkeuze bij een nieuwe batch', () => {
-  it('zonder verborgen recepten, recepten met alleen gearchiveerde tags en versies; op naam', () => {
-    const keuze = receptenVoorKeuzelijst(recepten, { verborgen: ['untitled'], gearchiveerdeTags: ['oud'] })
-    expect(keuze.map(r => r.id)).toEqual(['blond', 'clone', 'neipa2', 'neipa3', 'stout', 'kolsch', 'porter', 'rauch', 'saison', 'wit'])
-  })
-
-  it('een recept met één actieve tag naast een gearchiveerde blijft kiesbaar', () => {
-    const keuze = receptenVoorKeuzelijst(recepten, { gearchiveerdeTags: ['oud'] })
-    expect(keuze.map(r => r.id)).toContain('porter')
-  })
-
-  it('een al gekozen of gekoppeld recept blijft kiesbaar, ook als het verborgen is', () => {
-    const keuze = receptenVoorKeuzelijst(recepten, { verborgen: ['untitled'], gearchiveerdeTags: ['oud'], behoud: ['untitled', 'pils2'] })
-    expect(keuze.map(r => r.id)).toEqual(expect.arrayContaining(['untitled', 'pils2']))
-    expect(keuze.map(r => r.id)).not.toContain('pils10')
-  })
-
-  it('een versie-id in "behoud" houdt zijn hoofdrecept kiesbaar', () => {
-    const keuze = receptenVoorKeuzelijst(recepten, { verborgen: ['blond'], behoud: ['blond__vb2'] })
-    expect(keuze.map(r => r.id)).toContain('blond')
-    expect(keuze.every(r => !String(r.id).includes('__v'))).toBe(true)
-  })
-
-  it('leeg: lege lijst', () => {
-    expect(receptenVoorKeuzelijst(null)).toEqual([])
-    expect(receptenVoorKeuzelijst([], { behoud: ['x'] })).toEqual([])
   })
 })

@@ -39,6 +39,8 @@ import PaginaNav, { PaginaNavItem } from './components/ui/PaginaNav'
 import UndoBar, { UndoProvider, useUitgesteldeActie } from './components/ui/UndoBar'
 import EtiketBijwerken, { EtiketBijwerkenProvider, maakEtiketDienst } from './components/batch/EtiketBijwerken'
 import type { EtiketBijwerkenData, EtiketVerzoek } from './components/batch/EtiketBijwerken'
+import NieuweBatchBlad, { NieuweBatchProvider } from './components/batch/NieuweBatchBlad'
+import type { NieuweBatchDienst, NieuweBatchVerzoek } from './components/batch/NieuweBatchBlad'
 import { LaadFout } from './components/ui/FoutKaart'
 import { useToetsenbordInset } from './components/ui/toetsenbord'
 import MeerPage from './pages/MeerPage'
@@ -460,7 +462,17 @@ function App() {
   }, []);
   // Eén terugweg voor de hele app: pagina's plannen via useUndo().
   const undo = useUitgesteldeActie(5000);
-  const [preNieuwBatch, setPreNieuwBatch] = useState<any>(null);
+  // Het blad "Wat brouw je?" (components/batch/NieuweBatchBlad.tsx): één blad
+  // voor een nieuwe batch, met vijf ingangen. Pagina's openen het via de prop
+  // `onNieuweBatch`, componenten via `useNieuweBatch()`. Elke keer openen is
+  // een vers blad (de teller is de key).
+  const [nieuweBatch, setNieuweBatch] = useState<NieuweBatchVerzoek | null>(null);
+  const [nieuweBatchNr, setNieuweBatchNr] = useState(0);
+  const openNieuweBatch = React.useCallback((verzoek: NieuweBatchVerzoek = {}) => {
+    setNieuweBatch({ ...verzoek });
+    setNieuweBatchNr(n => n + 1);
+  }, []);
+  const nieuweBatchDienst = React.useMemo((): NieuweBatchDienst => ({ open: openNieuweBatch }), [openNieuweBatch]);
   // Deep-link naar een specifieke Boekhouding-tab (bv. vanuit het
   // Administratie-dashboard) — eenmalig signaal; BoekhoudingPage consumeert
   // en wist het.
@@ -2020,6 +2032,8 @@ function App() {
   const [etiketVerzoek, setEtiketVerzoek] = useState<EtiketVerzoek | null>(null);
   // Naar een andere pagina (terugknop, link): de dialoog hoorde bij de vorige.
   React.useEffect(() => { setEtiketVerzoek(null); }, [routeHash]);
+  // Het blad "Wat brouw je?" hoort ook bij de pagina waar het geopend werd.
+  React.useEffect(() => { setNieuweBatch(null); }, [routeHash]);
   const etiketData = React.useMemo((): EtiketBijwerkenData => ({
     recepten, batchIngredienten: bi, ingredienten: ing, lots, afvulSessies, afvullingen: av, haccpInst,
     batches: bat, producten, productArtikelen, verpakkingen, etiketcontroles: haccpEtiketcontroles,
@@ -2355,8 +2369,7 @@ function App() {
     // onOpenBatch (een history-entry).
     openBatchId: navBatchId,
     onOpenBatch: openRecord('batches'),
-    preNieuwBatch,
-    setPreNieuwBatch,
+    onNieuweBatch: openNieuweBatch,
     setProductArtikelen,
     ccpMetingen: haccpCcpMetingen,
     setCcpMetingen: setHaccpCcpMetingen,
@@ -2401,6 +2414,7 @@ function App() {
   return (
     <UndoProvider value={undo}>
     <EtiketBijwerkenProvider value={etiketDienst}>
+    <NieuweBatchProvider value={nieuweBatchDienst}>
     <div className="min-h-screen schil-rail schil-wortel" style={{backgroundColor:'var(--t-bg)'}}>
       {/* Bureau: de rail links is het hoofdmenu (werkruimtes, instellingen). */}
       <Rail
@@ -2472,12 +2486,12 @@ function App() {
             van de actieve werkruimte — zo landt de werkruimte-wisselaar (die
             bij een echte wissel naar 'dashboard' springt) altijd op de juiste,
             kleine "dagelijkse takenlijst" voor die pet. */}
-        {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankBewaking={tankBewaking} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} gaNaar={gaNaar} producten={producten} recepten={recepten} carbSessies={carbSessies} metingSignaal={metingSignaal} />}
+        {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankBewaking={tankBewaking} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} onNieuweBatch={openNieuweBatch} gaNaar={gaNaar} producten={producten} recepten={recepten} carbSessies={carbSessies} metingSignaal={metingSignaal} />}
         {page==='dashboard' && werkruimte==='verkoop' && <VerkoopDashboard verkoopCtx={verkoopCtx} attentie={attentie.verkoop} producten={producten} recepten={recepten} gaNaar={gaNaar} wcCreds={wcCreds} wcImportStatus={wcImportStatus} wcImportInterval={wcImportInterval} wcSyncLog={wcSyncLog} />}
         {page==='dashboard' && werkruimte==='administratie' && <AdministratieDashboard btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} accijnsAangiftes={accijnsAangiftes} acc={acc} inkoopFacturen={inkoopFacturen} inkoopInbox={inkoopInbox} verkoopFacturen={verkoopFacturen} klanten={klanten} breweryDetails={breweryDetails} attentie={attentie.administratie} gaNaarDoel={gaNaar} setPage={setPage} setBoekhoudingTab={setBoekhoudingTab} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} kostenSoorten={kostenSoorten} bfCreds={bfCreds} auditLog={auditLog} setAuditLog={setAuditLog} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} setJournaal={setJournaal} navDoel={doelVoor('ingredienten')} onNavDoelConsumed={wisNavDoel} />}
-        {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bat={bat} producten={producten} setProducten={setProducten} av={av} afvulSessies={afvulSessies} uit={uit} verplaatsingen={verplaatsingen} afboekingen={afboekingen} locaties={locaties} bestellingen={bestellingen} bestellingPicks={bestellingPicks} productArtikelen={productArtikelen} artikelen={artikelen} verliesRegistraties={verliesRegistraties} inkoopFacturen={inkoopFacturen} verpakkingen={verpakkingen} onderdelen={onderdelen} accijnsInst={accijnsInst} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} recordId={recordId} onOpenRecord={openRecord('recepten')} gaNaar={gaNaar} />}
-        {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} ing={ing} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} onderdelen={onderdelen} av={av} setAv={setAv} uit={uit} bi={bi} lots={lots} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={wcCredsSchrijfbaar ? setWcCreds : undefined} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} receptenVerborgen={verborgen} receptenGearchiveerdeTags={gearchiveerdeTags} recordId={recordId} onOpenRecord={openRecord('producten')} gaNaar={gaNaar} />}
+        {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bat={bat} producten={producten} setProducten={setProducten} av={av} afvulSessies={afvulSessies} uit={uit} verplaatsingen={verplaatsingen} afboekingen={afboekingen} locaties={locaties} bestellingen={bestellingen} bestellingPicks={bestellingPicks} productArtikelen={productArtikelen} artikelen={artikelen} verliesRegistraties={verliesRegistraties} inkoopFacturen={inkoopFacturen} verpakkingen={verpakkingen} onderdelen={onderdelen} accijnsInst={accijnsInst} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setPage={setPage} onNieuweBatch={openNieuweBatch} auditLog={auditLog} setAuditLog={setAuditLog} recordId={recordId} onOpenRecord={openRecord('recepten')} gaNaar={gaNaar} />}
+        {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} ing={ing} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} onderdelen={onderdelen} av={av} setAv={setAv} uit={uit} bi={bi} lots={lots} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={wcCredsSchrijfbaar ? setWcCreds : undefined} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} receptenVerborgen={verborgen} receptenGearchiveerdeTags={gearchiveerdeTags} recordId={recordId} onOpenRecord={openRecord('producten')} gaNaar={gaNaar} onNieuweBatch={openNieuweBatch} verkoopCtx={verkoopCtx} inkoopFacturen={inkoopFacturen} />}
         {/* Batches: de lijst (Lopend · Gesloten · Agenda), of — met een batch in
             de route — de batch als eigen pagina. */}
         {page==='batches' && (navBatchId != null
@@ -2485,7 +2499,7 @@ function App() {
           : <BatchesPage {...batchFlowProps} stand={batchesStand} onStand={kiesBatchesStand} />)}
         {page==='tool_phcorrectie' && <GereedschapPage tool="ph" />}
         {page==='tool_waterprofiel' && <GereedschapPage tool="water" waterProfielen={waterProfielen} setWaterProfielen={setWaterProfielen} waterDoelprofielen={waterDoelprofielen} setWaterDoelprofielen={setWaterDoelprofielen} claudeCreds={claudeCreds} />}
-        {page==='bestellingen' && <BestellingenPage bat={bat} av={av} afvulSessies={afvulSessies} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} recordId={recordId} onOpenRecord={openRecord('bestellingen')} gaNaar={gaNaar} verliesRegistraties={verliesRegistraties} conditionerenDagen={planningInst?.conditioneren_dagen} recepten={recepten} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} accijnsAangiftes={accijnsAangiftes} afboekingen={afboekingen} smtpCreds={smtpCreds} mollieCreds={mollieCreds} mailTemplates={mailTemplates} btwTarieven={btwTarieven} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} setJournaal={setJournaal} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} navDoel={doelVoor('bestellingen')} onNavDoelConsumed={wisNavDoel} />}
+        {page==='bestellingen' && <BestellingenPage bat={bat} av={av} afvulSessies={afvulSessies} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} recordId={recordId} onOpenRecord={openRecord('bestellingen')} gaNaar={gaNaar} verliesRegistraties={verliesRegistraties} conditionerenDagen={planningInst?.conditioneren_dagen} recepten={recepten} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} accijnsAangiftes={accijnsAangiftes} afboekingen={afboekingen} smtpCreds={smtpCreds} mollieCreds={mollieCreds} mailTemplates={mailTemplates} btwTarieven={btwTarieven} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} setJournaal={setJournaal} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} navDoel={doelVoor('bestellingen')} onNavDoelConsumed={wisNavDoel} verkoopCtx={verkoopCtx} />}
         {page==='kassa' && <KassaPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} producten={producten} productArtikelen={productArtikelen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} factuurLogo={factuurLogo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} klanten={klanten} setKlanten={setKlanten} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsAangiftes={accijnsAangiftes} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} gaNaar={gaNaar} />}
         {page==='klanten' && <KlantenPage klanten={klanten} setKlanten={setKlanten} bestellingen={bestellingen} setBestellingen={setBestellingen} verkoopFacturen={verkoopFacturen} breweryDetails={breweryDetails} smtpCreds={smtpCreds} factuurLogo={factuurLogo} logo={logo} appName={appName} setPage={setPage} gaNaar={gaNaar} auditLog={auditLog} setAuditLog={setAuditLog} />}
         {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} bestellingen={bestellingen} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} />}
@@ -2523,6 +2537,22 @@ function App() {
           onGaNaar={p => gaNaar(attentieDoel(p))}
         />
       )}
+      {nieuweBatch && (
+        <NieuweBatchBlad
+          key={nieuweBatchNr}
+          verzoek={nieuweBatch}
+          verborgen={!!etiketOpen}
+          bat={bat} setBat={setBat} setBi={setBi} ing={ing} lots={lots}
+          recepten={recepten} receptenVerborgen={verborgen} receptenGearchiveerdeTags={gearchiveerdeTags}
+          producten={producten} setProducten={setProducten} productArtikelen={productArtikelen}
+          tanks={tanks} tankStatussen={tankStatussen} conditionerenDagen={planningInst?.conditioneren_dagen}
+          haccpInst={haccpInst} verkoopCtx={verkoopCtx}
+          setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog}
+          onGepland={id => { setNieuweBatch(null); gaNaar({ pagina: 'batches', id }); }}
+          onSluit={() => setNieuweBatch(null)}
+          onEtiketBijwerken={productId => setEtiketVerzoek({ productId })}
+        />
+      )}
       {etiketOpen && (
         <EtiketBijwerken
           key={`${etiketOpen.product.id}-${etiketVerzoek?.stap || 'etiket'}`}
@@ -2545,6 +2575,7 @@ function App() {
       )}
       <UndoBar undo={undo} />
     </div>
+    </NieuweBatchProvider>
     </EtiketBijwerkenProvider>
     </UndoProvider>
   );

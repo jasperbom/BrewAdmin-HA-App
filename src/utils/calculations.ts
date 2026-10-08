@@ -577,6 +577,14 @@ export interface ProductKostprijsResult {
    * Bij meerdere verpakkingstypen wint de zwakste bron.
    */
   accijns_bron?: AccijnsKostprijsBron
+  // ── Herkomst (alleen gevuld door `berekenProductKostprijs`) ────────────────
+  // Waar de kostprijs van een product op rust, zodat een scherm de bron kan
+  // noemen: "uit 4 brouwsels, 1.140 L afgevuld". Rekent niets anders uit.
+  /** De batches waarvan afgevulde liters meetellen (met een bekende kostprijs). */
+  batch_ids?: number[]
+  /** Een van die batches noteert een vaste brouwpost niet zelf en kreeg het
+   *  afgeleide bedrag (`opties.vasteKosten`) — alleen bij schermen. */
+  vaste_kosten_afgeleid?: boolean
 }
 
 export type AccijnsKostprijsBron = 'geboekt' | 'voorcalc' | 'geschat' | 'geen'
@@ -906,19 +914,24 @@ export const berekenProductKostprijs = (
   opties?: {accijnsInst?: AccijnsInst | null, vasteKosten?: BrouwKosten | null} | null
 ): ProductKostprijsResult => {
   const batchById = new Map((batches||[]).map((b: any) => [b.id, b]))
-  const kplCache = new Map<any, {kpl: number, kplExclVerpakking: number}>()
+  const kplCache = new Map<any, {kpl: number, kplExclVerpakking: number, vastAfgeleid: boolean}>()
   const kplVoorBatch = (b: any) => {
     const gecached = kplCache.get(b.id)
     if (gecached) return gecached
     const r = berekenBatchKostprijs(b, batchIngredienten, lots, afvullingen, verpakkingen, onderdelen, accijns,
       opties?.accijnsInst ?? null, opties?.vasteKosten ?? null)
-    const waarde = {kpl: r.kostprijs_per_liter, kplExclVerpakking: r.kostprijs_per_liter_excl_verpakking || 0}
+    const waarde = {
+      kpl: r.kostprijs_per_liter, kplExclVerpakking: r.kostprijs_per_liter_excl_verpakking || 0,
+      vastAfgeleid: (r.overhead_posten || []).some(p => p.bron !== 'batch' && p.bron !== 'geen' && p.bedrag > 0),
+    }
     kplCache.set(b.id, waarde)
     return waarde
   }
   let totaal_kosten = 0
   let totaal_liter = 0
   let totaal_kosten_excl_verpakking = 0
+  const batchIds: number[] = []
+  let vasteKostenAfgeleid = false
 
   for (const a of (afvullingen||[])) {
     const b = batchById.get(a.batch_id)
@@ -929,11 +942,13 @@ export const berekenProductKostprijs = (
     if (effProduct == null || Number(effProduct) !== Number(product_id)) continue
     const liters = Number(a.inhoud_per_eenheid ?? a.inhoud_liter ?? 0) * Number(a.hoeveelheid ?? a.aantal ?? 0)
     if (liters <= 0) continue
-    const {kpl, kplExclVerpakking} = kplVoorBatch(b)
+    const {kpl, kplExclVerpakking, vastAfgeleid} = kplVoorBatch(b)
     if (kpl <= 0) continue
     totaal_kosten += liters * kpl
     totaal_kosten_excl_verpakking += liters * kplExclVerpakking
     totaal_liter += liters
+    if (!batchIds.includes(b.id)) batchIds.push(b.id)
+    if (vastAfgeleid) vasteKostenAfgeleid = true
   }
 
   return {
@@ -941,6 +956,8 @@ export const berekenProductKostprijs = (
     totaal_kosten,
     totaal_liter,
     kostprijs_per_liter_excl_verpakking: totaal_liter > 0 ? totaal_kosten_excl_verpakking / totaal_liter : 0,
+    batch_ids: batchIds,
+    vaste_kosten_afgeleid: vasteKostenAfgeleid,
   }
 }
 

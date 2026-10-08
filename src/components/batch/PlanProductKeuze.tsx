@@ -26,6 +26,8 @@ interface PlanProductKeuzeProps {
   recepten?: any[]
   /** Alle producten: een vooraf gekozen product dat geen kandidaat is, blijft zichtbaar. */
   producten?: any[]
+  /** Zonder het kopje "Product" (het blad "Wat brouw je?" noemt het product al in de ketenchip). */
+  zonderLabel?: boolean
 }
 
 const Rij: React.FC<{ naam: string; gekozen: boolean; onKies: () => void; children: React.ReactNode }> = ({ naam, gekozen, onKies, children }) => (
@@ -45,10 +47,10 @@ const ProductNaam: React.FC<{ p: any; recepten?: any[] }> = ({ p, recepten }) =>
   </>
 )
 
-const PlanProductKeuze: React.FC<PlanProductKeuzeProps> = ({ plan, keuze, onKeuze, standaardNaam, recepten, producten }) => {
+const PlanProductKeuze: React.FC<PlanProductKeuzeProps> = ({ plan, keuze, onKeuze, standaardNaam, recepten, producten, zonderLabel = false }) => {
   const groep = React.useId()
   if (!plan) return null
-  const label = <div className="text-sm font-medium text-gray-700 mb-1">{t('keten_product')}</div>
+  const label = zonderLabel ? null : <div className="text-sm font-medium text-gray-700 mb-1">{t('keten_product')}</div>
 
   const vast = plan.soort === 'behouden' || (plan.soort === 'een' &&
     (!keuze || (keuze.soort === 'product' && Number(keuze.productId) === Number(plan.product.id))))

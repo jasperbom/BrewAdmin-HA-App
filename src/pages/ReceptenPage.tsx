@@ -21,6 +21,7 @@ import {
 import { receptVoorraadOordeel, type ReceptVoorraadOordeel } from '../utils/ingredientVoorraad'
 import type { VerkoopCtx } from '../utils/verkoopOverzicht'
 import type { GaNaar, GaNaarOpties } from '../utils/route'
+import type { NieuweBatchVerzoek } from '../utils/nieuweBatch'
 
 // Recepten "in gebruik" (docs/OPZET-PRODUCTIE-VERKOOP.md, hoofdstuk 6).
 //
@@ -64,7 +65,8 @@ export interface ReceptenPageProps {
   setGearchiveerdeTags: (fn: any) => void
   tagVolgorde?: string[]
   setPage?: (p: string) => void
-  setPreNieuwBatch?: (v: any) => void
+  /** Het blad "Wat brouw je?" (App.tsx → openNieuweBatch): *Brouwen* op een recept. */
+  onNieuweBatch?: (verzoek?: NieuweBatchVerzoek) => void
   auditLog?: any[]
   setAuditLog?: (fn: any) => void
   recordId?: string | null
@@ -77,7 +79,7 @@ function ReceptenPage({
   afboekingen = [], locaties = [], bestellingen = [], bestellingPicks = [], productArtikelen = [], artikelen = [],
   verliesRegistraties = [], inkoopFacturen = [], verpakkingen = [], onderdelen = [], accijnsInst = null, bfCreds,
   recepten, setRecepten, verborgen, setVerborgen, gearchiveerdeTags, setGearchiveerdeTags, tagVolgorde = [],
-  setPage, setPreNieuwBatch, auditLog = [], setAuditLog = () => {}, recordId = null, onOpenRecord, gaNaar,
+  onNieuweBatch, auditLog = [], setAuditLog = () => {}, recordId = null, onOpenRecord, gaNaar,
 }: ReceptenPageProps) {
   const { useState, useMemo } = React
   const undo = useUndo()
@@ -162,13 +164,13 @@ function ReceptenPage({
 
   // ── Handelingen ───────────────────────────────────────────────────────────
 
-  const kanBrouwen = !!(setPage && setPreNieuwBatch)
-  // Voorlopig de bestaande nieuwe-batchflow: alleen het recept voorselecteren,
-  // de batchpagina bouwt de batch en de ingrediëntregels uit het recept op.
-  const brouwen = (g: ReceptGebruik<any>) => {
-    if (!kanBrouwen) return
-    setPreNieuwBatch!({ recept_id: g.id, naam: g.naam })
-    setPage!('batches')
+  // *Brouwen* opent het blad "Wat brouw je?" boven de receptenpagina, met het
+  // recept (en zo het product) ingevuld; vanuit een versie die versie. Na
+  // Inplannen opent de nieuwe batch.
+  const kanBrouwen = !!onNieuweBatch
+  const brouwen = (g: ReceptGebruik<any>, versieId?: string | null) => {
+    if (!onNieuweBatch) return
+    onNieuweBatch(versieId ? { receptId: g.id, versieId } : { receptId: g.id })
   }
 
   const zetVastgepind = (g: ReceptGebruik<any>, aan: boolean) => {
@@ -414,7 +416,9 @@ function ReceptenPage({
               accijnsInst={accijnsInst}
               verkoopCtx={verkoopCtx}
               acties={selG ? actiesVoor(selG, undefined, false) : []}
-              onBrouwen={kanBrouwen && selG && selRec.is_huidige !== false && !selRec.parent_id ? () => brouwen(selG) : undefined}
+              onBrouwen={kanBrouwen && selG
+                ? () => brouwen(selG, selRec.is_huidige === false || selRec.parent_id ? String(selRec.id) : null)
+                : undefined}
               onKoppel={() => selG && setKoppelVoor(selG)}
               onOpenRecept={id => setSel(id)}
               onOpenBatch={id => gaNaar?.({ pagina: 'batches', id })}

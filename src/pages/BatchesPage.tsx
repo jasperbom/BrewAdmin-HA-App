@@ -31,8 +31,7 @@ import type { LopendRij, LopendWeergave } from '../components/batches/LopendLijs
 import GeslotenLijst from '../components/batches/GeslotenLijst'
 import type { GeslotenRij } from '../components/batches/GeslotenLijst'
 import BatchesAgenda from '../components/batches/BatchesAgenda'
-import NieuweBatchFormulier from '../components/batches/NieuweBatchFormulier'
-import type { NieuweBatchVoorinvulling } from '../components/batches/NieuweBatchFormulier'
+import type { NieuweBatchVerzoek } from '../utils/nieuweBatch'
 import MetingBlad from '../components/batch/MetingBlad'
 import { geslotenAantalTekst, vul } from '../components/batches/batchTekst'
 
@@ -50,9 +49,8 @@ export interface BatchesPageProps {
   /** Eenmalig signaal: filter `taken` (attentiepost "Batches met open taken") of het oude `gesloten`. */
   navDoel?: AttentieDoel | null
   onNavDoelConsumed?: () => void
-  /** Een nieuwe batch met wat een ingang al invult (Brouwen op een recept, een vrije tank, een product). */
-  preNieuwBatch?: NieuweBatchVoorinvulling | null
-  setPreNieuwBatch?: (v: any) => void
+  /** *+ Nieuwe batch*: het blad "Wat brouw je?" (App.tsx → openNieuweBatch). */
+  onNieuweBatch?: (verzoek?: NieuweBatchVerzoek) => void
 
   bat: any[]; setBat: Zetter
   bi: any[]; setBi: Zetter
@@ -107,9 +105,8 @@ let terugkeer: { zoek: string; product: string; recept: string; tot: number } | 
  */
 const BatchesPage: React.FC<BatchesPageProps> = (p) => {
   const {
-    stand, onStand, onOpenBatch, gaNaar, navDoel = null, onNavDoelConsumed,
-    preNieuwBatch = null, setPreNieuwBatch,
-    bat, setBat, bi, setBi, ing, lots, av, producten, setProducten, recepten, gistMetingen, setGistMetingen,
+    stand, onStand, onOpenBatch, gaNaar, navDoel = null, onNavDoelConsumed, onNieuweBatch,
+    bat, setBat, bi, setBi, ing, lots, av, producten, recepten, gistMetingen, setGistMetingen,
     log, setLog, auditLog, setAuditLog,
   } = p
   const smal = useSmalScherm()
@@ -130,16 +127,9 @@ const BatchesPage: React.FC<BatchesPageProps> = (p) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Een nieuwe batch: de knop, of een ingang elders (Brouwen op een recept,
-  // een vrije tank op de brouwzaal) met wat die al invult.
-  const [nieuw, setNieuw] = useState<NieuweBatchVoorinvulling | null>(null)
-  useEffect(() => {
-    if (!preNieuwBatch) return
-    setNieuw(preNieuwBatch)
-    setPreNieuwBatch?.(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preNieuwBatch])
-  const openNieuw = () => setNieuw({})
+  // Een nieuwe batch: het blad "Wat brouw je?" (één blad in App.tsx, ook voor
+  // de brouwzaal, een recept en een product). Na Inplannen opent de batch.
+  const openNieuw = () => onNieuweBatch?.({})
   const [metingVoor, setMetingVoor] = useState<number | null>(null)
 
   const titelVan = (b: any) => batchTitel(b, { producten, recepten }, t('lbl_naamloos'))
@@ -404,17 +394,6 @@ const BatchesPage: React.FC<BatchesPageProps> = (p) => {
           </div>
         )}
       </div>
-
-      {nieuw && (
-        <NieuweBatchFormulier
-          bat={bat} setBat={setBat} setBi={setBi} ing={ing} recepten={recepten}
-          receptenVerborgen={p.receptenVerborgen} receptenGearchiveerdeTags={p.receptenGearchiveerdeTags}
-          producten={producten} setProducten={setProducten} tanks={p.tanks || []} tankStatussen={p.tankStatussen}
-          setLog={setLog} auditLog={auditLog} setAuditLog={setAuditLog}
-          voorinvulling={nieuw}
-          onGepland={id => { setNieuw(null); onOpenBatch?.(id) }}
-          onSluit={() => setNieuw(null)} />
-      )}
 
       {metingBatch && (
         <MetingBlad batch={metingBatch} label={titelVan(metingBatch).label}

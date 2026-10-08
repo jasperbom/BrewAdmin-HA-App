@@ -29,7 +29,7 @@
 import type { Allergeen, Batch, Product, Recept } from '../types'
 import { hoofdIdResolver, isReceptVersie, receptHoofdId } from './productKeten'
 import {
-  ZONDER_TAG, heeftZoekterm, receptGebruik, receptPastBijZoek, receptTags, receptenPerProduct,
+  ZONDER_TAG, heeftZoekterm, receptPastBijZoek, receptTags, receptenPerProduct,
   tekstPastBijZoek,
   type ProductReceptGroep, type ReceptBatchRef, type ReceptGebruik, type ReceptProductRef, type ReceptTagChip,
 } from './receptGebruik'
@@ -39,7 +39,6 @@ import type { EtiketStatus, EtiketVergelijking } from './etiket'
 type ReceptLike = Pick<Recept, 'id'> & Partial<Omit<Recept, 'id'>>
 type ProductLike = Pick<Product, 'id' | 'naam'> & Partial<Omit<Product, 'id' | 'naam'>>
 type BatchLike = Pick<Batch, 'id'> & Partial<Omit<Batch, 'id'>>
-type IdLijst = ReadonlyArray<string | number | null | undefined> | null | undefined
 /** `recepten_verborgen`: id's als tekst of getal; een object met `id` mag ook (zoals in receptGebruik). */
 type VerborgenWaarde = string | number | { id?: string | number | null } | null | undefined
 type VerborgenLijst = ReadonlyArray<VerborgenWaarde> | null | undefined
@@ -62,16 +61,6 @@ const teksten = (lijst: TekstLijst): string[] => {
   }
   return uit
 }
-
-/** De tags van een recept: getrimd, zonder lege en zonder dubbele. */
-const tagsVan = (r: ReceptLike): string[] => teksten(Array.isArray(r.tags) ? r.tags : [])
-
-const isHoofdrecept = (r: ReceptLike | null | undefined): r is ReceptLike =>
-  !!r && r.id != null && String(r.id) !== '' && !isReceptVersie(r)
-
-/** Past het recept bij de zoektekst (naam, stijl of tag; alle woorden, zonder accenten)? */
-export const receptPastBijZoekterm = (r: ReceptLike, zoek: string | null | undefined): boolean =>
-  tekstPastBijZoek([r.naam, r.stijl, ...tagsVan(r)], zoek)
 
 // ── De drie segmenten ───────────────────────────────────────────────────────
 
@@ -614,40 +603,4 @@ export const versiesPerRecept = <R extends ReceptLike>(
       String(b.versie_datum || '').localeCompare(String(a.versie_datum || '')) || String(b.id).localeCompare(String(a.id)))
   }
   return uit
-}
-
-// ── De keuzelijst ───────────────────────────────────────────────────────────
-
-export interface ReceptKeuzeOpties {
-  /** `recepten_verborgen`. */
-  verborgen?: VerborgenLijst
-  /** `recepten_gearchiveerde_tags`. */
-  gearchiveerdeTags?: TekstLijst
-  /**
-   * Recepten die altijd kiesbaar blijven, ook als ze verborgen zijn: het
-   * recept dat al gekozen is of al aan de batch hangt. Een versie-id telt voor
-   * zijn hoofdrecept.
-   */
-  behoud?: IdLijst
-}
-
-/**
- * De recepten voor een eenvoudige keuzelijst (Nieuwe batch, Recept opnieuw
- * toepassen): alleen hoofdrecepten, zonder de verborgen recepten en zonder de
- * recepten waarvan alle tags gearchiveerd zijn — dezelfde regel als
- * `receptGebruik`. Wat in `behoud` staat blijft erin. Op naam.
- */
-export const receptenVoorKeuzelijst = <R extends ReceptLike>(
-  recepten: ReadonlyArray<R | null | undefined> | null | undefined,
-  opties: ReceptKeuzeOpties = {},
-): R[] => {
-  const lijst = (recepten || []).filter((r): r is R => !!r && r.id != null && String(r.id) !== '')
-  const naarHoofd = hoofdIdResolver(lijst)
-  const behoud = new Set((opties.behoud || []).map(id => naarHoofd(id)).filter(Boolean))
-  return receptGebruik<R>({
-    recepten: lijst, batches: [], producten: [],
-    verborgen: opties.verborgen, gearchiveerdeTags: opties.gearchiveerdeTags,
-  })
-    .filter(g => isHoofdrecept(g.recept) && (g.status !== 'verborgen' || behoud.has(g.id)))
-    .map(g => g.recept)
 }

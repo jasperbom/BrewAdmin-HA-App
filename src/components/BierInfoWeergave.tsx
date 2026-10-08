@@ -15,6 +15,17 @@ export interface BierInfoWeergaveProps {
   info?: Record<string, any> | null
   /** Compacter tonen (bijv. in een modal). */
   compact?: boolean
+  /** Waar een afgeleide waarde vandaan komt (`bierInfoWeergave`): een klein
+   *  label bij het cijfer of het tekstblok ("berekend", "uit de batch"). */
+  herkomst?: Record<string, string> | null
+}
+
+/** Het bronlabel van een afgeleide waarde, in de taal van het scherm. */
+const HERKOMST_SLEUTEL: Record<string, string> = {
+  berekend: 'etiket_bron_kort_berekend',
+  verwacht: 'etiket_bron_kort_verwacht',
+  batch: 'etiket_bron_ingredienten_batch',
+  recept: 'etiket_bron_ingredienten_recept',
 }
 
 const gevuld = (w: any): boolean =>
@@ -25,8 +36,12 @@ const gevuld = (w: any): boolean =>
 const regels = (w: any): BierRegel[] =>
   Array.isArray(w) ? w.filter((r: any) => r && (r.label || r.value)) : []
 
-const BierInfoWeergave: React.FC<BierInfoWeergaveProps> = ({info, compact = false}) => {
+const BierInfoWeergave: React.FC<BierInfoWeergaveProps> = ({info, compact = false, herkomst}) => {
   const bron = info || {}
+  const herkomstVan = (veld: string): string => {
+    const h = herkomst?.[veld]
+    return h && HERKOMST_SLEUTEL[h] ? t(HERKOMST_SLEUTEL[h]) : ''
+  }
   const heeft = (f: BierVeld) => gevuld(bron[f.veld])
 
   // ── De grote cijfers (ABV, IBU, EBC, kcal) ────────────────────────────────
@@ -60,7 +75,8 @@ const BierInfoWeergave: React.FC<BierInfoWeergaveProps> = ({info, compact = fals
         kaarten.push({sleutel: `${f.veld}-${r.label}`, kop: r.label, tekst: r.value})
       }
     } else {
-      kaarten.push({sleutel: f.veld, kop: t(f.label), tekst: String(bron[f.veld])})
+      const h = herkomstVan(f.veld)
+      kaarten.push({sleutel: f.veld, kop: h ? `${t(f.label)} · ${h}` : t(f.label), tekst: String(bron[f.veld])})
     }
   }
 
@@ -111,7 +127,7 @@ const BierInfoWeergave: React.FC<BierInfoWeergaveProps> = ({info, compact = fals
               <div className={`font-bold leading-none ${compact ? 'text-base' : 'text-xl'}`} style={{color: 'var(--t-accent)'}}>
                 {String(bron[f.veld])}
               </div>
-              <div className="text-[11px] text-gray-500 mt-0.5">{t(f.label)}</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">{t(f.label)}{herkomstVan(f.veld) && ` · ${herkomstVan(f.veld)}`}</div>
             </div>
           ))}
           {gevuld(score) && (

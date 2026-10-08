@@ -4,6 +4,53 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.95] — 2026-10-08
+
+### Productie & Verkoop, deel 6: "Wat brouw je?" en de productpagina als knooppunt
+
+**Nieuwe batch: het blad "Wat brouw je?"**
+- Eén blad (venster op het bureau, paneel van onderen op de telefoon) met vijf
+  ingangen: Brouwzaal, Batches, een vrije tank (tank ingevuld), *Brouwen* op
+  een recept, en *Nieuwe batch* op een product (product en huidig recept
+  ingevuld). Het oude planformulier is weg.
+- **Stap 1** begint bij *Jouw producten*: per product het huidige recept, hoe
+  vaak gebrouwen, de laatste brouwdatum of "gepland", en "ingrediënten klaar"
+  of "tekort n". Daarna *Seizoen / uit roulatie*, *Andere recepten in gebruik*,
+  en het hele Brewfather-archief via zoeken. Een oudere versie kies je onder
+  het recept, nooit als losse regel.
+- **Stap 2:** brouwdatum, de tank met zijn status óp die datum (vrij, schoon,
+  vuil; gereserveerd waarschuwt; bezet tot ± datum en een lagertank zijn niet
+  te kiezen), liters en het product (één kandidaat vanzelf, meer kiezen, geen:
+  *Nieuw product* of *Later*).
+- **Vooruitblik op het etiket** vóór de brouwdag: de verwachte alcohol tegen
+  het etiket (met de marge) en de allergenen uit het recept tegen het etiket,
+  met *Etiket bijwerken ›*.
+- *Inplannen* opent de nieuwe batch. Het levert dezelfde batch en batchregels
+  op als het oude formulier (nagelopen). *Recept opnieuw toepassen* gebruikt
+  dezelfde receptkiezer.
+
+**De productpagina als knooppunt**
+- Een **ketenstrook** *Recept › Brouwsels › Etiket › Voorraad › Verkoop*; elk
+  vak springt naar zijn blok. Op het bureau *Maken* en *Verkopen* naast elkaar,
+  op de telefoon een vaste segmentstrook (Voorraad · Etiket · Brouwsels ·
+  Artikelen) met per segment de eigen actie onderin.
+- **Recept:** het huidige recept (vastzetten kan), eerdere recepten, recept
+  koppelen. **Brouwsels:** elke batch klikbaar, ook de lotcodes, met
+  gemiddelden en *Nieuwe batch*. **Etiket:** de etiketkaart, vergeleken met de
+  nieuwste batch. **Voorraad:** per verpakking vrij · AGP · besteld, lotregels
+  met THT, *Uitslaan* per lot en "komt eraan". **Verkoop:** artikelen met marge
+  en *Open bestellingen met dit bier*.
+- **Eén kostprijs per liter** met bron ("uit 2 brouwsels · 553 L afgevuld");
+  de marge per artikel rekent met de echte verpakkingsprijs.
+- De productlijst toont per product de voorraad uit dezelfde telling als
+  Overzicht, kassa en bestellingen, en de etiketstatus.
+- Een tekort toont wat er na uitslaan écht ontbreekt ("tekort 98 · 630 eerst
+  uitslaan") in plaats van het hele bestelde aantal.
+- Uitslaan, rebranden en afboeken boeken hetzelfde als voorheen (nagelopen);
+  W&V en COGS zijn ongewijzigd.
+
+---
+
 ## [1.12.94] — 2026-10-08
 
 ### Productie & Verkoop, deel 5: Etiket bijwerken en de tab Batches
