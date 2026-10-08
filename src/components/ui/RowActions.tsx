@@ -8,6 +8,9 @@ export interface RowActie {
   onClick: () => void
   disabled?: boolean
   title?: string
+  /** Een korte regel onder het label in het menu — vooral: waarom een
+      uitgeschakelde actie niet kan (een telefoon kent geen tooltip). */
+  toelichting?: string
   /** `gevaar` zet de actie apart onderaan het menu, met rode tekst. */
   soort?: 'normaal' | 'gevaar'
 }
@@ -163,14 +166,24 @@ const RowActions: React.FC<RowActionsProps> = ({ primair, acties, v = 'default',
               disabled={a.disabled}
               title={a.title}
               onClick={() => { setOpen(false); a.onClick() }}
-              className={`flex items-center w-full text-left px-3 py-2 min-h-tap md:min-h-0 text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`flex items-center w-full text-left px-3 py-2 min-h-tap md:min-h-0 text-sm transition-colors disabled:cursor-not-allowed ${
+                a.toelichting ? '' : 'disabled:opacity-40'
+              } ${
                 a.soort === 'gevaar'
                   ? 'text-red-600 hover:bg-red-50'
                   : 'text-gray-700 hover:bg-gray-50'
-              }`}
+              } ${a.toelichting ? 'disabled:hover:bg-transparent' : ''}`}
             >
               {/* Eén kind in de flexrij: een label met meer delen loopt gewoon door. */}
-              <span className="min-w-0">{a.label}</span>
+              {a.toelichting ? (
+                <span className="min-w-0">
+                  {/* Het label verbleekt als de actie niet kan; de reden blijft leesbaar. */}
+                  <span className={`block ${a.disabled ? 'opacity-40' : ''}`}>{a.label}</span>
+                  <span className="block mt-0.5 text-xs text-gray-600">{a.toelichting}</span>
+                </span>
+              ) : (
+                <span className="min-w-0">{a.label}</span>
+              )}
             </button>
           ))}
         </div>,

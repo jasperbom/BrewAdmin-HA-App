@@ -69,7 +69,7 @@ describe('attentiePosten', () => {
       [...alle.productie, ...alle.verkoop, ...alle.administratie].map(p => [p.id, attentieDoel(p)]),
     )
     expect(doelen).toEqual({
-      batchtaken: { pagina: 'batches', filter: 'taken' },
+      batchtaken: { pagina: 'batches', stand: 'lopend', filter: 'taken' },
       schoonmaak: { pagina: 'haccp', tab: 'reiniging' },
       tht_verlopen: { pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_verlopen' },
       tht_binnenkort: { pagina: 'ingredienten', tab: 'ingredienten', filter: 'tht_binnenkort' },
@@ -79,6 +79,32 @@ describe('attentiePosten', () => {
       accijns: { pagina: 'boekhouding', tab: 'accijns' },
       inkoop_achterstallig: { pagina: 'boekhouding', tab: 'inkoop' },
     })
+  })
+
+  it('batchtaken: Batches › Lopend, met per batch een regel die de batch bij zijn taken opent', () => {
+    const bron = leegBron()
+    bron.batches = [
+      { id: 7, batch_nummer: '2609', product_id: 1, status: 'Conditioneren', taken_checks: {} },
+      { id: 8, batch_nummer: '2610', naam: 'Werfhop', status: 'Vergisten', taken_checks: { i3: true } },
+      { id: 9, batch_nummer: '2601', status: 'Gesloten', taken_checks: {} },
+    ]
+    bron.producten = [{ id: 1, naam: 'Kadeblond' }]
+    bron.batchTakenGroepen = [{ id: 'g1', fase: 'Conditioneren' }, { id: 'g2', fase: 'Vergisten' }, { id: 'g3', fase: 'Gesloten' }]
+    bron.batchTakenItems = [
+      { id: 'i1', group_id: 'g1', type: 'check', actief: true },
+      { id: 'i2', group_id: 'g1', type: 'check', actief: true },
+      { id: 'i3', group_id: 'g2', type: 'check', actief: true },
+      { id: 'i4', group_id: 'g3', type: 'check', actief: true },
+    ]
+    const post = attentiePosten(bron).productie.find(p => p.id === 'batchtaken')!
+    // Telt batches (één), geen vinkjes (twee); de gesloten batch telt niet.
+    expect(post.aantal).toBe(1)
+    expect(attentieDoel(post)).toEqual({ pagina: 'batches', stand: 'lopend', filter: 'taken' })
+    expect(post.details).toEqual([{
+      sleutel: 'attentie_batchtaken_detail', kortSleutel: 'attentie_batchtaken_kort',
+      params: { batch: 'Kadeblond #2609', n: 2 },
+      doel: { pagina: 'batches', id: 7, tab: 'Conditioneren', filter: 'taken' },
+    }])
   })
 
   it('laat posten met aantal 0 weg', () => {

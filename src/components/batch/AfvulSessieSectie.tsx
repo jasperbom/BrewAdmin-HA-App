@@ -12,7 +12,7 @@ import Inp from '../ui/Inp'
 import Sel from '../ui/Sel'
 import BlokkadeKaart, { blokkadeSamenvatting, blokkadeTekst } from '../haccp/BlokkadeKaart'
 import AfwijkingModal from '../haccp/AfwijkingModal'
-import EtiketAllergenen from '../haccp/EtiketAllergenen'
+import { useEtiketBijwerken } from './EtiketBijwerken'
 import {
   maakParaaf, haccpInst, risicoVoorBatch, omkeerproefVerplicht,
   kroonkurkVerplicht,
@@ -62,8 +62,6 @@ interface Props {
   av: any[]
   setAv: (fn: any) => void
   producten: any[]
-  /** Nodig om de etiketallergenen van een product bij CCP 3 vast te leggen. */
-  setProducten: (fn: any) => void
   /** Recepten en alle batches: de producten van het recept van de batch staan
    *  bovenaan de productkeuze (utils/batchKeten.ts → productenVoorBatchKeuze). */
   recepten?: any[]
@@ -426,19 +424,18 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           .replace('{allergenen}', v.teveelOpEtiket.map(allergeenLabel).join(', '))
       : blokkadeTekst({code: r.code, i18nKey: r.i18nKey, params: r.params})
 
-  // Etiketallergenen horen bij het product (masterdata), maar worden hier
-  // vastgelegd omdat CCP 3 het hier mist. Een lege lijst is een geldig
-  // antwoord ("het etiket vermeldt geen allergenen") en iets anders dan een
-  // ontbrekende lijst — daarom altijd een array wegschrijven.
-  const legEtiketAllergenenVast = (product: any, allergenen: string[]) => {
-    if (!product) return
-    p.setProducten((prev: any[]) => (prev || []).map((x: any) => x.id === product.id
-      ? {...x, allergenen, etiket_bijgewerkt: tod()} : x))
-    logAudit(p.auditLog, p.setAuditLog, {
-      entiteit: 'Product', entiteit_id: product.id, actie: 'gewijzigd',
-      omschrijving: `Etiket-allergenen: ${product.naam || ''}`,
-    })
-  }
+  // Het etiket van een product vastleggen kan hier meteen, zonder de pagina
+  // (en het half ingevulde formulier) te verlaten — maar altijd via dezelfde
+  // dialoog "Etiket bijwerken" als op de batch, het product en de HACCP-
+  // matrix: de enige schrijfweg voor `product.allergenen` en de etiketversie.
+  // Wat hier gebeurt blijft daardoor een eigen handeling, nooit "neem over".
+  const etiketDienst = useEtiketBijwerken()
+  const etiketBijwerkenKnop = (product: any) => etiketDienst && product ? (
+    <button type="button" onClick={() => etiketDienst.open({productId: Number(product.id), batchId: p.batch?.id ?? null})}
+      className="min-h-tap sm:min-h-0 text-xs font-medium underline underline-offset-2 t-accent-text">
+      {t('etiket_actie_bijwerken')}
+    </button>
+  ) : null
 
   const slaEtiketOp = (afwijkingId?: number) => {
     if (!sessie || etiketOnvolledig) return
@@ -943,14 +940,8 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
               ✗ {etiketRedenTekst(r, naVergelijking)}
             </div>
           ))}
-          {/* Ook hier: het etiket vastleggen kan meteen, zonder de pagina te
-              verlaten en het formulier kwijt te raken. */}
-          {naProduct && (
-            <div className="pt-1">
-              <EtiketAllergenen product={naProduct}
-                onOpslaan={all => legEtiketAllergenenVast(naProduct, all)} />
-            </div>
-          )}
+          {/* Ook hier: het etiket bijwerken kan meteen, in de dialoog. */}
+          {naProduct && etiketDienst && <div className="pt-1">{etiketBijwerkenKnop(naProduct)}</div>}
         </div>
       )}
       {/* Pas melden wat er ontbreekt zodra er iets is ingevuld — een leeg
@@ -1237,14 +1228,11 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
               )}
             </>
           )}
-          {/* De blokkade oplossen waar hij optreedt: wat er op het etiket
-              staat aanvinken. Zonder dit blijft "nog niet vastgelegd" een
+          {/* De blokkade oplossen waar hij optreedt: het etiket bijwerken in
+              de dialoog. Zonder dit blijft "nog niet vastgelegd" een
               doodlopende weg midden in de afvulsessie. */}
-          {!!ec.product_id && gekozenProduct && (
-            <div className="pt-1">
-              <EtiketAllergenen product={gekozenProduct}
-                onOpslaan={all => legEtiketAllergenenVast(gekozenProduct, all)} />
-            </div>
+          {!!ec.product_id && gekozenProduct && etiketDienst && (
+            <div className="pt-1">{etiketBijwerkenKnop(gekozenProduct)}</div>
           )}
         </div>
 

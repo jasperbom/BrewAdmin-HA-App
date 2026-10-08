@@ -16,8 +16,11 @@ import {
   etiketGetalVoorstellen, abvVastzetten, bronKortSleutel,
   zelfdeEtiketVersie, etiketVersieBlokkade, etiketBlokMetVersie, etiketControleGetallen, ccp3AbvRegel,
   etiketDoelStrook, ingredientenVerschil,
+  afvullingenOpVoorraad, webshopBevatRegel, webshopVoorstel, webshopPayload,
+  etiketWijzigingUitKeuze, keuzeVraagtNieuweVersie, energieKeuze, metEtiketVan,
+  etiketGetalTekst, etiketGetalReden, etiketDialoogKop,
 } from '../etiket'
-import type { EtiketWaarden, ProductEtiketWaarden } from '../etiket'
+import type { EtiketKeuze, EtiketWaarden, ProductEtiketWaarden } from '../etiket'
 import { bierIngredienten } from '../bierinfo'
 import { crafteryMeta } from '../craftery'
 import { AUDIT_SOORTEN } from '../audit'
@@ -1067,21 +1070,267 @@ describe('metBevatRegel / zonderBevatRegel', () => {
 })
 
 describe('webshopAllergenen', () => {
-  it('de vereniging van het etiket en de etiketten die nog op voorraad liggen', () => {
-    const product: any = {id: 1, allergenen: ['gluten', 'gerst', 'tarwe'], etiket_versie: 'v4'}
-    const opVoorraad: any[] = [
-      {id: 1, product_id: 1, sessie_id: 11},
-      {id: 2, product_id: 2, sessie_id: 12},
-      {id: 3, product_id: 1},
-    ]
-    const controles: any[] = [
-      {sessie_id: 11, product_id: 1, allergenen_etiket: ['gluten', 'gerst', 'lactose'], etiket_versie: 'v2', paraaf: {tijdstip: '2026-01-01T10:00'}},
-      {sessie_id: 11, product_id: 1, allergenen_etiket: ['gluten', 'gerst'], etiket_versie_gelezen: 'v3', paraaf: {tijdstip: '2026-08-11T10:00'}},
-      {sessie_id: 12, product_id: 2, allergenen_etiket: ['soja']},
-    ]
-    expect(webshopAllergenen(product, opVoorraad, controles)).toEqual({lijst: ['gluten', 'gerst', 'tarwe'], versies: ['v4', 'v3']})
+  const product: any = {id: 1, allergenen: ['gluten', 'gerst', 'tarwe'], etiket_versie: 'v4'}
+  const opVoorraad: any[] = [
+    {id: 1, product_id: 1, sessie_id: 11},
+    {id: 2, product_id: 2, sessie_id: 12},
+    {id: 3, product_id: 1},
+  ]
+  const controles: any[] = [
+    {sessie_id: 11, product_id: 1, allergenen_etiket: ['gluten', 'gerst', 'lactose'], etiket_versie: 'v2', paraaf: {tijdstip: '2026-01-01T10:00'}},
+    {sessie_id: 11, product_id: 1, allergenen_etiket: ['gluten', 'gerst'], etiket_versie_gelezen: 'v3', paraaf: {tijdstip: '2026-08-11T10:00'}},
+    {sessie_id: 12, product_id: 2, allergenen_etiket: ['soja']},
+    // Een sessie zonder voorraad telt niet.
+    {sessie_id: 13, product_id: 1, allergenen_etiket: ['noten'], etiket_versie: 'v1'},
+  ]
+
+  it('de vereniging van het etiket en álle etiketten van de sessies op voorraad (ook na een rolwissel)', () => {
+    expect(webshopAllergenen(product, opVoorraad, controles)).toEqual({
+      lijst: ['gluten', 'gerst', 'tarwe', 'lactose'], versies: ['v4', 'v3', 'v2'],
+    })
+  })
+
+  it('een lot zonder controle valt terug op het huidige etiket (dat er altijd in zit)', () => {
+    expect(webshopAllergenen({id: 1, allergenen: ['gerst']} as any, [{id: 3, product_id: 1}], controles).lijst).toEqual(['gerst'])
     expect(webshopAllergenen({id: 1, allergenen: ['gerst']} as any, opVoorraad, [{...controles[1], allergenen_etiket: ['tarwe']}]).lijst)
       .toEqual(['gerst', 'tarwe'])
+  })
+
+  it('v3 → v4: zolang er v3-flessen liggen, staan de allergenen van beide etiketten erin', () => {
+    // v4 haalt de lactose eraf, maar de v3-flessen (sessie 11) hebben hem nog.
+    const v4: any = {id: 1, allergenen: ['gluten', 'gerst'], etiket_versie: 'v4'}
+    const v3: any[] = [{sessie_id: 11, product_id: 1, allergenen_etiket: ['gluten', 'gerst', 'lactose'], etiket_versie_gelezen: 'v3'}]
+    expect(webshopAllergenen(v4, [{id: 1, product_id: 1, sessie_id: 11}], v3).lijst).toEqual(['gluten', 'gerst', 'lactose'])
+    expect(webshopAllergenen(v4, [], v3).lijst).toEqual(['gluten', 'gerst'])
+  })
+})
+
+describe('afvullingenOpVoorraad / webshopBevatRegel', () => {
+  const av: any[] = [
+    {id: 1, batch_id: 2607, product_id: 1, sessie_id: 11, hoeveelheid: 24},
+    {id: 2, batch_id: 2604, product_id: 1, sessie_id: 9, hoeveelheid: 12},
+    {id: 3, batch_id: 2605, product_id: 2, sessie_id: 10, hoeveelheid: 12},
+  ]
+  // Lot 2 is helemaal uitgeleverd.
+  const uitleveringen: any[] = [{id: 1, afvulling_id: 2, aantal: 12, datum: '2026-06-01'}]
+  const etiketcontroles: any[] = [
+    {sessie_id: 11, product_id: 1, allergenen_etiket: ['gluten', 'gerst'], etiket_versie_gelezen: 'v3'},
+    {sessie_id: 9, product_id: 1, allergenen_etiket: ['gluten', 'gerst', 'lactose'], etiket_versie: 'v2'},
+  ]
+  const ctx = {afvullingen: av, uitleveringen, etiketcontroles}
+
+  it('alleen de lots van het product waar nog bier van ligt', () => {
+    expect(afvullingenOpVoorraad(1, ctx).map(a => a.id)).toEqual([1])
+    expect(afvullingenOpVoorraad(1, {afvullingen: av}).map(a => a.id)).toEqual([1, 2])
+    expect(afvullingenOpVoorraad(1, null)).toEqual([])
+  })
+
+  it('de Bevat-regel: huidig etiket + wat er op voorraad ligt', () => {
+    const v4: any = {id: 1, allergenen: ['gluten', 'gerst', 'tarwe'], etiket_versie: 'v4'}
+    expect(webshopBevatRegel(v4, ctx, t)).toBe('Bevat: gerst, tarwe.')
+    // Lag lot 2 (v2, lactose) er nog, dan stond de melk erbij.
+    expect(webshopBevatRegel(v4, {...ctx, uitleveringen: []}, t)).toBe('Bevat: gerst, tarwe, melk (lactose).')
+  })
+
+  it('niets vastgelegd en niets op voorraad: geen Bevat-zin (nooit "geen allergenen" verzinnen)', () => {
+    expect(webshopBevatRegel({id: 5} as any, ctx, t)).toBe('')
+    expect(webshopBevatRegel({id: 1, allergenen: []} as any, {afvullingen: []}, t)).toBe('')
+  })
+})
+
+describe('webshopVoorstel — "Ook naar de webshop?" (SPEC scherm G ④)', () => {
+  // De stand zoals de winkel hem bij de laatste push had (etiket v3).
+  const recepten = [receptV3]
+  const standV3 = crafteryMeta({product: kadeblond, inhoudLiter: 0.33, recepten, ingredienten})
+  const artikelen: any[] = [
+    {id: 5, product_id: 1, verpakking_id: 33, verpakking_naam: 'Fles 33cL', artikelnummer: 'KB-33', inhoud_liter: 0.33,
+      wc: {meta_stand: standV3, meta_stand_op: '2026-09-12T10:00:00Z'}},
+    {id: 6, product_id: 1, verpakking_id: 20, verpakking_naam: 'Fust 20L', artikelnummer: 'KB-F20', inhoud_liter: 20},
+    {id: 7, product_id: 1, verpakking_id: 75, verpakking_naam: 'Fles 75cL', artikelnummer: ''},
+    {id: 8, product_id: 1, verpakking_id: 50, verpakking_naam: 'Doos', artikelnummer: 'KB-DOOS', wc_push: false},
+    {id: 9, product_id: 2, artikelnummer: 'SW-33'},
+  ]
+  const v4 = {...kadeblond, abv: 7, allergenen: ['gluten', 'gerst', 'tarwe'], etiket_versie: 'v4'}
+  const bevat = allergeenRegel(v4.allergenen, t)
+
+  it('per artikel met SKU (en niet uitgezet) wat er verandert', () => {
+    const r = webshopVoorstel(v4, artikelen, {recepten, ingredienten, bevatRegel: bevat})
+    expect(r.map(a => a.sku)).toEqual(['KB-33', 'KB-F20'])
+    const fles = r[0]
+    expect(fles).toMatchObject({artikelId: 5, naam: 'Fles 33cL', standOp: '2026-09-12T10:00:00Z', standOnbekend: false})
+    expect(fles.regels.map(x => [x.veld, x.website, x.nu, x.aan])).toEqual([
+      ['abv', '6,2%', '7,0%', true],
+      ['ingredienten', standV3._cf_ingredienten, `${standV3._cf_ingredienten}. Bevat: gerst, tarwe.`, true],
+    ])
+  })
+
+  it('zonder bewaarde stand: alles wat de app weet', () => {
+    const fust = webshopVoorstel(v4, artikelen, {recepten, ingredienten, bevatRegel: bevat})[1]
+    expect(fust.standOnbekend).toBe(true)
+    expect(fust.regels.map(x => x.veld)).toEqual(['abv', 'ibu', 'ebc', 'ingredienten'])
+    expect(fust.regels.every(x => x.website === null && x.aan)).toBe(true)
+  })
+
+  it('de webshop is bij: geen regels', () => {
+    const r = webshopVoorstel(kadeblond, [artikelen[0]], {recepten, ingredienten})
+    expect(r[0].regels).toEqual([])
+  })
+
+  it('berekende energie als eigen regel: aan als de webshop er niets heeft, nooit over een bestaande waarde', () => {
+    const r = webshopVoorstel(kadeblond, [artikelen[0]], {recepten, ingredienten, energieBerekend: 59.6})
+    expect(r[0].regels).toEqual([{veld: 'kcal', sleutel: '_cf_kcal', website: null, nu: '60', berekend: true, aan: true}])
+    // De webshop heeft al een (andere) waarde: tonen, maar niet vanzelf overschrijven.
+    const met45 = {...artikelen[0], wc: {...artikelen[0].wc, meta_stand: {...standV3, _cf_kcal: '45'}}}
+    expect(webshopVoorstel(kadeblond, [met45], {recepten, ingredienten, energieBerekend: 59.6})[0].regels)
+      .toEqual([{veld: 'kcal', sleutel: '_cf_kcal', website: '45', nu: '60', berekend: true, aan: false}])
+    // Stand onbekend: we weten niet wat er staat, dus ook niet aangevinkt.
+    const fust = webshopVoorstel(kadeblond, [artikelen[1]], {recepten, ingredienten, energieBerekend: 59.6})[0]
+    expect(fust.regels.find(x => x.veld === 'kcal')).toMatchObject({berekend: true, aan: false})
+    const vermeld = {...kadeblond, energie_op_etiket: 'vermeld', kcal: '58', kj: '243'}
+    const r2 = webshopVoorstel(vermeld, [artikelen[0]], {recepten, ingredienten, energieBerekend: 59.6})
+    expect(r2[0].regels).toEqual([{veld: 'kcal', sleutel: '_cf_kcal', website: null, nu: '58', berekend: false, aan: true}])
+  })
+})
+
+describe('webshopPayload — "Naar webshop" stuurt alleen de gekozen bierinformatie', () => {
+  it('alleen meta_data met de gekozen sleutels', () => {
+    expect(webshopPayload([{sleutel: '_cf_abv', nu: '7,0%'}, {sleutel: '_cf_ingredienten', nu: 'water, hop. Bevat: gerst.'}]))
+      .toEqual({meta_data: [{key: '_cf_abv', value: '7,0%'}, {key: '_cf_ingredienten', value: 'water, hop. Bevat: gerst.'}]})
+  })
+  it('nooit prijs, voorraad of iets buiten het thema', () => {
+    const p = webshopPayload([{sleutel: 'regular_price', nu: '1.00'}, {sleutel: 'stock_quantity', nu: '0'}, {sleutel: '_cf_ibu', nu: '24'}])
+    expect(p).toEqual({meta_data: [{key: '_cf_ibu', value: '24'}]})
+    expect(webshopPayload([])).toEqual({})
+    expect(webshopPayload(null)).toEqual({})
+  })
+})
+
+describe('websiteLooptAchter met de Bevat-regel', () => {
+  it('zonder ingrediëntentekst geen verschil: de push stuurt dan ook niets', () => {
+    const zonderTekst = {...kadeblond, recept_ids: []}
+    const artikel: any = {id: 5, product_id: 1, wc: {meta_stand: crafteryMeta({product: zonderTekst}), meta_stand_op: '2026-09-12'}}
+    expect(artikel.wc.meta_stand._cf_ingredienten).toBeUndefined()
+    const r = websiteLooptAchter(artikel, zonderTekst, {bevatRegel: 'Bevat: gerst.'})
+    expect(r.status).toBe('gelijk')
+  })
+})
+
+describe('etiketWijzigingUitKeuze / keuzeVraagtNieuweVersie (de dialoog)', () => {
+  const voorstellen = etiketGetalVoorstellen(etiketWaarden(b2609, ctx2609), productEtiketWaarden(kadeblond, {...ctx2609, batches: [b2609]}))
+  const keuze = (extra: Partial<EtiketKeuze> = {}): EtiketKeuze => ({
+    allergenen: kadeblond.allergenen, getallen: voorstellen, aan: {}, energie: 'niet_vermeld', versie: 'v3', ...extra,
+  })
+
+  it('openen en opslaan zonder iets te kiezen = geen wijziging', () => {
+    const w = etiketWijzigingUitKeuze(kadeblond, keuze())
+    expect(legEtiketVast(kadeblond, w, {bevestigd: false})).toMatchObject({ok: true, gewijzigd: []})
+  })
+
+  it('een nog niet vastgelegd etiket blijft dat, tot je bewust kiest (ook "geen allergenen")', () => {
+    const nieuw: any = {id: 9, naam: 'Nieuw'}
+    expect(etiketWijzigingUitKeuze(nieuw, keuze({allergenen: null, versie: ''}))).toEqual({})
+    expect(etiketWijzigingUitKeuze(nieuw, keuze({allergenen: [], versie: 'v1'}))).toEqual({allergenen: [], etiket_versie: 'v1'})
+  })
+
+  it('tarwe erbij: allergenen, een nieuwe versie verplicht (SPEC G)', () => {
+    const k = keuze({allergenen: ['tarwe', 'gluten', 'gerst'], versie: 'v4'})
+    expect(keuzeVraagtNieuweVersie(kadeblond, k)).toBe(true)
+    const w = etiketWijzigingUitKeuze(kadeblond, k)
+    expect(w).toEqual({allergenen: ['gluten', 'gerst', 'tarwe'], etiket_versie: 'v4'})
+    expect(legEtiketVast(kadeblond, w, {bevestigd: false})).toMatchObject({ok: false, fout: 'etiket_fout_bevestiging'})
+    const r = legEtiketVast(kadeblond, w, {bevestigd: true, datum: '2026-10-07'})
+    expect(r.ok && r.product).toMatchObject({allergenen: ['gluten', 'gerst', 'tarwe'], etiket_versie: 'v4', etiket_bijgewerkt: '2026-10-07'})
+  })
+
+  it('een getal alleen met zijn vinkje; bitterheid alleen vraagt geen nieuwe versie', () => {
+    expect(etiketWijzigingUitKeuze(kadeblond, keuze({aan: {ibu: true}}))).toEqual({ibu: 24})
+    expect(keuzeVraagtNieuweVersie(kadeblond, keuze({aan: {ibu: true}}))).toBe(false)
+    expect(keuzeVraagtNieuweVersie(kadeblond, keuze({aan: {abv: true}}))).toBe(true)
+    expect(etiketWijzigingUitKeuze(kadeblond, keuze({aan: {abv: true, ebc: true}}))).toEqual({abv: 7})
+  })
+
+  it('energie: alleen als de keuze verandert of op Vermeld staat (kcal én kJ)', () => {
+    expect(etiketWijzigingUitKeuze(kadeblond, keuze({energie: 'vermeld', kcal: '60', kj: '249'})))
+      .toEqual({energie_op_etiket: 'vermeld', kcal: '60', kj: '249'})
+    const vermeld = {...kadeblond, energie_op_etiket: 'vermeld', kcal: '60', kj: '249'}
+    expect(etiketWijzigingUitKeuze(vermeld, keuze({energie: 'niet_vermeld'}))).toEqual({energie_op_etiket: 'niet_vermeld'})
+    expect(energieKeuze(vermeld)).toBe('vermeld')
+    expect(energieKeuze(kadeblond)).toBe('niet_vermeld')
+  })
+
+  it('de versie alleen als hij anders is ("V3" = "v3")', () => {
+    expect(etiketWijzigingUitKeuze(kadeblond, keuze({versie: 'V3'}))).toEqual({})
+    expect(etiketWijzigingUitKeuze(kadeblond, keuze({versie: ' v3 '}))).toEqual({})
+  })
+})
+
+describe('de teksten van de dialoog (SPEC scherm G en H)', () => {
+  const voorstellen = etiketGetalVoorstellen(etiketWaarden(b2609, ctx2609), productEtiketWaarden(kadeblond, {...ctx2609, batches: [b2609]}))
+  const [abv, ibu, ebc] = voorstellen
+
+  it('de vinkregels: oud → nieuw, bitterheid en kleur voor de website', () => {
+    expect(etiketGetalTekst(abv, t, 'nl')).toBe('6,2 → 7,0 % vol')
+    expect(etiketGetalTekst(ibu, t, 'nl')).toBe('22 → 24 IBU (website)')
+    expect(etiketGetalTekst(ebc, t, 'nl')).toBe('9 EBC')
+    expect(etiketGetalTekst({...ibu, oud: null}, t, 'nl')).toBe('— → 24 IBU (website)')
+    expect(etiketGetalTekst(abv, vertaal('en'), 'en')).toBe('6.2 → 7.0% vol')
+  })
+
+  it('de reden naast een vinkregel', () => {
+    expect(etiketGetalReden(abv, t, 'nl')).toBe('binnen ±1,0 % vol: mag blijven staan')
+    expect(etiketGetalReden(ibu, t, 'nl')).toBe('verschil 2')
+    expect(etiketGetalReden(ebc, t, 'nl')).toBe('gelijk')
+    expect(etiketGetalReden({...abv, regel: {...abv.regel, oordeel: 'buiten_marge', marge: 0.5}}, t, 'nl'))
+      .toBe('buiten ±0,5 % vol: pas het etiket aan')
+    expect(etiketGetalReden({...abv, regel: {...abv.regel, oordeel: 'klopt'}}, t, 'nl')).toBe('klopt')
+    expect(etiketGetalReden({...ibu, oud: null}, t, 'nl')).toBe('nog niet vastgelegd')
+    expect(etiketGetalReden({...ibu, nieuw: null}, t, 'nl')).toBe('geen waarde van de batch')
+  })
+
+  it('de kopregel op het bureau en de telefoon', () => {
+    const b = {...b2609, tank: 'GV1'}
+    expect(etiketDialoogKop({batch: b, product: kadeblond}, t))
+      .toBe('Vergeleken met #2609 (conditioneert in GV1) · nu op het etiket: v3 van 8-4-2025')
+    expect(etiketDialoogKop({batch: b, product: kadeblond, kort: true}, t)).toBe('Tegen #2609 · nu etiket v3')
+    expect(etiketDialoogKop({batch: b2607, product: {etiket_versie: 'v3'}}, t))
+      .toBe('Vergeleken met #2607 (gereed) · nu op het etiket: v3')
+    expect(etiketDialoogKop({recept: receptV4, product: {}}, t))
+      .toBe('Vergeleken met het recept Kadeblond v4 · nog geen etiketversie vastgelegd')
+    expect(etiketDialoogKop({product: {}}, t)).toBe('nog geen etiketversie vastgelegd')
+  })
+
+  it('elke sleutel van de dialoog staat in alle vijf talen', () => {
+    const sleutels = [
+      'etiket_bijwerken_website', 'etiket_bijwerken_reden_leeg', 'etiket_bijwerken_reden_geen_batch',
+      'etiket_bijwerken_reden_binnen', 'etiket_bijwerken_reden_buiten', 'etiket_bijwerken_reden_klopt',
+      'etiket_bijwerken_reden_gelijk', 'etiket_bijwerken_reden_verschil', 'etiket_bijwerken_tegen',
+      'etiket_bijwerken_vergeleken', 'etiket_bijwerken_fase_in', 'etiket_bijwerken_tegen_recept',
+      'etiket_bijwerken_vergeleken_recept', 'etiket_bijwerken_nu_geen', 'etiket_bijwerken_nu_kort',
+      'etiket_bijwerken_nu', 'etiket_bijwerken_nu_versie',
+      ...['gepland', 'brouwen', 'vergisten', 'conditioneren', 'afgevuld', 'gesloten'].map(f => `etiket_bijwerken_fase_${f}`),
+    ]
+    const ontbreekt: string[] = []
+    for (const k of sleutels) for (const [taal, d] of Object.entries(TALEN)) if (!d[k]) ontbreekt.push(`${taal}:${k}`)
+    expect(ontbreekt).toEqual([])
+  })
+})
+
+describe('metEtiketVan — vastleggen op de nieuwste stand, en ongedaan maken', () => {
+  it('neemt de etiketvelden over en laat de rest staan', () => {
+    const nu: any = {...kadeblond, naam: 'Kadeblond (nieuw)', smaakprofiel: 'fris'}
+    const r = legEtiketVast(kadeblond, {allergenen: ['gluten', 'gerst', 'tarwe'], etiket_versie: 'v4'}, {bevestigd: true, datum: '2026-10-07'})
+    if (!r.ok) throw new Error('verwacht ok')
+    const opgeslagen = metEtiketVan(nu, r.product)
+    expect(opgeslagen).toMatchObject({naam: 'Kadeblond (nieuw)', smaakprofiel: 'fris', etiket_versie: 'v4', etiket_bijgewerkt: '2026-10-07'})
+    // Ongedaan maken: de etiketvelden van vóór de wijziging terug, de rest blijft.
+    const terug = metEtiketVan(opgeslagen, kadeblond)
+    expect(terug).toEqual({...nu})
+  })
+
+  it('een veld dat er vóór de wijziging niet was, verdwijnt weer', () => {
+    const r = legEtiketVast({id: 9, naam: 'Nieuw'} as any, {allergenen: [], etiket_versie: 'v1'}, {bevestigd: true, datum: '2026-10-07'})
+    if (!r.ok) throw new Error('verwacht ok')
+    expect(metEtiketVan(r.product, {id: 9, naam: 'Nieuw'})).toEqual({id: 9, naam: 'Nieuw'})
   })
 })
 

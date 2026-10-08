@@ -54,14 +54,64 @@ const leeg = (w: any): boolean =>
   w === undefined || w === null ||
   (Array.isArray(w) ? w.length === 0 : String(w).trim() === '')
 
+const tekst = (v: unknown): string => String(v ?? '').trim()
+
+// ── De Bevat-regel achter de ingrediënten ───────────────────────────────────
+//
+// Het thema heeft (nog) geen eigen allergeenveld. Tot dat er is, gaat de
+// Bevat-regel van het etiket ("Bevat: gerst, tarwe.") bij een push als
+// laatste zin achter de ingrediëntentekst (`_cf_ingredienten`), en haalt een
+// pull hem er weer af — anders belandt hij in het productveld `ingredienten`
+// en gaat hij bij de volgende push een tweede keer mee. Er komt geen nieuwe
+// `_cf_`-sleutel bij: het thema zit niet in deze repo.
+//
+// De zin herkennen gebeurt in elk van de vijf talen: dat is opmaak van de
+// webshoptekst, geen weergavetekst. Toevoegen gebeurt niet zodra het woord er
+// staat (ruim); weghalen alleen bij de echte zin met dubbele punt (streng),
+// zodat "mout (contains gluten)" blijft staan.
+const BEVAT_WOORD = /(?:^|[^\p{L}])(bevat|contains|enthält|contient|contiene)(?![\p{L}])/iu
+const BEVAT_ZIN = /(^|[^\p{L}])(?:bevat|contains|enthält|contient|contiene)\s*:/iu
+
+/** De ingrediëntentekst zonder de Bevat-zin erachter. */
+export const zonderBevatRegel = (ingredienten: unknown): string => {
+  const s = tekst(ingredienten)
+  const m = BEVAT_ZIN.exec(s)
+  if (!m) return s
+  // m[1] is het teken vóór het woord: tot en met dat teken blijft staan.
+  return s.slice(0, m.index + m[1].length).replace(/[\s.,;]+$/, '').trim()
+}
+
+/**
+ * De ingrediëntentekst met de Bevat-regel als laatste zin — alleen als die
+ * tekst nog geen "Bevat" noemt.
+ */
+export const metBevatRegel = (ingredienten: unknown, bevatRegel: unknown): string => {
+  const s = tekst(ingredienten)
+  const bevat = tekst(bevatRegel)
+  if (!bevat || BEVAT_WOORD.test(s)) return s
+  if (!s) return bevat
+  return `${s.replace(/[\s.]+$/, '')}. ${bevat}`
+}
+
+/** Wat `crafteryMeta` vertaalt, plus de Bevat-regel van het etiket. */
+export interface CrafteryBron extends BierInfoBron {
+  /**
+   * "Bevat: gerst, tarwe." — gaat bij een push achter de ingrediëntentekst.
+   * Alleen als er een ingrediëntentekst ís: zonder tekst sturen we niets, want
+   * een kale Bevat-zin zou de ingrediënten in de winkel overschrijven.
+   */
+  bevatRegel?: string | null
+}
+
 /**
  * De `meta_data` voor de WooCommerce-push: alle bierinformatie van dit artikel,
- * omgezet naar de sleutels van het thema.
+ * omgezet naar de sleutels van het thema, met de Bevat-regel achter de
+ * ingrediënten als die is meegegeven.
  *
  * Lege waarden blijven weg — een push kan zo nooit iets in de webshop wissen
  * wat de app nog niet weet.
  */
-export function crafteryMeta(bron: BierInfoBron): Record<string, any> {
+export function crafteryMeta(bron: CrafteryBron): Record<string, any> {
   const info = bierInfoVoorArtikel(bron)
   const uit: Record<string, any> = {}
 
@@ -76,6 +126,8 @@ export function crafteryMeta(bron: BierInfoBron): Record<string, any> {
     if (leeg(waarde)) continue
     uit[sleutel] = Array.isArray(waarde) ? waarde : String(waarde)
   }
+  const ing = CRAFTERY_META.ingredienten
+  if (!leeg(uit[ing]) && tekst(bron.bevatRegel)) uit[ing] = metBevatRegel(uit[ing], bron.bevatRegel)
   return uit
 }
 
@@ -86,7 +138,9 @@ export function crafteryMeta(bron: BierInfoBron): Record<string, any> {
  *
  * Afgeleide velden komen niet terug: ABV, stijl en inhoud staan in de
  * administratie zelf, dus een afwijkende winkelwaarde is geen invoer maar een
- * verschil dat bij de volgende push rechtgezet wordt.
+ * verschil dat bij de volgende push rechtgezet wordt. De Bevat-zin achter de
+ * ingrediënten ook niet: die hoort bij het etiket (`product.allergenen`), niet
+ * bij de ingrediëntentekst.
  */
 export function crafteryLees(meta?: Record<string, any> | null): {
   product: Record<string, any>, artikel: Record<string, any>,
@@ -108,6 +162,7 @@ export function crafteryLees(meta?: Record<string, any> | null): {
         : []
     } else {
       waarde = ruw === null || ruw === undefined ? '' : String(ruw)
+      if (veld === 'ingredienten') waarde = zonderBevatRegel(waarde)
     }
     if (definitie.soort !== 'ja_nee' && leeg(waarde)) continue
     ;(definitie.niveau === 'artikel' ? artikel : product)[veld] = waarde

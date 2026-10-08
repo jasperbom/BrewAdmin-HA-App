@@ -13,7 +13,7 @@
 import { telThtAlerts, telOpenAccijnsMaanden } from './calculations'
 import { telNieuweWebshopOrders, telWebshopAfgebroken } from './wcOrderImport'
 import { telOpenstaandeBtwPerioden, BtwPeriodeType } from './btw'
-import { telBatchesMetOpenTaken, telAchterstalligeSchoonmaakTaken } from './taken'
+import { openstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './taken'
 import { telOpenstaandeBestellingen } from './picking'
 import { vervallenVerkoopFacturen, achterstalligeInkoopFacturen } from './facturen'
 import { telInboxOpen } from './inkoopInbox'
@@ -22,7 +22,9 @@ import type { EtiketProbleem } from './productAandacht'
 import { BIER_THT_WAARSCHUWING_DAGEN } from './verkoopOverzicht'
 import type { VerkoopCtx } from './verkoopOverzicht'
 import type { EtiketCtx } from './etiket'
-import type { NavDoel } from './route'
+import type { BatchesStand, NavDoel } from './route'
+import { batchTitel } from './productKeten'
+import { normaliseerStatus } from './volgendeStap'
 
 export type WerkruimteId = 'productie' | 'verkoop' | 'administratie'
 
@@ -44,6 +46,8 @@ export interface AttentieDoel {
   filter?: string
   lotId?: number
   recordId?: string | number
+  /** De stand van de lijst Batches (Lopend, Gesloten, Agenda) — in de route. */
+  stand?: BatchesStand
 }
 
 /**
@@ -150,6 +154,7 @@ export const attentieDoel = (p: AttentieDoel): NavDoel => ({
   ...(p.filter ? { filter: p.filter } : {}),
   ...(p.lotId != null ? { lotId: p.lotId } : {}),
   ...(p.recordId != null && p.recordId !== '' ? { id: p.recordId } : {}),
+  ...(p.stand ? { stand: p.stand } : {}),
 })
 
 // Eén ding: de post landt waar dat ene ding afgehandeld wordt. Meer dingen:
@@ -184,6 +189,28 @@ const etiketPost = (problemen: EtiketProbleem[], naar: 'product' | 'batch'): Att
   return {
     id: 'etiket', sleutel: 'attentie_etiket', kleur: 'rood', aantal: problemen.length, details,
     ...doelVanDetails(details, { pagina: naar === 'product' ? 'producten' : 'batches' }),
+  }
+}
+
+// Batches met open taken in hun huidige fase: per batch één regel, die de
+// batch opent bij de takenkaart van die fase. De post zelf landt op Batches ›
+// Lopend, gefilterd op de batches met open taken. Telt batches, geen vinkjes
+// (dezelfde selectie als telBatchesMetOpenTaken in utils/taken.ts).
+const batchTakenPost = (bron: AttentieBron, producten: any[]): AttentiePost => {
+  const recepten = bron.etiket?.recepten || []
+  const details: AttentieDetail[] = openstaandeBatchTaken(bron.batches, bron.batchTakenItems, bron.batchTakenGroepen)
+    .map(({ batch, taken }) => {
+      const label = batchTitel(batch, { producten, recepten }).label
+      const nr = String(batch?.batch_nummer ?? '').replace(/^#/, '').trim()
+      return {
+        sleutel: 'attentie_batchtaken_detail', kortSleutel: 'attentie_batchtaken_kort',
+        params: { batch: label || (nr ? `#${nr}` : String(batch?.id ?? '')), n: taken.length },
+        doel: { pagina: 'batches', id: batch?.id, tab: normaliseerStatus(batch?.status), filter: 'taken' },
+      }
+    })
+  return {
+    id: 'batchtaken', sleutel: 'attentie_batchtaken', pagina: 'batches', stand: 'lopend', filter: 'taken',
+    aantal: details.length, details,
   }
 }
 
@@ -246,13 +273,8 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
       // Eerst wat op de fles fout gaat: het etiket mist een allergeen of de
       // alcohol ligt buiten de marge — vóór het afvullen op te lossen.
       etiketPost(etiket, 'batch'),
-      {
-        // Batches-overzicht met het paneel "openstaande batchtaken" open:
-        // elke batch met open taken op een rij, klik = de batch op zijn fase.
-        // Telt batches, geen vinkjes (utils/taken → telBatchesMetOpenTaken).
-        id: 'batchtaken', sleutel: 'attentie_batchtaken', pagina: 'batches', filter: 'taken',
-        aantal: telBatchesMetOpenTaken(bron.batches, bron.batchTakenItems, bron.batchTakenGroepen),
-      },
+      // Batches › Lopend, alleen de batches met open taken; per batch een regel.
+      batchTakenPost(bron, producten),
       {
         // HACCP → tabblad Reiniging (schoonmaakschema, achterstallig = rood).
         id: 'schoonmaak', sleutel: 'attentie_schoonmaak', pagina: 'haccp', tab: 'reiniging',

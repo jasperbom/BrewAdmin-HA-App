@@ -149,3 +149,52 @@ export function metingenMetFg<T extends Record<string, unknown>>(
     sg: ctx.fg, bron: 'fg',
   } as unknown as T]
 }
+
+// ── Een nieuwe meting vanaf het meetblad ────────────────────────────────────
+// Het meetblad (de knop "Meting" in de lijst Batches en straks op de brouwzaal)
+// legt een handmatige meting vast: SG, pH en temperatuur, elk optioneel. Wat
+// leeg blijft komt niet in het record (een gat in de grafiek, geen 0), een
+// komma telt als decimaalteken. Niets ingevuld = geen meting.
+
+export interface MetingInvoer {
+  sg?: unknown
+  ph?: unknown
+  temp?: unknown
+}
+
+export interface NieuweGistMeting {
+  id: number
+  batch_id: number
+  datum: string
+  tijd: string
+  sg?: number
+  ph?: number
+  temp?: number
+}
+
+const invoerWaarde = (v: unknown): number | null =>
+  typeof v === 'string' ? metingWaarde(v.trim().replace(',', '.')) : metingWaarde(v)
+
+/** Is er minstens één waarde ingevuld? */
+export const metingIngevuld = (invoer: MetingInvoer): boolean =>
+  invoerWaarde(invoer.sg) != null || invoerWaarde(invoer.ph) != null || invoerWaarde(invoer.temp) != null
+
+/**
+ * Het record voor `gist_metingen`, met de lokale datum en tijd van `nu`; null
+ * als er niets is ingevuld.
+ */
+export function nieuweGistMeting(batchId: number, invoer: MetingInvoer, opties: { id: number; nu: Date }): NieuweGistMeting | null {
+  if (!metingIngevuld(invoer)) return null
+  const nu = opties.nu
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const uit: NieuweGistMeting = {
+    id: opties.id, batch_id: batchId,
+    datum: `${nu.getFullYear()}-${pad(nu.getMonth() + 1)}-${pad(nu.getDate())}`,
+    tijd: `${pad(nu.getHours())}:${pad(nu.getMinutes())}`,
+  }
+  const sg = invoerWaarde(invoer.sg), ph = invoerWaarde(invoer.ph), temp = invoerWaarde(invoer.temp)
+  if (sg != null) uit.sg = sg
+  if (ph != null) uit.ph = ph
+  if (temp != null) uit.temp = temp
+  return uit
+}

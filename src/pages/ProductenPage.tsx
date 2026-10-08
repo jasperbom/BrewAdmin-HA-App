@@ -4,7 +4,7 @@ import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { _fetchedKeys } from '../utils/api'
 import LegeStaat from '../components/ui/LegeStaat'
 import WcProductModal from '../components/WcProductModal'
-import { WcVelden, bouwWcPayload, leesWcProduct, wcRegulierePrijsExcl } from '../utils/wcProduct'
+import { WcVelden, bouwWcPayload, leesWcProduct, wcRegulierePrijsExcl, wcArtikelPush, wcMetaStandNaPush, wcMetaUitProduct, wcMetStand, wcVoorraadPayload } from '../utils/wcProduct'
 import {
   bierInvulVelden, afgeleideBierInfo, bierInfoVoorArtikel,
 } from '../utils/bierinfo'
@@ -45,6 +45,8 @@ import { productEbc } from '../utils/bierKleur'
 import BierKleur from '../components/ui/BierKleur'
 import Icon from '../components/ui/Icon'
 import ReceptKiezer from '../components/recept/ReceptKiezer'
+import { useEtiketBijwerken } from '../components/batch/EtiketBijwerken'
+import { ETIKET_VELDEN } from '../utils/etiket'
 
 type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 type BijlageRol = 'douane_verklaring' | 'bewijs'
@@ -91,6 +93,9 @@ const ARTIKEL_UNDO = 'artikel-verwijder-'
 function ProductenPage({producten, setProducten, ing=[], productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], setVerplaatsingen=()=>{}, btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[], receptenVerborgen=[], receptenGearchiveerdeTags=[], recordId=null, onOpenRecord}: any) {
   const {useState, useMemo, useEffect, useRef} = React;
   const undo = useUndo();
+  // "Etiket bijwerken" (één dialoog voor de hele app, App.tsx) en de
+  // Bevat-regel die elke push naar de webshop meestuurt.
+  const etiketDienst = useEtiketBijwerken();
   // Het product of artikel waarvan het verwijderen nog terug kan.
   const wachtendOp = (prefix: string): number | null => {
     const id = String(undo.actie?.id || '');
@@ -463,7 +468,20 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     const updated = {...form, naam: form.naam.trim()};
     const exists = (producten||[]).find((p: any) => p.id === form.id);
     if (exists) {
-      setProducten((prev: any[]) => prev.map((p: any) => p.id === form.id ? updated : p));
+      // Wat er op het gedrukte etiket staat (allergenen, versie, energie)
+      // wijzigt alleen in de dialoog "Etiket bijwerken": die velden komen van
+      // het product zoals het nú is, nooit uit dit formulier — anders zette
+      // een formulier dat openstond tijdens het bijwerken het oude etiket
+      // terug. ABV, IBU, EBC en kcal blijven bierinformatie van het formulier.
+      const alleenDialoog = ETIKET_VELDEN.filter(v => !['abv', 'ibu', 'ebc', 'kcal'].includes(v));
+      setProducten((prev: any[]) => prev.map((p: any) => {
+        if (p.id !== form.id) return p;
+        const uit = {...updated};
+        for (const v of alleenDialoog) {
+          if (p[v] === undefined) delete uit[v]; else uit[v] = p[v];
+        }
+        return uit;
+      }));
       logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: form.id, actie: 'gewijzigd', omschrijving: `Product "${updated.naam}" gewijzigd`});
     } else {
       setProducten((prev: any[]) => [...(prev||[]), updated]);
@@ -1268,10 +1286,13 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
       return {
         ...pa, biernaam: prod?.naam || '', _product_id: pa.product_id,
         _omschrijving: prod?.omschrijving || '',
-        // De bierinformatie, vertaald naar de velden van het webshopthema.
+        // De bierinformatie, vertaald naar de velden van het webshopthema, met
+        // de Bevat-regel van de etiketten die op voorraad liggen achter de
+        // ingrediënten (utils/craftery.ts).
         _themaMeta: themaAan ? crafteryMeta({
           product: prod, artikel: pa,
           inhoudLiter: inhoudVanArtikel(pa), recepten: receptenVoorProduct(prod), ingredienten: ing,
+          bevatRegel: prod && etiketDienst ? etiketDienst.bevatRegel(prod) : null,
         }) : null,
         _pa: true,
       };
@@ -1292,8 +1313,11 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     if (!wcCreds?.enabled || !wcCreds?.storeUrl) { setWcSyncMsg(t('error_no_woocommerce')); return; }
     setWcSyncing(true); setWcSyncMsg('');
     // Per artikel onthouden wat er gesynct is, zodat de modal en de lijst
-    // laten zien wanneer de winkel voor het laatst is bijgewerkt.
+    // laten zien wanneer de winkel voor het laatst is bijgewerkt — en de
+    // themameta zoals die nu in de winkel staat (`wc.meta_stand`): daarmee
+    // zegt de etiketkaart of de website achterloopt op het etiket.
     const gesynct: Record<number, {wc_id?: number, permalink?: string}> = {};
+    const standen: Record<number, any> = {};
     try {
       let bijgewerkt = 0;
       // Fouten per artikel verzamelen i.p.v. de hele push afbreken: één trage
@@ -1317,15 +1341,9 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
         const logProduct = art._merch ? null : art._product_id;
         addWcLog('debug', `${naam} → ${beschikbaar}×`, '', logProduct);
         try {
-          const prods = await wcGet(`products?sku=${encodeURIComponent(art.artikelnummer)}&per_page=1`);
-          if (!prods?.length) {
-            // Stil overslaan verbergt configuratiefouten — log het zodat de
-            // gebruiker in het WC-logboek ziet welke SKU niet gevonden is.
-            addWcLog('fout', t('msg_wc_sku_onbekend').replace('{sku}', art.artikelnummer).replace('{naam}', naam), '', logProduct);
-            mislukt.push(naam);
-            continue;
-          }
-          const body = volledig
+          // Dezelfde push van één artikel als "Naar webshop" na het bijwerken
+          // van een etiket (utils/wcProduct.ts → wcArtikelPush).
+          const r = await wcArtikelPush(art.artikelnummer, (winkel: any) => volledig
             ? bouwWcPayload({
                 velden: {...(art.wc || {}), meta: art._themaMeta || {}},
                 sku: art.artikelnummer,
@@ -1333,11 +1351,24 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                 prijsExcl: art.verkoopprijs, btwPct: art.btw_pct,
                 voorraad: beschikbaar, prijzenInclBtw: wcPrijzenInclBtw,
                 // Ongewijzigde prijzen gaan ongewijzigd terug (geen centverschuiving).
-                winkel: prods[0],
+                winkel,
               })
-            : {stock_quantity: beschikbaar, manage_stock: true};
-          await wcPut(`products/${prods[0].id}`, body);
-          if (volledig && art._pa) gesynct[art.id] = {wc_id: prods[0].id, permalink: prods[0].permalink};
+            // ↑ Push voorraad: alleen de voorraad, de meta blijft onaangeroerd.
+            : wcVoorraadPayload(beschikbaar), {get: wcGet, put: wcPut});
+          if (!r.gevonden) {
+            // Stil overslaan verbergt configuratiefouten — log het zodat de
+            // gebruiker in het WC-logboek ziet welke SKU niet gevonden is.
+            addWcLog('fout', t('msg_wc_sku_onbekend').replace('{sku}', art.artikelnummer).replace('{naam}', naam), '', logProduct);
+            mislukt.push(naam);
+            continue;
+          }
+          if (volledig && art._pa) gesynct[art.id] = {wc_id: r.vooraf.id, permalink: r.vooraf.permalink};
+          // De stand die verstuurd/ontvangen is, ook bij de voorraadpush (de
+          // winkel meldt zijn meta terug; die push verandert hem niet).
+          if (themaAan && art._pa) {
+            const stand = wcMetaStandNaPush({antwoord: r.antwoord, vooraf: r.vooraf, verstuurd: r.body.meta_data, sleutels: CRAFTERY_SLEUTELS});
+            if (stand) standen[art.id] = stand;
+          }
           bijgewerkt++;
         } catch(e: any) {
           mislukt.push(naam);
@@ -1345,11 +1376,13 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
         }
       }
       setWcCreds((prev: any) => ({...prev, lastSync: new Date().toISOString()}));
-      if (Object.keys(gesynct).length) {
+      if (Object.keys(gesynct).length || Object.keys(standen).length) {
         const nu = new Date().toISOString();
-        setProductArtikelen((prev: any[]) => prev.map((a: any) => gesynct[a.id]
-          ? {...a, wc: {...(a.wc || {}), ...gesynct[a.id], gesynct: nu}}
-          : a));
+        setProductArtikelen((prev: any[]) => prev.map((a: any) => {
+          if (!gesynct[a.id] && !standen[a.id]) return a;
+          const wc = gesynct[a.id] ? {...(a.wc || {}), ...gesynct[a.id], gesynct: nu} : (a.wc || {});
+          return {...a, wc: wcMetStand(wc, standen[a.id], nu)};
+        }));
       }
       const pushMsg = t('msg_wc_push_result').replace('{n}', String(bijgewerkt));
       // Deels gelukt is geen succes: de melding blijft rood en noemt de
@@ -1400,9 +1433,15 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           if (!prods?.length) { onbekend.push(art.artikelnummer); continue; }
           const velden = leesWcProduct(prods[0], {btwPct: art.btw_pct, prijzenInclBtw: wcPrijzenInclBtw, metaSleutels: themaAan ? CRAFTERY_SLEUTELS : []});
           // De themavelden uit de winkel zijn gewoon bierinformatie: vertaal
-          // ze terug naar de velden van het product en het artikel.
+          // ze terug naar de velden van het product en het artikel (zonder de
+          // Bevat-zin achter de ingrediënten: die hoort bij het etiket).
           const {product: bierProduct, artikel: bierArtikel} = crafteryLees(crafteryMetaUitWc(prods[0].meta_data));
-          updates[art.id] = {wc: {...velden, meta: undefined, gepulld: nu}, prijs: prods[0].regular_price, bier: bierArtikel};
+          // De stand die ontvangen is: daarmee zegt de etiketkaart of de
+          // website achterloopt op het etiket (zonder themavelden blijft de
+          // vorige stand staan).
+          const stand = themaAan ? wcMetaUitProduct(prods[0], CRAFTERY_SLEUTELS) : null;
+          const vorigeStand = art.wc?.meta_stand ? {meta_stand: art.wc.meta_stand, meta_stand_op: art.wc.meta_stand_op} : {};
+          updates[art.id] = {wc: wcMetStand({...velden, meta: undefined, gepulld: nu, ...vorigeStand}, stand, nu), prijs: prods[0].regular_price, bier: bierArtikel};
           // Meerdere verpakkingen van hetzelfde bier leveren dezelfde waarden;
           // de eerste die iets zegt telt, zodat de laatste SKU de vorige niet
           // steeds overschrijft.
@@ -1778,6 +1817,9 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                 info={<RowActions v="header"
                   primair={{id: 'bewerken', label: t('btn_bewerken'), onClick: () => startEdit(selProduct)}}
                   acties={[
+                    // Het etiket (allergenen, alcohol, versie) wijzigt alleen
+                    // in de dialoog "Etiket bijwerken" — ook vanaf hier.
+                    ...(etiketDienst ? [{id: 'etiket', label: t('etiket_actie_bijwerken'), onClick: () => etiketDienst.open({productId: Number(selProduct.id)})}] : []),
                     {id: 'archiveren', label: selProduct.status === 'gearchiveerd' ? t('btn_restore') : t('btn_product_archiveren'), onClick: toggleArchiveer},
                     {id: 'verwijderen', label: t('btn_product_verwijderen'), soort: 'gevaar', onClick: deleteProduct},
                   ]} />}
@@ -2382,8 +2424,10 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                         </div>
                       )}
 
-                      {/* Wijkt het etiket af van wat je brouwt? Dan kun je het
-                          in één klik gelijktrekken. */}
+                      {/* Wijkt het etiket af van wat je brouwt? Dan werk je het
+                          bij in de dialoog "Etiket bijwerken": een andere ABV
+                          op het etiket vraagt een nieuwe etiketversie (CCP 3),
+                          dus nooit stil "overnemen". */}
                       {afwijkingen.map(a => (
                         <div key={a.veld} className="flex flex-wrap items-center gap-2 text-xs rounded-lg bg-orange-50 text-orange-800 px-3 py-2">
                           <span>
@@ -2392,11 +2436,11 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                               .replace('{bier}', a.bier === null ? '' : String(a.bier))
                               .replace('{gemeten}', String(a.gemeten))}
                           </span>
-                          <Btn s="sm" v="secondary"
-                            onClick={() => setProducten((prev: any[]) => prev.map((prod: any) =>
-                              prod.id === selProduct.id ? {...prod, [a.veld]: a.gemeten} : prod))}>
-                            {t('batch_afwijking_overnemen')}
-                          </Btn>
+                          {etiketDienst && (
+                            <Btn s="sm" v="secondary" onClick={() => etiketDienst.open({productId: Number(selProduct.id)})}>
+                              {t('etiket_actie_bijwerken')}
+                            </Btn>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2601,13 +2645,17 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
             voorraad={ctx.voorraad}
             prijzenInclBtw={wcPrijzenInclBtw}
             bierInfo={ctx.bierInfo}
-            themaMeta={themaAan ? crafteryMeta({
-              product: (producten||[]).find((p: any) => p.id === wcModalArt.product_id),
-              artikel: wcModalArt,
-              inhoudLiter: inhoudVanArtikel(wcModalArt),
-              recepten: receptenVoorProduct((producten||[]).find((p: any) => p.id === wcModalArt.product_id)),
-              ingredienten: ing,
-            }) : null}
+            themaMeta={themaAan ? (() => {
+              const prod = (producten||[]).find((p: any) => p.id === wcModalArt.product_id);
+              return crafteryMeta({
+                product: prod,
+                artikel: wcModalArt,
+                inhoudLiter: inhoudVanArtikel(wcModalArt),
+                recepten: receptenVoorProduct(prod),
+                ingredienten: ing,
+                bevatRegel: prod && etiketDienst ? etiketDienst.bevatRegel(prod) : null,
+              });
+            })() : null}
             onLog={(type, msg, details) => addWcLog(type, msg, details, wcModalArt.product_id)}
             onOpslaan={(velden) => bewaarWcVelden(wcModalArt.id, velden)}
             onClose={() => setWcModalArt(null)}

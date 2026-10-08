@@ -19,11 +19,11 @@
 // vertaalfunctie mee.
 
 import type {
-  Afvulling, AfvulSessie, Allergeen, Batch, BatchIngredient, BreweryDetails,
-  EtiketControle, HaccpInst, Ingredient, Product, ProductArtikel, Recept,
-  ReceptIngredient, ThtKlasse, Verpakking,
+  Afboeking, Afvulling, AfvulSessie, Allergeen, Batch, BatchIngredient, BreweryDetails,
+  EtiketControle, HaccpInst, Ingredient, Locatie, Product, ProductArtikel, Recept,
+  ReceptIngredient, ThtKlasse, Uitlevering, Verpakking, Verplaatsing,
 } from '../types'
-import { abvBalling } from './calculations'
+import { abvBalling, voorraadPerLocatie } from './calculations'
 import { allergenenUitBatch, haccpInst, risicoVoorBatch, vergelijkAllergenen } from './haccp'
 import type { BlokkadeReden, BlokkadeResultaat } from './haccp'
 import { ingredientVoorBatchRegel } from './batchIngredienten'
@@ -32,10 +32,11 @@ import { berekenTht, nieuweLotcode, thtKlasseVoorBatch, thtMaanden } from './afv
 import { batchEbc, ebcVan } from './bierKleur'
 import { bierIngredienten } from './bierinfo'
 import type { BierInfoBron } from './bierinfo'
-import { CRAFTERY_META, crafteryMeta } from './craftery'
+import { CRAFTERY_META, crafteryMeta, metBevatRegel, zonderBevatRegel } from './craftery'
 import { ALLERGENEN_LIJST } from './constants'
 import { batchesVanProduct, huidigReceptVoorProduct, receptVoorBatch } from './productKeten'
 import { fmtSg, tod } from './format'
+import { bouwWcPayload } from './wcProduct'
 import type { WcMetaWaarde } from './wcProduct'
 
 /** Vertaalfunctie van de aanroeper (`t` uit `i18n`). */
@@ -487,34 +488,10 @@ export interface IngredientenWaarde {
 const ingredientenWaarde = (t: string, bron: IngredientenBron): IngredientenWaarde =>
   ({tekst: t, bron, bronSleutel: `etiket_bron_ingredienten_${bron}`})
 
-// De Bevat-zin achter een ingrediëntentekst herkennen, in elk van de vijf
-// talen — dat is opmaak van de webshoptekst, geen weergavetekst. Toevoegen
-// gebeurt niet zodra het woord er staat (ruim); weghalen alleen bij de echte
-// zin met dubbele punt (streng), zodat "mout (contains gluten)" blijft staan.
-const BEVAT_WOORD = /(?:^|[^\p{L}])(bevat|contains|enthält|contient|contiene)(?![\p{L}])/iu
-const BEVAT_ZIN = /(^|[^\p{L}])(?:bevat|contains|enthält|contient|contiene)\s*:/iu
-
-/** De ingrediëntentekst zonder de Bevat-zin erachter. */
-export const zonderBevatRegel = (ingredienten: unknown): string => {
-  const s = tekst(ingredienten)
-  const m = BEVAT_ZIN.exec(s)
-  if (!m) return s
-  // m[1] is het teken vóór het woord: tot en met dat teken blijft staan.
-  return s.slice(0, m.index + m[1].length).replace(/[\s.,;]+$/, '').trim()
-}
-
-/**
- * Zolang het webshopthema geen eigen allergeenveld heeft, gaat de Bevat-regel
- * als laatste zin achter de ingrediëntentekst (`_cf_ingredienten`) — alleen als
- * die tekst nog geen "Bevat" noemt.
- */
-export const metBevatRegel = (ingredienten: unknown, bevatRegel: unknown): string => {
-  const s = tekst(ingredienten)
-  const bevat = tekst(bevatRegel)
-  if (!bevat || BEVAT_WOORD.test(s)) return s
-  if (!s) return bevat
-  return `${s.replace(/[\s.]+$/, '')}. ${bevat}`
-}
+// De Bevat-zin achter een ingrediëntentekst (webshop): `metBevatRegel` en
+// `zonderBevatRegel` staan in utils/craftery.ts — dat is de vorm van de
+// webshoptekst — en worden hier doorgegeven voor wie ze uit etiket.ts haalt.
+export { metBevatRegel, zonderBevatRegel }
 
 // Een etiket- of webshoptekst begint soms met het kopje zelf ("Ingrediënten:").
 const INGREDIENTEN_KOP = /^\s*(?:ingredi[eë]nten|ingredients?|zutaten|ingr[ée]dients?|ingredientes)\s*:\s*/iu
@@ -1486,9 +1463,10 @@ export const legEtiketVast = <P extends Pick<Product, 'id'> & Partial<Product>>(
 
 /** De velden die de etiketkaart met de webshop vergelijkt. */
 export const WEBSITE_ETIKET_VELDEN = ['abv', 'ibu', 'ebc', 'kcal', 'ingredienten'] as const
+export type WebsiteEtiketVeld = typeof WEBSITE_ETIKET_VELDEN[number]
 
 export interface WebsiteVerschil {
-  veld: typeof WEBSITE_ETIKET_VELDEN[number]
+  veld: WebsiteEtiketVeld
   /** De meta-sleutel van het thema (`_cf_abv` …). */
   sleutel: string
   /** Wat er bij de laatste push/pull in de winkel stond; null = niets. */
@@ -1511,19 +1489,35 @@ const metaTekst = (v: WcMetaWaarde | undefined | null): string | null => {
   return s ? s : null
 }
 
+/** Dezelfde waarde voor de website: getallen met een kleine marge ("6,2%" en
+ *  "6.2 %" zijn gelijk), de ingrediënten zonder hoofdletters en leestekens aan
+ *  het eind. Null = er staat niets. */
+const zelfdeWebsiteWaarde = (veld: WebsiteEtiketVeld, a: string | null, b: string | null): boolean => {
+  if (a === null || b === null) return a === b
+  if (veld === 'ingredienten') return vergelijkTekst(a) === vergelijkTekst(b)
+  const x = num(a)
+  const y = num(b)
+  return x !== null && y !== null ? Math.abs(x - y) < 0.05 : a.trim() === b.trim()
+}
+
+/** Bron voor wat een push zou sturen: de recepten, de catalogus, de inhoud en
+ *  de Bevat-regel (`webshopBevatRegel`). */
+export type WebsiteBron = Omit<BierInfoBron, 'product' | 'artikel'> & {bevatRegel?: string | null}
+
 /**
  * Vergelijkt de bewaarde webshopstand van een artikel (`wc.meta_stand`, bij
  * elke push en pull bewaard) met wat `crafteryMeta` nu voor dit artikel zou
- * sturen, voor abv/ibu/ebc/kcal/ingrediënten. "Achter" alleen als een push
- * iets zou veranderen: een veld dat de app leeg laat, stuurt hij niet (een
- * push wist nooit iets). Zonder stand = onbekend, niet achter. Gaat er bij de
- * push een Bevat-regel achter de ingrediënten, geef die dan mee
- * (`bevatRegel`); anders telt de Bevat-zin aan beide kanten niet mee.
+ * sturen, voor abv/ibu/ebc/kcal/ingrediënten — het etiket (het product), nooit
+ * de batch. "Achter" alleen als een push iets zou veranderen: een veld dat de
+ * app leeg laat, stuurt hij niet (een push wist nooit iets). Zonder stand =
+ * onbekend, niet achter. Gaat er bij de push een Bevat-regel achter de
+ * ingrediënten, geef die dan mee (`bevatRegel`, dezelfde als bij de push);
+ * anders telt de Bevat-zin aan beide kanten niet mee.
  */
 export const websiteLooptAchter = (
   artikel: Partial<ProductArtikel> | null | undefined,
   product: Partial<Product> | null | undefined,
-  bron?: (Omit<BierInfoBron, 'product' | 'artikel'> & {bevatRegel?: string | null}) | null,
+  bron?: WebsiteBron | null,
 ): WebsiteStandOordeel => {
   const stand = artikel?.wc?.meta_stand
   const standOp = tekst(artikel?.wc?.meta_stand_op) || null
@@ -1531,6 +1525,7 @@ export const websiteLooptAchter = (
   const {bevatRegel, ...rest} = bron || {}
   const nu = crafteryMeta({
     ...rest,
+    bevatRegel,
     product: product as Record<string, unknown>,
     artikel: artikel as Record<string, unknown>,
     inhoudLiter: rest.inhoudLiter ?? artikel?.inhoud_liter,
@@ -1540,32 +1535,25 @@ export const websiteLooptAchter = (
     const sleutel = CRAFTERY_META[veld]
     let nuW = metaTekst(nu[sleutel] as WcMetaWaarde | undefined)
     let webW = metaTekst(stand[sleutel])
-    if (veld === 'ingredienten') {
-      if (tekst(bevatRegel)) nuW = metBevatRegel(nuW || '', bevatRegel) || null
-      else {
-        nuW = nuW === null ? null : zonderBevatRegel(nuW) || null
-        webW = webW === null ? null : zonderBevatRegel(webW) || null
-      }
+    if (veld === 'ingredienten' && !tekst(bevatRegel)) {
+      nuW = nuW === null ? null : zonderBevatRegel(nuW) || null
+      webW = webW === null ? null : zonderBevatRegel(webW) || null
     }
     if (nuW === null) continue
-    const gelijk = veld === 'ingredienten'
-      ? webW !== null && vergelijkTekst(webW) === vergelijkTekst(nuW)
-      : webW !== null && (() => {
-        const a = num(webW)
-        const b = num(nuW)
-        return a !== null && b !== null ? Math.abs(a - b) < 0.05 : webW.trim() === nuW.trim()
-      })()
-    if (!gelijk) verschillen.push({veld, sleutel, website: webW, nu: nuW})
+    if (!zelfdeWebsiteWaarde(veld, webW, nuW)) verschillen.push({veld, sleutel, website: webW, nu: nuW})
   }
   return {status: verschillen.length ? 'achter' : 'gelijk', verschillen, standOp}
 }
 
 /**
  * De allergenen voor de Bevat-regel in de webshop: de vereniging van het
- * huidige etiket en de etiketten die nog op voorraad liggen (uit de
- * etiketcontrole van de sessie van elk lot). Zo staat er tijdens de overgang
- * v3 → v4 nooit te weinig. `afvullingenOpVoorraad` = de lots van dit product
- * met voorraad (dat bepaalt de aanroeper).
+ * huidige etiket en de etiketten die nog op voorraad liggen. Per lot met
+ * voorraad tellen álle etiketcontroles van zijn sessie voor dit product (na
+ * een rolwissel liggen er flessen met beide etiketten in hetzelfde lot); een
+ * lot zonder controle valt terug op het huidige etiket, dat er altijd in zit.
+ * Zo staat er tijdens de overgang v3 → v4 nooit te weinig.
+ * `afvullingenOpVoorraad` = de lots van dit product met voorraad
+ * (`afvullingenOpVoorraad` hieronder).
  */
 export const webshopAllergenen = (
   product: Pick<Product, 'id'> & Partial<Product>,
@@ -1577,16 +1565,342 @@ export const webshopAllergenen = (
   const voegVersie = (v: unknown) => { const s = tekst(v); if (s && !versies.includes(s)) versies.push(s) }
   voegVersie(product.etiket_versie)
   const moment = (c: Partial<EtiketControle>) => tekst(c.uitgevoerd_op) || tekst(c.paraaf?.tijdstip)
+  const sessies = new Set<number>()
   for (const a of (afvullingenOpVoorraad || [])) {
     if (!a || Number(a.product_id) !== Number(product.id) || a.sessie_id == null) continue
-    const controle = (etiketcontroles || [])
-      .filter(c => !!c && c.sessie_id === a.sessie_id && Number(c.product_id) === Number(product.id))
-      .sort((x, y) => moment(y).localeCompare(moment(x)))[0]
-    if (!controle) continue
-    alles.push(...(controle.allergenen_etiket || []))
-    voegVersie(controle.etiket_versie_gelezen || controle.etiket_versie)
+    sessies.add(Number(a.sessie_id))
+  }
+  const controles = (etiketcontroles || [])
+    .filter(c => !!c && c.sessie_id != null && sessies.has(Number(c.sessie_id)) && Number(c.product_id) === Number(product.id))
+    .sort((x, y) => moment(y).localeCompare(moment(x)))
+  for (const c of controles) {
+    alles.push(...(c.allergenen_etiket || []))
+    voegVersie(c.etiket_versie_gelezen || c.etiket_versie)
   }
   return {lijst: sorteerAllergenen(alles), versies}
+}
+
+// ── 11c. De webshop: wat er op voorraad ligt en wat er per artikel verandert ─
+
+/** Wat de voorraad per lot nodig heeft (dezelfde telling als de productpagina:
+ *  `voorraadPerLocatie`) en de etiketcontroles van de sessies. */
+export interface WebshopVoorraadCtx {
+  afvullingen?: Afvulling[] | null
+  uitleveringen?: Uitlevering[] | null
+  verplaatsingen?: Verplaatsing[] | null
+  afboekingen?: Afboeking[] | null
+  locaties?: Locatie[] | null
+  etiketcontroles?: Array<Pick<EtiketControle, 'sessie_id' | 'product_id' | 'allergenen_etiket'> & Partial<EtiketControle>> | null
+}
+
+/**
+ * De lots (afvullingen) van een product waar nog bier van ligt: fysiek, op
+ * welke locatie ook — ook als het al gepickt of door CCP 2 geblokkeerd is,
+ * want ook die flessen dragen een etiket. Voor de Bevat-regel van de webshop
+ * is ruim veilig: liever één allergeen te veel dan te weinig.
+ */
+export const afvullingenOpVoorraad = (productId: number, ctx: WebshopVoorraadCtx | null | undefined): Afvulling[] =>
+  (ctx?.afvullingen || []).filter(a => {
+    if (!a || Number(a.product_id) !== Number(productId)) return false
+    const perLocatie = voorraadPerLocatie(a, ctx?.locaties || [], ctx?.uitleveringen || [],
+      ctx?.verplaatsingen || [], ctx?.afboekingen || [])
+    return Object.values(perLocatie).reduce((s, n) => s + (Number(n) || 0), 0) > 0
+  })
+
+/**
+ * "Bevat: gerst, tarwe." voor de webshop: de allergenen van het huidige etiket
+ * en van de etiketten die nog op voorraad liggen (`webshopAllergenen`). Leeg
+ * als er niets te melden is (ook als het etiket nog niet is vastgelegd en er
+ * niets met een etiketcontrole op voorraad ligt) — dan gaat er geen Bevat-zin
+ * mee.
+ */
+export const webshopBevatRegel = (
+  product: Pick<Product, 'id'> & Partial<Product>,
+  ctx: WebshopVoorraadCtx | null | undefined,
+  t: Vertaal,
+): string => allergeenRegel(webshopAllergenen(product, afvullingenOpVoorraad(product.id, ctx), ctx?.etiketcontroles).lijst, t)
+
+export interface WebshopRegel extends WebsiteVerschil {
+  /** Afgeleid (energie berekend uit OG/FG) in plaats van een waarde van het
+   *  product: een eigen, zichtbare regel ("berekend"), nooit stil mee. */
+  berekend: boolean
+  /** Standaard aangevinkt: een waarde van het product altijd; de berekende
+   *  energie alleen als de webshop er (volgens de bewaarde stand) niets heeft
+   *  staan — een waarde die er al staat, overschrijft hij niet vanzelf. */
+  aan: boolean
+}
+
+export interface WebshopArtikelVoorstel {
+  artikelId: number
+  sku: string
+  /** De verpakking ("Fles 33cL"); anders de SKU. */
+  naam: string
+  /** Moment van de bewaarde stand; null = nog nooit bewaard. */
+  standOp: string | null
+  /** Nog nooit een stand bewaard: alles wat de app zou sturen staat erin. */
+  standOnbekend: boolean
+  /** Wat er verandert; leeg = de webshop is bij. */
+  regels: WebshopRegel[]
+}
+
+export interface WebshopVoorstelBron {
+  /** Alle recepten; gefilterd op `product.recept_ids`, zoals bij de push. */
+  recepten?: ReceptLike[] | null
+  ingredienten?: Ingredient[] | null
+  verpakkingen?: Array<Pick<Verpakking, 'id'> & Partial<Verpakking>> | null
+  /** `webshopBevatRegel` — dezelfde als bij elke push. */
+  bevatRegel?: string | null
+  /** Kcal per 100 ml uit de afleiding (referentiebatch) als de energie niet
+   *  op het etiket staat. Komt als eigen regel ("berekend"). */
+  energieBerekend?: number | null
+}
+
+type ArtikelLike = Pick<ProductArtikel, 'product_id'> & Partial<ProductArtikel>
+
+/** De artikelen van een product die naar de webshop gaan: met een SKU en niet
+ *  uitgezet voor de push (`wc_push === false`). */
+export const webshopArtikelen = <A extends ArtikelLike>(productId: number, productArtikelen: A[] | null | undefined): A[] =>
+  (productArtikelen || []).filter(a => !!a && Number(a.product_id) === Number(productId)
+    && !!tekst(a.artikelnummer) && a.wc_push !== false)
+
+/**
+ * "Ook naar de webshop?": per artikel wat er in de webshop verandert als je
+ * de bierinformatie nu stuurt — alleen abv, ibu, ebc, kcal en de
+ * ingrediënten (met de Bevat-regel), nooit prijs of voorraad. Vergeleken met
+ * de bewaarde stand (`wc.meta_stand`); zonder stand staat alles erin wat de
+ * app weet. Een waarde die de app niet heeft, stuurt hij niet (een push wist
+ * nooit iets). Staat de energie niet op het etiket, dan komt de berekende
+ * waarde als eigen regel ("berekend"; BOUWPLAN: de website toont de berekende
+ * energie) — aangevinkt alleen als de webshop nog geen energie heeft.
+ */
+export const webshopVoorstel = (
+  product: Pick<Product, 'id'> & Partial<Product>,
+  productArtikelen: ArtikelLike[] | null | undefined,
+  bron: WebshopVoorstelBron = {},
+): WebshopArtikelVoorstel[] => {
+  const ids = product.recept_ids || []
+  const recepten = (bron.recepten || []).filter(r => ids.includes(r.id))
+  const kcalBerekend = product.energie_op_etiket === 'vermeld' ? null : pos(bron.energieBerekend)
+  return webshopArtikelen(product.id, productArtikelen).map(a => {
+    const vp = (bron.verpakkingen || []).find(v => Number(v.id) === Number(a.verpakking_id))
+    const nu = crafteryMeta({
+      product: product as Record<string, unknown>,
+      artikel: a as Record<string, unknown>,
+      inhoudLiter: vp?.inhoud_liter ?? a.inhoud_liter,
+      recepten, ingredienten: bron.ingredienten, bevatRegel: bron.bevatRegel,
+    })
+    const stand = a.wc?.meta_stand || null
+    const regels: WebshopRegel[] = []
+    for (const veld of WEBSITE_ETIKET_VELDEN) {
+      const sleutel = CRAFTERY_META[veld]
+      let nuW = metaTekst(nu[sleutel] as WcMetaWaarde | undefined)
+      let berekend = false
+      if (nuW === null && veld === 'kcal' && kcalBerekend !== null) {
+        nuW = String(Math.round(kcalBerekend))
+        berekend = true
+      }
+      if (nuW === null) continue
+      const webW = stand ? metaTekst(stand[sleutel]) : null
+      if (stand && zelfdeWebsiteWaarde(veld, webW, nuW)) continue
+      regels.push({veld, sleutel, website: webW, nu: nuW, berekend, aan: !berekend || (!!stand && webW === null)})
+    }
+    const sku = tekst(a.artikelnummer)
+    return {
+      artikelId: Number(a.id),
+      sku,
+      naam: tekst(a.verpakking_naam) || tekst(a.verpakking_type) || sku,
+      standOp: stand ? (tekst(a.wc?.meta_stand_op) || null) : null,
+      standOnbekend: !stand,
+      regels,
+    }
+  })
+}
+
+/**
+ * Wat "Naar webshop" naar één artikel stuurt: alleen de gekozen
+ * bierinformatie-meta, via dezelfde payloadbouwer als elke push (lege waarden
+ * blijven weg). Nooit prijs, voorraad, naam of teksten.
+ */
+export const webshopPayload = (regels: Array<Pick<WebsiteVerschil, 'sleutel' | 'nu'>> | null | undefined): Record<string, unknown> => {
+  const meta: Record<string, WcMetaWaarde> = {}
+  for (const r of (regels || [])) if (r && r.sleutel.startsWith('_cf_')) meta[r.sleutel] = r.nu
+  return bouwWcPayload({velden: {meta}})
+}
+
+// ── 11d. De dialoog "Etiket bijwerken": van keuze naar wijziging ────────────
+
+/** Wat er in de dialoog gekozen is. */
+export interface EtiketKeuze {
+  /** Wat er op het nieuwe etiket gedrukt staat. Null = niet aangeraakt en het
+   *  etiket was nog niet vastgelegd: dan blijft het "nog niet vastgelegd" (een
+   *  lege lijst is "geen allergenen", en die zet je bewust). */
+  allergenen: Allergeen[] | null
+  /** De vinkregels "oud → nieuw" (`etiketGetalVoorstellen`). */
+  getallen: EtiketGetalVoorstel[]
+  /** Welke vinkregels aan staan. */
+  aan: Partial<Record<EtiketGetalVoorstel['veld'], boolean>>
+  energie: 'vermeld' | 'niet_vermeld'
+  kcal?: number | string | null
+  kj?: number | string | null
+  /** De versie in het veld. */
+  versie: string
+}
+
+/** Begint de energiekeuze op "Vermeld" of "Niet vermeld"? Wat het product vastlegt. */
+export const energieKeuze = (product: Partial<Pick<Product, 'energie_op_etiket'>> | null | undefined): EtiketKeuze['energie'] =>
+  product?.energie_op_etiket === 'vermeld' ? 'vermeld' : 'niet_vermeld'
+
+/**
+ * De wijziging voor `legEtiketVast` uit wat er in de dialoog staat. Alleen wat
+ * echt gekozen is: allergenen als ze anders zijn dan het huidige etiket (een
+ * lege lijst tegenover "nog niet vastgelegd" is anders), een getal alleen als
+ * zijn vinkje aan staat, de energie alleen als
+ * de keuze afwijkt of op "Vermeld" staat (kcal en kJ), de versie alleen als
+ * hij anders is dan de huidige. Zo maakt openen en opslaan zonder iets te
+ * kiezen geen wijziging — en wordt een nog niet vastgelegd etiket nooit
+ * stilzwijgend "geen allergenen".
+ */
+export const etiketWijzigingUitKeuze = (
+  product: Partial<Pick<Product, 'allergenen' | 'energie_op_etiket' | 'etiket_versie'>> | null | undefined,
+  keuze: EtiketKeuze,
+): EtiketWijziging => {
+  const w: EtiketWijziging = {}
+  if (keuze.allergenen !== null && !zelfdeAllergenen(product?.allergenen, keuze.allergenen)) {
+    w.allergenen = sorteerAllergenen(keuze.allergenen)
+  }
+  for (const g of keuze.getallen) {
+    if (keuze.aan[g.veld] && g.kanWijzigen && g.nieuw !== null) w[g.veld] = g.nieuw
+  }
+  if (keuze.energie !== energieKeuze(product) || keuze.energie === 'vermeld') {
+    w.energie_op_etiket = keuze.energie
+    if (keuze.energie === 'vermeld') {
+      w.kcal = keuze.kcal ?? null
+      w.kj = keuze.kj ?? null
+    }
+  }
+  const versie = tekst(keuze.versie)
+  if (versie && versie.toLowerCase() !== tekst(product?.etiket_versie).toLowerCase()) w.etiket_versie = versie
+  return w
+}
+
+/** Vraagt deze keuze om een nieuwe etiketversie (allergenen of alcohol anders)? */
+export const keuzeVraagtNieuweVersie = (
+  product: Partial<Pick<Product, 'allergenen' | 'abv' | 'energie_op_etiket' | 'etiket_versie'>> | null | undefined,
+  keuze: EtiketKeuze,
+): boolean => {
+  const w = etiketWijzigingUitKeuze(product, {...keuze, versie: ''})
+  return etiketVersieVerplicht(product, {
+    allergenen: w.allergenen ?? product?.allergenen,
+    abv: w.abv !== undefined ? w.abv as Product['abv'] : product?.abv,
+  })
+}
+
+/**
+ * Het product `huidig` met de etiketvelden (`ETIKET_VELDEN`) van `bron`: een
+ * veld dat `bron` niet heeft, verdwijnt. Voor het vastleggen (de uitkomst
+ * van `legEtiketVast` op de nieuwste stand van het product, de rest blijft
+ * staan) en voor "Ongedaan maken" (de velden van vóór de wijziging terug).
+ */
+export const metEtiketVan = <P extends object>(huidig: P, bron: Partial<Record<EtiketVeld, unknown>> | object): P => {
+  const uit: Record<string, unknown> = {...(huidig as Record<string, unknown>)}
+  const b = bron as Record<string, unknown>
+  for (const veld of ETIKET_VELDEN) {
+    if (b[veld] !== undefined) uit[veld] = b[veld]
+    else delete uit[veld]
+  }
+  return uit as P
+}
+
+// ── 11e. De teksten van de dialoog ──────────────────────────────────────────
+
+/** "2025-04-08" → "8-4-2025", zoals de schermen een datum noemen. */
+const datumDmj = (iso: unknown): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(tekst(iso))
+  return m ? `${Number(m[3])}-${Number(m[2])}-${m[1]}` : tekst(iso)
+}
+
+const vulIn = (t: Vertaal, sleutel: string, params: Record<string, string | number>, fallback?: string): string => {
+  let s = t(sleutel, fallback)
+  for (const [k, v] of Object.entries(params)) s = s.split(`{${k}}`).join(String(v))
+  return s
+}
+
+const EENHEID_GETAL: Record<EtiketGetalVoorstel['veld'], string> = {abv: '% vol', ibu: ' IBU', ebc: ' EBC'}
+
+/**
+ * De waarde van een vinkregel zoals in de dialoog: "6,2 → 7,0 % vol",
+ * "22 → 24 IBU (website)" — bitterheid en kleur gaan naar de website — en
+ * zonder iets te kiezen alleen de waarde ("9 EBC"). Leeg = "—".
+ */
+export const etiketGetalTekst = (g: EtiketGetalVoorstel, t: Vertaal, taal?: string | null): string => {
+  const getal = (n: number | null) => (n === null ? '—'
+    : g.veld === 'abv' ? fmtGetal(rond(n, 1), 1, taal) : String(Math.round(n)))
+  const website = g.veld === 'abv' ? '' : ` ${t('etiket_bijwerken_website')}`
+  // "% vol" zoals `fmtAbv`: met een spatie, in het Engels er direct achter.
+  const eenheid = g.veld === 'abv' && decimaalteken(taal) === ',' ? ` ${EENHEID_GETAL.abv}` : EENHEID_GETAL[g.veld]
+  return g.kanWijzigen
+    ? `${getal(g.oud)} → ${getal(g.nieuw)}${eenheid}${website}`
+    : `${getal(g.oud ?? g.nieuw)}${eenheid}`
+}
+
+/**
+ * De reden naast een vinkregel: "binnen ±1,0 % vol: mag blijven staan",
+ * "buiten ±0,5 % vol: pas het etiket aan", "verschil 2", "gelijk", "nog niet
+ * vastgelegd" of "geen waarde van de batch".
+ */
+export const etiketGetalReden = (g: EtiketGetalVoorstel, t: Vertaal, taal?: string | null): string => {
+  const r = g.regel
+  if (g.oud === null) return t('etiket_bijwerken_reden_leeg')
+  if (g.nieuw === null) return t('etiket_bijwerken_reden_geen_batch')
+  if (g.veld === 'abv') {
+    const marge = fmtGetal(r.marge ?? 0, 1, taal)
+    if (r.oordeel === 'binnen_marge') return vulIn(t, 'etiket_bijwerken_reden_binnen', {marge})
+    if (r.oordeel === 'buiten_marge') return vulIn(t, 'etiket_bijwerken_reden_buiten', {marge})
+    return t('etiket_bijwerken_reden_klopt')
+  }
+  if (r.oordeel === 'gelijk') return t('etiket_bijwerken_reden_gelijk')
+  return vulIn(t, 'etiket_bijwerken_reden_verschil', {verschil: Math.round(r.verschil ?? 0)})
+}
+
+/**
+ * De grijze regel onder de titel van de dialoog. Bureau: "Vergeleken met
+ * #2609 (conditioneert in GV1) · nu op het etiket: v3 van 8-4-2025";
+ * telefoon (`kort`): "Tegen #2609 · nu etiket v3". Zonder batch het recept,
+ * zonder versie "nog geen etiketversie vastgelegd".
+ */
+export const etiketDialoogKop = (
+  invoer: {
+    batch?: BatchLike | null
+    recept?: Partial<Pick<Recept, 'naam'>> | null
+    product: Partial<Pick<Product, 'etiket_versie' | 'etiket_bijgewerkt'>>
+    kort?: boolean
+  },
+  t: Vertaal,
+): string => {
+  const {batch, recept, product, kort} = invoer
+  const delen: string[] = []
+  if (batch) {
+    const nr = tekst(batch.batch_nummer).replace(/^#/, '') || String(batch.id)
+    if (kort) delen.push(vulIn(t, 'etiket_bijwerken_tegen', {nr}))
+    else {
+      const status = tekst(batch.status)
+      const fase = t(`etiket_bijwerken_fase_${status.toLowerCase()}`, status.toLowerCase())
+      const tank = tekst(batch.tank)
+      const metTank = tank && ['Vergisten', 'Conditioneren'].includes(status)
+        ? vulIn(t, 'etiket_bijwerken_fase_in', {fase, tank}) : fase
+      delen.push(vulIn(t, 'etiket_bijwerken_vergeleken', {nr, fase: metTank}))
+    }
+  } else if (recept) {
+    delen.push(vulIn(t, kort ? 'etiket_bijwerken_tegen_recept' : 'etiket_bijwerken_vergeleken_recept',
+      {recept: tekst(recept.naam) || t('lbl_naamloos')}))
+  }
+  const versie = tekst(product.etiket_versie)
+  const datum = tekst(product.etiket_bijgewerkt)
+  if (!versie) delen.push(t('etiket_bijwerken_nu_geen'))
+  else if (kort) delen.push(vulIn(t, 'etiket_bijwerken_nu_kort', {versie}))
+  else if (datum) delen.push(vulIn(t, 'etiket_bijwerken_nu', {versie, datum: datumDmj(datum)}))
+  else delen.push(vulIn(t, 'etiket_bijwerken_nu_versie', {versie}))
+  return delen.join(' · ')
 }
 
 // ── 12. Kopieer etiketgegevens ──────────────────────────────────────────────

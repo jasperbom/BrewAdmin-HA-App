@@ -6,13 +6,13 @@ import Modal from './ui/Modal'
 import Btn from './ui/Btn'
 import {
   WcVelden, WcCategorie, WcAfbeelding,
-  bouwWcPayload, leesWcProduct, wcVerschillen, wcRegulierePrijsExcl,
+  bouwWcPayload, leesWcProduct, wcVerschillen, wcRegulierePrijsExcl, wcMetaStandNaPush, wcMetaUitProduct, wcMetStand,
   ordenCategorieen, WC_VELD_LABEL, veiligeAfbeeldingUrl,
   WC_STATUSSEN, WC_ZICHTBAARHEDEN, WC_BACKORDERS, WC_BTW_STATUSSEN,
 } from '../utils/wcProduct'
 import Icon from './ui/Icon'
 import { BierVeld } from '../utils/bierinfo'
-import { crafteryLabel } from '../utils/craftery'
+import { crafteryLabel, CRAFTERY_SLEUTELS } from '../utils/craftery'
 import BierInfoForm from './BierInfoForm'
 import BierInfoWeergave from './BierInfoWeergave'
 
@@ -141,9 +141,14 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
   const pull = () => {
     if (!wcProduct) return
     // Bierinformatie halen we hier niet op: die staat in de administratie en
-    // wordt met "Ophalen uit webshop" op de productenpagina overgenomen.
+    // wordt met "Ophalen uit webshop" op de productenpagina overgenomen. Wel
+    // de stand van de themameta (`meta_stand`): daarmee zegt de etiketkaart of
+    // de website achterloopt op het etiket. Zonder themavelden geen stand.
     const uit = leesWcProduct(wcProduct, {btwPct, prijzenInclBtw})
-    setV({...uit, meta: undefined, gepulld: new Date().toISOString(), gesynct: v.gesynct})
+    const nu = new Date().toISOString()
+    const stand = themaMeta ? wcMetaUitProduct(wcProduct, CRAFTERY_SLEUTELS) : null
+    const vorigeStand = v.meta_stand ? {meta_stand: v.meta_stand, meta_stand_op: v.meta_stand_op} : {}
+    setV(wcMetStand({...uit, meta: undefined, gepulld: nu, gesynct: v.gesynct, ...vorigeStand}, stand, nu))
     setMsg({soort: 'info', tekst: t('wc_msg_opgehaald')})
     onLog?.('pull', `↓ ${titel} — ${t('wc_msg_opgehaald')}`)
   }
@@ -161,12 +166,18 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
         ? await wcPost('products', body)
         : await wcPut(`products/${v.wc_id || wcProduct?.id}`, body)
       setWcProduct(res)
-      const bijgewerkt: WcVelden = {
+      const nu = new Date().toISOString()
+      // De themameta zoals hij nu in de winkel staat (wat de winkel terugmeldt,
+      // anders de stand van vóór de push met het verstuurde eroverheen).
+      const stand = themaMeta
+        ? wcMetaStandNaPush({antwoord: res, vooraf: nieuw ? null : wcProduct, verstuurd: body.meta_data, sleutels: CRAFTERY_SLEUTELS})
+        : null
+      const bijgewerkt: WcVelden = wcMetStand({
         ...v,
         wc_id: Number(res?.id) || v.wc_id,
         permalink: res?.permalink || v.permalink,
-        gesynct: new Date().toISOString(),
-      }
+        gesynct: nu,
+      }, stand, nu)
       setV(bijgewerkt)
       onOpslaan(bijgewerkt)
       const tekst = nieuw ? t('wc_msg_aangemaakt') : t('wc_msg_gepusht')

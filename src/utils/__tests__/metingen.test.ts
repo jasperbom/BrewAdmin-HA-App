@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { metingWaarde, heeftWaarde, metingWaarden, metingenMetFg, kiesHoverMeting } from '../metingen'
+import { metingWaarde, heeftWaarde, metingWaarden, metingenMetFg, kiesHoverMeting, nieuweGistMeting, metingIngevuld } from '../metingen'
 import type { HoverPunt } from '../metingen'
 import { fgStabiel } from '../calculations'
 
@@ -185,5 +185,24 @@ describe('metingenMetFg', () => {
     expect(fgStabiel(bestaand as any)).toBe(false)
     const uit = metingenMetFg(bestaand, ctx({fg: 1.012, datum: '2026-07-26', tijd: '10:00'}))
     expect(fgStabiel(uit as any)).toBe(true)
+  })
+})
+
+describe('nieuweGistMeting (het meetblad)', () => {
+  const nu = new Date(2026, 9, 7, 8, 5)
+
+  it('legt alleen vast wat is ingevuld, met de lokale datum en tijd', () => {
+    expect(nieuweGistMeting(2610, { sg: '1.018', ph: '', temp: '19,6' }, { id: 12, nu })).toEqual({
+      id: 12, batch_id: 2610, datum: '2026-10-07', tijd: '08:05', sg: 1.018, temp: 19.6,
+    })
+    expect(nieuweGistMeting(2610, { ph: 4.52 }, { id: 13, nu })).toEqual({
+      id: 13, batch_id: 2610, datum: '2026-10-07', tijd: '08:05', ph: 4.52,
+    })
+  })
+
+  it('niets (bruikbaars) ingevuld = geen meting', () => {
+    expect(nieuweGistMeting(2610, { sg: '', ph: '  ', temp: 'abc' }, { id: 1, nu })).toBeNull()
+    expect(metingIngevuld({})).toBe(false)
+    expect(metingIngevuld({ temp: '0' })).toBe(true)
   })
 })

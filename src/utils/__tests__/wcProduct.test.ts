@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   bouwWcPayload, leesWcProduct, wcVerschillen, wcPrijsString, wcPrijsNaarExcl,
   wcRegulierePrijsExcl, ordenCategorieen, WcVelden, wcPrijsBehouden,
-  veiligeAfbeeldingUrl,
+  veiligeAfbeeldingUrl, wcVoorraadPayload, wcMetaUitProduct, wcMetaStandNaPush, wcMetStand, wcArtikelPush,
 } from '../wcProduct'
+import { CRAFTERY_SLEUTELS } from '../craftery'
 
 describe('wcPrijsString / wcPrijsNaarExcl', () => {
   it('rekent naar inclusief BTW en rondt op centen af', () => {
@@ -252,5 +253,129 @@ describe('veiligeAfbeeldingUrl', () => {
     expect(veiligeAfbeeldingUrl('foto.jpg')).toBeNull()
     expect(veiligeAfbeeldingUrl('')).toBeNull()
     expect(veiligeAfbeeldingUrl(undefined)).toBeNull()
+  })
+})
+
+// ── De bewaarde webshopstand (wc.meta_stand) en de push van één artikel ─────
+
+describe('wcVoorraadPayload — ↑ Push voorraad raakt de meta niet', () => {
+  it('stuurt alleen de voorraad', () => {
+    expect(wcVoorraadPayload(46)).toEqual({stock_quantity: 46, manage_stock: true})
+    expect('meta_data' in wcVoorraadPayload(46)).toBe(false)
+  })
+  it('nooit een negatieve voorraad in de winkel', () => {
+    expect(wcVoorraadPayload(-3)).toEqual({stock_quantity: 0, manage_stock: true})
+  })
+})
+
+describe('wcMetaUitProduct', () => {
+  const winkel = {id: 9, meta_data: [
+    {id: 1, key: '_cf_abv', value: '6,2%'},
+    {id: 2, key: '_cf_extra_specs', value: [{label: 'Gist', value: 'Voss', extra: 1}]},
+    {id: 3, key: '_yoast_wpseo', value: 'blijf-af'},
+    {id: 4, key: '_cf_kcal', value: null},
+  ]}
+  it('alleen de sleutels die de app beheert, genormaliseerd', () => {
+    expect(wcMetaUitProduct(winkel, CRAFTERY_SLEUTELS)).toEqual({
+      _cf_abv: '6,2%', _cf_extra_specs: [{label: 'Gist', value: 'Voss'}], _cf_kcal: '',
+    })
+  })
+  it('geen meta_data = onbekend (null), lege meta_data = een lege stand', () => {
+    expect(wcMetaUitProduct({id: 9}, CRAFTERY_SLEUTELS)).toBeNull()
+    expect(wcMetaUitProduct(null, CRAFTERY_SLEUTELS)).toBeNull()
+    expect(wcMetaUitProduct({id: 9, meta_data: []}, CRAFTERY_SLEUTELS)).toEqual({})
+  })
+})
+
+describe('wcMetaStandNaPush', () => {
+  const sleutels = CRAFTERY_SLEUTELS
+  it('wat de winkel terugmeldt is leidend', () => {
+    expect(wcMetaStandNaPush({
+      antwoord: {meta_data: [{key: '_cf_abv', value: '7,0%'}, {key: '_cf_ibu', value: '24'}]},
+      vooraf: {meta_data: [{key: '_cf_abv', value: '6,2%'}]},
+      verstuurd: [{key: '_cf_abv', value: '7,0%'}], sleutels,
+    })).toEqual({_cf_abv: '7,0%', _cf_ibu: '24'})
+  })
+  it('meldt het antwoord geen meta: de stand van vóór de push met het verstuurde eroverheen', () => {
+    expect(wcMetaStandNaPush({
+      antwoord: {id: 9},
+      vooraf: {meta_data: [{key: '_cf_abv', value: '6,2%'}, {key: '_cf_ebc', value: '9'}]},
+      verstuurd: [{key: '_cf_abv', value: '7,0%'}, {key: '_niet_van_ons', value: 'x'}, {key: '_cf_ibu', value: ''}], sleutels,
+    })).toEqual({_cf_abv: '7,0%', _cf_ebc: '9'})
+  })
+  it('niets bekend = null (geen lege stand verzinnen)', () => {
+    expect(wcMetaStandNaPush({antwoord: {}, vooraf: {}, verstuurd: [], sleutels})).toBeNull()
+    expect(wcMetaStandNaPush({sleutels})).toBeNull()
+  })
+})
+
+describe('wcMetStand', () => {
+  it('zet de stand en het tijdstip op het wc-blok, de rest blijft', () => {
+    const wc: WcVelden = {wc_id: 9, gesynct: '2026-09-01T10:00:00Z'}
+    expect(wcMetStand(wc, {_cf_abv: '6,2%'}, '2026-09-12T10:00:00Z'))
+      .toEqual({wc_id: 9, gesynct: '2026-09-01T10:00:00Z', meta_stand: {_cf_abv: '6,2%'}, meta_stand_op: '2026-09-12T10:00:00Z'})
+  })
+  it('zonder stand ongewijzigd (een oude stand blijft staan)', () => {
+    const wc: WcVelden = {meta_stand: {_cf_abv: '6,0%'}, meta_stand_op: '2026-01-01'}
+    expect(wcMetStand(wc, null, '2026-09-12')).toEqual(wc)
+    expect(wcMetStand(undefined, null, '2026-09-12')).toEqual({})
+  })
+})
+
+describe('wcArtikelPush — één artikel, op SKU', () => {
+  const nep = (producten: any[], antwoord?: any, fout?: Error) => {
+    const log: Array<[string, string, any?]> = []
+    return {
+      log,
+      wc: {
+        get: async (pad: string) => { log.push(['get', pad]); return producten },
+        put: async (pad: string, body: any) => {
+          log.push(['put', pad, body])
+          if (fout) throw fout
+          return antwoord ?? {id: producten[0]?.id, ...body}
+        },
+      },
+    }
+  }
+
+  it('zoekt op SKU, bouwt de payload met de winkelstand en zet hem met een PUT', async () => {
+    const winkel = {id: 77, regular_price: '3.93', meta_data: []}
+    const {wc, log} = nep([winkel], {id: 77, meta_data: [{key: '_cf_abv', value: '7,0%'}]})
+    let gezien: any = null
+    const r = await wcArtikelPush('KB 33/a', w => { gezien = w; return {meta_data: [{key: '_cf_abv', value: '7,0%'}]} }, wc)
+    expect(gezien).toBe(winkel)
+    expect(log[0]).toEqual(['get', 'products?sku=KB%2033%2Fa&per_page=1'])
+    expect(log[1]).toEqual(['put', 'products/77', {meta_data: [{key: '_cf_abv', value: '7,0%'}]}])
+    expect(r).toMatchObject({gevonden: true, vooraf: winkel, body: {meta_data: [{key: '_cf_abv', value: '7,0%'}]}})
+    if (r.gevonden) expect(wcMetaStandNaPush({antwoord: r.antwoord, vooraf: r.vooraf, verstuurd: r.body.meta_data, sleutels: CRAFTERY_SLEUTELS}))
+      .toEqual({_cf_abv: '7,0%'})
+  })
+
+  it('een SKU die de winkel niet kent: geen PUT', async () => {
+    const {wc, log} = nep([])
+    expect(await wcArtikelPush('ONBEKEND', () => ({stock_quantity: 1}), wc)).toEqual({gevonden: false})
+    expect(log.map(l => l[0])).toEqual(['get'])
+  })
+
+  it('een fout van de verbinding gaat door naar de aanroeper (die meldt hem per artikel)', async () => {
+    const {wc} = nep([{id: 5}], undefined, new Error('WooCommerce niet bereikbaar'))
+    await expect(wcArtikelPush('KB-33', () => wcVoorraadPayload(4), wc)).rejects.toThrow('niet bereikbaar')
+  })
+
+  it('de voorraadpush: dezelfde weg, alleen de voorraad', async () => {
+    const {wc, log} = nep([{id: 5, meta_data: [{key: '_cf_abv', value: '6,2%'}]}])
+    const r = await wcArtikelPush('KB-33', () => wcVoorraadPayload(46), wc)
+    expect(log[1]).toEqual(['put', 'products/5', {stock_quantity: 46, manage_stock: true}])
+    // De stand die bij de voorraadpush ontvangen wordt (de meta is niet aangeraakt).
+    if (r.gevonden) expect(wcMetaStandNaPush({antwoord: r.antwoord, vooraf: r.vooraf, verstuurd: r.body.meta_data, sleutels: CRAFTERY_SLEUTELS}))
+      .toEqual({_cf_abv: '6,2%'})
+  })
+})
+
+describe('leesWcProduct — de stand bij een pull', () => {
+  it('leest de themameta als stand (zelfde vorm als wcMetaUitProduct)', () => {
+    const p = {id: 3, meta_data: [{key: '_cf_ingredienten', value: 'water, hop. Bevat: gerst.'}, {key: '_x', value: 1}]}
+    expect(leesWcProduct(p, {metaSleutels: CRAFTERY_SLEUTELS}).meta).toEqual(wcMetaUitProduct(p, CRAFTERY_SLEUTELS))
+    expect(leesWcProduct({id: 3}, {metaSleutels: CRAFTERY_SLEUTELS}).meta).toEqual({})
   })
 })

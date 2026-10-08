@@ -3,6 +3,7 @@ import { t, setLang as i18nSetLang } from './i18n'
 import {
   WerkruimteId, WERKRUIMTE_IDS, Route, parseRoute, bouwHash, routeGelijk, isDetailRoute, lijstRoute, doelNaarRoute,
   canoniekePagina, historieMarkering, historieDiepte, historieStap, vorigeIsEigen, type GaNaar, type GaNaarOpties,
+  type BatchesStand,
 } from './utils/route'
 import { detailTitel } from './utils/detailTitel'
 import { afgeleideThemaKleuren } from './utils/kleurContrast'
@@ -36,6 +37,8 @@ import AttentieSheet from './components/ui/AttentieSheet'
 import Kopbalk from './components/ui/Kopbalk'
 import PaginaNav, { PaginaNavItem } from './components/ui/PaginaNav'
 import UndoBar, { UndoProvider, useUitgesteldeActie } from './components/ui/UndoBar'
+import EtiketBijwerken, { EtiketBijwerkenProvider, maakEtiketDienst } from './components/batch/EtiketBijwerken'
+import type { EtiketBijwerkenData, EtiketVerzoek } from './components/batch/EtiketBijwerken'
 import { LaadFout } from './components/ui/FoutKaart'
 import { useToetsenbordInset } from './components/ui/toetsenbord'
 import MeerPage from './pages/MeerPage'
@@ -45,6 +48,7 @@ import AdministratieDashboard from './pages/AdministratieDashboard'
 import RapportenPage from './pages/RapportenPage'
 import IngredientenPage from './pages/IngredientenPage'
 import BatchFlowPage from './pages/BatchFlowPage'
+import BatchesPage from './pages/BatchesPage'
 import BestellingenPage from './pages/BestellingenPage'
 import KassaPage from './pages/KassaPage'
 import KlantenPage from './pages/KlantenPage'
@@ -510,6 +514,12 @@ function App() {
   // gaNaar zonder id): zoekterm en uitklapstand van de lijst blijven staan.
   const openRecord = (pagina: string) => (id: string | number | null, opties?: GaNaarOpties) =>
     navigeer(doelNaarRoute({ pagina, id }, routeRef.current.werkruimte), opties);
+  // De stand van Batches (Lopend, Gesloten, Agenda) staat in de route, zodat
+  // terug en herladen hem houden. Een andere stand kiezen vervangt de entry:
+  // segmenten zijn geen stappen om terug doorheen te lopen.
+  const batchesStand: BatchesStand = route.stand ?? 'lopend';
+  const kiesBatchesStand = (stand: BatchesStand) =>
+    navigeer({ werkruimte: 'productie', pagina: 'batches', stand: stand === 'lopend' ? null : stand }, { vervang: true });
   // Terug op een detailscherm: `history.back()` als de vorige entry van de app
   // zelf is (markering in history.state), anders — binnengekomen via een
   // gedeelde link of een bladwijzer — naar de lijst, zonder de app te verlaten.
@@ -2003,6 +2013,24 @@ function App() {
   }), [producten, productArtikelen, artikelen, merchArtikelen, verpakkingen, bat, av, uit, verplaatsingen,
     afboekingen, locaties, bestellingen, bestellingPicks, verliesRegistraties, planningInst?.conditioneren_dagen, vandaagIso]);
 
+  // "Etiket bijwerken" (components/batch/EtiketBijwerken.tsx): één dialoog
+  // voor de hele app, de énige schrijfweg voor het etiket van een product. De
+  // pagina's openen hem via de context (batch, product, HACCP-matrix, CCP 3)
+  // en lezen er de webshopstand voor de etiketkaart uit; de data staat hier.
+  const [etiketVerzoek, setEtiketVerzoek] = useState<EtiketVerzoek | null>(null);
+  // Naar een andere pagina (terugknop, link): de dialoog hoorde bij de vorige.
+  React.useEffect(() => { setEtiketVerzoek(null); }, [routeHash]);
+  const etiketData = React.useMemo((): EtiketBijwerkenData => ({
+    recepten, batchIngredienten: bi, ingredienten: ing, lots, afvulSessies, afvullingen: av, haccpInst,
+    batches: bat, producten, productArtikelen, verpakkingen, etiketcontroles: haccpEtiketcontroles,
+    uitleveringen: uit, verplaatsingen, afboekingen, locaties,
+  }), [recepten, bi, ing, lots, afvulSessies, av, haccpInst, bat, producten, productArtikelen, verpakkingen,
+    haccpEtiketcontroles, uit, verplaatsingen, afboekingen, locaties]);
+  // De webshopstap alleen als WooCommerce aan staat én de app de themavelden beheert.
+  const etiketWebshopAan = !!(wcCreds?.enabled && wcCreds?.storeUrl && wcCreds?.themaVelden !== false);
+  const etiketDienst = React.useMemo(() => maakEtiketDienst(etiketData, setEtiketVerzoek, etiketWebshopAan),
+    [etiketData, etiketWebshopAan]);
+
   // Attentiebadges per werkruimte: tellen wat om aandacht vraagt, ook als die
   // werkruimte niet actief is (zie WERKRUIMTE_IDS-knoppen in de header). De
   // opsplitsing per post staat in utils/attentie.ts — de badge is uitklapbaar,
@@ -2323,10 +2351,10 @@ function App() {
     setPage,
     gaNaar,
     // De route is de bron: `#/productie/batches/<id>` opent de batch; de
-    // pagina opent en sluit een batch via onOpenBatch (een history-entry).
+    // lijst (BatchesPage) en de batch openen en sluiten een batch via
+    // onOpenBatch (een history-entry).
     openBatchId: navBatchId,
     onOpenBatch: openRecord('batches'),
-    batchesStand: page === 'batches' ? (route.stand ?? null) : null,
     preNieuwBatch,
     setPreNieuwBatch,
     setProductArtikelen,
@@ -2360,9 +2388,19 @@ function App() {
   // De Meten-knop: altijd de brouwzaal, en daar de meting-modal.
   const openMeting = () => { navigeer({ werkruimte: 'productie', pagina: 'dashboard' }); setMetingSignaal(n => n + 1); };
   const schilZonderPaginas = page === 'instellingen' || page === 'meer';
+  // De dialoog "Etiket bijwerken": het product (de nieuwste stand) en de batch
+  // waartegen hij vergelijkt. Een product dat er niet (meer) is: geen dialoog.
+  const etiketOpen = (() => {
+    if (!etiketVerzoek) return null;
+    const product = (producten || []).find((p: any) => Number(p.id) === Number(etiketVerzoek.productId));
+    if (!product) return null;
+    const batch = etiketVerzoek.batchId != null ? (bat || []).find((b: any) => b.id === etiketVerzoek.batchId) || null : null;
+    return {product, batch};
+  })();
 
   return (
     <UndoProvider value={undo}>
+    <EtiketBijwerkenProvider value={etiketDienst}>
     <div className="min-h-screen schil-rail schil-wortel" style={{backgroundColor:'var(--t-bg)'}}>
       {/* Bureau: de rail links is het hoofdmenu (werkruimtes, instellingen). */}
       <Rail
@@ -2440,7 +2478,11 @@ function App() {
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} kostenSoorten={kostenSoorten} bfCreds={bfCreds} auditLog={auditLog} setAuditLog={setAuditLog} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} setJournaal={setJournaal} navDoel={doelVoor('ingredienten')} onNavDoelConsumed={wisNavDoel} />}
         {page==='recepten' && <ReceptenPage ing={ing} lots={lots} bat={bat} producten={producten} setProducten={setProducten} av={av} afvulSessies={afvulSessies} uit={uit} verplaatsingen={verplaatsingen} afboekingen={afboekingen} locaties={locaties} bestellingen={bestellingen} bestellingPicks={bestellingPicks} productArtikelen={productArtikelen} artikelen={artikelen} verliesRegistraties={verliesRegistraties} inkoopFacturen={inkoopFacturen} verpakkingen={verpakkingen} onderdelen={onderdelen} accijnsInst={accijnsInst} bfCreds={bfCreds} recepten={recepten} setRecepten={setRecepten} verborgen={verborgen} setVerborgen={setVerborgen} gearchiveerdeTags={gearchiveerdeTags} setGearchiveerdeTags={setGearchiveerdeTags} tagVolgorde={tagVolgorde} setPage={setPage} setPreNieuwBatch={setPreNieuwBatch} auditLog={auditLog} setAuditLog={setAuditLog} recordId={recordId} onOpenRecord={openRecord('recepten')} gaNaar={gaNaar} />}
         {page==='producten' && <ProductenPage producten={producten} setProducten={setProducten} ing={ing} productArtikelen={productArtikelen} setProductArtikelen={setProductArtikelen} bat={bat} setBat={setBat} recepten={recepten} verpakkingen={verpakkingen} onderdelen={onderdelen} av={av} setAv={setAv} uit={uit} bi={bi} lots={lots} acc={acc} setAcc={setAcc} accijnsAangiftes={accijnsAangiftes} bestellingen={bestellingen} verkoopFacturen={verkoopFacturen} artikelen={artikelen} accijnsInst={accijnsInst} setPage={setPage} bestellingPicks={bestellingPicks} afboekingen={afboekingen} setAfboekingen={setAfboekingen} log={log} setLog={setLog} gnCodes={gnCodes} wcCreds={wcCreds} setWcCreds={wcCredsSchrijfbaar ? setWcCreds : undefined} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} auditLog={auditLog} setAuditLog={setAuditLog} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} receptenVerborgen={verborgen} receptenGearchiveerdeTags={gearchiveerdeTags} recordId={recordId} onOpenRecord={openRecord('producten')} gaNaar={gaNaar} />}
-        {page==='batches' && <BatchFlowPage {...batchFlowProps} />}
+        {/* Batches: de lijst (Lopend · Gesloten · Agenda), of — met een batch in
+            de route — de batch als eigen pagina. */}
+        {page==='batches' && (navBatchId != null
+          ? <BatchFlowPage {...batchFlowProps} />
+          : <BatchesPage {...batchFlowProps} stand={batchesStand} onStand={kiesBatchesStand} />)}
         {page==='tool_phcorrectie' && <GereedschapPage tool="ph" />}
         {page==='tool_waterprofiel' && <GereedschapPage tool="water" waterProfielen={waterProfielen} setWaterProfielen={setWaterProfielen} waterDoelprofielen={waterDoelprofielen} setWaterDoelprofielen={setWaterDoelprofielen} claudeCreds={claudeCreds} />}
         {page==='bestellingen' && <BestellingenPage bat={bat} av={av} afvulSessies={afvulSessies} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} recordId={recordId} onOpenRecord={openRecord('bestellingen')} gaNaar={gaNaar} verliesRegistraties={verliesRegistraties} conditionerenDagen={planningInst?.conditioneren_dagen} recepten={recepten} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} accijnsAangiftes={accijnsAangiftes} afboekingen={afboekingen} smtpCreds={smtpCreds} mollieCreds={mollieCreds} mailTemplates={mailTemplates} btwTarieven={btwTarieven} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} setJournaal={setJournaal} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} navDoel={doelVoor('bestellingen')} onNavDoelConsumed={wisNavDoel} />}
@@ -2481,8 +2523,29 @@ function App() {
           onGaNaar={p => gaNaar(attentieDoel(p))}
         />
       )}
+      {etiketOpen && (
+        <EtiketBijwerken
+          key={`${etiketOpen.product.id}-${etiketVerzoek?.stap || 'etiket'}`}
+          product={etiketOpen.product}
+          batch={etiketOpen.batch}
+          stap={etiketVerzoek?.stap}
+          data={etiketData}
+          setProducten={setProducten}
+          auditLog={auditLog}
+          setAuditLog={setAuditLog}
+          webshop={etiketWebshopAan ? {
+            setProductArtikelen,
+            onLog: (soort, msg, details) => setWcSyncLog((prev: any[]) => [{
+              id: Date.now(), ts: new Date().toISOString(), type: soort, msg, details: details || '',
+              product_id: Number(etiketOpen.product.id),
+            }, ...(prev || [])].slice(0, 100)),
+          } : null}
+          onSluit={() => setEtiketVerzoek(null)}
+        />
+      )}
       <UndoBar undo={undo} />
     </div>
+    </EtiketBijwerkenProvider>
     </UndoProvider>
   );
 }

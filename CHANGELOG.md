@@ -4,6 +4,48 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.94] — 2026-10-08
+
+### Productie & Verkoop, deel 5: Etiket bijwerken en de tab Batches
+
+**Etiket bijwerken — één plek, ook voor de webshop**
+- Nieuwe dialoog **Etiket bijwerken** (venster op het bureau, paneel van onderen
+  op de telefoon), te openen vanaf de etiketkaart van de batch, het ⋯-menu van
+  het product, de HACCP-matrix en CCP 3:
+  - *Allergenen op het gedrukte etiket* beginnen bij het huidige etiket, nooit
+    bij de batch — CCP 3 blijft een onafhankelijke controle.
+  - *Getallen*: oud → nieuw uit de referentiebatch, met het oordeel ("binnen
+    ±1,0 % vol: mag blijven staan"); energie *Niet vermeld | Vermeld* (kcal én
+    kJ).
+  - *Etiketversie*: voorstel v3 → v4 met datum; wijzigen allergenen of ABV, dan
+    is een nieuwe versie verplicht ("Ik heb het gedrukte etiket v4 voor me").
+  - Opslaan met auditregel en vijf seconden terugweg.
+- Dit is nu de **enige schrijfweg** voor de allergenen en de versie van het
+  etiket: de HACCP-allergenenmatrix is alleen-lezen met een knop *Etiket
+  bijwerken*, en CCP 3 opent dezelfde dialoog.
+- **Webshop:** staat WooCommerce aan, dan volgt *Ook naar de webshop?* met per
+  artikel het verschil; alleen bierinformatie gaat mee, nooit prijs of
+  voorraad, en nooit automatisch. De app onthoudt bij elke push en pull wat er
+  in de winkel staat, zodat de etiketkaart ziet of de website achterloopt.
+  Allergenen gaan als "Bevat: gerst, tarwe." achter de ingrediëntentekst (en
+  komen er bij ophalen weer af); de Bevat-regel dekt alle etiketversies die nog
+  op voorraad liggen.
+
+**De tab Batches: Lopend · Gesloten · Agenda**
+- **Lopend:** elke batch die niet gesloten is (ook zonder tank), gegroepeerd per
+  fase, met één knop: de volgende stap (*ABV ›*, *Afronden ›*, *Meting*). Een
+  geplande batch waarvan de brouwdag voorbij is, staat als "over tijd".
+- **Gesloten:** het archief per jaar, met zoeken (ook op lotcode) en filters op
+  product en recept.
+- **Agenda:** de brouwagenda (een balk opent de batch) met *Behoefte vs
+  voorraad* via vinkjes; op de telefoon een lijst per tank in plaats van een
+  Gantt.
+- *+ Nieuwe batch* opent het planformulier als venster (het stond onder de
+  agenda). Verwijderen kan alleen bij Gepland, via ⋯, met terugweg.
+- De attentiepost "batches met open taken" opent Batches › Lopend.
+
+---
+
 ## [1.12.93] — 2026-10-08
 
 ### Productie & Verkoop, deel 4: etiket & website, verkoopoverzicht, bestellingen op de telefoon
