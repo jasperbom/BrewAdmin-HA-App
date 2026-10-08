@@ -18,6 +18,8 @@ import { allergenenUitBatch } from '../utils/haccp'
 import { allergeenRegel } from '../utils/etiket'
 import { datumKort } from '../utils/etiketKaart'
 import { useEtiketBijwerken } from '../components/batch/EtiketBijwerken'
+import { useAllergenenOpzoeken } from '../components/AllergenenOpzoeken'
+import { teBeoordelen, handmatigBeoordeeld } from '../utils/allergeenOpzoeken'
 
 // HACCP-borging. De pagina is een register: registreren gebeurt daar waar de
 // handeling plaatsvindt (vrijgave, sluit- en etiketcontrole in de batchflow,
@@ -85,8 +87,9 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
 
   const achterstallig = telAchterstalligeSchoonmaakTaken(schoonmaakTaken, schoonmaakLog, today)
   const openCapa = (capa||[]).filter((c:any)=>c.status!=='afgerond').length
-  const ingMetAll = (ing||[]).filter((i:any)=>i.allergenen?.length>0).length
-  const ingTot = (ing||[]).length
+  // Ingrediënten die op een allergenenbeoordeling wachten (behalve hop en
+  // gist): die houden het etiketoordeel van elk bier waarin ze zitten open.
+  const allergenenOpen = teBeoordelen(ing).length
   const lastWater = (waterkwaliteit||[]).slice().sort((a:any,b:any)=>String(b.datum||'').localeCompare(String(a.datum||'')))[0]
   const waterOud = lastWater ? mAgo(lastWater.datum,180) : true
   const lastOngd = (ongedierte||[]).filter((o:any)=>o.type==='controle').slice().sort((a:any,b:any)=>String(b.datum||'').localeCompare(String(a.datum||'')))[0]
@@ -125,8 +128,8 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
      ok:!achterstallig, kleur:'border-red-500', tab:'reiniging'},
     {key:'capa', label:t('haccp_dash_open_capa'), waarde:openCapa,
      ok:!openCapa, kleur:'border-orange-500', tab:'kritisch'},
-    {key:'allergenen', label:t('haccp_dash_allergenen'), waarde:`${ingMetAll}/${ingTot}`, sub:t('haccp_dash_ingevuld'),
-     ok:!(ingTot&&!ingMetAll), kleur:'border-orange-500', tab:'allergenen'},
+    {key:'allergenen', label:t('haccp_dash_allergenen'), waarde:allergenenOpen, sub:t('haccp_dash_niet_beoordeeld'),
+     ok:!allergenenOpen, kleur:'border-orange-500', tab:'allergenen'},
     {key:'water', label:t('haccp_dash_water'), waarde:lastWater?fmtD(lastWater.datum):'-',
      sub:lastWater?t('haccp_dash_laatste_test'):t('haccp_dash_geen_tests'),
      ok:!waterOud, kleur:'border-orange-500', tab:'registers'},
@@ -190,7 +193,13 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
   // bijwerken" (met versie en het vinkje "gedrukt etiket voor me"); de matrix
   // hieronder is alleen-lezen.
   const etiketDienst = useEtiketBijwerken()
+  const opzoeken = useAllergenenOpzoeken()
+  const wachtend = teBeoordelen(ing)
   const actieveProducten = (producten||[]).filter((pr:any)=>pr.status!=='gearchiveerd')
+  // Met de hand in de matrix = een eigen beoordeling: bron "handmatig", de
+  // toelichting van een eerder voorstel valt weg.
+  const zetAllergenen = (id:number, allergenen:string[]|null) =>
+    setIng((prev:any[])=>prev.map((x:any)=>x.id===id ? handmatigBeoordeeld(x, allergenen as any) : x))
 
   // Dezelfde afleiding als CCP 3 en de etiketkaart (ook regels die alleen op
   // naam of via hun lot aan een ingrediënt hangen) — anders toont dit
@@ -204,6 +213,16 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
     <div className="space-y-6">
       <div>
         <SectionHeader title={t('haccp_allergen_matrix')} />
+        {wachtend.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-orange-50 border-b border-orange-100 px-3 py-2">
+            <span className="text-sm text-orange-800 min-w-0 flex-1">
+              {wachtend.length === 1 ? t('haccp_allergen_wachten_een') : t('haccp_allergen_wachten').replace('{n}', String(wachtend.length))}
+            </span>
+            {opzoeken && (
+              <Btn s="sm" v="secondary" onClick={()=>opzoeken.open(wachtend.map((i:any)=>Number(i.id)))}>{t('allergenen_opzoeken')}</Btn>
+            )}
+          </div>
+        )}
         <div className="bg-white rounded-b-lg shadow-sm overflow-x-auto">
           {!(ing||[]).length ? <p className="p-4 text-sm text-gray-500 italic">{t('haccp_allergen_geen')}</p> : (
             <table className="w-full text-xs">
@@ -216,7 +235,16 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
               <tbody>
                 {(ing||[]).map((i:any)=>(
                   <tr key={i.id} className="border-b hover:bg-gray-50">
-                    <td className="p-2 font-medium text-gray-800">{i.naam}</td>
+                    <td className="p-2 text-gray-800 max-w-[16rem]">
+                      <div className="font-medium">{i.naam}</div>
+                      {/* Waar de beoordeling vandaan komt: een vaste regel of
+                          een voorstel van Claude, door iemand overgenomen. */}
+                      {Array.isArray(i.allergenen) && (i.allergenen_bron==='claude' || i.allergenen_bron==='regel') && i.allergenen_toelichting && (
+                        <div className="text-[11px] text-gray-500 truncate" title={i.allergenen_toelichting}>
+                          {t(i.allergenen_bron==='claude' ? 'allergeen_bron_claude' : 'allergeen_bron_regel')}: {i.allergenen_toelichting}
+                        </div>
+                      )}
+                    </td>
                     {/* Een lege lijst is "gecontroleerd, geen allergenen" — iets
                         anders dan een ontbrekende lijst (nog niet beoordeeld),
                         die het etiketoordeel op "onvolledig" houdt. */}
@@ -227,12 +255,7 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
                         aria-label={`${i.naam} — ${t('haccp_product_allergen_gecontroleerd')}`}
                         onChange={e=>{
                           const aan = e.target.checked
-                          setIng((prev:any[])=>prev.map((x:any)=>{
-                            if(x.id!==i.id) return x
-                            if(aan) return {...x, allergenen: x.allergenen||[]}
-                            const {allergenen, ...rest} = x
-                            return rest
-                          }))
+                          zetAllergenen(i.id, aan ? (i.allergenen||[]) : null)
                           logAudit(auditLog,setAuditLog,{entiteit:'Ingrediënt',entiteit_id:i.id,actie:'gewijzigd',omschrijving:`Allergenen ${aan?'gecontroleerd':'onbekend'}: ${i.naam}`})
                         }} />
                     </td>
@@ -243,8 +266,7 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
                           onChange={e=>{
                             const allergs = new Set(i.allergenen||[])
                             e.target.checked ? allergs.add(a.key) : allergs.delete(a.key)
-                            const updated = Array.from(allergs)
-                            setIng((prev:any[])=>prev.map((x:any)=>x.id===i.id?{...x,allergenen:updated}:x))
+                            zetAllergenen(i.id, Array.from(allergs) as string[])
                             logAudit(auditLog,setAuditLog,{entiteit:'Ingrediënt',entiteit_id:i.id,actie:'gewijzigd',omschrijving:`Allergenen: ${i.naam}`})
                           }}
                         />

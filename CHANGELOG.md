@@ -4,6 +4,48 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.99] — 2026-10-08
+
+### Allergenen opzoeken: de app zoekt de allergenen van ingrediënten op
+
+Een ingrediënt zonder beoordeelde allergenen hield het etiketoordeel van elk bier
+waarin het zat op "onvolledig", en elk ingrediënt moest met de hand in de
+allergenenmatrix worden aangevinkt. Nu zoekt de app ze op.
+
+- **Allergenen opzoeken** staat overal waar de app meldt dat een ingrediënt nog
+  niet beoordeeld is: op de etiketkaart (batch en product), in "Wat brouw je?",
+  bij het recept en in HACCP › Allergenen ("n ingrediënten wachten op een
+  allergenenbeoordeling").
+- **Eerst vaste brouwkennis**, zonder Claude: hop en gist hebben geen
+  allergenen, mout zonder andere graansoort is gerstemout, en de namen van de
+  allergenen in vijf talen en in samenstellingen (tarwemout, Weizenmalz, lactose,
+  hazelnoot, kaliummetabisulfiet …) — met de uitzonderingen die vaak misgaan:
+  melkzuur is geen melk, nootmuskaat en kokos zijn geen noten, boekweit
+  (Buchweizen) is geen tarwe, chocolademout is gewoon mout.
+- **Dan Claude** voor wat de regels niet zeker weten (chocolade, een
+  smaakstof, een klaringsmiddel, een merknaam): per ingrediënt de allergenen
+  volgens bijlage II van de EU-verordening, een zekerheid en één zin uitleg.
+  Alleen naam, type, fabrikant en de eigenschappen uit Brewfather gaan mee.
+  Zonder Claude-sleutel werken de vaste regels gewoon; de rest kies je zelf.
+- **Jij beslist.** Elk voorstel staat met zijn bron in een lijst; zeker en
+  "hoog/middel" staan aangevinkt, "laag" niet (eerst de specificatie nakijken).
+  Met **Aanpassen** zet je het zelf goed. Pas bij **Overnemen** wordt het de
+  beoordeling van het ingrediënt — en neemt elk bier waarin het zit de
+  allergenen vanzelf mee. Een eerdere beoordeling wordt nooit stil
+  overschreven.
+- "Gluten" volgt hoe je het al vastlegt (gerst + gluten, of alleen gerst), want
+  CCP 3 vergelijkt streng.
+- Het etiket zelf blijft een aparte stap: de kaart zegt daarna dat het etiket
+  bijgewerkt moet worden, en dat doe je met Etiket bijwerken (nieuwe versie).
+  Zo blijft CCP 3 een onafhankelijke controle.
+- Op het ingrediënt staat waar de beoordeling vandaan komt (regel, Claude met
+  model en uitleg, of met de hand); de matrix toont het onder de naam. Elke
+  overname staat in het auditlogboek.
+- Het HACCP-dashboard telt nu de ingrediënten die op een beoordeling wachten
+  (behalve hop en gist) in plaats van "ingevuld".
+
+---
+
 ## [1.12.98] — 2026-10-08
 
 ### Kostensoort wijzigen, ook als de BTW-aangifte al gedaan is

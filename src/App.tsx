@@ -41,6 +41,7 @@ import UndoBar, { UndoProvider, useUitgesteldeActie } from './components/ui/Undo
 import EtiketBijwerken, { EtiketBijwerkenProvider, maakEtiketDienst } from './components/batch/EtiketBijwerken'
 import type { EtiketBijwerkenData, EtiketVerzoek } from './components/batch/EtiketBijwerken'
 import NieuweBatchBlad, { NieuweBatchProvider } from './components/batch/NieuweBatchBlad'
+import AllergenenOpzoeken, { AllergenenOpzoekenProvider, type AllergenenOpzoekenDienst } from './components/AllergenenOpzoeken'
 import type { NieuweBatchDienst, NieuweBatchVerzoek } from './components/batch/NieuweBatchBlad'
 import { LaadFout } from './components/ui/FoutKaart'
 import { useToetsenbordInset } from './components/ui/toetsenbord'
@@ -2066,6 +2067,16 @@ function App() {
   const etiketDienst = React.useMemo(() => maakEtiketDienst(etiketData, setEtiketVerzoek, etiketWebshopAan),
     [etiketData, etiketWebshopAan]);
 
+  // "Allergenen opzoeken" (components/AllergenenOpzoeken.tsx): één blad voor
+  // de hele app — HACCP, de etiketkaart, "Wat brouw je?" en het recept openen
+  // het met de ingrediënten die nog niet beoordeeld zijn. Alleen als de rol
+  // de ingrediënten mag schrijven (anders geen knop).
+  const [allergenenVerzoek, setAllergenenVerzoek] = useState<number[] | null>(null);
+  React.useEffect(() => { setAllergenenVerzoek(null); }, [routeHash]);
+  const magIngredienten = rolMagKey(whoami?.rol, 'ingredienten');
+  const allergenenDienst = React.useMemo((): AllergenenOpzoekenDienst | null => (magIngredienten
+    ? { open: ids => setAllergenenVerzoek(ids.length ? ids.map(Number) : null) } : null), [magIngredienten]);
+
   // De rijen van het Administratie-dashboard (utils/beslissingen.ts): één rij
   // per ding dat je afhandelt. Eén keer uitgerekend en twee keer gebruikt —
   // het dashboard toont ze, de attentie-badge van Administratie en de
@@ -2465,6 +2476,7 @@ function App() {
     <UndoProvider value={undo}>
     <EtiketBijwerkenProvider value={etiketDienst}>
     <NieuweBatchProvider value={nieuweBatchDienst}>
+    <AllergenenOpzoekenProvider value={allergenenDienst}>
     <div className="min-h-screen schil-rail schil-wortel" style={{backgroundColor:'var(--t-bg)'}}>
       {/* Bureau: de rail links is het hoofdmenu (werkruimtes, instellingen). */}
       <Rail
@@ -2588,7 +2600,7 @@ function App() {
         <NieuweBatchBlad
           key={nieuweBatchNr}
           verzoek={nieuweBatch}
-          verborgen={!!etiketOpen}
+          verborgen={!!etiketOpen || !!allergenenVerzoek}
           bat={bat} setBat={setBat} setBi={setBi} ing={ing} lots={lots}
           recepten={recepten} receptenVerborgen={verborgen} receptenGearchiveerdeTags={gearchiveerdeTags}
           producten={producten} setProducten={setProducten} productArtikelen={productArtikelen}
@@ -2620,8 +2632,20 @@ function App() {
           onSluit={() => setEtiketVerzoek(null)}
         />
       )}
+      {allergenenVerzoek && (
+        <AllergenenOpzoeken
+          ingredientIds={allergenenVerzoek}
+          ingredienten={ing}
+          setIng={setIng}
+          heeftSleutel={!!claudeCreds?.apiKey && claudeCreds?.enabled !== false}
+          auditLog={auditLog}
+          setAuditLog={setAuditLog}
+          onSluit={() => setAllergenenVerzoek(null)}
+        />
+      )}
       <UndoBar undo={undo} />
     </div>
+    </AllergenenOpzoekenProvider>
     </NieuweBatchProvider>
     </EtiketBijwerkenProvider>
     </UndoProvider>
