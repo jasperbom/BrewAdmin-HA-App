@@ -4,6 +4,49 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.12.92] — 2026-10-08
+
+### Productie & Verkoop, deel 3: de keten, recepten in gebruik, kassa op de telefoon
+
+**De keten in de batch**
+- **Een nieuwe batch krijgt zijn product.** Hangt het recept aan precies één
+  product (uit roulatie telt mee, gearchiveerd niet), dan koppelt de app het
+  meteen, met "Gekoppeld aan … · Ongedaan maken". Bij meer producten kies je;
+  zonder product kies je *Nieuw product* of *Later*. Ook bij *Recept opnieuw
+  toepassen*.
+- **De batchkop toont de keten**: *Recept · … ›*, *Product · … ›* (één chip per
+  product) en *Tank*, met "gebrouwen … · dag n in …" — in elke fase, klikbaar
+  naar het recept en het product. Zonder product: *Product kiezen*.
+- CCP 3, het afvulformulier en Batchgegevens zetten de producten van het recept
+  bovenaan. Een product dat bij het afvullen ontstaat erft naam, stijl en
+  recept, maar geen ABV en geen allergenen (die zijn etiketgegevens).
+- Overal dezelfde batchtitel.
+
+**Recepten in gebruik**
+- De receptenpagina opent op **In gebruik**, gegroepeerd per product (huidig
+  recept bovenaan, eerdere ingeklapt), met *Zonder product* onderaan. Daarnaast
+  **Archief** (platte lijst, Brewfather-tags als filter, ook "zonder tag") en
+  **Verborgen** ("nog in gebruik bij …"). Zoeken werkt over alles.
+- Per recept via ⋯: *Brouwen*, *Vastpinnen*, *Koppel aan product*, *Verbergen*
+  (met terugweg) — ook met een tik op de telefoon.
+- Het receptdetail toont het product, elke batch die ervan gebrouwen is
+  (klikbaar), het verwachte etiket en de versies. Op de telefoon een eigen
+  scherm met *Brouwen* onderin.
+- *Recept koppelen* op de productpagina gebruikt dezelfde kiezer.
+
+**Kassa op de telefoon**
+- Een vaste **bonbalk** onderin ("6 artikelen · € 48,10", *Bon ›*,
+  *Afrekenen*); de bon opent als paneel van onderen. Op het bureau blijft de
+  indeling zoals hij was.
+- **Eén tegel per product** met de verpakkingen als knoppen en de vrije
+  voorraad per verpakking (nooit flessen en fusten opgeteld). Prijzen incl. BTW
+  voor een particulier, excl. voor een zakelijke klant (alleen weergave).
+- Voorraad in de AGP staat als link "630 in AGP · uitslaan ›"; de kassa
+  verkoopt alleen vrije voorraad. Wat er geboekt wordt is ongewijzigd
+  (vergeleken met de vorige versie: geen verschil).
+
+---
+
 ## [1.12.91] — 2026-10-08
 
 ### Productie & Verkoop, deel 2: snelle winst

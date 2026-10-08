@@ -44,6 +44,7 @@ import { SkuEigenaar, skuConflicten, vrijeSku, productVoorRegel } from '../utils
 import { productEbc } from '../utils/bierKleur'
 import BierKleur from '../components/ui/BierKleur'
 import Icon from '../components/ui/Icon'
+import ReceptKiezer from '../components/recept/ReceptKiezer'
 
 type AfboekingReden = 'vermis' | 'vernietiging' | 'overig'
 type BijlageRol = 'douane_verklaring' | 'bewijs'
@@ -87,7 +88,7 @@ const ARTIKEL_UNDO = 'artikel-verwijder-'
 // recordId/onOpenRecord: het geopende product staat in de route
 // (`#/verkoop/producten/<id>`, App.tsx) — terug, herladen en een gedeelde link
 // werken. gaNaar is er voor de ketenlinks naar recept en batch (F10).
-function ProductenPage({producten, setProducten, ing=[], productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], setVerplaatsingen=()=>{}, btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[], recordId=null, onOpenRecord}: any) {
+function ProductenPage({producten, setProducten, ing=[], productArtikelen, setProductArtikelen, bat, setBat, recepten, verpakkingen, onderdelen, av, setAv, uit, bi, lots, acc, setAcc=()=>{}, accijnsAangiftes=[], bestellingen, bestellingPicks, verkoopFacturen, artikelen, accijnsInst, setPage, afboekingen, setAfboekingen, log, setLog, gnCodes=[], wcCreds, setWcCreds=()=>{}, wcSyncLog=[], setWcSyncLog=()=>{}, auditLog=[], setAuditLog=()=>{}, locaties=[], verplaatsingen=[], setVerplaatsingen=()=>{}, btwInst={}, btwTarieven=[0,9,21], merchArtikelen=[], receptenVerborgen=[], receptenGearchiveerdeTags=[], recordId=null, onOpenRecord}: any) {
   const {useState, useMemo, useEffect, useRef} = React;
   const undo = useUndo();
   // Het product of artikel waarvan het verwijderen nog terug kan.
@@ -360,10 +361,6 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
   const selRecepten = useMemo(() => {
     if (!selProduct?.recept_ids?.length) return [];
     return (recepten||[]).filter((r: any) => selProduct.recept_ids.includes(r.id));
-  }, [selProduct, recepten]);
-  const beschikbareRecepten = useMemo(() => {
-    const gekoppeld = new Set(selProduct?.recept_ids || []);
-    return (recepten||[]).filter((r: any) => !gekoppeld.has(r.id));
   }, [selProduct, recepten]);
   // Batches van het geselecteerde product: direct gekoppeld (primair product_id
   // of extra product_ids) én batches die via een afvulling aan dit product zijn
@@ -1705,17 +1702,26 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
               <div>
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-gray-500">{t('lbl_product_recepten')}</label>
-                  <Btn onClick={() => setReceptSelectOpen(!receptSelectOpen)} s="sm" v="ghost">{t('btn_koppel_recept')}</Btn>
+                  <Btn onClick={() => setReceptSelectOpen(true)} s="sm" v="ghost">{t('btn_koppel_recept')}</Btn>
                 </div>
-                {receptSelectOpen && beschikbareRecepten.length > 0 && (
-                  <div className="mt-1 border border-gray-200 rounded-lg max-h-40 overflow-y-auto bg-white shadow-sm">
-                    {beschikbareRecepten.map((r: any) => (
-                      <button key={r.id} onClick={() => koppelRecept(r.id)} className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0">
-                        <span className="font-medium">{r.naam}</span>
-                        {r.stijl && <span className="text-gray-400 ml-2 text-xs">{r.stijl}</span>}
-                      </button>
-                    ))}
-                  </div>
+                {/* De gedeelde receptkiezer (components/recept/ReceptKiezer):
+                    eerst de recepten van je producten, dan de andere in
+                    gebruik, het archief via zoeken; altijd een hoofdrecept,
+                    nooit een losse versie. */}
+                {receptSelectOpen && (
+                  <ReceptKiezer
+                    titel={t('btn_koppel_recept')}
+                    recepten={recepten}
+                    batches={bat}
+                    producten={producten}
+                    verborgen={receptenVerborgen}
+                    gearchiveerdeTags={receptenGearchiveerdeTags}
+                    productId={form.id ?? null}
+                    uitgesloten={form.recept_ids || []}
+                    metVerborgen
+                    onKies={k => koppelRecept(k.receptId)}
+                    onSluit={() => setReceptSelectOpen(false)}
+                  />
                 )}
                 <div className="mt-2 space-y-1">
                   {(form.recept_ids||[]).map((rid: string) => {

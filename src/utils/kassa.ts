@@ -14,7 +14,10 @@
 //     slaan.
 //
 // Daarnaast het bontotaal (`kassaBonTotalen`): het bedrag dat de klant pint
-// en wat de factuur en het journaal boeken, uit één berekening.
+// en wat de factuur en het journaal boeken, uit één berekening — en hoe het
+// scherm dat toont (`kassaStuksprijs`, `kassaBonWeergave`: incl. BTW bij een
+// particulier, excl. bij een zakelijke klant; de boeking blijft excl.).
+// De catalogus (tegels per product) en de lotkeuze staan in kassaCatalogus.ts.
 
 import type { Afvulling, Locatie, Uitlevering, Verplaatsing, Afboeking } from '../types'
 import { voorraadPerLocatie } from './calculations'
@@ -296,5 +299,86 @@ export const kassaBonTotalen = <V extends KassaStatiegeldVerpakking>(
     bonKortingTotaal: centNaarEuro(0 - somCent('bonkorting')),
     statiegeldTotaal: centNaarEuro(somCent('statiegeld')),
     btwTotaal: tot.btw,
+  }
+}
+
+// ── Klant en prijsweergave ──────────────────────────────────────────────────
+// Aan de balie betaalt een particulier de prijs incl. BTW; een zakelijke klant
+// rekent excl. BTW. De kassa toont de prijzen daarom standaard zo — maar dat is
+// alleen weergave: de bon, de factuur en het journaal rekenen altijd met de
+// artikelprijs excl. BTW (`kassaBonTotalen`), welke weergave er ook aan staat.
+
+/** Wat de kassa van een klant leest om particulier en zakelijk te scheiden. */
+export interface KassaKlant {
+  klant_type?: string | null
+  bedrijf?: string | null
+}
+
+/** Zakelijke klant? `klant_type` beslist; een oude klant zonder type telt als
+ * zakelijk wanneer hij een bedrijfsnaam heeft. Geen klant = balieverkoop =
+ * particulier. Zakelijk bepaalt de prijs (B2B) en de standaardweergave, nooit
+ * waar het bier vandaan komt. */
+export const kassaKlantZakelijk = (k: KassaKlant | null | undefined): boolean =>
+  !!k && (k.klant_type === 'zakelijk' || (!k.klant_type && String(k.bedrijf || '').trim() !== ''))
+
+/** Standaardweergave van de prijzen: incl. BTW bij een particulier (en bij
+ * een balieverkoop zonder klant), excl. BTW bij een zakelijke klant. */
+export const kassaStandaardInclBtw = (k: KassaKlant | null | undefined): boolean => !kassaKlantZakelijk(k)
+
+/**
+ * De stuksprijs voor op een tegel, cent-exact en met dezelfde afronding als de
+ * factuur voor één stuk (`regelBedrag`): excl. = de artikelprijs op centen,
+ * incl. = dat netto plus de BTW over één stuk, afgerond op een cent. Bij meer
+ * stuks rekent de bon per regel (`kassaBonTotalen`): drie keer € 2,07 excl. 21%
+ * is € 7,51 incl., ook al toont de tegel € 2,50 per stuk.
+ */
+export const kassaStuksprijs = (
+  prijsExcl: number | string | null | undefined,
+  btwPct: number | string | null | undefined,
+  inclBtw: boolean,
+): number => {
+  const b = regelBedrag({ aantal: 1, prijs_per_stuk: Number(prijsExcl) || 0, btw_pct: Number(btwPct) || 0 })
+  return inclBtw ? b.bruto : b.netto
+}
+
+/** De bedragen van een bon zoals het scherm ze toont — incl. of excl. BTW. */
+export interface KassaBonWeergave {
+  inclBtw: boolean
+  /** Bedrag per bonregel, in de volgorde van de bon. */
+  regels: number[]
+  /** Som van de bonregels. */
+  subtotaal: number
+  /** Klantkorting als positief bedrag. */
+  klantkorting: number
+  /** Handmatige bonkorting als positief bedrag. */
+  bonkorting: number
+  /** Statiegeld (0% BTW: incl. en excl. gelijk). */
+  statiegeld: number
+  /** BTW over de hele bon. */
+  btw: number
+  /** Wat de klant betaalt — altijd het bruto van `kassaBonTotalen`. */
+  totaal: number
+}
+
+/**
+ * Leest de bon uit dezelfde geldregels als factuur en journaal, per regel in
+ * centen: incl. BTW = het bruto van die regel, excl. = het netto. Daardoor
+ * klopt de optelling op het scherm altijd tot op de cent:
+ *  - incl.: subtotaal − klantkorting − bonkorting + statiegeld = totaal;
+ *  - excl.: subtotaal − klantkorting − bonkorting + statiegeld + btw = totaal.
+ */
+export const kassaBonWeergave = (tot: KassaBonTotalen, inclBtw: boolean): KassaBonWeergave => {
+  const cent = (g: KassaGeldRegel): number => (inclBtw ? g.bruto_cent : g.netto_cent)
+  const som = (bron: KassaGeldBron): number =>
+    tot.geldRegels.filter(g => g.bron === bron).reduce((s, g) => s + cent(g), 0)
+  return {
+    inclBtw,
+    regels: tot.geldRegels.filter(g => g.bron === 'bon').map(g => centNaarEuro(cent(g))),
+    subtotaal: centNaarEuro(som('bon')),
+    klantkorting: centNaarEuro(0 - som('klantkorting')),
+    bonkorting: centNaarEuro(0 - som('bonkorting')),
+    statiegeld: centNaarEuro(som('statiegeld')),
+    btw: centNaarEuro(tot.btw_cent),
+    totaal: centNaarEuro(tot.bruto_cent),
   }
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   lotVoorraadTotaal, bfVoorraadHoeveelheid, receptRegelVoorraad, meestVoorkomendeEenheid, lotIsActief,
+  ingredientVoorReceptRegel, receptVoorraadOordeel,
 } from '../ingredientVoorraad'
 
 describe('lotVoorraadTotaal', () => {
@@ -136,5 +137,66 @@ describe('receptRegelVoorraad', () => {
       {id: 3, ingredient_id: 1, hoeveelheid: 1, eenheid: 'kg', houdbaarheid: '2026-12-01'},
     ], match)
     expect(r.ingLots.map((l: any) => l.id)).toEqual([3, 2, 1])
+  })
+})
+
+describe('ingredientVoorReceptRegel', () => {
+  const ing = [{id: 1, naam: 'Citra'}, {id: 2, naam: 'Pilsmout '}, {id: 3, naam: 'citra'}]
+
+  it('de koppeling gaat voor de naam, ook als id tekst is', () => {
+    expect(ingredientVoorReceptRegel({naam: 'Citra', ingredient_id: 3}, ing)).toBe(ing[2])
+    expect(ingredientVoorReceptRegel({naam: 'Citra', ingredient_id: '3'}, ing)).toBe(ing[2])
+  })
+
+  it('zonder (geldige) koppeling op naam, zonder hoofdletters en spaties', () => {
+    expect(ingredientVoorReceptRegel({naam: ' pilsmout'}, ing)).toBe(ing[1])
+    expect(ingredientVoorReceptRegel({naam: 'Citra', ingredient_id: 99}, ing)).toBe(ing[0])
+    expect(ingredientVoorReceptRegel({naam: 'Mosaic'}, ing)).toBeNull()
+    expect(ingredientVoorReceptRegel({naam: ''}, ing)).toBeNull()
+    expect(ingredientVoorReceptRegel(null, null)).toBeNull()
+  })
+})
+
+describe('receptVoorraadOordeel', () => {
+  const ing = [{id: 1, naam: 'Citra'}, {id: 2, naam: 'Pilsmout'}, {id: 3, naam: 'US-05'}]
+  const lots = [
+    {id: 1, ingredient_id: 1, hoeveelheid: 1, eenheid: 'kg'},
+    {id: 2, ingredient_id: 2, hoeveelheid: 50, eenheid: 'kg'},
+    {id: 3, ingredient_id: 3, hoeveelheid: 2, eenheid: 'pkg'},
+  ]
+  const recept = (extra: any = {}) => ({
+    mout: [{naam: 'Pilsmout', hoeveelheid: 40, eenheid: 'kg'}],
+    hop: [{naam: 'Citra', hoeveelheid: 500, eenheid: 'g'}],
+    gist: [{naam: 'US-05', hoeveelheid: 2, eenheid: 'pkg'}],
+    overig: [],
+    ...extra,
+  })
+
+  it('alles op voorraad: klaar', () => {
+    expect(receptVoorraadOordeel(recept(), lots, ing)).toEqual({status: 'klaar', tekort: 0, onbekend: 0, regels: 3})
+  })
+
+  it('één regel helemaal op: tekort (rood wint van bijna)', () => {
+    const r = receptVoorraadOordeel(recept({
+      gist: [{naam: 'US-05', hoeveelheid: 2, eenheid: 'pkg'}],
+      overig: [{naam: 'Citra', hoeveelheid: 0.1, eenheid: 'kg'}],
+      mout: [{naam: 'Pilsmout', hoeveelheid: 60, eenheid: 'kg'}],
+    }), lots.filter(l => l.id !== 3), ing)
+    expect(r).toMatchObject({status: 'tekort', tekort: 2})
+  })
+
+  it('alleen regels die er deels zijn: bijna', () => {
+    const r = receptVoorraadOordeel(recept({mout: [{naam: 'Pilsmout', hoeveelheid: 60, eenheid: 'kg'}]}), lots, ing)
+    expect(r).toMatchObject({status: 'bijna', tekort: 1, onbekend: 0})
+  })
+
+  it('een regel zonder ingrediënt: onbekend, nooit vals klaar', () => {
+    const r = receptVoorraadOordeel(recept({overig: [{naam: 'Koriander', hoeveelheid: 10, eenheid: 'g'}]}), lots, ing)
+    expect(r).toMatchObject({status: 'onbekend', onbekend: 1, regels: 4})
+  })
+
+  it('een leeg of ontbrekend recept: onbekend', () => {
+    expect(receptVoorraadOordeel({}, lots, ing)).toEqual({status: 'onbekend', tekort: 0, onbekend: 0, regels: 0})
+    expect(receptVoorraadOordeel(null, null, null).status).toBe('onbekend')
   })
 })

@@ -5,6 +5,7 @@ import { ingredientenVoorType } from '../../utils/ingTypes'
 import type { ReceptRegelVoorraad } from '../../utils/ingredientVoorraad'
 import Icon from '../ui/Icon'
 import { useSmalScherm } from '../ui/useSmalScherm'
+import { useBreedte } from '../ui/useBreedte'
 
 // De ingrediënten van een recept per sectie (mout, hop, gist, overig), met de
 // koppeling aan de voorraad en per regel de lots.
@@ -14,9 +15,10 @@ import { useSmalScherm } from '../ui/useSmalScherm'
 // rijen dan opnieuw op, en het hoptijdveld verloor na elke toets de focus (en
 // een opengeklapte lotregel klapte weer dicht).
 //
-// Op het bureau een tabel; op een telefoon (onder het omslagpunt van de schil)
-// één regel per ingrediënt onder elkaar: de tabel van 640 px scrolde daar
-// zijwaarts en "Benodigd" viel buiten beeld.
+// Een tabel als er ruimte voor is; anders (een telefoon, of een smalle
+// detailkolom naast de receptenlijst) één regel per ingrediënt onder elkaar:
+// de tabel van 640 px scrolde daar zijwaarts en "Beschikbaar" viel buiten
+// beeld.
 
 export type ReceptSectie = 'mout' | 'hop' | 'gist' | 'overig'
 
@@ -38,8 +40,13 @@ export interface IngredientSectieProps {
   onWisLokaal: (cat: ReceptSectie, idx: number) => void
 }
 
+/** Onder deze breedte past de tabel niet meer: dan de lijst. */
+const TABEL_MIN_BREEDTE = 640
+
 const IngredientSectie: React.FC<IngredientSectieProps> = ({ titel, cat, items, voorraad, ingredienten, readOnly, onWijzig, onWisLokaal }) => {
-  const smal = useSmalScherm()
+  const telefoon = useSmalScherm()
+  const [ref, breedte] = useBreedte<HTMLDivElement>()
+  const smal = telefoon || (breedte != null && breedte < TABEL_MIN_BREEDTE)
   if (!items?.length) return null
   const anyRed = voorraad.some(s => s.ok === false && !s.bijna)
   const anyYellow = voorraad.some(s => s.bijna)
@@ -54,7 +61,7 @@ const IngredientSectie: React.FC<IngredientSectieProps> = ({ titel, cat, items, 
       onWijzig={onWijzig} onWisLokaal={onWisLokaal} />
   )
   return (
-    <div className="mb-5">
+    <div ref={ref} className="mb-5">
       <div className="flex items-center gap-2 mb-1.5">
         <h4 className="text-sm font-semibold text-gray-700">{titel}</h4>
         {badge}

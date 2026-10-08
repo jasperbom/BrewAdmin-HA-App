@@ -53,7 +53,17 @@ import { actieveSessie, magAfvullingRegistreren, productVanLaatsteEtiketcontrole
 import { ingredientVoorBatchRegel, afgeboekteRegels } from '../utils/batchIngredienten'
 import { receptNaarBatch } from '../utils/receptNaarBatch'
 import { receptenVoorKeuzelijst, receptPastBijZoekterm } from '../utils/receptLijst'
-import { productenVoorKeuze, productVoorBatch } from '../utils/productKeten'
+import { batchNummer, batchTitel, nieuwProductUitBatch, productVoorBatch, receptVoorBatch } from '../utils/productKeten'
+import {
+  batchKeten, besluitProduct, ontkoppelProduct, productBijPlannen, productenVoorBatchKeuze, productNaamBezet,
+} from '../utils/batchKeten'
+import type { ProductKeuzeWaarde } from '../utils/batchKeten'
+import { batchEbc } from '../utils/bierKleur'
+import BatchKop from '../components/batch/BatchKop'
+import KetenRegel from '../components/batch/KetenRegel'
+import PlanProductKeuze from '../components/batch/PlanProductKeuze'
+import ProductKiezenModal from '../components/batch/ProductKiezenModal'
+import { ProductOpties } from '../components/batch/ProductOpties'
 import { afvullingVerwijderBlokkade, batchVerwijderBlokkade, isFiscaleReden } from '../utils/afvullingVerwijderen'
 import type { VerwijderReden } from '../utils/afvullingVerwijderen'
 import {
@@ -436,7 +446,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   schoonmaakTaken = [], schoonmaakLog = [], setSchoonmaakLog = () => {},
   capa, setCapa, whoami,
   breweryDetails, appName = '', factuurLogo, logo,
-  setPage, openBatchId, onOpenBatch, batchesStand = null,
+  setPage, gaNaar, openBatchId, onOpenBatch, batchesStand = null,
   preNieuwBatch, setPreNieuwBatch,
   ccpMetingen, setCcpMetingen,
   navDoel = null, onNavDoelConsumed = () => {},
@@ -452,6 +462,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   }
   // Terugweg van vijf seconden voor destructieve acties (UndoBar in App.tsx).
   const undo = useUndo()
+  // De laatste stand van de batches, voor een terugweg die pas na een render loopt.
+  const batRef = React.useRef<any[]>(bat)
+  batRef.current = bat
   // Paneel "openstaande batchtaken" in het overzicht: álle batches met open
   // taken op een rij, klik = de batch op zijn actieve fase. Standaard
   // ingeklapt (het dashboard toont ze ook), open bij binnenkomst via de
@@ -480,7 +493,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // confirm()): wat er vervangen wordt staat erbij.
   const [pickerKeuze, setPickerKeuze] = useState<string | null>(null)
   const [pickerZoek, setPickerZoek] = useState('')
-  const openReceptPicker = () => { setPickerKeuze(null); setPickerZoek(''); setReceptPickerOpen(true) }
+  // Het product bij het nieuwe recept (utils/batchKeten.ts → productBijPlannen):
+  // een batch zonder product krijgt dat van het recept, met een keuze bij meer
+  // of geen kandidaten. Leeg = het voorstel volgen.
+  const [pickerProduct, setPickerProduct] = useState<ProductKeuzeWaarde | null>(null)
+  const [pickerFout, setPickerFout] = useState<string | null>(null)
+  const kiesPickerRecept = (id: string | null) => { setPickerKeuze(id); setPickerProduct(null); setPickerFout(null) }
+  const openReceptPicker = () => { kiesPickerRecept(null); setPickerZoek(''); setReceptPickerOpen(true) }
+  // "Product kiezen" vanuit de ketenregel van een batch zonder product.
+  const [productKiezenOpen, setProductKiezenOpen] = useState(false)
+  // Melding in de kop: waarom verwijderen niet kan, of dat het dossier mislukte
+  // (in plaats van een alert()).
+  const [kopMelding, setKopMelding] = useState<string | null>(null)
   // Het batchdossier renderen duurt even (html2canvas + jsPDF); de knop zegt
   // dat en blokkeert een tweede klik.
   const [dossierBezig, setDossierBezig] = useState(false)
@@ -517,6 +541,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const [actieveSessieId, setActieveSessieId] = useState<number | null>(null)
   const [nieuwProductNaam, setNieuwProductNaam] = useState('')
   const [toonNieuwProduct, setToonNieuwProduct] = useState(false)
+  // Waarom een nieuw product in het afvulformulier niet kon (dubbele naam).
+  const [nieuwProductFout, setNieuwProductFout] = useState<string | null>(null)
   // SKU-toevoegen-formulier bij een afvulling (productArtikelen), overgenomen
   // van de Batches-pagina.
   const [avSkuForm, setAvSkuForm] = useState<any>(null)
@@ -531,9 +557,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const emptyIForm = {ingredient_id: '', ingredient_naam: '', ingredient_type: 'Mout', hoeveelheid: '', eenheid: 'kg'}
   const [iForm, setIForm] = useState<any>(emptyIForm)
   const [ingFormOpen, setIngFormOpen] = useState(false)
-  // Nieuwe batch plannen vanaf het overzicht (plus-kaart)
+  // Nieuwe batch plannen vanaf het overzicht (plus-kaart). `product` = de
+  // keuze bij het product van het recept (PlanProductKeuze); null = het
+  // voorstel volgen.
+  const leegNieuwForm = (): any => ({recept_id: '', naam: '', datum: tod(), tank: '', product: null})
   const [nieuwOpen, setNieuwOpen] = useState(false)
-  const [nieuwForm, setNieuwForm] = useState<any>({recept_id: '', naam: '', datum: tod(), tank: ''})
+  const [nieuwForm, setNieuwForm] = useState<any>(leegNieuwForm)
   // Waarom "Batch plannen" niet doorging — een melding in het formulier in
   // plaats van een alert(). Elke wijziging in het formulier wist hem.
   const [nieuwFout, setNieuwFout] = useState<string | null>(null)
@@ -569,8 +598,14 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setReinigingMsg(null)
     setNieuwProductNaam('')
     setToonNieuwProduct(false)
+    setNieuwProductFout(null)
     setReceptPickerOpen(false)
+    setProductKiezenOpen(false)
+    setKopMelding(null)
     setGegevensOpen(false)
+    // Een andere batch begint bovenaan, bij zijn kop en ketenregel — niet op
+    // de hoogte waar je in de lijst (of het formulier) stond.
+    if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') window.scrollTo(0, 0)
   }
   // De route volgen: een batch via een tankkaart, de 'stap gereed'-banner, een
   // link of de terugknop opent direct op zijn actieve fase; geen batch in de
@@ -589,14 +624,24 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // open direct het voorgevulde nieuwe-batch-formulier in het overzicht. Een
   // meegegeven recept wordt voorgeselecteerd; maakNieuweBatch bouwt daarna de
   // batch + ingrediëntregels op, net als voorheen op de oude Batches-pagina.
+  //
+  // 'Brouwen' geeft de receptnaam mee als naam. Dat is geen eigen naam: de
+  // batch krijgt de naam van zijn product (receptNaarBatch), en zonder product
+  // die van het recept — dus leeg laten. Een meegegeven product (*Nieuwe batch*
+  // op een product) is een keuze; het recept beslist dan niet meer.
   React.useEffect(() => {
     if (!preNieuwBatch) return
     setSel(null) // forceer het overzicht zodat het formulier zichtbaar is
+    const receptId = preNieuwBatch.recept_id != null && preNieuwBatch.recept_id !== '' ? String(preNieuwBatch.recept_id) : ''
+    const receptNaam = receptId ? String(receptOpId(receptId)?.naam || '').trim() : ''
+    const naam = String(preNieuwBatch.naam || '').trim()
+    const productId = Number(preNieuwBatch.product_id)
     setNieuwForm({
-      recept_id: preNieuwBatch.recept_id != null && preNieuwBatch.recept_id !== '' ? String(preNieuwBatch.recept_id) : '',
-      naam: preNieuwBatch.naam || '',
+      recept_id: receptId,
+      naam: naam && naam !== receptNaam ? naam : '',
       datum: preNieuwBatch.datum || tod(),
       tank: preNieuwBatch.tank || '',
+      product: Number.isFinite(productId) && productId > 0 ? {soort: 'product', productId} : null,
     })
     setNieuwFout(null)
     setNieuwOpen(true)
@@ -673,28 +718,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       .sort((a: any, b: any) => (b.datum || '').localeCompare(a.datum || '')),
     [bat])
 
-  // Titel-resolutie voor een batchkaart: productnaam wint (met het recept klein
-  // eronder), anders de receptnaam, anders de eigen batchnaam. Ook gebruikt door
+  // De titel van een batch, overal gelijk (utils/productKeten.ts → batchTitel):
+  // productnaam wint (met het recept klein eronder), anders de receptnaam,
+  // anders de eigen batchnaam. `label` = "Kadeblond #2609". Ook gebruikt door
   // het zoekfilter van de gesloten batches.
-  const batchTitels = (b: any) => {
-    const prod = b.product_id ? (producten || []).find((p: any) => p.id === b.product_id) : null
-    const recept = b.recept_id
-      ? (recepten || []).find((r: any) => r.id === b.recept_id && r.is_huidige !== false)
-      : null
-    const productNaam = prod?.naam || null
-    const receptNaam = recept?.naam || null
-    const titel = productNaam || receptNaam || b.naam || t('lbl_naamloos')
-    // Zelfde naam voor product en recept = één keer tonen.
-    const subRecept = productNaam && receptNaam && receptNaam !== productNaam ? receptNaam : null
-    return { titel, subRecept, productNaam, receptNaam }
-  }
+  const titelVan = (b: any) => batchTitel(b, { producten, recepten }, t('lbl_naamloos'))
 
   // Gesloten batches gefilterd op de zoekterm (naam/product/recept/nummer/stijl).
   const geslotenGefilterd = useMemo(() => {
     const q = zoekGesloten.trim().toLowerCase()
     if (!q) return geslotenBatches
     return geslotenBatches.filter((b: any) => {
-      const { titel, productNaam, receptNaam } = batchTitels(b)
+      const { titel, productNaam, receptNaam } = titelVan(b)
       return [titel, productNaam, receptNaam, b.batch_nummer, b.stijl, b.naam, b.biernaam]
         .some((x: any) => x && String(x).toLowerCase().includes(q))
     })
@@ -739,9 +774,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const st = tankStatussen?.[tk.id]?.status
     const stLabel = st && st !== 'Ontsmet' ? (t(TANK_REINIGING_LABEL_KEY[st] || '') || st) : null
     const beschikbaarheid = bezet
-      ? `${t('tank_bezet')} ${bezet.naam || bezet.batch_nummer || ''}`
+      ? `${t('tank_bezet')} ${titelVan(bezet).label}`
       : gereserveerd
-        ? `${t('tank_gereserveerd')} ${gereserveerd.naam || gereserveerd.batch_nummer || ''}`
+        ? `${t('tank_gereserveerd')} ${titelVan(gereserveerd).label}`
         : t('tank_vrij')
     return {
       v: tk.id,
@@ -749,7 +784,50 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       d: !!bezet,
     }
   })
-  const tankOpties = useMemo(() => tankOptiesVoor(null), [tanks, bat, tankStatussen])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const tankOpties = useMemo(() => tankOptiesVoor(null), [tanks, bat, tankStatussen, producten, recepten])
+
+  // ── Het product van een batch uit een recept (utils/batchKeten.ts) ──────────
+  // Eén kandidaat: de app koppelt zelf en meldt het met een terugweg in de
+  // UndoBar ("Gekoppeld aan Kadeblond · Ongedaan maken"). Meer of geen: de
+  // keuze uit het formulier (PlanProductKeuze); een nieuw product erft naam,
+  // stijl en recept (`nieuwProductUitBatch`) — geen ABV en geen allergenen.
+  const besluitFoutTekst = (fout: string | null): string | null =>
+    fout === 'naam_leeg' ? t('err_product_naam_leeg')
+      : fout === 'naam_bestaat' ? t('err_product_naam_duplicaat')
+      : null
+  /** Het nieuwe product (met id) uit een batch zonder product, of null. */
+  const nieuwProductRecord = (batchZonder: any, recept: any, naam: string): any => {
+    const velden = nieuwProductUitBatch(batchZonder, recept, { vandaag: tod(), naam, recepten })
+    return { id: newId(producten || []), ...velden }
+  }
+  const voegProductToe = (p: any) => {
+    setProducten((prev: any[]) => [...(prev || []), p])
+    logAudit(auditLog, setAuditLog, {entiteit: 'Product', entiteit_id: p.id, actie: 'aangemaakt', omschrijving: `Product "${p.naam}" aangemaakt`})
+  }
+  /** De terugweg van een automatische koppeling: vijf seconden "Ongedaan maken".
+   *  Is de batch intussen verwijderd of aan iets anders gekoppeld, dan blijft
+   *  hij zoals hij is (ontkoppelProduct → null). De terugweg kan lopen terwijl
+   *  deze pagina al weg is (een tik op de productchip): vandaar batRef. */
+  const meldAutomatischeKoppeling = (batchId: number, product: any, naamZonder: string, biernaamZonder?: string | null) => {
+    const k = { productId: Number(product.id), productNaam: String(product.naam || ''), naamZonder, biernaamZonder }
+    undo.plan(`batch-koppel-${batchId}`, t('keten_gekoppeld_undo').replace('{naam}', product.naam || t('lbl_naamloos')),
+      () => {},
+      () => {
+        const nu = (batRef.current || []).find((b: any) => b.id === batchId)
+        if (!nu || !ontkoppelProduct(nu, k)) return
+        setBat((prev: any[]) => (prev || []).map((b: any) => b.id === batchId ? (ontkoppelProduct(b, k) || b) : b))
+        logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: batchId, actie: 'gewijzigd',
+          velden: {product_id: {oud: product.id, nieuw: ''}}, omschrijving: `Koppeling aan product "${product.naam || ''}" ongedaan gemaakt`})
+      })
+  }
+
+  // Het voorstel voor het product in het formulier (alleen als dat open is).
+  const nieuwPlan = useMemo(() => nieuwOpen
+    ? productBijPlannen(receptOpId(nieuwForm.recept_id), { producten, batches: bat, recepten })
+    : null,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [nieuwOpen, nieuwForm.recept_id, producten, bat, recepten])
 
   const maakNieuweBatch = () => {
     const recept = receptOpId(nieuwForm.recept_id)
@@ -766,22 +844,31 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       },
       ingredienten: ing || [],
     }
-    const nb: any = receptNaarBatch(recept, opties).batch
+    const zonderProduct: any = receptNaarBatch(recept, opties).batch
     // Geen alert(): de reden staat in het formulier, bij de knop.
-    if (!nb.naam) { setNieuwFout(t('flow_nieuw_naam_of_recept')); return }
+    if (!zonderProduct.naam) { setNieuwFout(t('flow_nieuw_naam_of_recept')); return }
     // Alleen actief gebruik blokkeert (er zit bier in de tank). Geen
     // ontsmet-eis bij het plannen: de tank wordt op de brouwdag ontsmet.
     if (nieuwForm.tank) {
       const bezet = tankBezetter(nieuwForm.tank, bat)
-      if (bezet) { setNieuwFout(t('err_tank_occupied').replace('{tank}', nieuwForm.tank).replace('{name}', bezet.naam || bezet.batch_nummer || '')); return }
+      if (bezet) { setNieuwFout(t('err_tank_occupied').replace('{tank}', nieuwForm.tank).replace('{name}', titelVan(bezet).label)); return }
     }
+    const plan = productBijPlannen(recept, { producten, batches: bat, recepten })
+    const besluit = besluitProduct(plan, nieuwForm.product, { producten, standaardNaam: recept?.naam || zonderProduct.naam })
+    const fout = besluitFoutTekst(besluit.fout)
+    if (fout) { setNieuwFout(fout); return }
+    const nieuwProduct = besluit.nieuwNaam ? nieuwProductRecord(zonderProduct, recept, besluit.nieuwNaam) : null
+    const product = nieuwProduct || besluit.product
+    const nb: any = product ? receptNaarBatch(recept, {...opties, product}).batch : zonderProduct
     setNieuwFout(null)
+    if (nieuwProduct) voegProductToe(nieuwProduct)
     setBat((prev: any[]) => [...(prev || []), nb])
     addLog({type: 'aangemaakt', batch_id: nb.id, referentie: nb.naam})
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: nb.id, actie: 'aangemaakt', omschrijving: nb.naam})
     // De regels tegen de verse lijst: hun id's lopen door vanaf het hoogste.
     if (recept) setBi((prev: any[]) => receptNaarBatch(recept, {...opties, regels: prev || []}).alleRegels)
-    setNieuwForm({recept_id: '', naam: '', datum: tod(), tank: ''})
+    if (besluit.automatisch && besluit.product) meldAutomatischeKoppeling(nb.id, besluit.product, zonderProduct.naam)
+    setNieuwForm(leegNieuwForm())
     setNieuwOpen(false)
     // Direct de flow van de nieuwe batch openen op de fase Gepland.
     setSel(nb.id)
@@ -792,9 +879,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setAvF(emptyAvF)
   }
 
-  const batchRecept = selB?.recept_id
-    ? (recepten || []).find((r: any) => r.id === selB.recept_id && r.is_huidige !== false)
-    : null
+  // Het recept van de batch: de gekozen versie (`recept_versie_id`) als die er
+  // is, anders het hoofdrecept (utils/productKeten.ts → receptVoorBatch).
+  const batchRecept: any = receptVoorBatch(selB, recepten || [])
 
   const takenItems = (batchTakenItems?.length ? batchTakenItems : DEFAULT_BATCH_TAKEN_ITEMS)
     .filter((it: any) => it.actief !== false)
@@ -1322,14 +1409,16 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const removeBatch = (id: number) => {
     const eigenAv = (av || []).filter((a: any) => a.batch_id === id)
     const redenen = batchVerwijderBlokkade(id, eigenAv.map((a: any) => a.id), verwijderData)
+    // Waarom het niet kan staat in de kop, bij de knop (geen alert()).
     if (redenen.some(isFiscaleReden)) {
-      alert(t('err_batch_delete_fiscaal'))
+      setKopMelding(t('err_batch_delete_fiscaal'))
       return
     }
     if (redenen.length) {
-      alert(t('err_batch_verwijder_gekoppeld').replace('{redenen}', verwijderRedenTekst(redenen)))
+      setKopMelding(t('err_batch_verwijder_gekoppeld').replace('{redenen}', verwijderRedenTekst(redenen)))
       return
     }
+    setKopMelding(null)
     // Wacht een verwijderde afvulling van deze batch nog op haar terugweg
     // (UndoBar), voer die dan nu uit: zij boekt haar eigen verpakking terug.
     // Anders kwam dezelfde verpakking twee keer terug — hier én vijf seconden
@@ -1376,18 +1465,69 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     return null
   }
   // De bevestiging zit in de knop van de picker (BevestigKnop); hier wordt
-  // alleen nog uitgevoerd.
+  // alleen nog uitgevoerd. Het product: een batch die er al een heeft houdt
+  // het; anders hetzelfde als bij een nieuwe batch (één kandidaat =
+  // automatisch met een terugweg, anders de keuze uit de picker).
   const applyReceptToBatch = (r: any) => {
     if (!selB || !r || receptToepassenBlokkade()) return
     // Zelfde vertaling als een nieuwe batch (utils/receptNaarBatch): velden
     // uit het recept, meetvelden leeg, regels van deze batch vervangen.
     const opties = { batch: selB, ingredienten: ing || [] }
-    const patch = receptNaarBatch(r, opties).batch
+    const plan = productBijPlannen(r, { producten, batches: bat, recepten, batch: selB })
+    const besluit = besluitProduct(plan, pickerProduct, { producten, standaardNaam: r.naam })
+    const fout = besluitFoutTekst(besluit.fout)
+    if (fout) { setPickerFout(fout); return }
+    const zonderProduct = receptNaarBatch(r, opties).batch
+    const nieuwProduct = besluit.nieuwNaam ? nieuwProductRecord({...selB, ...zonderProduct}, r, besluit.nieuwNaam) : null
+    const product = nieuwProduct || besluit.product
+    const patch = product ? receptNaarBatch(r, {...opties, product}).batch : zonderProduct
+    if (nieuwProduct) voegProductToe(nieuwProduct)
     setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...patch} : b))
     setBi((prev: any[]) => receptNaarBatch(r, {...opties, regels: prev || []}).alleRegels)
     addLog({type: 'gewijzigd', batch_id: selB.id, referentie: t('batch_sync_recept_log').replace('{recept}', r.naam || '')})
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', omschrijving: t('batch_sync_recept_log').replace('{recept}', r.naam || '')})
+    if (besluit.automatisch && besluit.product) {
+      meldAutomatischeKoppeling(selB.id, besluit.product, String(zonderProduct.naam || ''), selB.biernaam)
+    }
+    setPickerFout(null)
     setReceptPickerOpen(false)
+  }
+
+  // ── Product kiezen vanuit de ketenregel (batch zonder product) ────────────
+  // Zelfde gedrag als de keuze in Batchgegevens: product_id, biernaam en stijl.
+  const koppelProduct = (pid: number) => {
+    if (!selB) return
+    const prod = (producten || []).find((p: any) => p.id === pid)
+    if (!prod) return
+    updateBatch({ product_id: pid, biernaam: prod.naam || selB.biernaam, stijl: prod.stijl || selB.stijl })
+    setProductKiezenOpen(false)
+  }
+  const maakEnKoppelProduct = (naam: string) => {
+    if (!selB) return
+    const p = nieuwProductRecord(selB, batchRecept, naam)
+    voegProductToe(p)
+    updateBatch({ product_id: p.id, biernaam: p.naam, ...(selB.stijl ? {} : p.stijl ? { stijl: p.stijl } : {}) })
+    setProductKiezenOpen(false)
+  }
+
+  // ── Nieuw product in het afvulformulier ───────────────────────────────────
+  // Erft naam, stijl en recept van de batch (nieuwProductUitBatch) — geen ABV
+  // en geen allergenen: die gaan via het etiket, en CCP 3 ziet daardoor "nog
+  // niet vastgelegd" in plaats van een stil overgenomen waarde. Leeg = de naam
+  // van het recept. Had de batch nog geen product, dan krijgt hij dit.
+  const nieuwAfvulProductNaam = selB ? nieuwProductUitBatch(selB, batchRecept, { vandaag: tod(), naam: '', recepten }).naam : ''
+  const maakAfvulProduct = () => {
+    if (!selB) return
+    const naam = nieuwProductNaam.trim() || nieuwAfvulProductNaam
+    if (!naam) { setNieuwProductFout(t('err_product_naam_leeg')); return }
+    if (productNaamBezet(naam, producten)) { setNieuwProductFout(t('err_product_naam_duplicaat')); return }
+    const p = nieuwProductRecord(selB, batchRecept, naam)
+    voegProductToe(p)
+    setAvF((f: any) => ({...f, product_id: p.id}))
+    if (productVoorBatch(selB, { producten }).productId == null) {
+      updateBatch({ product_id: p.id, biernaam: p.naam, ...(selB.stijl ? {} : p.stijl ? { stijl: p.stijl } : {}) })
+    }
+    setToonNieuwProduct(false); setNieuwProductNaam(''); setNieuwProductFout(null)
   }
 
   // Schrijf een veld direct naar de batch. Numerieke waarden worden als getal
@@ -1460,6 +1600,11 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const basis = `${p.naam || t('lbl_naamloos')}${p.stijl ? ` (${p.stijl})` : ''}`
     return gearchiveerd ? t('product_keuze_gearchiveerd').replace('{naam}', basis) : basis
   }
+  // De productkeuze bij deze batch: de producten van zijn recept bovenaan
+  // (utils/batchKeten.ts → productenVoorBatchKeuze), gearchiveerde eruit — een
+  // al gekozen gearchiveerd product blijft als huidige waarde zichtbaar.
+  const productKeuzesVoorBatch = (gekozenId: any) =>
+    productenVoorBatchKeuze(selB, producten, { batches: bat, recepten, gekozenId })
 
   // ── Batch-gegevens bewerken (inline in de detail) ──────────────────────────
   // Overgenomen van de oude Batches-pagina: naam/biernaam/stijl/nummer/liters/
@@ -1487,9 +1632,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   updateBatch({ product_id: pid || '', biernaam: prod?.naam || selB.biernaam, stijl: prod?.stijl || selB.stijl })
                 }} className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
                   <option value="">{t('ph_biernaam_koppeling')}</option>
-                  {productenVoorKeuze(producten, selB.product_id).map(({product: p, gearchiveerd}) => (
-                    <option key={p.id} value={p.id}>{productOptieLabel(p, gearchiveerd)}</option>
-                  ))}
+                  <ProductOpties keuzes={productKeuzesVoorBatch(selB.product_id)}
+                    label={k => productOptieLabel(k.product, k.gearchiveerd)} />
                 </select>
                 {selB.product_id && (
                   <button type="button" onClick={() => updateBatch({ product_id: '', biernaam: '' })}
@@ -1607,7 +1751,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 const isGekozen = String(r.id) === pickerKeuze
                 const huidig = String(r.id) === String(selB.recept_id || '')
                 return (
-                  <button key={r.id} type="button" aria-pressed={isGekozen} onClick={() => setPickerKeuze(String(r.id))}
+                  <button key={r.id} type="button" aria-pressed={isGekozen} onClick={() => kiesPickerRecept(String(r.id))}
                     className={`w-full text-left px-3 py-2 min-h-tap sm:min-h-0 rounded border flex items-center justify-between gap-2 transition-colors ${
                       isGekozen ? 't-sel border-l-2' : 'border-gray-100 hover:bg-gray-50'}`}>
                     <span className="text-sm text-gray-700 min-w-0 break-words">
@@ -1620,8 +1764,15 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               })}
             </div>
             {gekozen && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
                 <p className="text-sm text-gray-700">{t('batch_sync_recept_gevolg').replace('{recept}', gekozen.naam || '')}</p>
+                <PlanProductKeuze
+                  plan={productBijPlannen(gekozen, { producten, batches: bat, recepten, batch: selB })}
+                  keuze={pickerProduct} onKeuze={k => { setPickerProduct(k); setPickerFout(null) }}
+                  standaardNaam={gekozen.naam || ''} recepten={recepten} producten={producten} />
+                {pickerFout && (
+                  <div role="alert" className="text-xs px-2 py-1.5 rounded border border-orange-200 bg-orange-50 text-orange-700">{pickerFout}</div>
+                )}
                 <div className="flex justify-end">
                   <BevestigKnop v="primary" s="sm" vraag={t('batch_sync_recept_vraag')}
                     onBevestig={() => applyReceptToBatch(gekozen)}>{t('batch_sync_recept_toepassen')}</BevestigKnop>
@@ -2028,7 +2179,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     // Alleen zinvol zolang de batch nog niet verpakt/gesloten is.
     const vp = verpakProjectie(b, Number(planningInst?.conditioneren_dagen ?? 14))
     const toonVerpak = !['Afgevuld', 'Verpakt', 'Gesloten'].includes(b.status) && vp.verpakkenMs != null
-    const { titel, subRecept } = batchTitels(b)
+    const { titel, subRecept } = titelVan(b)
     return (
       <div
         className="bg-white rounded-xl p-4 shadow-card border border-gray-100 cursor-pointer hover:shadow-card-md transition-shadow"
@@ -2085,6 +2236,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // ── Overzicht (geen batch geselecteerd) ───────────────────────────────────
   if (!selB) {
     const nieuwRecept = receptOpId(nieuwForm.recept_id)
+    // Zonder eigen naam heet de batch naar zijn product, anders naar het recept
+    // (receptNaarBatch) — dat staat als voorbeeld in het naamveld.
+    const nieuwBesluit = besluitProduct(nieuwPlan, nieuwForm.product, { producten, standaardNaam: nieuwRecept?.naam || '' })
+    const naamVoorstel = nieuwBesluit.product?.naam || nieuwBesluit.nieuwNaam || nieuwRecept?.naam || t('flow_nieuw_naam_ph')
     // Dezelfde selectie als de attentie-badge (utils/taken.ts): open check-
     // taken van de groep die bij de huidige fase van elke open batch hoort.
     const openTaken = openstaandeBatchTaken(bat, batchTakenItems, batchTakenGroepen)
@@ -2107,7 +2262,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             {takenOpen && (
               <div className="divide-y divide-gray-100">
                 {openTaken.map(({batch: b, taken}) => {
-                  const { titel } = batchTitels(b)
+                  const { titel } = titelVan(b)
                   return (
                     <div key={b.id} className="px-4 py-3 hover:bg-gray-50 cursor-pointer" onClick={() => openBatch(b.id)}>
                       <div className="flex items-center justify-between gap-2">
@@ -2160,13 +2315,17 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                   <span className="text-xs text-gray-400 font-mono">#{nextBatchNummer(bat || [])}</span>
                 </div>
                 <div className="space-y-3">
+                  {/* Een ander recept = een ander voorstel voor het product. */}
                   <Sel label={t('flow_nieuw_recept')} value={String(nieuwForm.recept_id)}
-                    onChange={(v: string) => wijzigNieuw({recept_id: v})}
+                    onChange={(v: string) => wijzigNieuw({recept_id: v, product: null})}
                     ph={t('flow_nieuw_recept_ph')}
                     opts={nieuwReceptOpties.map((r: any) => ({v: String(r.id), l: `${r.naam}${r.stijl ? ` — ${r.stijl}` : ''}`}))} />
+                  <PlanProductKeuze plan={nieuwPlan} keuze={nieuwForm.product}
+                    onKeuze={k => wijzigNieuw({product: k})}
+                    standaardNaam={nieuwRecept?.naam || ''} recepten={recepten} producten={producten} />
                   <Inp label={t('lbl_name')} value={nieuwForm.naam}
                     onChange={(v: string) => wijzigNieuw({naam: v})}
-                    placeholder={nieuwRecept?.naam || t('flow_nieuw_naam_ph')} />
+                    placeholder={naamVoorstel} />
                   {(tanks || []).length > 0 && (
                     <div>
                       <Sel label={t('lbl_tank')} value={String(nieuwForm.tank)}
@@ -2188,7 +2347,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               </div>
             ) : (
               <button type="button"
-                onClick={() => { setNieuwForm({recept_id: '', naam: '', datum: tod(), tank: ''}); setNieuwFout(null); setNieuwOpen(true) }}
+                onClick={() => { setNieuwForm(leegNieuwForm()); setNieuwFout(null); setNieuwOpen(true) }}
                 className="rounded-xl border-2 border-dashed border-gray-300 bg-white/60 min-h-[8rem] flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] transition-colors cursor-pointer">
                 <span className="text-3xl leading-none font-light">+</span>
                 <span className="text-sm font-medium">{t('flow_nieuw_kaart')}</span>
@@ -2268,10 +2427,11 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const dossierPdf = async () => {
     if (dossierBezig) return
     setDossierBezig(true)
+    setKopMelding(null)
     try {
       await downloadBatchDossierPdf(dossierRapport(), ...dossierBriefhoofd())
     } catch (e: any) {
-      alert(t('batchdossier_fout').replace('{msg}', e?.message || String(e)))
+      setKopMelding(t('batchdossier_fout').replace('{msg}', e?.message || String(e)))
     } finally {
       setDossierBezig(false)
     }
@@ -3303,7 +3463,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             const st = tankStatussen?.[tk.id]?.status
             // Geen status = niet aantoonbaar ontsmet; dat zie je vóór het kiezen.
             const stLabel = st ? t(TANK_REINIGING_LABEL_KEY[st] || '') || st : t('dash_tank_status_onbekend')
-            const extra = bezet ? ` — ${t('tank_bezet')} ${bezet.naam || ''}` : ` — ${stLabel}`
+            const extra = bezet ? ` — ${t('tank_bezet')} ${titelVan(bezet).label}` : ` — ${stLabel}`
             return {v: tk.id, l: `${tk.naam || tk.id}${tk.soort ? ` (${tk.soort})` : ''}${extra}`, d: !!bezet}
           })]} />
         <Btn s="sm" disabled={!moveTankTarget} onClick={verplaatsTank}>{t('batch_move_tank_confirm')}</Btn>
@@ -3349,27 +3509,30 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               }
             }} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white t-input">
               <option value="">{t('ph_select_product')}</option>
-              {productenVoorKeuze(producten, avF.product_id).map(({product: p, gearchiveerd}) => (
-                <option key={p.id} value={p.id}>{productOptieLabel(p, gearchiveerd)}</option>
-              ))}
+              <ProductOpties keuzes={productKeuzesVoorBatch(avF.product_id)}
+                label={k => productOptieLabel(k.product, k.gearchiveerd)} />
               <option value="__new__">{t('lbl_afvulling_nieuw_product')}</option>
             </select>
           ) : (
             <div className="flex gap-1">
-              <input type="text" value={nieuwProductNaam} onChange={e => setNieuwProductNaam(e.target.value)}
-                placeholder={t('ph_nieuw_product_naam')} className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm t-input" autoFocus />
-              {/* Zonder naam kan het niet: de knop staat dan uit (geen alert). */}
-              <Btn s="sm" disabled={!nieuwProductNaam.trim()} title={nieuwProductNaam.trim() ? undefined : t('err_product_naam_leeg')} onClick={() => {
-                const naam = nieuwProductNaam.trim()
-                if (!naam) return
-                const id = newId(producten || [])
-                setProducten((prev: any[]) => [...(prev || []), {id, naam, status: 'actief', created_at: tod()}])
-                setAvF((f: any) => ({...f, product_id: id}))
-                setToonNieuwProduct(false); setNieuwProductNaam('')
-              }}>{t('btn_product_toevoegen')}</Btn>
-              <button type="button" onClick={() => { setToonNieuwProduct(false); setNieuwProductNaam('') }}
+              {/* Leeg = de naam van het recept (nieuwProductUitBatch). */}
+              <input type="text" value={nieuwProductNaam} onChange={e => { setNieuwProductNaam(e.target.value); setNieuwProductFout(null) }}
+                placeholder={nieuwAfvulProductNaam || t('ph_nieuw_product_naam')} aria-label={t('keten_product_nieuw_naam')}
+                className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1.5 text-sm t-input" autoFocus />
+              {/* Zonder naam (en zonder recept) kan het niet: de knop staat dan uit (geen alert). */}
+              <Btn s="sm" disabled={!nieuwProductNaam.trim() && !nieuwAfvulProductNaam}
+                title={nieuwProductNaam.trim() || nieuwAfvulProductNaam ? undefined : t('err_product_naam_leeg')}
+                onClick={maakAfvulProduct}>{t('btn_product_toevoegen')}</Btn>
+              <button type="button" onClick={() => { setToonNieuwProduct(false); setNieuwProductNaam(''); setNieuwProductFout(null) }}
+                aria-label={t('btn_cancel')}
                 className="px-2 py-1 text-gray-400 hover:text-red-500 border border-gray-300 rounded text-sm">✕</button>
             </div>
+          )}
+          {toonNieuwProduct && (
+            <p className="text-[11px] text-gray-500 mt-1">{t('keten_product_nieuw_hint')}</p>
+          )}
+          {nieuwProductFout && (
+            <div role="alert" className="mt-1 text-xs px-2 py-1.5 rounded border border-orange-200 bg-orange-50 text-orange-700">{nieuwProductFout}</div>
           )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -4108,6 +4271,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           <AfvulSessieSectie
             batch={selB} bi={bi} ing={ing} av={av} setAv={setAv}
             producten={producten} setProducten={setProducten} verpakkingen={verpakkingen}
+            recepten={recepten} batches={bat}
             vrijgaven={haccpVrijgaven}
             sessies={afvulSessies} setSessies={setAfvulSessies}
             sluitcontroles={haccpSluitcontroles} setSluitcontroles={setHaccpSluitcontroles}
@@ -4222,50 +4386,57 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
+  // De kop: titel uit batchTitel (overal gelijk; op de telefoon staat hij in
+  // de kopbalk), en de ketenregel Recept › Product › Tank in elke fase — het
+  // recept stond vroeger alleen in Gepland, het product alleen in het
+  // ingeklapte Batchgegevens.
+  const kopTitel = titelVan(selB)
+  const keten = batchKeten(selB, {
+    producten, recepten, afvullingen: mijnAv, tanks,
+    statusLog: (log || []).filter((l: any) => l.batch_id === selB.id && l.type === 'status'),
+    vandaag: tod(),
+  })
   // De key per batch: een andere batch = de secties opnieuw (CCP 1, de
   // afvulsessie met CCP 2/3, de brouwdag, dry hop), zodat een half ingevuld
   // formulier van de ene batch nooit bij de volgende staat — zoals het oude
   // paneel per batch deed. De lijst (zoekterm, uitklapstand) blijft staan.
   return (
     <div className="space-y-4" key={`batch-${selB.id}`}>
-      <div className="bg-white rounded-xl shadow-card overflow-hidden">
-        <SectionHeader
-          title={<>{selB.naam || t('lbl_naamloos')}{selB.batch_nummer ? ` · ${selB.batch_nummer}` : ''}</>}
-        />
-        <div className="p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-            {/* Geen eigen terugknop: terug gaat via de kopbalk (telefoon) of
-                de tab en de history (bureau) — één terugweg. */}
-            <div className="flex items-center gap-2">
-              <Badge s={selB.status} />
-              {selB.stijl && <span className="text-xs text-gray-500">{selB.stijl}</span>}
-            </div>
-            <div className="flex items-center gap-2">
-              {selB.status === 'Gepland' && (
-                <Btn v="secondary" s="sm" onClick={openReceptPicker}>{t('batch_sync_recept')}</Btn>
-              )}
-              {batchIsAfgerond(selB) && (
-                <>
-                  <Btn v="secondary" s="sm" onClick={dossierPdf} disabled={dossierBezig}
-                    title={t('batchdossier_uitleg')}>
-                    {dossierBezig ? t('mail_generating_pdf') : `${t('batchdossier_knop')} ${t('btn_pdf')}`}
-                  </Btn>
-                  <Btn v="ghost" s="sm" title={t('batchdossier_print_uitleg')}
-                    onClick={() => printBatchDossier(dossierRapport(), ...dossierBriefhoofd())}>
-                    <Icon n="printer" />
-                  </Btn>
-                </>
-              )}
-              <BevestigKnop v="danger" s="sm" vraag={t('error_confirm_delete_batch')}
-                onBevestig={() => removeBatch(selB.id)}>{t('btn_delete')}</BevestigKnop>
-            </div>
-          </div>
-
+      <BatchKop
+        titel={kopTitel.titel} nummer={batchNummer(selB)} ebc={batchEbc(selB, producten || [], recepten || [])}
+        status={selB.status} stijl={selB.stijl} melding={kopMelding}
+        acties={<>
+          {/* Geen eigen terugknop: terug gaat via de kopbalk (telefoon) of
+              de tab en de history (bureau) — één terugweg. */}
+          {selB.status === 'Gepland' && (
+            <Btn v="secondary" s="sm" onClick={openReceptPicker}>{t('batch_sync_recept')}</Btn>
+          )}
+          {batchIsAfgerond(selB) && (
+            <>
+              <Btn v="secondary" s="sm" onClick={dossierPdf} disabled={dossierBezig}
+                title={t('batchdossier_uitleg')}>
+                {dossierBezig ? t('mail_generating_pdf') : `${t('batchdossier_knop')} ${t('btn_pdf')}`}
+              </Btn>
+              <Btn v="ghost" s="sm" title={t('batchdossier_print_uitleg')}
+                onClick={() => printBatchDossier(dossierRapport(), ...dossierBriefhoofd())}>
+                <Icon n="printer" />
+              </Btn>
+            </>
+          )}
+          <BevestigKnop v="danger" s="sm" vraag={t('error_confirm_delete_batch')}
+            onBevestig={() => removeBatch(selB.id)}>{t('btn_delete')}</BevestigKnop>
+        </>}
+        keten={
+          <KetenRegel keten={keten}
+            onRecept={gaNaar ? (id => gaNaar({ pagina: 'recepten', id })) : undefined}
+            onProduct={gaNaar ? (id => gaNaar({ pagina: 'producten', id })) : undefined}
+            onProductKiezen={() => setProductKiezenOpen(true)} />
+        }>
           {/* Stepper — klikken klapt de bijbehorende fasekaart open/dicht.
               De padding geeft de selectie-ring (ring-2 + offset-2 = 4px buiten
               de cirkel) ruimte binnen de overflow-container, anders wordt hij
               aan de boven- en zijkant afgesneden. */}
-          <div className="overflow-x-auto px-1 pt-1 pb-1">
+          <div className="border-t border-gray-100 overflow-x-auto px-1 pt-3 pb-1">
             <div className="flex items-start min-w-[560px]">
               {STATUSSEN.map((s, i) => {
                 const done = i < huidigeFase
@@ -4299,8 +4470,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               })}
             </div>
           </div>
-        </div>
-      </div>
+      </BatchKop>
+
+      {productKiezenOpen && (
+        <ProductKiezenModal batch={selB} producten={producten || []} batches={bat} recepten={recepten}
+          standaardNaam={nieuwAfvulProductNaam}
+          onKies={koppelProduct} onNieuw={maakEnKoppelProduct} onClose={() => setProductKiezenOpen(false)} />
+      )}
 
       {/* Batch-gegevens bewerken (naam/stijl/liters/product/GN-code) */}
       {renderBatchGegevens()}

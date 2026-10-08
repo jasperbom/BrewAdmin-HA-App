@@ -78,10 +78,14 @@ export interface ReceptProductRef {
   huidigBron: HuidigReceptBron | null
   uitRoulatie: boolean
   gearchiveerd: boolean
-  /** Aantal batches van dít product met dit recept ("5× met dit product"). */
+  /** Aantal batches van dít product met dit recept, ook de geplande. */
   aantalBatches: number
+  /** Idem, alleen wat echt gebrouwen is (niet Gepland) — "5×" in de receptenlijst. */
+  aantalGebrouwen: number
   /** De nieuwste batch van dit product met dit recept. */
   laatsteBatch: ReceptBatchRef | null
+  /** De nieuwste echt gebrouwen batch van dit product met dit recept. */
+  laatstGebrouwen: ReceptBatchRef | null
 }
 
 export interface ReceptGebruik<R extends ReceptLike = Recept> {
@@ -320,14 +324,19 @@ export const receptGebruik = <R extends ReceptLike>(ctx: ReceptGebruikCtx<R>): R
       if (h && !ids.includes(h)) ids.push(h)
     }
     if (huidigId && !ids.includes(huidigId)) ids.unshift(huidigId)
-    const perRecept = new Map<string, { n: number; laatste: BatchLike | null }>()
+    const perRecept = new Map<string, { n: number; laatste: BatchLike | null; gebrouwen: number; laatstGebrouwen: BatchLike | null }>()
     for (const b of vanProduct) {
       const rid = b.recept_id || b.recept_versie_id
       if (!rid) continue
       const h = hoofdVan(rid)
-      const tel = perRecept.get(h)
+      let tel = perRecept.get(h)
       // vanProduct is al nieuwste-eerst: de eerste is de laatste batch.
-      if (tel) tel.n += 1; else perRecept.set(h, { n: 1, laatste: b })
+      if (!tel) { tel = { n: 0, laatste: b, gebrouwen: 0, laatstGebrouwen: null }; perRecept.set(h, tel) }
+      tel.n += 1
+      if (String(b.status) !== 'Gepland') {
+        tel.gebrouwen += 1
+        if (!tel.laatstGebrouwen) tel.laatstGebrouwen = b
+      }
     }
     for (const id of ids) {
       if (!hoofdIds.has(id)) continue
@@ -340,7 +349,9 @@ export const receptGebruik = <R extends ReceptLike>(ctx: ReceptGebruikCtx<R>): R
         uitRoulatie: p.uit_roulatie === true,
         gearchiveerd: gearchiveerdProduct,
         aantalBatches: tel?.n ?? 0,
+        aantalGebrouwen: tel?.gebrouwen ?? 0,
         laatsteBatch: tel?.laatste ? batchRef(tel.laatste) : null,
+        laatstGebrouwen: tel?.laatstGebrouwen ? batchRef(tel.laatstGebrouwen) : null,
       }
       const l = productRefs.get(id)
       if (l) l.push(ref); else productRefs.set(id, [ref])

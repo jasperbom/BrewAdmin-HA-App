@@ -258,6 +258,25 @@ describe('receptGebruik — producten', () => {
     expect(kb3.laatsteBatch?.id).toBe(2607)
   })
 
+  it('per product: gebrouwen zonder de geplande ("5×" in de lijst)', () => {
+    // Havenbok: hb3 alleen gepland, hb2 één keer gebrouwen.
+    const hb3 = g.find(x => x.id === 'hb3')!
+    expect(hb3.producten[0]).toMatchObject({ productId: 4, aantalBatches: 1, aantalGebrouwen: 0, laatstGebrouwen: null })
+    expect(hb3.producten[0].laatsteBatch?.id).toBe(2611)
+    const kb3 = g.find(x => x.id === 'kb3')!
+    expect(kb3.producten[0]).toMatchObject({ aantalBatches: 2, aantalGebrouwen: 2 })
+    expect(kb3.producten[0].laatstGebrouwen?.id).toBe(2607)
+    // Een geplande batch boven op twee gebrouwen: 3 batches, 2 gebrouwen, en
+    // de laatst gebrouwen is niet de geplande.
+    const l = receptGebruik(ctx({
+      batches: [...batches, { id: 2630, batch_nummer: '2630', status: 'Gepland', recept_id: 'kb3', product_id: 1, datum: '2026-11-01' }],
+    }))
+    const kb3b = l.find(x => x.id === 'kb3')!.producten[0]
+    expect(kb3b).toMatchObject({ aantalBatches: 3, aantalGebrouwen: 2 })
+    expect(kb3b.laatsteBatch?.id).toBe(2630)
+    expect(kb3b.laatstGebrouwen?.id).toBe(2607)
+  })
+
   it('gearchiveerd product telt niet, uit roulatie wel', () => {
     const oud = g.find(x => x.id === 'oudje')!
     expect(oud.producten).toEqual([])

@@ -64,6 +64,37 @@ describe('UitgesteldeActiePlanner', () => {
     expect(uitvoeren).toHaveBeenCalledTimes(1)
   })
 
+  it('terugdraaien: wat al gebeurd is draait "Ongedaan maken" terug, daarna vervalt de terugweg', () => {
+    const tm = maakTimer()
+    const uitvoeren = vi.fn(), terug = vi.fn()
+    const p = new UitgesteldeActiePlanner({ ...tm })
+    p.plan('k', 'Gekoppeld aan Kadeblond', uitvoeren, terug)
+    expect(p.ongedaan()).toEqual({ id: 'k', label: 'Gekoppeld aan Kadeblond' })
+    expect(terug).toHaveBeenCalledTimes(1)
+    expect(uitvoeren).not.toHaveBeenCalled()
+    // Na de vertraging (of een volgende plan) is er niets meer terug te draaien.
+    const terug2 = vi.fn()
+    p.plan('k2', 'x', uitvoeren, terug2)
+    tm.tik()
+    expect(uitvoeren).toHaveBeenCalledTimes(1)
+    expect(p.ongedaan()).toBeNull()
+    expect(terug2).not.toHaveBeenCalled()
+    const terug3 = vi.fn()
+    p.plan('k3', 'y', () => {}, terug3)
+    p.plan('k4', 'z', () => {})
+    expect(terug3).not.toHaveBeenCalled()
+  })
+
+  it('een fout bij terugdraaien gaat naar onFout', () => {
+    const tm = maakTimer()
+    const onFout = vi.fn()
+    const p = new UitgesteldeActiePlanner({ ...tm, onFout })
+    p.plan('k', 'K', () => {}, () => { throw new Error('kapot') })
+    expect(() => p.ongedaan()).not.toThrow()
+    expect(onFout).toHaveBeenCalledTimes(1)
+    expect(onFout.mock.calls[0][1]).toEqual({ id: 'k', label: 'K' })
+  })
+
   it('geeft een fout in de uitvoering door zonder te crashen', async () => {
     const tm = maakTimer()
     const onFout = vi.fn()

@@ -7,6 +7,7 @@ import {
   SLUIT_AANLEIDINGEN, ETIKET_AANLEIDINGEN, THT_KLASSE_LABEL_KEY, ALLERGENEN_LIJST,
 } from '../../utils/constants'
 import Btn from '../ui/Btn'
+import BevestigKnop from '../ui/BevestigKnop'
 import Inp from '../ui/Inp'
 import Sel from '../ui/Sel'
 import BlokkadeKaart, { blokkadeSamenvatting } from '../haccp/BlokkadeKaart'
@@ -25,7 +26,9 @@ import {
   verwachteControleMomenten, controleDekking,
 } from '../../utils/afvulsessie'
 import { verpakkingVoorraad } from '../../utils/verpakkingVoorraad'
-import { productVoorBatch, productenVoorKeuze } from '../../utils/productKeten'
+import { productVoorBatch } from '../../utils/productKeten'
+import { productenVoorBatchKeuze } from '../../utils/batchKeten'
+import { productSelOpties } from './ProductOpties'
 import type { AfvulSessie, SluitControle, EtiketControle } from '../../types'
 
 // De afvulsessie is het anker voor CCP 2 en CCP 3: één afvulmoment met een
@@ -51,6 +54,10 @@ interface Props {
   producten: any[]
   /** Nodig om de etiketallergenen van een product bij CCP 3 vast te leggen. */
   setProducten: (fn: any) => void
+  /** Recepten en alle batches: de producten van het recept van de batch staan
+   *  bovenaan de productkeuze (utils/batchKeten.ts → productenVoorBatchKeuze). */
+  recepten?: any[]
+  batches?: any[]
   verpakkingen: any[]
   vrijgaven: any[]
   sessies: AfvulSessie[]
@@ -153,8 +160,11 @@ const Regel: React.FC<{
         {status === 'done' ? '✓' : status === 'optioneel' ? '·' : '○'}
       </span>
       <span className="text-sm font-semibold text-gray-700 flex-1 min-w-0">{titel}</span>
+      {/* Hooguit de helft van de regel: een lange toelichting ("Sluitcontrole
+          is aan de beurt …") loopt door op een tweede regel in plaats van over
+          de titel heen te schuiven op een telefoon. */}
       {detail != null && detail !== '' && (
-        <span className="text-xs text-gray-400 flex-shrink-0">{detail}</span>
+        <span className="text-xs text-gray-400 text-right max-w-[50%] min-w-0 break-words">{detail}</span>
       )}
       <span className={`text-gray-300 text-[10px] flex-shrink-0 transition-transform ${
         open ? 'rotate-90' : ''}`}>▶</span>
@@ -364,15 +374,15 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     setEc(e => e.product_id ? e : {...e, product_id: batchProduct})
     setNa(n => n.product_id ? n : {...n, product_id: batchProduct})
   }, [p.batch?.id, batchProduct])
-  // Een keuzelijst van producten: zonder gearchiveerde, behalve het product
-  // dat al gekozen is (utils/productKeten.ts → productenVoorKeuze).
+  // Een keuzelijst van producten: de producten van het recept van de batch
+  // bovenaan ("Bij dit recept"), dan de andere; zonder gearchiveerde, behalve
+  // het product dat al gekozen is (utils/batchKeten.ts → productenVoorBatchKeuze).
   const productOpties = (gekozenId: string | number) =>
-    productenVoorKeuze(p.producten, gekozenId).map(({product, gearchiveerd}) => ({
-      v: String(product.id),
-      l: gearchiveerd
+    productSelOpties(
+      productenVoorBatchKeuze(p.batch, p.producten, { batches: p.batches, recepten: p.recepten, gekozenId }),
+      ({product, gearchiveerd}) => gearchiveerd
         ? t('product_keuze_gearchiveerd').replace('{naam}', product.naam || t('lbl_naamloos'))
-        : (product.naam || t('lbl_naamloos')),
-    }))
+        : (product.naam || t('lbl_naamloos')))
   const receptAllergenen = React.useMemo(
     () => allergenenUitBatch(p.batch?.id, p.bi || [], p.ing || []),
     [p.batch, p.bi, p.ing])
@@ -477,8 +487,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     })
   }
 
+  // De bevestiging zit in de knop (BevestigKnop), geen confirm().
   const breekAf = () => {
-    if (!sessie || !confirm(t('haccp_sessie_afbreken_vraag'))) return
+    if (!sessie) return
     const paraaf = maakParaaf(p.whoami)
     p.setSessies((prev: AfvulSessie[]) => (prev || []).map(s => s.id === sessie.id
       ? {...s, status: 'afgebroken' as const, eind: paraaf.tijdstip, afgesloten_paraaf: paraaf}
@@ -966,8 +977,10 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
               <span>· {t('haccp_sessie_tht')} {sessie.tht ? fmtD(sessie.tht) : t('haccp_sessie_bewaaradvies_tekst')}</span>
               {sessie.tht_reden && <span className="text-orange-600">· {sessie.tht_reden}</span>}
             </div>
-            <div className="flex gap-2">
-              <Btn s="sm" v="ghost" onClick={breekAf}>{t('haccp_sessie_afbreken')}</Btn>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <BevestigKnop s="sm" v="ghost" vraag={t('haccp_sessie_afbreken_vraag')} onBevestig={breekAf}>
+                {t('haccp_sessie_afbreken')}
+              </BevestigKnop>
               <Btn s="sm" disabled={!afsluitBlok.toegestaan} onClick={sluitSessie}>
                 {t('haccp_sessie_afsluiten')}
               </Btn>

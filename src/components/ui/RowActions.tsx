@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import { t } from '../../i18n'
 
@@ -18,8 +18,10 @@ interface RowActionsProps {
   /** De rest — die zit achter het ⋯-menu. */
   acties: RowActie[]
   /** `header`: op een geverfde themabalk (de kop van de pagina) — lichte
-      knoppen op het thema, zoals `Btn v="header"`. Standaard: in een rij. */
-  v?: 'default' | 'header'
+      knoppen op het thema, zoals `Btn v="header"`. `kaart`: een ⋯ met rand
+      die op een telefoon het volle tapdoel van 44 px heeft (een lijst van
+      kaarten, zoals de recepten). Standaard: in een dichte rij. */
+  v?: 'default' | 'header' | 'kaart'
   cls?: string
 }
 
@@ -36,6 +38,8 @@ const RowActions: React.FC<RowActionsProps> = ({ primair, acties, v = 'default',
   const knopRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  // Waar de knop stond toen het menu openging (zie het sluiten bij scrollen).
+  const openRect = useRef<DOMRect | null>(null)
 
   const bruikbaar = acties.filter(Boolean)
 
@@ -47,28 +51,52 @@ const RowActions: React.FC<RowActionsProps> = ({ primair, acties, v = 'default',
       setOpen(false)
     }
     const sluitBijEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    // Bij scrollen loopt het menu van zijn knop weg; dan liever dicht.
+    // Bij scrollen loopt het menu van zijn knop weg; dan liever dicht. Maar
+    // alleen als de knop echt verschoven is: een scroll-event komt pas een
+    // frame later binnen, en een scroll die vóór de klik al gebeurd was (de
+    // knop half onder de rand, net in beeld geschoven) sloot het menu anders
+    // meteen weer.
+    const sluitBijScroll = () => {
+      const nu = knopRef.current?.getBoundingClientRect()
+      const was = openRect.current
+      if (!nu || !was || Math.abs(nu.top - was.top) > 2 || Math.abs(nu.left - was.left) > 2) setOpen(false)
+    }
     const sluit = () => setOpen(false)
     document.addEventListener('mousedown', sluitBijBuiten)
     document.addEventListener('keydown', sluitBijEscape)
-    window.addEventListener('scroll', sluit, true)
+    window.addEventListener('scroll', sluitBijScroll, true)
     window.addEventListener('resize', sluit)
     return () => {
       document.removeEventListener('mousedown', sluitBijBuiten)
       document.removeEventListener('keydown', sluitBijEscape)
-      window.removeEventListener('scroll', sluit, true)
+      window.removeEventListener('scroll', sluitBijScroll, true)
       window.removeEventListener('resize', sluit)
     }
   }, [open])
 
   const toggle = () => {
     const r = knopRef.current?.getBoundingClientRect()
+    openRect.current = r || null
     if (r) {
       // Rechts uitlijnen op de knop; het menu is 180px breed.
       setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.right - 180, window.innerWidth - 188)) })
     }
     setOpen(v => !v)
   }
+
+  // Past het menu onder de knop niet meer in beeld (een rij onderaan een
+  // telefoonscherm), dan klapt het boven de knop open in plaats van half
+  // onder de rand te verdwijnen.
+  useLayoutEffect(() => {
+    if (!open || !pos) return
+    const menu = menuRef.current?.getBoundingClientRect()
+    const knop = knopRef.current?.getBoundingClientRect()
+    if (!menu || !knop) return
+    if (menu.bottom > window.innerHeight - 8) {
+      const boven = Math.max(8, knop.top - 4 - menu.height)
+      if (boven !== pos.top) setPos({ ...pos, top: boven })
+    }
+  }, [open, pos])
 
   // De kop is geen dichte rij: daar krijgen beide knoppen op een telefoon het
   // volle tapdoel van 44 px, net als een gewone knop.
@@ -85,7 +113,11 @@ const RowActions: React.FC<RowActionsProps> = ({ primair, acties, v = 'default',
     ? 'w-11 h-11 sm:w-8 sm:h-7 flex items-center justify-center rounded-lg border transition-colors ' +
       'bg-white/20 hover:bg-white/30 active:bg-white/40 text-white border-white/40 ' +
       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80'
-    : 'w-10 h-10 sm:w-7 sm:h-7 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors'
+    : v === 'kaart'
+      ? 'w-11 h-11 md:w-9 md:h-9 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 ' +
+        'hover:text-gray-800 hover:bg-gray-50 active:bg-gray-100 transition-colors ' +
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]'
+      : 'w-10 h-10 sm:w-7 sm:h-7 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors'
 
   return (
     <div className={`inline-flex items-center gap-1 ${cls}`} onClick={e => e.stopPropagation()}>
@@ -131,13 +163,14 @@ const RowActions: React.FC<RowActionsProps> = ({ primair, acties, v = 'default',
               disabled={a.disabled}
               title={a.title}
               onClick={() => { setOpen(false); a.onClick() }}
-              className={`block w-full text-left px-3 py-2 text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`flex items-center w-full text-left px-3 py-2 min-h-tap md:min-h-0 text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                 a.soort === 'gevaar'
                   ? 'text-red-600 hover:bg-red-50'
                   : 'text-gray-700 hover:bg-gray-50'
               }`}
             >
-              {a.label}
+              {/* Eén kind in de flexrij: een label met meer delen loopt gewoon door. */}
+              <span className="min-w-0">{a.label}</span>
             </button>
           ))}
         </div>,

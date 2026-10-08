@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { kassaVoorraadNaReservering, agpGereserveerdPerAfvulling, kassaBonTotalen } from '../kassa'
+import {
+  kassaVoorraadNaReservering, agpGereserveerdPerAfvulling, kassaBonTotalen,
+  kassaKlantZakelijk, kassaStandaardInclBtw, kassaStuksprijs, kassaBonWeergave,
+} from '../kassa'
 import type { KassaBonRegel } from '../kassa'
 import { uitslagKandidaten } from '../agp'
 import { totaliseerRegels } from '../centen'
+import { regelBedrag } from '../orderRegel'
 
 describe('kassaVoorraadNaReservering', () => {
   it('trekt niets af zonder reservering en houdt de invariant voorraad = buitenAgp + agp', () => {
@@ -210,5 +214,101 @@ describe('kassaBonTotalen', () => {
     const r = kassaBonTotalen([])
     expect(r).toMatchObject({ netto: 0, btw: 0, bruto: 0, kortingTotaal: 0, bonKortingTotaal: 0, statiegeldTotaal: 0 })
     expect(r.geldRegels).toEqual([])
+  })
+})
+
+describe('kassaKlantZakelijk / kassaStandaardInclBtw', () => {
+  it('klant_type beslist; zonder type telt een bedrijfsnaam als zakelijk', () => {
+    expect(kassaKlantZakelijk({ klant_type: 'zakelijk' })).toBe(true)
+    expect(kassaKlantZakelijk({ klant_type: 'prive', bedrijf: 'Café De Kade' })).toBe(false)
+    expect(kassaKlantZakelijk({ bedrijf: 'Café De Kade' })).toBe(true)
+    expect(kassaKlantZakelijk({ bedrijf: '  ' })).toBe(false)
+    expect(kassaKlantZakelijk({})).toBe(false)
+  })
+
+  it('geen klant is een balieverkoop: particulier', () => {
+    expect(kassaKlantZakelijk(null)).toBe(false)
+    expect(kassaKlantZakelijk(undefined)).toBe(false)
+  })
+
+  it('een particulier ziet standaard incl. BTW, een zakelijke klant excl.', () => {
+    expect(kassaStandaardInclBtw(null)).toBe(true)
+    expect(kassaStandaardInclBtw({ klant_type: 'prive' })).toBe(true)
+    expect(kassaStandaardInclBtw({ klant_type: 'zakelijk' })).toBe(false)
+    expect(kassaStandaardInclBtw({ bedrijf: 'Bar Sluis' })).toBe(false)
+  })
+})
+
+describe('kassaStuksprijs', () => {
+  it('excl. BTW is de artikelprijs op centen', () => {
+    expect(kassaStuksprijs(3.25, 21, false)).toBe(3.25)
+    expect(kassaStuksprijs('2.95', 21, false)).toBe(2.95)
+  })
+
+  it('incl. BTW: netto plus de BTW over één stuk, afgerond op een cent', () => {
+    expect(kassaStuksprijs(3.25, 21, true)).toBe(3.93)    // 3,9325
+    expect(kassaStuksprijs(2.07, 21, true)).toBe(2.5)     // 2,5047
+    expect(kassaStuksprijs(89, 21, true)).toBe(107.69)
+    expect(kassaStuksprijs(2.3, 9, true)).toBe(2.51)      // 2,507
+    expect(kassaStuksprijs(4, 0, true)).toBe(4)
+  })
+
+  it('is dezelfde afronding als één stuk op de factuur (regelBedrag)', () => {
+    for (const prijs of [0.83, 1.655, 2.07, 2.675, 3.45, 12.5, 95]) {
+      for (const btw of [0, 9, 21]) {
+        const r = regelBedrag({ aantal: 1, prijs_per_stuk: prijs, btw_pct: btw })
+        expect(kassaStuksprijs(prijs, btw, true)).toBe(r.bruto)
+        expect(kassaStuksprijs(prijs, btw, false)).toBe(r.netto)
+        // Geen float-staart: altijd hele centen.
+        expect(Math.round(kassaStuksprijs(prijs, btw, true) * 100) / 100).toBe(kassaStuksprijs(prijs, btw, true))
+      }
+    }
+  })
+
+  it('zonder prijs of tarief is het nul, geen NaN', () => {
+    expect(kassaStuksprijs(null, 21, true)).toBe(0)
+    expect(kassaStuksprijs(undefined, null, false)).toBe(0)
+    expect(kassaStuksprijs('', 'x', true)).toBe(0)
+  })
+})
+
+describe('kassaBonWeergave', () => {
+  const bier = (prijs: number, aantal = 1, btw = 21, verpakking_type = 'fles'): KassaBonRegel =>
+    ({ type: 'bier', aantal, prijs_per_stuk: prijs, btw_pct: btw, verpakking_type })
+  const verpakkingen = [{ id: 7, naam: 'Fles 33cl', type: 'fles', statiegeld_bedrag: 0.15, statiegeld_soort: 'snd' }]
+  const bon = [bier(2.07, 3), bier(3.1, 2, 9), bier(2.3, 6, 21, 'Fles 33cl'), { type: 'vrij', aantal: 1, prijs_per_stuk: 4.99, btw_pct: 21 }]
+  const tot = kassaBonTotalen(bon, { kortingPct: 7.5, bonKorting: { soort: 'bedrag', waarde: 1.11 }, verpakkingen })
+
+  it('incl. BTW: elke regel is zijn bruto, en de som klopt tot op de cent', () => {
+    const w = kassaBonWeergave(tot, true)
+    expect(w.inclBtw).toBe(true)
+    expect(w.regels[0]).toBe(7.51)    // 3 × 2,07 = 6,21 + 1,30 BTW (per regel afgerond)
+    expect(w.regels).toEqual(tot.geldRegels.filter(g => g.bron === 'bon').map(g => g.bruto))
+    const cent = (x: number) => Math.round(x * 100)
+    expect(cent(w.subtotaal) - cent(w.klantkorting) - cent(w.bonkorting) + cent(w.statiegeld)).toBe(tot.bruto_cent)
+    expect(w.totaal).toBe(tot.bruto)
+    expect(w.btw).toBe(tot.btw)
+  })
+
+  it('excl. BTW: elke regel is zijn netto, de BTW komt er apart bij', () => {
+    const w = kassaBonWeergave(tot, false)
+    expect(w.regels[0]).toBe(6.21)
+    expect(w.subtotaal).toBe(tot.nettoRegels)
+    expect(w.klantkorting).toBe(tot.kortingTotaal)
+    expect(w.bonkorting).toBe(tot.bonKortingTotaal)
+    expect(w.statiegeld).toBe(tot.statiegeldTotaal)
+    const cent = (x: number) => Math.round(x * 100)
+    expect(cent(w.subtotaal) - cent(w.klantkorting) - cent(w.bonkorting) + cent(w.statiegeld) + cent(w.btw)).toBe(tot.bruto_cent)
+  })
+
+  it('verandert niets aan wat er geboekt wordt: het totaal is in beide weergaven het bruto', () => {
+    expect(kassaBonWeergave(tot, true).totaal).toBe(kassaBonWeergave(tot, false).totaal)
+    expect(kassaBonWeergave(tot, true).totaal).toBe(totaliseerRegels(tot.geldRegels).bruto)
+  })
+
+  it('een lege bon is overal nul', () => {
+    expect(kassaBonWeergave(kassaBonTotalen([]), true)).toEqual({
+      inclBtw: true, regels: [], subtotaal: 0, klantkorting: 0, bonkorting: 0, statiegeld: 0, btw: 0, totaal: 0,
+    })
   })
 })

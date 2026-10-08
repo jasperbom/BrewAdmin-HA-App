@@ -2,10 +2,16 @@ import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { t } from '../i18n'
 import { newId, volgendFactuurNummer } from '../utils/api'
 import { fmt, fmtD, tod } from '../utils/format'
-import { getAgpLocatie, openBestellingReserveringen, gereserveerdVoorArtikel, accijnsMaandGesloten } from '../utils/calculations'
-import { kassaVoorraadNaReservering, agpGereserveerdPerAfvulling, kassaBonTotalen } from '../utils/kassa'
-import { beschikbaarVoorAfvulling as beschikbaarNaPicks, beschikbaarBuitenAgpNaPicks } from '../utils/beschikbaarheid'
-import { afvullingVerkoopbaar } from '../utils/haccp'
+import { getAgpLocatie, accijnsMaandGesloten } from '../utils/calculations'
+import {
+  agpGereserveerdPerAfvulling, kassaBonTotalen, kassaBonWeergave, kassaKlantZakelijk,
+  kassaStandaardInclBtw, kassaStuksprijs,
+} from '../utils/kassa'
+import type { KassaBonKorting } from '../utils/kassa'
+import {
+  kassaCatalogus, kassaZichtbaar, kassaAllocatie, kassaKeuzeVoorRegel,
+} from '../utils/kassaCatalogus'
+import type { KassaCtx, KassaKeuze } from '../utils/kassaCatalogus'
 import { bouwUitslagBoekingen, uitslagDatumFout, laatsteAfvulDatum, VERPLAATS_FOUT_KEYS } from '../utils/agp'
 import { bouwVerkoopUitleveringen } from '../utils/uitlevering'
 import UitslagModal from '../components/UitslagModal'
@@ -15,19 +21,30 @@ import Sel from '../components/ui/Sel'
 import Modal from '../components/ui/Modal'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
+import LegeStaat from '../components/ui/LegeStaat'
+import { useMediaQuery } from '../components/ui/useSmalScherm'
+import KassaTegels from '../components/kassa/KassaTegels'
+import KassaBon from '../components/kassa/KassaBon'
+import type { BonRegel } from '../components/kassa/KassaBon'
+import KassaKlant from '../components/kassa/KassaKlant'
+import type { KassaKlantStats, KassaVorigeAankoop } from '../components/kassa/KassaKlant'
+import KassaBonbalk, { BONBALK_RUIMTE } from '../components/kassa/KassaBonbalk'
+import KassaVenster from '../components/kassa/KassaVenster'
+import KassaBetaalwijze from '../components/kassa/KassaBetaalwijze'
+import type { Betaalwijze } from '../components/kassa/KassaBetaalwijze'
+import KassaInclSchakelaar from '../components/kassa/KassaInclSchakelaar'
+import KassaMelding from '../components/kassa/KassaMelding'
 import { printFactuur } from '../components/PakbonExport'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, nextKlantnummer } from '../utils/klant'
 import { breweryMetTermijn } from '../utils/facturen'
 import { verkoopFactuurBoeking, voegBoekingToe } from '../utils/journaal'
 import {
-  MerchArtikel, MerchMutatie, merchLabel, merchVoorraad, volgtVoorraad,
+  MerchArtikel, MerchMutatie,
   boekMerchMutaties, merchAfboekingenVoorRegels,
 } from '../utils/merch'
 import { totaliseerRegels } from '../utils/centen'
-import { afvullingHoortBijBierNaam } from '../utils/picking'
-import { standaardBtwPct, artikelBtwPct } from '../utils/btw'
-import BierKleur from '../components/ui/BierKleur'
+import { standaardBtwPct } from '../utils/btw'
 import type { GaNaar } from '../utils/route'
 
 interface KassaPageProps {
@@ -71,38 +88,20 @@ interface KassaPageProps {
   setMerchArtikelen?: any
   merchVoorraadLog?: MerchMutatie[]
   setMerchVoorraadLog?: any
-  /** Navigatie van de schil (App.tsx): ketenlinks naar product en batch (F12). */
+  /** Navigatie van de schil (App.tsx): de lege kassa verwijst naar Producten. */
   gaNaar?: GaNaar
 }
 
-// Eén regel op de kassabon. De prijs komt altijd uit het artikel (normaal of
-// B2B) en is niet handmatig aan te passen; korting gaat via de kortingsregel.
-interface BonRegel {
-  key: string
-  type: 'bier' | 'vrij'
-  bier_naam: string
-  verpakking_type: string
-  aantal: number
-  prijs_per_stuk: number
-  btw_pct: number
-  omschrijving: string
-  artikel_id?: number | null
-  artikel_key?: string | null
-  sku?: string | null
-  prijsType?: 'normaal' | 'b2b'
-  /** Merch-artikel met eigen voorraad; wordt bij afrekenen afgeboekt. */
-  merch_id?: number | null
-}
-
-// Handmatige korting op de hele bon: vast bedrag (incl. BTW) of percentage.
-interface BonKorting {
-  soort: 'bedrag' | 'pct'
-  waarde: number
-}
-
-type Betaalwijze = 'contant' | 'pin' | 'rekening'
+/** De vensters van de kassa. Er staat er hooguit één open — een stapel, zodat
+ * je vanuit het onderblad Bon naar de klant of een korting gaat en daarna op
+ * de bon terugkomt (twee panelen tegelijk zouden om de focus vechten). */
+type Venster = 'bon' | 'klant' | 'afrekenen' | 'nieuweKlant' | 'korting' | 'vrijeRegel' | 'klantKorting'
 
 const rnd2 = (n: number) => Math.round(n * 100) / 100
+
+/** Onder `lg` staat de bon niet naast de catalogus maar in een vaste balk met
+ * een onderblad — op de telefoon, en ook op een tablet aan de toonbank. */
+const KASSA_SMAL = '(max-width: 1023.98px)'
 
 const KassaPage: React.FC<KassaPageProps> = ({
   bat, av, uit, setUit, acc, setAcc,
@@ -111,7 +110,6 @@ const KassaPage: React.FC<KassaPageProps> = ({
   bestellingPicks, setBestellingPicks,
   verkoopFacturen, setVerkoopFacturen,
   accijnsInst, breweryDetails, appName = '', factuurLogo = null,
-  factuurCounter, setFactuurCounter = () => {},
   log = [], setLog = () => {},
   klanten = [], setKlanten = () => {},
   locaties = [], verplaatsingen = [], setVerplaatsingen = () => {}, afboekingen = [],
@@ -121,128 +119,100 @@ const KassaPage: React.FC<KassaPageProps> = ({
   btwInst = {}, btwTarieven = [0, 9, 21],
   merchArtikelen = [], setMerchArtikelen = () => {},
   merchVoorraadLog = [], setMerchVoorraadLog = () => {},
+  gaNaar,
 }) => {
   // Standaard BTW-tarief uit de instellingen (21% tenzij anders ingesteld)
   const stdBtw = standaardBtwPct(btwInst, btwTarieven)
+  const smal = useMediaQuery(KASSA_SMAL)
   const [cart, setCart] = useState<BonRegel[]>([])
   const [selectedKlantId, setSelectedKlantId] = useState<number | null>(null)
   const [klantZoek, setKlantZoek] = useState('')
   const [productZoek, setProductZoek] = useState('')
-  // Prijsweergave in de productkaarten: excl. (opgeslagen prijs) of incl. BTW
-  const [toonInclBtw, setToonInclBtw] = useState(false)
-  // Uitverkochte tegels staan standaard verborgen — anders vervuilt de kassa
+  // Prijsweergave: null = de standaard van de klant (particulier incl. BTW,
+  // zakelijk excl.); de schakelaar zet hem voor deze klant om.
+  const [inclKeuze, setInclKeuze] = useState<boolean | null>(null)
+  // Uitverkochte keuzes staan standaard verborgen — anders vervuilt de kassa
   // met bier dat toch niet verkocht kan worden.
   const [toonUitverkocht, setToonUitverkocht] = useState(false)
-  const [showAfrekenen, setShowAfrekenen] = useState(false)
+  const [vensters, setVensters] = useState<Venster[]>([])
   const [betaalwijze, setBetaalwijze] = useState<Betaalwijze>('pin')
-  const [showNieuweKlant, setShowNieuweKlant] = useState(false)
   const [nieuweKlantForm, setNieuweKlantForm] = useState({naam: '', klant_type: 'prive', email: '', telefoon: ''})
-  const [showVrijeRegel, setShowVrijeRegel] = useState(false)
   const [vrijeRegelForm, setVrijeRegelForm] = useState({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: String(stdBtw)})
-  const [bonKorting, setBonKorting] = useState<BonKorting | null>(null)
-  const [showKorting, setShowKorting] = useState(false)
+  // Handmatige korting op de hele bon: vast bedrag (incl. BTW) of percentage.
+  const [bonKorting, setBonKorting] = useState<KassaBonKorting | null>(null)
   const [kortingForm, setKortingForm] = useState({soort: 'bedrag', waarde: ''})
   // Klantkorting voor alleen deze bon (null = het standaardpercentage van de
   // klantkaart). De klantkaart zelf blijft ongewijzigd.
   const [klantKortingBon, setKlantKortingBon] = useState<number | null>(null)
-  const [klantKortingForm, setKlantKortingForm] = useState<string | null>(null)
+  const [klantKortingWaarde, setKlantKortingWaarde] = useState('')
   // Laatste afgeronde verkoop voor het succes-scherm (factuur printen)
   const [laatsteVerkoop, setLaatsteVerkoop] = useState<{bestelling: any, factuur: any} | null>(null)
+  // Meldingen in plaats van alert(): een fout in een formulier staat in dat
+  // venster, een fout bij afrekenen bij de afrekenknop, de rest in een pil.
+  const [formFout, setFormFout] = useState('')
+  const [afrekenFout, setAfrekenFout] = useState('')
+  const [melding, setMelding] = useState<string | null>(null)
+
+  const venster: Venster | null = vensters.length ? vensters[vensters.length - 1] : null
+  const openVenster = (v: Venster) => { setFormFout(''); setVensters(s => [...s.filter(x => x !== v), v]) }
+  const sluitVenster = () => { setFormFout(''); setVensters(s => s.slice(0, -1)) }
+  // Bon en klant zijn panelen van de telefoonindeling; afrekenen is daar deel
+  // van de bon. Wisselt de indeling (tablet draaien), dan schuift dat mee.
+  useEffect(() => {
+    setVensters(s => {
+      const n = smal
+        ? s.map(v => (v === 'afrekenen' ? 'bon' : v)).filter((v, i, a) => a.indexOf(v) === i)
+        : s.filter(v => v !== 'bon' && v !== 'klant')
+      return n.length === s.length && n.every((v, i) => v === s[i]) ? s : n
+    })
+  }, [smal])
 
   const selectedKlant = selectedKlantId != null ? (klanten || []).find((k: any) => k.id === selectedKlantId) : null
-  // Zakelijk bepaalt alleen de prijs (B2B). De voorraad is voor elke klant
-  // dezelfde: de kassa verkoopt uitsluitend uit vrije voorraad buiten de AGP —
-  // uitslaan is een aparte stap die eraan voorafgaat (utils/agp.ts).
-  const isZakelijk = !!selectedKlant && (selectedKlant.klant_type === 'zakelijk' ||
-    (!selectedKlant.klant_type && String(selectedKlant.bedrijf || '').trim() !== ''))
+  // Zakelijk bepaalt alleen de prijs (B2B) en de standaardweergave. De
+  // voorraad is voor elke klant dezelfde: de kassa verkoopt uitsluitend uit
+  // vrije voorraad buiten de AGP — uitslaan is een aparte stap (utils/agp.ts).
+  const isZakelijk = kassaKlantZakelijk(selectedKlant)
+  const toonInclBtw = inclKeuze ?? kassaStandaardInclBtw(selectedKlant)
 
-  // ── Voorraadhelpers ──────────────────────────────────────────────────────────
-  // Dezelfde telling als de bestellingen en de productpagina
-  // (utils/beschikbaarheid.ts): afgevuld min open picks, uitleveringen en
-  // afboekingen; een pick zonder bronlocatie legt eerst vrije voorraad vast.
-
-  const voorraadData = {bestellingPicks, bestellingen, uit, afboekingen, locaties, verplaatsingen} as any
-
-  const beschikbaarVoorAfvulling = (a: any): number => beschikbaarNaPicks(a, voorraadData)
-
-  const beschikbaarBuitenAgpVoorAfvulling = (a: any): number => beschikbaarBuitenAgpNaPicks(a, voorraadData)
-
-  // FEFO: eerst-verlopende afvulling eerst
-  const fefo = (a: any, b: any) => {
-    if (!a.tht && !b.tht) return 0
-    if (!a.tht) return 1
-    if (!b.tht) return -1
-    return a.tht.localeCompare(b.tht)
-  }
-
-  // Afvullingen die bij een catalogus-item horen (SKU eerst, dan bier+verpakking)
-  const matchendeAfvullingen = (bierNaam: string, verpakkingType: string, sku?: string | null) => {
-    // Expliciet product_id op een afvulling is autoritatief (rebrand): een
-    // afvulling die aan een ánder product is gekoppeld hoort hier nooit bij —
-    // ook niet via een (stale) SKU-tier. Zo toont de kassa geen dubbele
-    // voorraad onder de oude biernaam nadat een bier is omgehangen/hernoemd.
-    const prodVoorNaam = (producten || []).find((p: any) => p.naam.toLowerCase() === bierNaam.toLowerCase())
-    const filtered = (av || []).filter((a: any) => {
-      // Geblokkeerd na een afgekeurde sluitcontrole (CCP 2): niet verkoopbaar
-      // en niet uit te slaan — telt dus ook niet mee op de tegel.
-      if (!afvullingVerkoopbaar(a)) return false
-      if (beschikbaarVoorAfvulling(a) <= 0) return false
-      if (a.product_id) return !!prodVoorNaam && a.product_id === prodVoorNaam.id
-      return true
-    })
-    if (sku) {
-      const skuMatches = filtered.filter((a: any) => a.artikel_sku === sku)
-      if (skuMatches.length > 0) return skuMatches.sort(fefo)
-      const legacy = filtered.filter((a: any) => {
-        if (a.artikel_sku) return false
-        const matchArt = (artikelen || []).find((art: any) =>
-          art.artikelnummer === sku &&
-          art.verpakking_type?.toLowerCase() === a.verpakking_type?.toLowerCase()
-        )
-        if (!matchArt) return false
-        const batch = (bat || []).find((b: any) => b.id === a.batch_id)
-        if (batch?.biernaam) return batch.biernaam === matchArt.biernaam
-        return true
-      }).sort(fefo)
-      if (legacy.length > 0) return legacy
-    }
-    const vpNamenVoorType = (verpakkingen || [])
-      .filter((v: any) => v.type?.toLowerCase() === verpakkingType.toLowerCase())
-      .map((v: any) => v.naam?.toLowerCase())
-      .filter(Boolean)
-    return filtered
-      .filter((a: any) => {
-        const avpLower = (a.verpakking_type || '').toLowerCase()
-        const matchVerpakking = avpLower === verpakkingType.toLowerCase()
-          || vpNamenVoorType.includes(avpLower)
-          || vpNamenVoorType.some((n: string) => avpLower.includes(n) || n.includes(avpLower))
-        if (!matchVerpakking) return false
-        // Een gerebrande afvulling hangt onder precies één product (expliciet
-        // product_id); niet meer terugvallen op de oude batchnaam/product zodat
-        // de kassa geen dubbele voorraad toont bij hernoemde/omgehangen bieren.
-        return afvullingHoortBijBierNaam(a, bierNaam, producten || [], bat || [])
-      })
-      .sort(fefo)
-  }
+  // ── Catalogus: één tegel per product, de verpakkingen als keuzes ─────────────
+  // Eén voorraadtelling met Overzicht, Producten en Bestellingen
+  // (`voorraadPerProduct`): per verpakking vrij na open picks en na de zachte
+  // reservering van open bestellingen; de AGP apart. De boeking kiest uit
+  // dezelfde lots als de tegel telt (`kassaAllocatie`).
+  const merchLabel = t('orders_regel_merch')
+  const kassaCtx = useMemo<KassaCtx>(() => ({
+    producten, productArtikelen, artikelen, merchArtikelen, verpakkingen,
+    batches: bat, afvullingen: av, uitleveringen: uit, verplaatsingen, afboekingen, locaties,
+    bestellingen, bestellingPicks,
+  }), [producten, productArtikelen, artikelen, merchArtikelen, verpakkingen, bat, av, uit, verplaatsingen, afboekingen, locaties, bestellingen, bestellingPicks])
+  const catalogus = useMemo(
+    () => kassaCatalogus(kassaCtx, {standaardBtw: stdBtw, merchLabel}),
+    [kassaCtx, stdBtw, merchLabel])
+  const keuzes = useMemo(() => catalogus.flatMap(tg => tg.keuzes), [catalogus])
+  const keuzeVoorKey = useMemo(() => new Map(keuzes.map(k => [k.key, k])), [keuzes])
+  const zichtbaar = useMemo(
+    () => kassaZichtbaar(catalogus, productZoek, toonUitverkocht),
+    [catalogus, productZoek, toonUitverkocht])
 
   // ── Uitslaan uit de AGP vanaf de kassa ─────────────────────────────────────
   // Uitslaan en verkopen zijn twee stappen: bier verlaat eerst de AGP (hier
-  // ontstaat de accijns) en wordt daarna uit vrije voorraad verkocht. Dat
-  // betekende tot nu toe: kassa verlaten, op de AGP- of productpagina
-  // verplaatsen, terugkomen en opnieuw beginnen. Hier kan het ter plekke, met
-  // exact dezelfde boeking — `bouwUitslagBoekingen` uit `utils/agp.ts`.
-  const [uitslagItem, setUitslagItem] = useState<any | null>(null)
+  // ontstaat de accijns) en wordt daarna uit vrije voorraad verkocht. De kassa
+  // verkoopt nooit uit de AGP; de tegel biedt alleen de link om ter plekke uit
+  // te slaan, met exact dezelfde boeking — `bouwUitslagBoekingen` uit
+  // `utils/agp.ts`.
+  const [uitslagKeuze, setUitslagKeuze] = useState<KassaKeuze | null>(null)
 
-  const openUitslag = (item: any) => {
+  const openUitslag = (k: KassaKeuze) => {
     // Periode-lock (ERP-plan 0.4): een uitslag boekt accijns op vandaag; dat
     // mag niet meer wanneer die aangifte al is ingediend of betaald.
     if (accijnsMaandGesloten(tod(), accijnsAangiftes || [])) {
-      alert(t('err_accijns_maand_gesloten_boeking')); return
+      setMelding(t('err_accijns_maand_gesloten_boeking')); return
     }
     if (!(locaties || []).some((l: any) => !l.is_agp)) {
-      alert(t('pos_uitslag_geen_locatie')); return
+      setMelding(t('pos_uitslag_geen_locatie')); return
     }
-    setUitslagItem(item)
+    setMelding(null)
+    setUitslagKeuze(k)
   }
 
   // De modal heeft de afvullingen al gekozen (oudste THT eerst); hier worden ze
@@ -252,7 +222,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
     // accijnsdatum, dus daar geldt de periode-lock (tweede slot naast de modal).
     const datumFout = uitslagDatumFout(datum, allocaties, {accijnsAangiftes: accijnsAangiftes || []})
     if (datumFout) {
-      alert(t(VERPLAATS_FOUT_KEYS[datumFout]).replace('{datum}', fmtD(laatsteAfvulDatum(allocaties)))); return
+      setMelding(t(VERPLAATS_FOUT_KEYS[datumFout]).replace('{datum}', fmtD(laatsteAfvulDatum(allocaties)))); return
     }
     const naar = (locaties || []).find((l: any) => l.id === naar_locatie_id)
     // newId() loopt globaal monotoon op, dus ook binnen de lus in
@@ -269,129 +239,22 @@ const KassaPage: React.FC<KassaPageProps> = ({
     if (r.log.length) setLog((prev: any[]) => [...(prev || []), ...r.log])
     logAudit(auditLog, setAuditLog, {
       entiteit: 'Verplaatsing', entiteit_id: r.verplaatsingen[0]?.id, actie: 'aangemaakt',
-      omschrijving: `${t('pos_uitslag_audit')}: ${r.totaal}\u00d7 ${uitslagItem?.bier_naam || ''} (${uitslagItem?.verpakking_type || ''}) \u2192 ${naar?.naam || ''}${r.totaalAccijns ? ` (accijns ${fmt(r.totaalAccijns)})` : ''}`,
+      omschrijving: `${t('pos_uitslag_audit')}: ${r.totaal}× ${uitslagKeuze?.bier_naam || ''} (${uitslagKeuze?.verpakking_type || ''}) → ${naar?.naam || ''}${r.totaalAccijns ? ` (accijns ${fmt(r.totaalAccijns)})` : ''}`,
     })
-    setUitslagItem(null)
+    setMelding(null)
+    setUitslagKeuze(null)
   }
 
-  // ── Catalogus: verkoopbare bier+verpakking-combinaties met prijs en voorraad ─
-
-  // Zachte reserveringen uit open bestellingen (status nieuw/bevestigd, nog niet
-  // gepickt). Net als in WooCommerce/ProductenPage telt een binnengekomen
-  // bestelling direct als gereserveerde voorraad: de kassa mag dat deel niet
-  // opnieuw verkopen. De harde picks zitten al in beschikbaarVoorAfvulling.
-  const openReserveringen = useMemo(
-    () => openBestellingReserveringen(bestellingen || [], bestellingPicks || []),
-    [bestellingen, bestellingPicks]
-  )
-
-  const artikelVoorKeuze = (biernaam: string, verpakking: string) => {
-    const prod = (producten || []).find((p: any) => p.naam === biernaam)
-    if (prod) {
-      const pa = (productArtikelen || []).find((a: any) => a.product_id === prod.id && a.verpakking_type === verpakking)
-      if (pa) return pa
-    }
-    return (artikelen || []).find((a: any) => a.biernaam === biernaam && a.verpakking_type === verpakking)
-  }
-
-  const catalogus = useMemo(() => {
-    const bieren = [...new Set([
-      ...(producten || []).filter((p: any) => p.status !== 'gearchiveerd').map((p: any) => p.naam),
-      ...(artikelen || []).map((a: any) => a.biernaam),
-    ].filter(Boolean))] as string[]
-    const items: any[] = []
-    for (const bier of bieren) {
-      const prod = (producten || []).find((p: any) => p.naam === bier)
-      const types = prod
-        ? (productArtikelen || []).filter((a: any) => a.product_id === prod.id).map((a: any) => a.verpakking_type).filter(Boolean)
-        : []
-      const vpTypes = types.length
-        ? types
-        : (artikelen || []).filter((a: any) => a.biernaam === bier).map((a: any) => a.verpakking_type).filter(Boolean)
-      for (const vp of [...new Set(vpTypes)] as string[]) {
-        const art = artikelVoorKeuze(bier, vp)
-        const sku = art?.artikelnummer || null
-        const afvs = matchendeAfvullingen(bier, vp, sku)
-        let voorraadBruto = 0, buitenAgpBruto = 0
-        for (const a of afvs) {
-          voorraadBruto += beschikbaarVoorAfvulling(a)
-          buitenAgpBruto += Math.min(beschikbaarVoorAfvulling(a), beschikbaarBuitenAgpVoorAfvulling(a))
-        }
-        // Zachte reservering van open bestellingen aftrekken (nog niet gepickt),
-        // en de netto AGP-voorraad afleiden voor de info-weergave.
-        // `skuData` erbij: draagt dezelfde SKU per ongeluk aan twee bieren, dan
-        // beslist de biernaam voor welk artikel de reservering telt.
-        const gereserveerd = gereserveerdVoorArtikel(
-          openReserveringen,
-          {artikelnummer: sku, biernaam: bier, verpakking_type: vp},
-          {producten, productArtikelen, artikelen, merchArtikelen},
-        )
-        const {voorraad, buitenAgp, agp} = kassaVoorraadNaReservering(voorraadBruto, buitenAgpBruto, gereserveerd)
-        items.push({
-          key: `${bier}|${vp}`,
-          bier_naam: bier,
-          verpakking_type: vp,
-          artikel_id: art?.id ?? null,
-          artikel_key: art?.key ?? null,
-          sku,
-          // Geen `recepten`-prop op deze pagina — val terug op het eigen
-          // EBC-veld van het product (zie utils/bierKleur.ts productEbc).
-          ebc: prod?.ebc ?? null,
-          prijs: art?.verkoopprijs != null && art.verkoopprijs !== '' ? Number(art.verkoopprijs) : null,
-          b2bPrijs: art?.b2b_prijs != null && art.b2b_prijs !== '' ? Number(art.b2b_prijs) : null,
-          btw_pct: artikelBtwPct(art, stdBtw),
-          voorraad,
-          buitenAgp,
-          agp,
-        })
-      }
-    }
-    // Merch met eigen voorraad verkoopt de kassa gewoon mee: geen afvulling,
-    // geen accijns, geen AGP — alleen een teller die eraf gaat. Zonder
-    // verkoopprijs blijft de tegel uitgeschakeld (een €0-bon is een valkuil).
-    for (const m of (merchArtikelen || [])) {
-      if (!volgtVoorraad(m)) continue
-      const voorraad = merchVoorraad(m)
-      items.push({
-        key: `merch-${m.id}`,
-        merch: true,
-        merch_id: m.id,
-        bier_naam: m.naam || m.sku || '',
-        verpakking_type: t('orders_regel_merch'),
-        artikel_id: null,
-        artikel_key: null,
-        sku: m.sku || null,
-        prijs: m.verkoopprijs != null ? Number(m.verkoopprijs) : null,
-        b2bPrijs: null,
-        btw_pct: m.btw_pct != null ? Number(m.btw_pct) : stdBtw,
-        voorraad,
-        buitenAgp: voorraad,
-        agp: 0,
-      })
-    }
-    return items.sort((a, b) => a.bier_naam.localeCompare(b.bier_naam) || a.verpakking_type.localeCompare(b.verpakking_type))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [av, uit, verplaatsingen, afboekingen, bestellingPicks, bestellingen, openReserveringen, producten, productArtikelen, artikelen, verpakkingen, locaties, bat, merchArtikelen])
-
-  const catalogusGefilterd = catalogus.filter((c: any) =>
-    !productZoek.trim() ||
-    `${c.bier_naam} ${c.verpakking_type}`.toLowerCase().includes(productZoek.trim().toLowerCase()))
-
-  // Uitverkocht = geen vrije voorraad meer buiten de AGP (merch: geen
-  // prijs). Standaard verborgen, tenzij de kassa dan helemaal leeg zou zijn —
-  // dan is tonen zonder uitleg erger dan tonen mét de rode "geen voorraad".
-  const itemUitverkocht = (item: any): boolean =>
-    item.merch ? item.prijs == null : item.buitenAgp <= 0
-  const catalogusOpVoorraad = catalogusGefilterd.filter((c: any) => !itemUitverkocht(c))
-  const aantalUitverkocht = catalogusGefilterd.length - catalogusOpVoorraad.length
-  const catalogusZichtbaar = (toonUitverkocht || catalogusOpVoorraad.length === 0)
-    ? catalogusGefilterd
-    : catalogusOpVoorraad
+  // De afvullingen achter de uitslaglink: de lots van díe verpakking.
+  const avPerId = useMemo(() => new Map((av || []).map((a: any) => [a.id, a])), [av])
+  const uitslagAfvullingen = uitslagKeuze
+    ? uitslagKeuze.lots.map(l => avPerId.get(l.afvullingId)).filter(Boolean)
+    : []
 
   // ── Klantstatistieken: terugkerende klanten snel in beeld ───────────────────
 
   const klantStats = useMemo(() => {
-    const stats: Record<number, {count: number, last: string, openstaand: number}> = {}
+    const stats: Record<number, KassaKlantStats> = {}
     const bump = (id: number, datum: string) => {
       if (!stats[id]) stats[id] = {count: 0, last: '', openstaand: 0}
       stats[id].count++
@@ -432,83 +295,101 @@ const KassaPage: React.FC<KassaPageProps> = ({
     ).slice(0, 8)
   }, [klanten, klantZoek])
 
-  // Eerdere aankopen van de geselecteerde klant, gekoppeld aan catalogus-items
-  // zodat een terugkerende klant zijn vaste bestelling met één tik herhaalt.
-  const vorigeAankopen = useMemo(() => {
+  // Eerdere aankopen van de geselecteerde klant, gekoppeld aan de keuzes van
+  // de catalogus zodat een terugkerende klant zijn vaste bestelling met één
+  // tik herhaalt.
+  const vorigeAankopen = useMemo((): KassaVorigeAankoop[] => {
     if (!selectedKlant) return []
-    const telling: Record<string, {key: string, count: number, last: string}> = {}
+    const telling = new Map<string, KassaVorigeAankoop & {last: string}>()
     for (const b of (bestellingen || [])) {
       if (b.status === 'geannuleerd') continue
       const live = resolveKlantSnapshot(b, klanten)
       if (live.klant_id !== selectedKlant.id) continue
       for (const r of (b.regels || [])) {
-        if (r.type && r.type !== 'bier') continue
-        if (!r.bier_naam || !r.verpakking_type) continue
-        const key = `${r.bier_naam}|${r.verpakking_type}`
-        if (!telling[key]) telling[key] = {key, count: 0, last: ''}
-        telling[key].count += Number(r.aantal || 0)
-        if (String(b.datum || '') > telling[key].last) telling[key].last = String(b.datum || '')
+        const keuze = kassaKeuzeVoorRegel(keuzes, r)
+        if (!keuze) continue
+        const v = telling.get(keuze.key) || {key: keuze.key, keuze, count: 0, last: ''}
+        v.count += Number(r.aantal || 0)
+        if (String(b.datum || '') > v.last) v.last = String(b.datum || '')
+        telling.set(keuze.key, v)
       }
     }
-    return Object.values(telling)
-      .map(v => ({...v, item: catalogus.find((c: any) => c.key === v.key)}))
-      .filter(v => v.item)
+    return [...telling.values()]
       .sort((a, b) => b.last.localeCompare(a.last) || b.count - a.count)
       .slice(0, 6)
-  }, [selectedKlant, bestellingen, klanten, catalogus])
+  }, [selectedKlant, bestellingen, klanten, keuzes])
 
   // ── Bon-bewerkingen ──────────────────────────────────────────────────────────
 
-  const prijsVoorItem = (item: any): {prijs: number, prijsType: 'normaal' | 'b2b'} => {
-    if (isZakelijk && item.b2bPrijs != null) return {prijs: item.b2bPrijs, prijsType: 'b2b'}
-    return {prijs: item.prijs ?? 0, prijsType: 'normaal'}
+  const prijsVoorKeuze = (k: KassaKeuze): {prijs: number, prijsType: 'normaal' | 'b2b'} => {
+    if (isZakelijk && k.b2bPrijs != null) return {prijs: k.b2bPrijs, prijsType: 'b2b'}
+    return {prijs: k.prijs ?? 0, prijsType: 'normaal'}
+  }
+
+  // Wat de tegel toont: dezelfde prijs als op de bon komt, incl. of excl. BTW.
+  const toonPrijs = (k: KassaKeuze): {bedrag: number | null, b2b: boolean} => {
+    const {prijs, prijsType} = prijsVoorKeuze(k)
+    const heeftPrijs = k.prijs != null || prijsType === 'b2b'
+    return {bedrag: heeftPrijs ? kassaStuksprijs(prijs, k.btw_pct, toonInclBtw) : null, b2b: prijsType === 'b2b'}
   }
 
   // Merch blokkeert niet op nul: het shirt ligt fysiek op de toonbank, ook als
   // de teller achterloopt. De stand mag negatief worden en valt dan rood op in
   // de merch-lijst — dat is het signaal om te tellen of een inkoop te boeken.
-  const maxVoorItem = (item: any): number =>
-    item.merch ? Infinity : item.buitenAgp
+  const maxVoorKeuze = (k: KassaKeuze): number =>
+    k.merch ? Infinity : k.verkoopbaar
 
-  const addToCart = (item: any, aantal = 1) => {
+  const opBon = (key: string): number => cart.find(r => r.key === key)?.aantal || 0
+
+  const addToCart = (k: KassaKeuze, aantal = 1) => {
     setLaatsteVerkoop(null)
+    const max = maxVoorKeuze(k)
+    const huidig = cart.find(r => r.key === k.key && r.type === (k.merch ? 'vrij' : 'bier'))?.aantal || 0
+    if (huidig >= max) {
+      setMelding(t('err_pos_voorraad')
+        .replace('{product}', `${k.bier_naam} ${k.label}`)
+        .replace('{beschikbaar}', String(max)))
+      return
+    }
+    setMelding(null)
     setCart(prev => {
-      const bestaand = prev.find(r => r.key === item.key && r.type === (item.merch ? 'vrij' : 'bier'))
-      const huidig = bestaand ? bestaand.aantal : 0
-      const max = maxVoorItem(item)
-      const nieuw = Math.min(huidig + aantal, max)
-      if (nieuw <= huidig) {
-        alert(t('err_pos_voorraad')
-          .replace('{product}', `${item.bier_naam} ${item.verpakking_type}`)
-          .replace('{beschikbaar}', String(max)))
-        return prev
-      }
+      const bestaand = prev.find(r => r.key === k.key && r.type === (k.merch ? 'vrij' : 'bier'))
+      const nu = bestaand ? bestaand.aantal : 0
+      const nieuw = Math.min(nu + aantal, max)
+      if (nieuw <= nu) return prev
       if (bestaand) return prev.map(r => r === bestaand ? {...r, aantal: nieuw} : r)
-      const {prijs, prijsType} = prijsVoorItem(item)
+      const {prijs, prijsType} = prijsVoorKeuze(k)
       return [...prev, {
-        key: item.key,
-        type: item.merch ? 'vrij' : 'bier',
-        bier_naam: item.bier_naam,
-        verpakking_type: item.verpakking_type,
+        key: k.key,
+        type: k.merch ? 'vrij' : 'bier',
+        bier_naam: k.bier_naam,
+        verpakking_type: k.verpakking_type,
         aantal: nieuw,
         prijs_per_stuk: prijs,
-        btw_pct: item.btw_pct,
-        omschrijving: item.merch ? item.bier_naam : `${item.bier_naam} – ${item.verpakking_type}`,
-        artikel_id: item.artikel_id,
-        artikel_key: item.artikel_key,
-        sku: item.sku,
+        btw_pct: k.btw_pct,
+        omschrijving: k.merch ? k.bier_naam : `${k.bier_naam} – ${k.verpakking_type}`,
+        artikel_id: k.artikel_id,
+        artikel_key: k.artikel_key,
+        sku: k.sku,
         prijsType,
-        ...(item.merch ? {merch_id: item.merch_id} : {}),
+        ...(k.merch ? {merch_id: k.merch_id} : {}),
       }]
     })
+  }
+
+  const kanMeer = (idx: number): boolean => {
+    const r = cart[idx]
+    if (!r) return false
+    const k = r.type === 'bier' ? keuzeVoorKey.get(r.key) : null
+    return !k || r.aantal < maxVoorKeuze(k)
   }
 
   const wijzigAantal = (idx: number, delta: number) => {
     setCart(prev => {
       const r = prev[idx]
       if (!r) return prev
-      const item = catalogus.find((c: any) => c.key === r.key)
-      const max = r.type === 'bier' && item ? maxVoorItem(item) : Infinity
+      const k = keuzeVoorKey.get(r.key)
+      const max = r.type === 'bier' && k ? maxVoorKeuze(k) : Infinity
       const nieuw = Math.min(Math.max(0, r.aantal + delta), max)
       if (nieuw === 0) return prev.filter((_, i) => i !== idx)
       return prev.map((x, i) => i === idx ? {...x, aantal: nieuw} : x)
@@ -521,26 +402,30 @@ const KassaPage: React.FC<KassaPageProps> = ({
     if (cart.length === 0) { setBonKorting(null); setKlantKortingBon(null) }
   }, [cart.length])
 
-  // Klantwissel: herprijs bierregels (normaal ↔ B2B).
+  // Klantwissel: herprijs bierregels (normaal ↔ B2B); de prijsweergave volgt
+  // de nieuwe klant (particulier incl., zakelijk excl. BTW).
   const selectKlant = (id: number | null) => {
     setSelectedKlantId(id)
     setKlantKortingBon(null)
     setKlantZoek('')
     setLaatsteVerkoop(null)
+    setInclKeuze(null)
+    setAfrekenFout('')
     const k = id != null ? (klanten || []).find((x: any) => x.id === id) : null
-    const zakelijk = !!k && (k.klant_type === 'zakelijk' || (!k.klant_type && String(k.bedrijf || '').trim() !== ''))
+    const zakelijk = kassaKlantZakelijk(k)
     setCart(prev => prev.map(r => {
       if (r.type !== 'bier') return r
-      const item = catalogus.find((c: any) => c.key === r.key)
-      if (!item) return r
-      const b2b = zakelijk && item.b2bPrijs != null
-      return {...r, prijs_per_stuk: b2b ? item.b2bPrijs : (item.prijs ?? 0), prijsType: b2b ? 'b2b' : 'normaal'}
+      const keuze = keuzeVoorKey.get(r.key)
+      if (!keuze) return r
+      const b2b = zakelijk && keuze.b2bPrijs != null
+      return {...r, prijs_per_stuk: b2b ? keuze.b2bPrijs! : (keuze.prijs ?? 0), prijsType: b2b ? 'b2b' : 'normaal'}
     }))
   }
 
   const addVrijeRegel = () => {
     const oms = vrijeRegelForm.omschrijving.trim()
-    if (!oms) { alert(t('err_vrije_regel_omschrijving')); return }
+    if (!oms) { setFormFout(t('err_vrije_regel_omschrijving')); return }
+    setLaatsteVerkoop(null)
     setCart(prev => [...prev, {
       key: `vrij-${Date.now()}`,
       type: 'vrij',
@@ -552,18 +437,18 @@ const KassaPage: React.FC<KassaPageProps> = ({
       omschrijving: oms,
     }])
     setVrijeRegelForm({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: String(stdBtw)})
-    setShowVrijeRegel(false)
+    sluitVenster()
   }
 
   const addKorting = () => {
     const waarde = Number(kortingForm.waarde)
     if (!(waarde > 0) || (kortingForm.soort === 'pct' && waarde > 100)) {
-      alert(t('err_pos_korting_waarde'))
+      setFormFout(t('err_pos_korting_waarde'))
       return
     }
     setBonKorting({soort: kortingForm.soort as 'bedrag' | 'pct', waarde})
     setKortingForm({soort: 'bedrag', waarde: ''})
-    setShowKorting(false)
+    sluitVenster()
   }
 
   // ── Totalen (incl. klantkorting en statiegeld, zoals de orderflow) ──────────
@@ -571,22 +456,26 @@ const KassaPage: React.FC<KassaPageProps> = ({
   const standaardKortingPct = Number(selectedKlant?.korting_pct || 0)
   const kortingPct = klantKortingBon ?? standaardKortingPct
 
+  const openKlantKorting = () => { setKlantKortingWaarde(String(kortingPct)); openVenster('klantKorting') }
   const pasKlantKortingToe = () => {
-    const waarde = Number(String(klantKortingForm ?? '').replace(',', '.'))
+    const waarde = Number(String(klantKortingWaarde ?? '').replace(',', '.'))
     if (!Number.isFinite(waarde) || waarde < 0 || waarde > 100) {
-      alert(t('err_pos_klantkorting_waarde'))
+      setFormFout(t('err_pos_klantkorting_waarde'))
       return
     }
     setKlantKortingBon(waarde === standaardKortingPct ? null : waarde)
-    setKlantKortingForm(null)
+    sluitVenster()
   }
 
   // Eén berekening voor scherm, afrekenknop, factuur en journaal: BTW per
   // regel afgerond, daarna cent-exact opgeteld (utils/kassa.ts). Anders pint de
-  // klant een ander bedrag dan de factuur noemt.
+  // klant een ander bedrag dan de factuur noemt. De weergave (incl. of excl.
+  // BTW) leest dezelfde regels.
   const bonTotalen = useMemo(
     () => kassaBonTotalen(cart, {kortingPct, bonKorting, verpakkingen: verpakkingen || []}),
     [cart, kortingPct, bonKorting, verpakkingen])
+  const bonWeergave = useMemo(() => kassaBonWeergave(bonTotalen, toonInclBtw), [bonTotalen, toonInclBtw])
+  const bonStuks = cart.reduce((s, r) => s + (Number(r.aantal) || 0), 0)
 
   // Factuurnummering: server-side via volgendFactuurNummer() (ERP-plan 0.2) —
   // de client nummert nooit zelf (races/hergebruik).
@@ -595,66 +484,52 @@ const KassaPage: React.FC<KassaPageProps> = ({
   // Een verkoop boekt geen accijns: het bier ligt al buiten de AGP en de
   // accijns is bij het uitslaan geboekt (utils/uitlevering.ts).
 
-  // Dubbelklikgrendel. Tussen de klik en het sluiten van de modal zit een
+  // Dubbelklikgrendel. Tussen de klik en het einde van de verkoop zit een
   // netwerkronde (het factuurnummer); een tweede klik in dat venster draaide
   // dezelfde bon nog eens: twee facturen, twee journaalboekingen, dubbele
-  // uitleveringen. De ref is de echte grendel — een tweede klik in dezelfde
-  // tick ziet de state nog niet — en de state zet de knop uit. Na een
-  // geslaagde verkoop blijft de grendel dicht tot de modal opnieuw opent: een
-  // klik die nog vóór het sluiten binnenkomt, ziet anders de oude bon.
-  const verwerkBezigRef = useRef(false)
+  // uitleveringen. `bezigRef` sluit een tweede klik tijdens de verkoop uit —
+  // een tweede klik in dezelfde tick ziet de state nog niet. `afgerekendRef`
+  // onthoudt welke bon al geboekt is: een klik die nog vóór de nieuwe render
+  // binnenkomt, ziet de oude bon en mag die niet opnieuw boeken. Een nieuwe
+  // bon (andere regels) is een ander object en gaat gewoon door.
+  const bezigRef = useRef(false)
+  const afgerekendRef = useRef<BonRegel[] | null>(null)
   const [verwerkBezig, setVerwerkBezig] = useState(false)
   const openAfrekenen = () => {
-    verwerkBezigRef.current = false
-    setVerwerkBezig(false)
-    setShowAfrekenen(true)
+    setAfrekenFout('')
+    openVenster('afrekenen')
   }
   const verwerkVerkoop = async () => {
-    if (verwerkBezigRef.current) return
-    verwerkBezigRef.current = true
+    if (bezigRef.current || afgerekendRef.current === cart) return
+    bezigRef.current = true
     setVerwerkBezig(true)
+    setAfrekenFout('')
     let gelukt = false
     try {
       gelukt = (await voerVerkoopUit()) === true
     } finally {
-      if (!gelukt) {
-        verwerkBezigRef.current = false
-        setVerwerkBezig(false)
-      }
+      if (gelukt) afgerekendRef.current = cart
+      bezigRef.current = false
+      setVerwerkBezig(false)
     }
   }
 
   const voerVerkoopUit = async (): Promise<boolean | undefined> => {
-    if (!cart.length) { alert(t('err_pos_bon_leeg')); return }
-    if (betaalwijze === 'rekening' && !selectedKlant) { alert(t('err_pos_rekening_klant')); return }
+    if (!cart.length) { setAfrekenFout(t('err_pos_bon_leeg')); return }
+    if (betaalwijze === 'rekening' && !selectedKlant) { setAfrekenFout(t('err_pos_rekening_klant')); return }
     const vandaag = tod()
     const klantNaam = selectedKlant?.naam || t('pos_walkin_naam')
 
-    // 1. Voorraadvalidatie + FEFO-allocatie per bierregel. Lokale usage-map zodat
-    //    meerdere bonregels die dezelfde afvulling raken niet dubbel alloceren.
-    const gebruikt: Record<number, number> = {}
-    const draftAllocaties: Array<{afvulling_id: number, batch_id: number, aantal: number, regelKey: string}> = []
-    for (const r of cart) {
-      if (r.type !== 'bier') continue
-      const afvs = matchendeAfvullingen(r.bier_naam, r.verpakking_type, r.sku)
-      let nodig = r.aantal
-      for (const a of afvs) {
-        if (nodig <= 0) break
-        // Alleen vrije voorraad: wat nog in de AGP ligt, moet eerst uitgeslagen.
-        const basis = Math.min(beschikbaarVoorAfvulling(a), beschikbaarBuitenAgpVoorAfvulling(a))
-        const vrij = basis - (gebruikt[a.id] || 0)
-        if (vrij <= 0) continue
-        const pak = Math.min(nodig, vrij)
-        gebruikt[a.id] = (gebruikt[a.id] || 0) + pak
-        draftAllocaties.push({afvulling_id: a.id, batch_id: a.batch_id, aantal: pak, regelKey: r.key})
-        nodig -= pak
-      }
-      if (nodig > 0) {
-        const beschikbaar = r.aantal - nodig
-        alert(t('err_verkoop_vrij_ontoereikend').replace('{beschikbaar}', `${beschikbaar}× ${r.verpakking_type || r.bier_naam}`))
-        return
-      }
+    // 1. Voorraadvalidatie + FEFO-allocatie per bierregel, uit dezelfde lots
+    //    die de tegel telt (vrij buiten de AGP, oudste THT eerst). Meerdere
+    //    bonregels die dezelfde afvulling raken, alloceren niet dubbel.
+    const verdeling = kassaAllocatie(cart, key => keuzeVoorKey.get(key)?.lots || [])
+    if (verdeling.ok === false) {
+      const r = cart.find(x => x.key === verdeling.regelKey)
+      setAfrekenFout(t('err_verkoop_vrij_ontoereikend').replace('{beschikbaar}', `${verdeling.beschikbaar}× ${r?.verpakking_type || r?.bier_naam || ''}`))
+      return
     }
+    const draftAllocaties = verdeling.allocaties
 
     // 2. Orderregels (bon + klantkorting), zelfde vorm als een handmatige order
     let regelId = 0
@@ -724,7 +599,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
         verplaatsingen: verplaatsingen || [], afboekingen: afboekingen || [], datum: vandaag},
       newId(uit || []),
     )
-    if (tekort > 0) { alert(t('err_verkoop_vrij_tekort')); return }
+    if (tekort > 0) { setAfrekenFout(t('err_verkoop_vrij_tekort')); return }
     const picksMetIds = picks.map((p: any) => {
       const res = pickResult[p.id]
       if (!res) return p
@@ -742,7 +617,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
     //    geen nummer verbruikt (gat in de reeks).
     let factuurNummer: string
     try { factuurNummer = await volgendFactuurNummer('factuur') }
-    catch (e) { alert(t('err_factuurnummer_ophalen')); return }
+    catch (e) { setAfrekenFout(t('err_factuurnummer_ophalen')); return }
     // De bedragen komen uit `bonTotalen` — dezelfde regels waarmee het scherm
     // het afrekenbedrag toont. `regels` staat in dezelfde volgorde (bon,
     // klantkorting, bonkorting); statiegeld komt daarachter.
@@ -878,7 +753,9 @@ const KassaPage: React.FC<KassaPageProps> = ({
       omschrijving: `Kassa — ${factuurNummer} ${klantNaam} ${fmt(factuur.bruto)} (${betaalwijze})`,
     })
 
-    setShowAfrekenen(false)
+    // Bureau: de afrekendialoog sluit. Telefoon: het onderblad Bon blijft open
+    // en toont de afgeronde verkoop (printen, nieuwe verkoop).
+    setVensters(s => s.filter(v => v !== 'afrekenen'))
     setCart([])
     setBonKorting(null)
     setKlantKortingBon(null)
@@ -888,7 +765,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
 
   const saveNieuweKlant = () => {
     const naam = nieuweKlantForm.naam.trim()
-    if (!naam) { alert(t('err_pos_klant_naam')); return }
+    if (!naam) { setFormFout(t('err_pos_klant_naam')); return }
     const nieuw: any = {
       id: newId(klanten || []),
       klantnummer: nextKlantnummer(klanten || []),
@@ -899,346 +776,223 @@ const KassaPage: React.FC<KassaPageProps> = ({
     }
     setKlanten((prev: any[]) => [...(prev || []), nieuw])
     logAudit(auditLog, setAuditLog, {entiteit: 'Klant', entiteit_id: nieuw.id, actie: 'aangemaakt', omschrijving: `Via kassa — ${naam}`})
-    setShowNieuweKlant(false)
+    sluitVenster()
     setNieuweKlantForm({naam: '', klant_type: 'prive', email: '', telefoon: ''})
     selectKlant(nieuw.id)
   }
 
-  const stats = selectedKlant ? klantStats[selectedKlant.id] : null
+  const printLaatste = () => {
+    if (!laatsteVerkoop) return
+    printFactuur(laatsteVerkoop.bestelling, laatsteVerkoop.factuur, breweryMetTermijn(laatsteVerkoop.factuur, klanten, breweryDetails), appName, factuurLogo)
+  }
+  const nieuweVerkoop = () => {
+    setLaatsteVerkoop(null)
+    selectKlant(null)
+    if (smal) setVensters([])
+  }
+
+  // Telefoon: "Afrekenen" in de bonbalk opent de bon met de afrekenknop in beeld.
+  const bevestigRef = useRef<HTMLButtonElement | null>(null)
+  const [naarAfrekenen, setNaarAfrekenen] = useState(false)
+  useEffect(() => {
+    if (!naarAfrekenen || venster !== 'bon') return
+    setNaarAfrekenen(false)
+    const knop = bevestigRef.current
+    if (knop) { knop.scrollIntoView({block: 'end'}); knop.focus({preventScroll: true}) }
+  }, [naarAfrekenen, venster])
+
+  const klantNaamKort = selectedKlant ? selectedKlant.naam : t('pos_klant_particulier')
+  const laatsteKort = laatsteVerkoop
+    ? {factuurnummer: laatsteVerkoop.factuur.factuurnummer, klantNaam: laatsteVerkoop.bestelling.klant_naam, bruto: laatsteVerkoop.factuur.bruto}
+    : null
+
+  // ── Onderdelen ──────────────────────────────────────────────────────────────
+
+  const klantInhoud = (variant: 'kolom' | 'blad') => (
+    <KassaKlant
+      variant={variant}
+      klant={selectedKlant}
+      zakelijk={isZakelijk}
+      stats={klantStats}
+      recente={recenteKlanten}
+      zoek={klantZoek}
+      onZoek={setKlantZoek}
+      zoekResultaten={klantZoekResultaten}
+      kortingPct={kortingPct}
+      standaardKortingPct={standaardKortingPct}
+      klantKortingBon={klantKortingBon}
+      vorige={vorigeAankopen}
+      kanVorige={k => k.merch ? k.prijs != null : opBon(k.key) < k.verkoopbaar}
+      onKies={selectKlant}
+      onNieuw={() => openVenster('nieuweKlant')}
+      onKlantKorting={openKlantKorting}
+      onVorige={k => addToCart(k)}
+    />
+  )
+
+  const zoekVeld = <SearchInput value={productZoek} onChange={setProductZoek} placeholder={t('pos_zoek_product_ph')} />
+  const uitverkochtSchakelaar = zichtbaar.uitverkocht > 0 ? (
+    <label className="inline-flex items-center gap-2 min-h-tap lg:min-h-0 text-xs text-gray-500 select-none cursor-pointer">
+      <input type="checkbox" className="t-checkbox" checked={toonUitverkocht}
+        onChange={e => setToonUitverkocht(e.target.checked)} />
+      {t('pos_toon_uitverkocht').replace('{n}', String(zichtbaar.uitverkocht))}
+    </label>
+  ) : null
+  const tegels = zichtbaar.tegels.length === 0 ? (
+    productZoek.trim()
+      ? <LegeStaat titel={t('pos_geen_zoekresultaat').replace('{q}', productZoek.trim())} />
+      : (
+        <LegeStaat titel={t('pos_geen_producten_titel')}>
+          {gaNaar && <Btn v="secondary" onClick={() => gaNaar({pagina: 'producten'})}>{t('pos_naar_producten')} ›</Btn>}
+        </LegeStaat>
+      )
+  ) : (
+    <KassaTegels tegels={zichtbaar.tegels} opBon={opBon} prijs={toonPrijs} onKies={k => addToCart(k)} onUitslaan={openUitslag} />
+  )
+
+  const bonInhoud = (variant: 'kolom' | 'blad', kop?: React.ReactNode, voet?: React.ReactNode) => (
+    <KassaBon
+      variant={variant}
+      cart={cart}
+      weergave={bonWeergave}
+      kortingPct={kortingPct}
+      bonKorting={bonKorting}
+      laatsteVerkoop={laatsteKort}
+      kanMeer={kanMeer}
+      onAantal={wijzigAantal}
+      onVerwijder={idx => setCart(prev => prev.filter((_, i) => i !== idx))}
+      onKorting={() => openVenster('korting')}
+      onVrijeRegel={() => openVenster('vrijeRegel')}
+      onBonKortingWeg={() => setBonKorting(null)}
+      onPrint={printLaatste}
+      onNieuweVerkoop={nieuweVerkoop}
+      vergrendeld={verwerkBezig}
+      kop={kop}
+    >
+      {voet}
+    </KassaBon>
+  )
+
+  const zonderKlantOpRekening = betaalwijze === 'rekening' && !selectedKlant
+  const foutRegel = (tekst: string) => tekst
+    ? <div role="alert" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{tekst}</div>
+    : null
 
   return (
     <div className="space-y-4">
-      <SectionHeader
-        title={t('nav_kassa')}
-        rounded="full"
-        info={<span>{fmtD(tod())}</span>}
-      />
-
-      <div className="grid lg:grid-cols-3 gap-4 items-start">
-        {/* ── Linkerkolom: klant + producten ── */}
-        <div className="lg:col-span-2 space-y-4">
-
-          {/* Klant */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-semibold text-gray-500">{t('pos_klant')}</div>
-              <Btn v="ghost" s="sm" onClick={() => setShowNieuweKlant(true)}>+ {t('klanten_new')}</Btn>
-            </div>
-
-            {selectedKlant ? (
-              <div className="rounded-lg t-panel border t-border p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-gray-800">{selectedKlant.naam}</span>
-                  {selectedKlant.klantnummer && <span className="text-xs text-gray-400">#{selectedKlant.klantnummer}</span>}
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${isZakelijk ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
-                    {isZakelijk ? t('lbl_zakelijk') : t('lbl_prive')}
-                  </span>
-                  {(standaardKortingPct > 0 || klantKortingBon != null) && (
-                    // Klik = de klantkorting voor alleen deze bon aanpassen.
-                    <button onClick={() => setKlantKortingForm(String(kortingPct))}
-                      title={t('pos_klantkorting_aanpassen')}
-                      className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700 hover:bg-green-200">
-                      {t('lbl_korting_pct').replace('{pct}', String(kortingPct))}
-                      {klantKortingBon != null && (
-                        <span className="font-normal"> · {t('pos_klantkorting_standaard').replace('{pct}', String(standaardKortingPct))}</span>
-                      )}
-                      {' ✎'}
-                    </button>
-                  )}
-                  {stats && stats.openstaand > 0 && (
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
-                      {t('pos_openstaand')}: {fmt(stats.openstaand)}
-                    </span>
-                  )}
-                  <button onClick={() => selectKlant(null)}
-                    className="ml-auto text-gray-400 hover:text-gray-600 text-sm" title={t('btn_sluiten')}>✕</button>
-                </div>
-                {stats && (
-                  <div className="text-xs text-gray-500 mt-1">
-                    {t('pos_aankopen').replace('{n}', String(stats.count))}
-                    {stats.last ? ` · ${t('pos_laatste_aankoop')}: ${fmtD(stats.last)}` : ''}
-                  </div>
-                )}
-                {vorigeAankopen.length > 0 && (
-                  <div className="mt-3">
-                    <div className="text-xs font-semibold text-gray-500 mb-1.5">{t('pos_vorige_aankopen')}</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {vorigeAankopen.map(v => (
-                        <button key={v.key} onClick={() => addToCart(v.item)}
-                          disabled={maxVoorItem(v.item) <= 0}
-                          className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                          <span className="font-medium">{v.item.bier_naam}</span>
-                          <span className="text-gray-400"> · {v.item.verpakking_type} · {v.count}×</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <>
-                {recenteKlanten.length > 0 && (
-                  <div>
-                    <div className="text-xs text-gray-400 mb-1.5">{t('pos_recente_klanten')}</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {recenteKlanten.map((k: any) => (
-                        <button key={k.id} onClick={() => selectKlant(k.id)}
-                          className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors">
-                          <span className="font-medium">{k.naam}</span>
-                          <span className="text-gray-400"> · {t('pos_aankopen').replace('{n}', String(klantStats[k.id]?.count || 0))}
-                            {klantStats[k.id]?.last ? ` · ${fmtD(klantStats[k.id].last)}` : ''}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div className="relative">
-                  <SearchInput value={klantZoek} onChange={setKlantZoek} placeholder={t('pos_zoek_klant_ph')} />
-                  {klantZoekResultaten.length > 0 && (
-                    <div className="absolute z-30 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
-                      {klantZoekResultaten.map((k: any) => (
-                        <button key={k.id} onClick={() => selectKlant(k.id)}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2">
-                          <span className="font-medium">{k.naam}</span>
-                          {k.bedrijf && <span className="text-gray-400 text-xs">{k.bedrijf}</span>}
-                          <span className="ml-auto text-xs text-gray-400">
-                            {klantStats[k.id] ? t('pos_aankopen').replace('{n}', String(klantStats[k.id].count)) : ''}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {klantZoek.trim() && klantZoekResultaten.length === 0 && (
-                    <div className="absolute z-30 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm text-gray-400">
-                      {t('pos_geen_klanten')}
-                    </div>
-                  )}
-                </div>
-                <div className="text-xs text-gray-400">{t('pos_walkin_hint')}</div>
-              </>
-            )}
+      {smal ? (
+        // ── Telefoon en tablet: catalogus, met de bon in een vaste balk ──
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => openVenster('klant')} aria-haspopup="dialog"
+              className="flex-1 min-w-0 min-h-tap flex items-center gap-1.5 px-3 rounded-lg border border-gray-200 bg-white text-sm text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+              <span className="text-gray-500 flex-shrink-0">{t('pos_klant')}:</span>
+              <span className="font-semibold text-gray-900 truncate">{klantNaamKort}</span>
+              {selectedKlant && isZakelijk && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 flex-shrink-0">{t('lbl_zakelijk')}</span>}
+              <span aria-hidden="true" className="ml-auto pl-1 text-gray-400 flex-shrink-0">▾</span>
+            </button>
+            <KassaInclSchakelaar aan={toonInclBtw} onWissel={setInclKeuze} />
           </div>
-
-          {/* Producten */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="text-xs font-semibold text-gray-500 flex-shrink-0">{t('nav_producten')}</div>
-              <div className="basis-full sm:basis-auto sm:flex-1">
-                <SearchInput value={productZoek} onChange={setProductZoek} placeholder={t('pos_zoek_product_ph')} />
-              </div>
-              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden flex-shrink-0 text-xs">
-                {([[false, t('pos_prijs_excl')], [true, t('pos_prijs_incl')]] as Array<[boolean, string]>).map(([incl, l]) => (
-                  <button key={String(incl)} onClick={() => setToonInclBtw(incl)}
-                    className={`px-2 py-1 transition-colors ${toonInclBtw === incl
-                      ? 't-panel font-semibold'
-                      : 'bg-white text-gray-500 hover:bg-gray-50'}`}
-                    style={toonInclBtw === incl ? {color: 'var(--t-accent)'} : undefined}>
-                    {l}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {aantalUitverkocht > 0 && (
-              <label className="flex items-center gap-1.5 text-xs text-gray-500 select-none cursor-pointer">
-                <input type="checkbox" className="t-checkbox" checked={toonUitverkocht}
-                  onChange={e => setToonUitverkocht(e.target.checked)} />
-                {t('pos_toon_uitverkocht').replace('{n}', String(aantalUitverkocht))}
-              </label>
-            )}
-            {catalogusZichtbaar.length === 0 ? (
-              <div className="text-sm text-gray-400 py-6 text-center">{t('pos_geen_producten')}</div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
-                {catalogusZichtbaar.map((item: any) => {
-                  const max = maxVoorItem(item)
-                  const inCart = cart.find(r => r.key === item.key)?.aantal || 0
-                  const uitverkocht = max <= 0 || (item.merch && item.prijs == null)
-                  const {prijs, prijsType} = prijsVoorItem(item)
-                  const prijsToon = toonInclBtw ? rnd2(prijs * (1 + Number(item.btw_pct || 0) / 100)) : prijs
-                  // De kassa verkoopt nooit rechtstreeks uit de AGP — voor geen
-                  // enkele klant. Ligt er nog wat, dan biedt de kaart het
-                  // uitslaan aan (eerst uitslaan, dan verkopen) in plaats van
-                  // dood te staan.
-                  const agpInfo = Number(item.agp || 0)
-                  const kanUitslaan = agpInfo > 0 && !item.merch
-                  // Op de grens of uitverkocht wordt tikken "uitslaan" in plaats van
-                  // "op de bon" — zo hoef je de kassa niet te verlaten.
-                  const tikUitslag = kanUitslaan && (uitverkocht || inCart >= max)
-                  const dood = uitverkocht && !kanUitslaan
-                  return (
-                    <button key={item.key} onClick={() => tikUitslag ? openUitslag(item) : addToCart(item)} disabled={dood}
-                      className={`relative text-left rounded-xl border p-3 transition-all duration-150 ${dood
-                        ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
-                        : uitverkocht
-                          ? 'border-orange-200 bg-orange-50 hover:shadow-md hover:-translate-y-px active:translate-y-0 cursor-pointer'
-                          : 'border-gray-200 bg-white hover:shadow-md hover:-translate-y-px active:translate-y-0 cursor-pointer'}`}>
-                      {inCart > 0 && (
-                        <span className="absolute -top-1.5 -right-1.5 text-white text-xs rounded-full min-w-5 h-5 px-1 flex items-center justify-center font-bold shadow"
-                          style={{backgroundColor: 'var(--t-accent)'}}>{inCart}</span>
-                      )}
-                      <div className="flex items-center gap-2">
-                        {!item.merch && <BierKleur ebc={item.ebc} s="md" />}
-                        <div className="font-semibold text-sm text-gray-800 leading-tight">{item.bier_naam}</div>
-                      </div>
-                      <div className="text-xs text-gray-400 mb-1.5">{item.verpakking_type}</div>
-                      <div className="flex items-baseline justify-between gap-1">
-                        <span className="font-bold text-sm" style={{color: 'var(--t-accent)'}}>
-                          {item.prijs != null || (isZakelijk && item.b2bPrijs != null) ? fmt(prijsToon) : '—'}
-                          {prijsType === 'b2b' && <span className="ml-1 text-[9px] font-semibold bg-blue-100 text-blue-700 px-1 py-0.5 rounded align-middle">B2B</span>}
-                        </span>
-                        {/* Merch heeft geen harde grens: de stand is informatief
-                            (oranje bij nul of minder), bier blokkeert wél. */}
-                        <span className={`text-xs ${
-                          item.merch
-                            ? (item.prijs == null ? 'text-red-500 font-medium' : Number(item.voorraad) <= 0 ? 'text-orange-500 font-medium' : 'text-gray-500')
-                            : uitverkocht ? (kanUitslaan ? 'text-orange-600 font-medium' : 'text-red-500 font-medium') : 'text-gray-500'}`}>
-                          {item.merch
-                            ? (item.prijs == null ? t('pos_merch_geen_prijs') : `${item.voorraad} ${t('pos_voorraad')}`)
-                            : uitverkocht ? (kanUitslaan ? t('pos_uitslaan_actie') : t('pos_geen_voorraad')) : `${max} ${t('pos_voorraad')}`}
-                        </span>
-                      </div>
-                      {agpInfo > 0 && (
-                        <div className={`text-xs mt-0.5 text-right ${kanUitslaan ? 'text-orange-600' : 'text-gray-500'}`}
-                          title={t('pos_agp_info_tip').replace('{n}', String(agpInfo))}>
-                          {t('pos_agp_info').replace('{n}', String(agpInfo))}
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+          {zoekVeld}
+          {uitverkochtSchakelaar}
+          {tegels}
+          {/* Ruimte voor de bonbalk: die mag niets afdekken. */}
+          <div aria-hidden="true" className={BONBALK_RUIMTE} />
         </div>
-
-        {/* ── Rechterkolom: bon ── */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3 lg:sticky lg:top-20">
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold text-gray-500">{t('pos_bon')}</div>
-            <div className="flex gap-1">
-              <Btn v="ghost" s="sm" onClick={() => setShowKorting(true)} disabled={cart.length === 0}>+ {t('pos_korting')}</Btn>
-              <Btn v="ghost" s="sm" onClick={() => setShowVrijeRegel(true)}>+ {t('pos_vrije_regel')}</Btn>
-            </div>
-          </div>
-
-          {laatsteVerkoop && (
-            <div className="rounded-lg bg-green-50 border border-green-200 p-3 space-y-2">
-              <div className="font-semibold text-green-700 text-sm">✓ {t('pos_verkoop_gelukt')}</div>
-              <div className="text-xs text-green-700">
-                {laatsteVerkoop.factuur.factuurnummer} · {laatsteVerkoop.bestelling.klant_naam} · {fmt(laatsteVerkoop.factuur.bruto)}
+      ) : (
+        // ── Bureau: catalogus en bon naast elkaar ──
+        <>
+          <SectionHeader
+            title={t('nav_kassa')}
+            rounded="full"
+            info={<span>{fmtD(tod())}</span>}
+          />
+          <div className="grid lg:grid-cols-3 gap-4 items-start">
+            <div className="lg:col-span-2 space-y-4">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                {klantInhoud('kolom')}
               </div>
-              <div className="flex gap-2">
-                <Btn v="green" s="sm" onClick={() => printFactuur(laatsteVerkoop.bestelling, laatsteVerkoop.factuur, breweryMetTermijn(laatsteVerkoop.factuur, klanten, breweryDetails), appName, factuurLogo)}>
-                  {t('pos_print_bon')}
-                </Btn>
-                <Btn v="secondary" s="sm" onClick={() => { setLaatsteVerkoop(null); selectKlant(null) }}>{t('pos_nieuwe_verkoop')}</Btn>
-              </div>
-            </div>
-          )}
-
-          {cart.length === 0 ? (
-            !laatsteVerkoop && <div className="text-sm text-gray-400 py-8 text-center">{t('pos_bon_leeg')}</div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {cart.map((r, idx) => (
-                <div key={`${r.key}-${idx}`} className="py-2 space-y-1">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="flex-1 font-medium text-gray-800 leading-tight">
-                      {r.bier_naam}
-                      {r.verpakking_type && <span className="text-gray-400 font-normal"> · {r.verpakking_type}</span>}
-                      {r.prijsType === 'b2b' && <span className="ml-1 text-[9px] font-semibold bg-blue-100 text-blue-700 px-1 py-0.5 rounded align-middle">B2B</span>}
-                    </span>
-                    <button onClick={() => setCart(prev => prev.filter((_, i) => i !== idx))}
-                      className="text-red-400 hover:text-red-600 text-xs flex-shrink-0">✕</button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-                      <button onClick={() => wijzigAantal(idx, -1)} className="px-2 py-1 text-sm text-gray-500 hover:bg-gray-100">−</button>
-                      <span className="px-2 text-sm font-medium min-w-8 text-center">{r.aantal}</span>
-                      <button onClick={() => wijzigAantal(idx, +1)} className="px-2 py-1 text-sm text-gray-500 hover:bg-gray-100">+</button>
-                    </div>
-                    <span className="text-xs text-gray-400">×</span>
-                    <span className="text-sm text-gray-600">{fmt(r.prijs_per_stuk)}</span>
-                    <span className="text-[10px] text-gray-400">{r.btw_pct}%</span>
-                    <span className="ml-auto text-sm font-semibold text-gray-700">{fmt(bonTotalen.geldRegels[idx]?.netto ?? r.aantal * r.prijs_per_stuk)}</span>
-                  </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="text-xs font-semibold text-gray-500 flex-shrink-0">{t('nav_producten')}</div>
+                  <div className="basis-full sm:basis-auto sm:flex-1">{zoekVeld}</div>
+                  <KassaInclSchakelaar aan={toonInclBtw} onWissel={setInclKeuze} />
                 </div>
+                {uitverkochtSchakelaar}
+                {tegels}
+              </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 lg:sticky lg:top-20">
+              {bonInhoud('kolom', undefined, cart.length > 0 && (
+                <Btn v="green" s="lg" cls="w-full text-base" onClick={openAfrekenen}>
+                  {t('pos_afrekenen')} · {fmt(bonTotalen.bruto)}
+                </Btn>
               ))}
             </div>
-          )}
+          </div>
+        </>
+      )}
 
-          {cart.length > 0 && (
-            <>
-              <div className="border-t pt-3 space-y-1 text-sm">
-                <div className="flex justify-between text-gray-500">
-                  <span>{t('pos_subtotaal')}</span><span>{fmt(bonTotalen.nettoRegels)}</span>
-                </div>
-                {bonTotalen.kortingTotaal > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>{t('lbl_korting_pct').replace('{pct}', String(kortingPct))}</span>
-                    <span>−{fmt(bonTotalen.kortingTotaal)}</span>
-                  </div>
-                )}
-                {bonKorting && bonTotalen.bonKortingTotaal > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span className="flex items-center gap-1.5">
-                      {bonKorting.soort === 'pct'
-                        ? t('lbl_korting_pct').replace('{pct}', String(bonKorting.waarde))
-                        : t('pos_korting')}
-                      <button onClick={() => setBonKorting(null)}
-                        className="text-red-400 hover:text-red-600 text-xs">✕</button>
-                    </span>
-                    <span>−{fmt(bonTotalen.bonKortingTotaal)}</span>
-                  </div>
-                )}
-                {bonTotalen.statiegeldTotaal > 0 && (
-                  <div className="flex justify-between text-gray-500">
-                    <span>{t('pos_statiegeld')}</span><span>{fmt(bonTotalen.statiegeldTotaal)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-gray-500">
-                  <span>{t('pos_btw')}</span><span>{fmt(bonTotalen.btwTotaal)}</span>
-                </div>
-                <div className="flex justify-between font-bold text-lg text-gray-800 pt-1">
-                  <span>{t('pos_totaal')}</span><span>{fmt(bonTotalen.bruto)}</span>
-                </div>
+      {smal && (
+        <KassaBonbalk
+          stuks={bonStuks}
+          totaal={bonTotalen.bruto}
+          afgerond={cart.length === 0 && laatsteVerkoop ? laatsteVerkoop.factuur.bruto : null}
+          onBon={() => openVenster('bon')}
+          onAfrekenen={() => { setAfrekenFout(''); setNaarAfrekenen(true); openVenster('bon') }}
+        />
+      )}
+
+      {/* ── Telefoon: de bon als onderblad (regels, klant, betaalwijze, afrekenen) ── */}
+      {smal && venster === 'bon' && (
+        <KassaVenster key="bon" telefoon titel={t('pos_bon')} onSluit={sluitVenster}>
+          {bonInhoud('blad',
+            <button type="button" onClick={() => openVenster('klant')} disabled={verwerkBezig}
+              className="w-full min-h-tap flex items-center gap-1.5 px-3 rounded-lg border border-gray-200 bg-white text-sm text-left disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+              <span className="text-gray-500 flex-shrink-0">{t('pos_klant')}:</span>
+              <span className="font-semibold text-gray-900 truncate">{klantNaamKort}</span>
+              {selectedKlant && (
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${isZakelijk ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                  {isZakelijk ? t('lbl_zakelijk') : t('lbl_prive')}
+                </span>
+              )}
+              {kortingPct > 0 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700 flex-shrink-0">{t('lbl_korting_pct').replace('{pct}', String(kortingPct))}</span>}
+              <span aria-hidden="true" className="ml-auto pl-1 text-gray-400 flex-shrink-0">›</span>
+            </button>,
+            cart.length > 0 && (
+              // Afrekenen blijft onderin het blad in beeld, ook bij een lange bon.
+              <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-1 bg-white border-t border-gray-100 space-y-3">
+                {foutRegel(afrekenFout)}
+                <KassaBetaalwijze waarde={betaalwijze} onKies={setBetaalwijze} zonderKlant={!selectedKlant} vergrendeld={verwerkBezig} />
+                <button ref={bevestigRef} type="button" onClick={verwerkVerkoop}
+                  disabled={verwerkBezig || zonderKlantOpRekening}
+                  className="w-full min-h-tapLg rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-base font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--t-accent)]">
+                  {t('pos_bevestig_verkoop')} · {fmt(bonTotalen.bruto)}
+                </button>
               </div>
-              <Btn v="green" s="lg" cls="w-full text-base" onClick={openAfrekenen}>
-                {t('pos_afrekenen')} · {fmt(bonTotalen.bruto)}
-              </Btn>
-            </>
-          )}
-        </div>
-      </div>
+            ))}
+        </KassaVenster>
+      )}
 
-      {/* ── Afreken-modal ── */}
-      {showAfrekenen && (
-        <Modal title={t('pos_afrekenen')} onClose={() => { if (!verwerkBezig) setShowAfrekenen(false) }}>
+      {smal && venster === 'klant' && (
+        <KassaVenster key="klant" telefoon titel={t('pos_klant')} onSluit={sluitVenster}>
+          {klantInhoud('blad')}
+        </KassaVenster>
+      )}
+
+      {/* ── Bureau: afrekenen ── */}
+      {!smal && venster === 'afrekenen' && (
+        <Modal title={t('pos_afrekenen')} onClose={() => { if (!verwerkBezig) sluitVenster() }}>
           <div className="space-y-4">
             <div className="text-sm text-gray-600">
               {selectedKlant ? selectedKlant.naam : t('pos_walkin_naam')}
-              {' — '}{cart.reduce((s, r) => s + r.aantal, 0)}× · <span className="font-bold">{fmt(bonTotalen.bruto)}</span>
+              {' — '}{bonStuks}× · <span className="font-bold">{fmt(bonTotalen.bruto)}</span>
             </div>
-            <div>
-              <div className="text-xs font-semibold text-gray-500 mb-2">{t('pos_betaalwijze')}</div>
-              <div className="grid grid-cols-3 gap-2">
-                {([['contant', t('pos_contant')], ['pin', t('pos_pin')], ['rekening', t('pos_op_rekening')]] as Array<[Betaalwijze, string]>).map(([w, l]) => (
-                  <button key={w} onClick={() => setBetaalwijze(w)}
-                    className={`px-3 py-3 rounded-xl border text-sm font-medium transition-colors ${betaalwijze === w
-                      ? 't-panel t-border font-semibold'
-                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
-                    style={betaalwijze === w ? {color: 'var(--t-accent)'} : undefined}>
-                    {l}
-                  </button>
-                ))}
-              </div>
-              {betaalwijze === 'rekening' && !selectedKlant && (
-                <div className="text-xs text-red-500 mt-2">{t('err_pos_rekening_klant')}</div>
-              )}
-            </div>
+            <KassaBetaalwijze waarde={betaalwijze} onKies={setBetaalwijze} zonderKlant={!selectedKlant} vergrendeld={verwerkBezig} />
+            {foutRegel(afrekenFout)}
             <div className="flex justify-end gap-2 pt-3 border-t">
-              <Btn v="secondary" onClick={() => setShowAfrekenen(false)} disabled={verwerkBezig}>{t('btn_cancel')}</Btn>
-              <Btn v="green" onClick={verwerkVerkoop} disabled={verwerkBezig || (betaalwijze === 'rekening' && !selectedKlant)}>
+              <Btn v="secondary" onClick={sluitVenster} disabled={verwerkBezig}>{t('btn_cancel')}</Btn>
+              <Btn v="green" onClick={verwerkVerkoop} disabled={verwerkBezig || zonderKlantOpRekening}>
                 {t('pos_bevestig_verkoop')}
               </Btn>
             </div>
@@ -1247,71 +1001,68 @@ const KassaPage: React.FC<KassaPageProps> = ({
       )}
 
       {/* ── Nieuwe klant (snel) ── */}
-      {showNieuweKlant && (
-        <Modal title={t('klanten_new')} onClose={() => setShowNieuweKlant(false)}>
+      {venster === 'nieuweKlant' && (
+        <KassaVenster telefoon={smal} laag titel={t('klanten_new')} onSluit={sluitVenster}
+          actie={{label: t('btn_save'), onClick: saveNieuweKlant}}>
           <div className="space-y-3">
+            {foutRegel(formFout)}
             <Inp label={t('lbl_naam')} value={nieuweKlantForm.naam} req
               onChange={(v: string) => setNieuweKlantForm(f => ({...f, naam: v}))} />
             <Sel label={t('klanten_type')} value={nieuweKlantForm.klant_type}
               onChange={(v: string) => setNieuweKlantForm(f => ({...f, klant_type: v || 'prive'}))}
               opts={[{v: 'prive', l: t('lbl_prive')}, {v: 'zakelijk', l: t('lbl_zakelijk')}]} />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Inp label={t('lbl_email')} type="email" value={nieuweKlantForm.email}
                 onChange={(v: string) => setNieuweKlantForm(f => ({...f, email: v}))} />
               <Inp label={t('lbl_telefoon')} value={nieuweKlantForm.telefoon}
                 onChange={(v: string) => setNieuweKlantForm(f => ({...f, telefoon: v}))} />
             </div>
-            <div className="flex justify-end gap-2 pt-3 border-t">
-              <Btn v="secondary" onClick={() => setShowNieuweKlant(false)}>{t('btn_cancel')}</Btn>
-              <Btn onClick={saveNieuweKlant}>{t('btn_save')}</Btn>
-            </div>
           </div>
-        </Modal>
+        </KassaVenster>
       )}
 
-      {/* ── Korting ── */}
-      {klantKortingForm != null && (
-        <Modal title={t('pos_klantkorting_titel')} onClose={() => setKlantKortingForm(null)}>
+      {/* ── Klantkorting voor deze bon ── */}
+      {venster === 'klantKorting' && (
+        <KassaVenster telefoon={smal} laag titel={smal ? t('pos_klantkorting_kort') : t('pos_klantkorting_titel')} onSluit={sluitVenster}
+          actie={{label: t('btn_save'), onClick: pasKlantKortingToe}}>
           <div className="space-y-3">
             <p className="text-sm text-gray-600">
               {t('pos_klantkorting_uitleg').replace('{pct}', String(standaardKortingPct))}
             </p>
+            {foutRegel(formFout)}
             <Inp label={t('pos_korting_soort_pct')} type="number" step="0.01" min="0" max="100"
-              value={klantKortingForm} onChange={(v: string) => setKlantKortingForm(v)} />
-            <div className="flex flex-wrap justify-end gap-2 pt-3 border-t">
-              {klantKortingBon != null && (
-                <Btn v="secondary" onClick={() => { setKlantKortingBon(null); setKlantKortingForm(null) }}>
-                  {t('pos_klantkorting_herstel').replace('{pct}', String(standaardKortingPct))}
-                </Btn>
-              )}
-              <Btn v="secondary" onClick={() => setKlantKortingForm(null)}>{t('btn_cancel')}</Btn>
-              <Btn onClick={pasKlantKortingToe}>{t('btn_save')}</Btn>
-            </div>
+              value={klantKortingWaarde} onChange={(v: string) => setKlantKortingWaarde(v)} />
+            {klantKortingBon != null && (
+              <Btn v="secondary" onClick={() => { setKlantKortingBon(null); sluitVenster() }}>
+                {t('pos_klantkorting_herstel').replace('{pct}', String(standaardKortingPct))}
+              </Btn>
+            )}
           </div>
-        </Modal>
+        </KassaVenster>
       )}
 
-      {showKorting && (
-        <Modal title={t('pos_korting')} onClose={() => setShowKorting(false)}>
+      {/* ── Korting op de bon ── */}
+      {venster === 'korting' && (
+        <KassaVenster telefoon={smal} laag titel={t('pos_korting')} onSluit={sluitVenster}
+          actie={{label: t('btn_save'), onClick: addKorting}}>
           <div className="space-y-3">
+            {foutRegel(formFout)}
             <Sel label={t('pos_korting_soort')} value={kortingForm.soort}
               onChange={(v: string) => setKortingForm(f => ({...f, soort: v || 'bedrag'}))}
               opts={[{v: 'bedrag', l: t('pos_korting_soort_bedrag')}, {v: 'pct', l: t('pos_korting_soort_pct')}]} />
             <Inp label={kortingForm.soort === 'pct' ? t('pos_korting_soort_pct') : t('pos_korting_soort_bedrag')}
               type="number" step="0.01" value={kortingForm.waarde} req
               onChange={(v: string) => setKortingForm(f => ({...f, waarde: v}))} />
-            <div className="flex justify-end gap-2 pt-3 border-t">
-              <Btn v="secondary" onClick={() => setShowKorting(false)}>{t('btn_cancel')}</Btn>
-              <Btn onClick={addKorting}>{t('btn_save')}</Btn>
-            </div>
           </div>
-        </Modal>
+        </KassaVenster>
       )}
 
       {/* ── Vrije regel ── */}
-      {showVrijeRegel && (
-        <Modal title={t('pos_vrije_regel')} onClose={() => setShowVrijeRegel(false)}>
+      {venster === 'vrijeRegel' && (
+        <KassaVenster telefoon={smal} laag titel={t('pos_vrije_regel')} onSluit={sluitVenster}
+          actie={{label: t('manual_order_add_line'), onClick: addVrijeRegel}}>
           <div className="space-y-3">
+            {foutRegel(formFout)}
             <Inp label={t('lbl_description')} value={vrijeRegelForm.omschrijving} req
               onChange={(v: string) => setVrijeRegelForm(f => ({...f, omschrijving: v}))} />
             <div className="grid grid-cols-3 gap-3">
@@ -1323,20 +1074,16 @@ const KassaPage: React.FC<KassaPageProps> = ({
                 onChange={(v: string) => setVrijeRegelForm(f => ({...f, btw_pct: v}))}
                 opts={[{v: '0', l: '0%'}, {v: '9', l: '9%'}, {v: '21', l: '21%'}]} />
             </div>
-            <div className="flex justify-end gap-2 pt-3 border-t">
-              <Btn v="secondary" onClick={() => setShowVrijeRegel(false)}>{t('btn_cancel')}</Btn>
-              <Btn onClick={addVrijeRegel}>{t('manual_order_add_line')}</Btn>
-            </div>
           </div>
-        </Modal>
+        </KassaVenster>
       )}
 
       {/* Uitslaan uit de AGP: dezelfde modal en dezelfde boeking als de
           productpagina, maar zonder de kassa te verlaten. */}
-      {uitslagItem && (
+      {uitslagKeuze && (
         <UitslagModal
-          productNaam={`${uitslagItem.bier_naam} \u2014 ${uitslagItem.verpakking_type}`}
-          afvullingen={matchendeAfvullingen(uitslagItem.bier_naam, uitslagItem.verpakking_type, uitslagItem.sku)}
+          productNaam={`${uitslagKeuze.bier_naam} — ${uitslagKeuze.label}`}
+          afvullingen={uitslagAfvullingen}
           batches={bat || []}
           locaties={locaties}
           uit={uit}
@@ -1347,10 +1094,12 @@ const KassaPage: React.FC<KassaPageProps> = ({
           gereserveerd={agpGereserveerdPerAfvulling(
             bestellingPicks || [], bestellingen || [], getAgpLocatie(locaties as any).id,
             {afvullingen: av || [], locaties: locaties || [], uit, verplaatsingen, afboekingen})}
-          onClose={() => setUitslagItem(null)}
+          onClose={() => setUitslagKeuze(null)}
           onOpslaan={saveUitslag}
         />
       )}
+
+      {melding && <KassaMelding tekst={melding} onSluit={() => setMelding(null)} bovenBonbalk={smal} />}
     </div>
   )
 }

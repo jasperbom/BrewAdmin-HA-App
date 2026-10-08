@@ -5,8 +5,10 @@ import { UitgesteldeActiePlanner, GeplandeActie } from '../../utils/undo'
 export interface UndoApi {
   /** Huidige geplande actie (voor de balk); `null` als er niets loopt. */
   actie: GeplandeActie | null
-  /** Plant `uitvoeren` over vijf seconden; toont "label · Ongedaan maken". */
-  plan: (id: string, label: string, uitvoeren: () => Promise<unknown> | unknown) => void
+  /** Plant `uitvoeren` over vijf seconden; toont "label · Ongedaan maken".
+   *  Met `terugdraaien`: de handeling is al gebeurd en "Ongedaan maken" draait
+   *  haar terug (zie utils/undo.ts). */
+  plan: (id: string, label: string, uitvoeren: () => Promise<unknown> | unknown, terugdraaien?: () => void) => void
   ongedaan: () => void
   /** Voert een geplande actie nú uit (vóór een navigatie die de context wist). */
   flush: () => void
@@ -32,7 +34,7 @@ export function useUitgesteldeActie(vertragingMs = 5000, onFout?: (e: unknown, a
   }, [planner])
   return useMemo(() => ({
     actie,
-    plan: (id, label, uitvoeren) => planner.plan(id, label, uitvoeren),
+    plan: (id, label, uitvoeren, terugdraaien) => planner.plan(id, label, uitvoeren, terugdraaien),
     ongedaan: () => planner.ongedaan(),
     flush: () => planner.flush(),
   }), [actie, planner])

@@ -57,6 +57,22 @@ export const fmtD = (d: any): string => {
   return isNaN(date.getTime()) ? '' : date.toLocaleDateString('nl-NL')
 }
 
+// Datum met de dag van de week ervoor, zoals de schermen hem noemen: "di
+// 15-9-2026", of zonder jaar "vr 16-10". Het weekdagwoord volgt de taal
+// (`lang`: nl/en/de/fr/es); de datum zelf blijft d-m-jjjj, net als `fmtD`
+// overal in de app. Leeg of onleesbaar = ''.
+const _WEEKDAG_LOCALE: Record<string, string> = { nl: 'nl-NL', en: 'en-GB', de: 'de-DE', fr: 'fr-FR', es: 'es-ES' }
+export const fmtWeekdagDatum = (d: unknown, opties: { jaar?: boolean; lang?: string } = {}): string => {
+  if (d === null || d === undefined || d === '') return ''
+  const s = String(d)
+  const date = s.includes('T') ? new Date(s) : new Date(s + 'T12:00:00')
+  if (isNaN(date.getTime())) return ''
+  const locale = _WEEKDAG_LOCALE[opties.lang || 'nl'] || _WEEKDAG_LOCALE.nl
+  const dag = date.toLocaleDateString(locale, { weekday: 'short' })
+  const dm = `${date.getDate()}-${date.getMonth() + 1}`
+  return `${dag} ${opties.jaar === false ? dm : `${dm}-${date.getFullYear()}`}`
+}
+
 // YYYY-MM-DD volgens de LOKALE tijdzone (niet UTC). Vermijdt off-by-one
 // rond middernacht voor gebruikers ten oosten van UTC (bv. NL/BE in CET):
 // `new Date().toISOString().slice(0,10)` geeft daar de UTC-dag terug, die
