@@ -71,6 +71,9 @@ export const DOC_CSS = `
   th.chk, td.chk { width: 7mm; padding-left: 2mm; padding-right: 0; }
   .lotcode { font-family: 'Courier New', Courier, monospace; font-weight: bold; white-space: nowrap; }
   .box { display: inline-block; width: 4.5mm; height: 4.5mm; border: 1.5px solid #6b7280; border-radius: 1mm; vertical-align: middle; }
+  .invul { display: inline-block; width: 16mm; height: 4mm; border-bottom: 1px dotted #9ca3af; }
+  .paginascheiding { break-after: page; page-break-after: always; height: 0; }
+  @media screen { .paginascheiding { max-width: 210mm; margin: 0 auto; border-top: 2px dashed #d1d5db; } }
   .sub-title { font-size: 9pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin: 6mm 0 2mm; }
   .remarks { margin-top: 3mm; font-size: 9pt; color: #555; border-left: 2px solid #ddd; padding-left: 3mm; }
   .notice-block { background: #fff7ed; border: 1.5px solid #f97316; padding: 3.5mm 4.5mm; border-radius: 3px; margin-bottom: 5mm; }
@@ -239,7 +242,8 @@ function buildPakbonBody(
   brewery: any,
   appName: string,
   factuurLogo: string | null | undefined,
-  sessies?: PickHerkomstData['afvulSessies']
+  sessies?: PickHerkomstData['afvulSessies'],
+  voorDeDoos = false
 ): {bodyHtml: string, filename: string, pakbonNr: string} {
   const pakbonNr = order.pakbon_nummer || `P-${order.id}`
   // Pakbon-datum = datum van picken (`pakbon_datum` of `pick_datum`).
@@ -276,8 +280,23 @@ function buildPakbonBody(
   // geprint worden, bijvoorbeeld als picklijst in de koeling. Wat er nog niet
   // gepickt is staat dan op de bestelde regel zelf — batch, inhoud en THT zijn
   // nog onbekend. Zolang zo'n regel bestaat is het document een concept.
+  // Uitzondering: de pakbon voor in de doos (`voorDeDoos`, samen met de
+  // picklijst afgedrukt). Wat besteld is gaat in de doos, dus de regel staat er
+  // gewoon op en er komt geen concept boven; lot, THT en batch zijn pas na het
+  // picken bekend en krijgen een invulvak in plaats van een gok.
   const openRegels = onGepickteRegels(order, picks)
-  const openRows = openRegels.map((r: any) => `<tr class="open">
+  const invul = '<span class="invul"></span>'
+  const openRows = openRegels.map((r: any) => voorDeDoos
+    ? `<tr>
+      <td>${esc(r.bier_naam || '—')}</td>
+      <td>${esc(r.verpakking_type || '—')}</td>
+      <td>—</td>
+      <td>${invul}</td>
+      <td>${invul}</td>
+      <td>${invul}</td>
+      <td class="r">${esc(r.aantal)}</td>
+    </tr>`
+    : `<tr class="open">
       <td>${esc(r.bier_naam || '—')}</td>
       <td>${esc(r.verpakking_type || '—')}</td>
       <td>—</td>
@@ -286,7 +305,7 @@ function buildPakbonBody(
       <td>—</td>
       <td class="r">${esc(r.aantal)}</td>
     </tr>`)
-  const isConcept = openRows.length > 0
+  const isConcept = !voorDeDoos && openRows.length > 0
   const rows = [...pickRows, ...openRows].join('')
 
   const bodyHtml = `<div class="page">
@@ -383,12 +402,24 @@ export function buildPakbonHTML(
 // uit de koeling haalt, uit welke batch (FEFO-suggestie) en voor welke
 // bestelling het is. Daaronder de bestellingen zelf voor de inpaktafel.
 // De inhoud komt uit `verzamelPicklijst` (utils/picking.ts).
+// Achter de picklijst volgen de pakbonnen voor in de doos: één per bestelling,
+// elk op een eigen blad, in de volgorde van "Per bestelling".
+
+/** De pakbonnen die met de picklijst mee worden afgedrukt. */
+export interface PicklijstPakbonnen {
+  /** Per bestelling op de picklijst: de order (klantkaart toegepast, `pakbon_datum` gezet) en zijn picks. */
+  bestellingen: Array<{order: any, picks: any[]}>
+  afvullingen: any[]
+  batches: any[]
+  sessies?: PickHerkomstData['afvulSessies']
+}
 
 function buildPicklijstBody(
   lijst: Picklijst,
   brewery: any,
   appName: string,
-  factuurLogo: string | null | undefined
+  factuurLogo: string | null | undefined,
+  pakbonnen?: PicklijstPakbonnen
 ): {bodyHtml: string, filename: string} {
   // Lokale kalenderdag (niet UTC): een picklijst van 00:30 hoort bij vandaag.
   const vandaag = tod()
@@ -478,7 +509,14 @@ function buildPicklijstBody(
     </table>` : ''}
   </div>`
 
-  return {bodyHtml, filename: `Picklijst-${vandaag}`}
+  const pakbonBodies = (pakbonnen?.bestellingen || []).map(({order, picks}) =>
+    buildPakbonBody(order, picks, pakbonnen!.afvullingen, pakbonnen!.batches, brewery, appName, factuurLogo,
+      pakbonnen!.sessies, true).bodyHtml)
+
+  return {
+    bodyHtml: [bodyHtml, ...pakbonBodies].join('<div class="paginascheiding"></div>'),
+    filename: `Picklijst-${vandaag}`,
+  }
 }
 
 export function printPicklijst(
@@ -486,9 +524,9 @@ export function printPicklijst(
   brewery: any,
   appName: string,
   factuurLogo: string | null | undefined,
-  extra: Pick<PrintExtra, 'onGeblokkeerd'> = {}
+  extra: Pick<PrintExtra, 'onGeblokkeerd'> & {pakbonnen?: PicklijstPakbonnen} = {}
 ): void {
-  const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo)
+  const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo, extra.pakbonnen)
   openPrint(r.bodyHtml, r.filename, DOC_CSS, extra.onGeblokkeerd)
 }
 
@@ -497,9 +535,10 @@ export function buildPicklijstHTML(
   lijst: Picklijst,
   brewery: any,
   appName: string,
-  factuurLogo: string | null | undefined
+  factuurLogo: string | null | undefined,
+  pakbonnen?: PicklijstPakbonnen
 ): {html: string, filename: string} {
-  const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo)
+  const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo, pakbonnen)
   const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${DOC_CSS}</style></head><body>${r.bodyHtml}</body></html>`
   return {html, filename: r.filename}
 }

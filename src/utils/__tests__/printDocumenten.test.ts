@@ -93,3 +93,64 @@ describe('pakbon en picklijst — de lotcode waar het bier de deur uitgaat', () 
     expect(html).toContain('<span class="lotcode">L2607-B1</span> · #2607 · THT 28-09-2027 · <strong>46×</strong>')
   })
 })
+
+describe('picklijst met de pakbonnen voor in de doos', () => {
+  const lijst = {regels: [], orders: [], totaal: 0} as unknown as Picklijst
+  const bat = [{id: 9, batch_nummer: '2607'}]
+  const av = [{id: 5, batch_id: 9, lotcode: 'L2607-B1', tht: '2027-09-28', verpakking_type: 'Fles 33cL', inhoud_per_eenheid: 0.33}]
+  const kade = {id: 7, wc_order_nummer: '4321', klant_naam: 'Café De Kade',
+    regels: [{id: 1, bier_naam: 'Kadeblond', verpakking_type: 'Fles 33cL', aantal: 24}]}
+  const hoek = {id: 8, bestel_nummer: 'M-0017', klant_naam: 'De Hoek',
+    regels: [{id: 1, bier_naam: 'Hoekdubbel', verpakking_type: 'Fles 33cL', aantal: 12},
+      {id: 2, bier_naam: 'Kadeblond', verpakking_type: 'Fles 33cL', aantal: 6}]}
+  const pakbonnen = (bestellingen: Array<{order: any, picks: any[]}>) => ({bestellingen, afvullingen: av, batches: bat})
+  const aantalKeer = (html: string, stuk: string) => html.split(stuk).length - 1
+
+  it('zonder pakbonnen alleen de picklijst', () => {
+    const {html} = buildPicklijstHTML(lijst, {naam: 'Test'}, 'App', null)
+    expect(html).toContain('PICKLIJST')
+    expect(html).not.toContain('<div class="doc-title">PAKBON</div>')
+    expect(html).not.toContain('<div class="paginascheiding">')
+  })
+
+  it('één pakbon per bestelling, elk op een eigen blad, in de volgorde van de picklijst', () => {
+    const {html} = buildPicklijstHTML(lijst, {naam: 'Test'}, 'App', null,
+      pakbonnen([{order: kade, picks: []}, {order: hoek, picks: []}]))
+    expect(aantalKeer(html, '<div class="doc-title">PAKBON</div>')).toBe(2)
+    expect(aantalKeer(html, '<div class="paginascheiding"></div>')).toBe(2)
+    expect(html.indexOf('PICKLIJST')).toBeLessThan(html.indexOf('WC-4321'))
+    expect(html.indexOf('WC-4321')).toBeLessThan(html.indexOf('M-0017'))
+  })
+
+  it('geen concept en geen "nog te picken": de bestelde regels gaan zo in de doos', () => {
+    const {html} = buildPicklijstHTML(lijst, {naam: 'Test'}, 'App', null, pakbonnen([{order: hoek, picks: []}]))
+    expect(html).not.toContain('class="badge badge-concept"')
+    expect(html).not.toContain('nog te picken')
+    expect(html).not.toContain('<tr class="open">')
+    expect(html).toContain('Hoekdubbel')
+    expect(html).toContain('<td class="r">12</td>')
+    // Lot, THT en batch zijn pas na het picken bekend: een invulvak per regel.
+    expect(aantalKeer(html, '<span class="invul"></span>')).toBe(6)
+  })
+
+  it('al gepickt: lotcode en THT van de pick, alleen het restant krijgt invulvakken', () => {
+    const picks = [{id: 1, regel_id: 1, afvulling_id: 5, batch_id: 9, aantal: 12}]
+    const {html} = buildPicklijstHTML(lijst, {naam: 'Test'}, 'App', null, pakbonnen([{order: hoek, picks}]))
+    expect(html).toContain('<td class="lotcode">L2607-B1</td>')
+    expect(html).toContain('28-09-2027')
+    expect(aantalKeer(html, '<span class="invul"></span>')).toBe(3)
+    expect(html).not.toContain('class="badge badge-concept"')
+  })
+
+  it('de losse pakbon vóór het picken blijft een concept', () => {
+    const {html} = buildPakbonHTML(hoek, [], av, bat, {naam: 'Test'}, 'App', null)
+    expect(html).toContain('class="badge badge-concept"')
+    expect(html).toContain('<tr class="open">')
+  })
+
+  it('klantgegevens op de pakbon in de doos worden ge-escaped', () => {
+    const {html} = buildPicklijstHTML(lijst, {naam: 'Test'}, 'App', null,
+      pakbonnen([{order: {...kade, klant_naam: PAYLOAD}, picks: []}]))
+    expect(html).not.toContain('<img src=x')
+  })
+})
