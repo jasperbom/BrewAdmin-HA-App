@@ -158,11 +158,11 @@ export const afvullingHoortBijBierNaam = (
 // Bestellingen die nog gepickt moeten worden: status nieuw/bevestigd (nog
 // niet naar 'gepickt' gezet) mét minstens één bierregel. Meestal zit de
 // gepickte hoeveelheid dan nog onder het bestelde aantal, maar na "Picks
-// terugdraaien" dekken de concept-picks alle regels al terwijl de order weer
-// op 'nieuw' staat — ook die moet opnieuw bevestigd worden en mag niet uit
-// beeld verdwijnen (opslaan in de pickmodal zet een volledig gepickte order
-// meteen op 'gepickt', dus anders komt die combinatie niet voor). De
-// verzamelpicklijst slaat zo'n order over: er staat niets meer open.
+// terugdraaien" of het afdrukken van de picklijst (reservering) dekken de
+// concept-picks alle regels al terwijl de order op 'nieuw' staat — ook die
+// moet nog bevestigd worden en mag niet uit beeld verdwijnen (opslaan in de
+// pickmodal zet een volledig gepickte order meteen op 'gepickt'). De
+// verzamelpicklijst toont zo'n order met zijn gereserveerde afvullingen.
 // Oudste datum eerst — dat is de meest urgente om als eerste te picken.
 export const bestellingenOmTePicken = (
   bestellingen: any[],
@@ -257,11 +257,12 @@ export const onGepickteRegels = (bestelling: any, picks: any[]): any[] =>
 // ── Verzamelpicklijst over meerdere bestellingen ────────────────────────────
 // Eén rondje door de koeling voor alle open orders: de nog te picken
 // hoeveelheden van alle bestellingen "om te picken" opgeteld per bier +
-// verpakking, met daaronder de verdeling per bestelling en een FEFO-
-// suggestie uit welke afvulling(en) je pakt (dezelfde matcher als de
-// pickmodal). Eén afvulling wordt over de regels heen niet dubbel
-// uitgedeeld. De registratie zelf blijft per order (de pickmodal); dit is
-// het papier dat je meeneemt.
+// verpakking, met daaronder de verdeling per bestelling en uit welke
+// afvulling(en) je pakt. Wat al gereserveerd is (een pick zonder uitlevering,
+// zie `reserveerVoorPicklijst`) staat er met zijn eigen afvulling op; voor de
+// rest een FEFO-suggestie (dezelfde matcher als de pickmodal). Eén afvulling
+// wordt over de regels heen niet dubbel uitgedeeld. Bevestigen blijft per
+// order (de pickmodal); dit is het papier dat je meeneemt.
 export interface PicklijstOrderDeel {
   bestelling_id: number
   ref: string
@@ -320,6 +321,8 @@ export interface PicklijstOpties {
   isPrive?: (bestelling: any) => boolean
   /** Afvulsessies: de lotcode van een afvulling zonder eigen code. */
   afvulSessies?: PickHerkomstData['afvulSessies']
+  /** De SKU van een orderregel zoals de pickmodal hem bepaalt; standaard `regel.sku`. */
+  skuVoorRegel?: (regel: any) => string | null
 }
 
 const standaardOrderRef = (b: any): string =>
@@ -328,6 +331,12 @@ const standaardOrderRef = (b: any): string =>
 const standaardIsPrive = (b: any): boolean =>
   b?.klant_type === 'prive' || (!b?.klant_type && !String(b?.klant_bedrijf || '').trim())
 
+const standaardSku = (r: any): string | null => r?.sku || null
+
+/** Een pick zonder uitlevering: het bier ligt vast voor de bestelling, maar staat nog in de voorraad. */
+const isReservering = (p: any): boolean =>
+  p?.uitlevering_id == null && !(Array.isArray(p?.uitlevering_ids) && p.uitlevering_ids.length > 0)
+
 export const verzamelPicklijst = (
   bestellingen: any[],
   bestellingPicks: any[],
@@ -335,12 +344,37 @@ export const verzamelPicklijst = (
 ): Picklijst => {
   const orderRef = opts.orderRef || standaardOrderRef
   const isPrive = opts.isPrive || standaardIsPrive
+  const skuVoor = opts.skuVoorRegel || standaardSku
+  const bat = opts.data?.bat || []
   const groepen = new Map<string, PicklijstRegel>()
+  // Per groep: wat nog níét gereserveerd is — daarvoor komt een FEFO-suggestie.
+  const openPerGroep = new Map<PicklijstRegel, number>()
   const orders: PicklijstOrder[] = []
 
+  // Eén regel "pak uit" per afvulling: een reservering en een suggestie uit
+  // dezelfde afvulling worden samen één aantal.
+  const pakUit = (g: PicklijstRegel, a: any, batchId: any, aantal: number, beschikbaar: number) => {
+    const afvullingId = a?.id ?? null
+    const bestaand = afvullingId != null ? g.suggesties.find(s => s.afvulling_id === afvullingId) : undefined
+    if (bestaand) { bestaand.aantal += aantal; return }
+    const batch = bat.find((x: any) => x.id === batchId)
+    g.suggesties.push({afvulling_id: afvullingId, batch_id: batchId ?? null, batch_nummer: String(batch?.batch_nummer || ''),
+      lotcode: a ? lotcodeVanAfvulling(a, opts.afvulSessies) : '', tht: String(a?.tht || ''), beschikbaar, aantal})
+  }
+
   for (const b of bestellingenOmTePicken(bestellingen, bestellingPicks)) {
-    const open = onGepickteRegels(b, (bestellingPicks || []).filter((p: any) => p?.bestelling_id === b.id))
-    if (!open.length) continue
+    const orderPicks = (bestellingPicks || []).filter((p: any) => p?.bestelling_id === b.id)
+    const open = onGepickteRegels(b, orderPicks)
+    const gereserveerd = orderPicks.filter(isReservering)
+    const teDoen = (b.regels || [])
+      .filter((r: any) => r && (r.type || 'bier') === 'bier')
+      .map((r: any) => {
+        const res = gereserveerd.filter((p: any) => p.regel_id === r.id)
+        const openN = open.find((o: any) => o.id === r.id)?.aantal || 0
+        return {r, res, openN, aantal: openN + res.reduce((s: number, p: any) => s + Number(p.aantal || 0), 0)}
+      })
+      .filter((x: any) => x.aantal > 0)
+    if (!teDoen.length) continue
     const klant = String(b.klant_bedrijf || b.klant_naam || '')
     const prive = isPrive(b)
     orders.push({
@@ -350,48 +384,118 @@ export const verzamelPicklijst = (
       levering: b.wc_levering === 'afhalen' || b.wc_levering === 'verzenden' ? b.wc_levering : '',
       afhaalmoment: String(b.wc_afhaalmoment || ''),
       prive,
-      regels: open.length,
-      stuks: open.reduce((s: number, r: any) => s + r.aantal, 0),
+      regels: teDoen.length,
+      stuks: teDoen.reduce((s: number, x: any) => s + x.aantal, 0),
       opmerkingen: String(b.opmerkingen || ''),
     })
-    for (const r of open) {
+    for (const {r, res, openN, aantal} of teDoen) {
       const key = `${lower(r.bier_naam)}|${lower(r.verpakking_type)}`
+      const sku = skuVoor(r)
       let g = groepen.get(key)
       if (!g) {
         g = {bier_naam: String(r.bier_naam || ''), verpakking_type: String(r.verpakking_type || ''),
-          sku: r.sku || null, totaal: 0, orders: [], suggesties: [], tekort: 0}
+          sku: sku || null, totaal: 0, orders: [], suggesties: [], tekort: 0}
         groepen.set(key, g)
       }
-      if (!g.sku && r.sku) g.sku = r.sku
-      g.totaal += r.aantal
-      g.orders.push({bestelling_id: b.id, ref: orderRef(b), klant, aantal: r.aantal, prive})
+      if (!g.sku && sku) g.sku = sku
+      g.totaal += aantal
+      g.orders.push({bestelling_id: b.id, ref: orderRef(b), klant, aantal, prive})
+      openPerGroep.set(g, (openPerGroep.get(g) || 0) + openN)
+      for (const p of res) {
+        const a = (opts.afvullingen || []).find((x: any) => x && x.id === p.afvulling_id)
+        pakUit(g, a, a?.batch_id ?? p.batch_id, Number(p.aantal || 0), Number(p.aantal || 0))
+      }
     }
   }
 
-  // FEFO-suggestie per groep; wat aan de ene groep is toegewezen is voor de
-  // volgende niet meer beschikbaar (een regel zonder verpakking matcht breed).
-  const bat = opts.data?.bat || []
+  // FEFO-suggestie voor wat nog niet gereserveerd is; wat aan de ene groep is
+  // toegewezen is voor de volgende niet meer beschikbaar (een regel zonder
+  // verpakking matcht breed).
   const gebruikt = new Map<any, number>()
   const voorraad = verkoopbareAfvullingen(opts.afvullingen).filter((a: any) => opts.beschikbaar(a) > 0)
   const regels = [...groepen.values()].sort((a, b) =>
     a.bier_naam.localeCompare(b.bier_naam) || a.verpakking_type.localeCompare(b.verpakking_type))
   for (const g of regels) {
-    let rest = g.totaal
+    let rest = openPerGroep.get(g) || 0
     for (const a of matchAfvullingenVoorRegel(voorraad, g.bier_naam, g.verpakking_type, g.sku, opts.data)) {
       if (rest <= 0) break
       const vrij = opts.beschikbaar(a) - (gebruikt.get(a.id) || 0)
       if (vrij <= 0) continue
       const n = Math.min(rest, vrij)
-      const batch = bat.find((x: any) => x.id === a.batch_id)
-      g.suggesties.push({afvulling_id: a.id, batch_id: a.batch_id, batch_nummer: String(batch?.batch_nummer || ''),
-        lotcode: lotcodeVanAfvulling(a, opts.afvulSessies), tht: String(a.tht || ''), beschikbaar: vrij, aantal: n})
+      pakUit(g, a, a.batch_id, n, vrij)
       gebruikt.set(a.id, (gebruikt.get(a.id) || 0) + n)
       rest -= n
     }
     g.tekort = rest
+    // Kortste THT bovenaan, ook als een reservering en een suggestie door elkaar staan.
+    g.suggesties.sort((x, y) => (x.tht || '9999').localeCompare(y.tht || '9999'))
   }
 
   return {regels, orders, totaal: regels.reduce((s, g) => s + g.totaal, 0)}
+}
+
+// ── Reservering bij het afdrukken van de picklijst ─────────────────────────
+// Wie de picklijst afdrukt, pakt daarna in. Daarom legt het afdrukken per
+// bestelling vast uit welke afvulling het bier komt: een pick zonder
+// uitlevering (zoals na "Picks terugdraaien"). Dan staan lot, THT en batch op
+// de pakbon in de doos en op de picklijst dezelfde, ligt de voorraad vast
+// voor die bestelling, en staat de pickmodal daarna al ingevuld — bevestigen
+// maakt pas de uitlevering. Oudste bestelling eerst, per regel FEFO uit de
+// vrije voorraad buiten de AGP (`beschikbaar`); wat er niet is blijft open
+// (tekort: eerst uitslaan). Een bestelling waarvan al iets is uitgeleverd
+// krijgt er niets bij: die moet eerst teruggedraaid worden.
+export interface PickReservering {
+  bestelling_id: number
+  regel_id: number
+  afvulling_id: any
+  batch_id: number
+  aantal: number
+}
+
+export const reserveerVoorPicklijst = (
+  bestellingen: any[],
+  bestellingPicks: any[],
+  opts: PicklijstOpties,
+): PickReservering[] => {
+  const skuVoor = opts.skuVoorRegel || standaardSku
+  const gebruikt = new Map<any, number>()
+  const voorraad = verkoopbareAfvullingen(opts.afvullingen).filter((a: any) => opts.beschikbaar(a) > 0)
+  const reservering: PickReservering[] = []
+  for (const b of bestellingenOmTePicken(bestellingen, bestellingPicks)) {
+    const orderPicks = (bestellingPicks || []).filter((p: any) => p?.bestelling_id === b.id)
+    if (orderPicks.some((p: any) => !isReservering(p))) continue
+    for (const r of onGepickteRegels(b, orderPicks)) {
+      let rest = r.aantal
+      for (const a of matchAfvullingenVoorRegel(voorraad, r.bier_naam, r.verpakking_type, skuVoor(r), opts.data)) {
+        if (rest <= 0) break
+        const vrij = opts.beschikbaar(a) - (gebruikt.get(a.id) || 0)
+        if (vrij <= 0) continue
+        const n = Math.min(rest, vrij)
+        reservering.push({bestelling_id: b.id, regel_id: r.id, afvulling_id: a.id, batch_id: Number(a.batch_id) || 0, aantal: n})
+        gebruikt.set(a.id, (gebruikt.get(a.id) || 0) + n)
+        rest -= n
+      }
+    }
+  }
+  return reservering
+}
+
+/** Picklijst ná de reservering: eerst `reserveerVoorPicklijst`, dan de lijst met
+ * die picks erbij (de beschikbaarheid min wat net gereserveerd is). De
+ * aanroeper bewaart `reservering` pas als het afdrukken gelukt is. */
+export const picklijstMetReservering = (
+  bestellingen: any[],
+  bestellingPicks: any[],
+  opts: PicklijstOpties,
+): {lijst: Picklijst, reservering: PickReservering[]} => {
+  const reservering = reserveerVoorPicklijst(bestellingen, bestellingPicks, opts)
+  const vast = new Map<any, number>()
+  for (const r of reservering) vast.set(r.afvulling_id, (vast.get(r.afvulling_id) || 0) + r.aantal)
+  const lijst = verzamelPicklijst(bestellingen, [...(bestellingPicks || []), ...reservering], {
+    ...opts,
+    beschikbaar: (a: any) => opts.beschikbaar(a) - (vast.get(a?.id) || 0),
+  })
+  return {lijst, reservering}
 }
 
 export const telOpenstaandeBestellingen = (

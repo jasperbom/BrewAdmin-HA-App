@@ -43,7 +43,7 @@ import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
 import { totaliseerRegels } from '../utils/centen'
 import { regelBedrag, corrigeerRegelBtw } from '../utils/orderRegel'
-import { matchAfvullingenVoorRegel, bestellingenOmTePicken, verzamelPicklijst, orderNummer, orderProductId, onGepickteRegels, herkomstVanPick } from '../utils/picking'
+import { matchAfvullingenVoorRegel, bestellingenOmTePicken, picklijstMetReservering, orderNummer, orderProductId, onGepickteRegels, herkomstVanPick } from '../utils/picking'
 import type { PickHerkomstData, Picklijst } from '../utils/picking'
 import {
   bestellingBron, filterBestellingen, statusTellingen, volgendeOrderStap, orderTotalen, leesBestellingStartFilter,
@@ -417,46 +417,64 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   // Verzamelpicklijst: alle bestellingen "om te picken" in één ronde door de
-  // koeling (utils/picking.ts → verzamelPicklijst). De batchsuggestie rekent
-  // met de vrije voorraad buiten de AGP — daaruit wordt verkocht; wat nog in
-  // de AGP ligt verschijnt als tekort (eerst uitslaan). Registreren blijft per
-  // order.
-  // De lotcode per suggestie komt van de afvulling of haar afvulsessie.
-  const picklijstVoor = (orders: any[]) => verzamelPicklijst(orders as any, bestellingPicks as any, {
+  // koeling (utils/picking.ts → picklijstMetReservering). Afdrukken legt per
+  // bestelling vast uit welke afvulling het bier komt (een pick zonder
+  // uitlevering), uit de vrije voorraad buiten de AGP — daaruit wordt verkocht;
+  // wat nog in de AGP ligt blijft tekort (eerst uitslaan). Zo staan lot, THT en
+  // batch op de pakbon in de doos en staat de pickmodal al ingevuld;
+  // bevestigen blijft per order. De SKU van een regel zoals de pickmodal hem
+  // bepaalt (`getAvailableAfvullingen`).
+  const picklijstOpties = () => ({
     afvullingen: av || [],
     beschikbaar: (a: any) => Math.min(beschikbaarVoorAfvulling(a), beschikbaarBuitenAgpVoorAfvulling(a)),
     data: {bat, artikelen, producten, productArtikelen, verpakkingen},
     orderRef: orderNummer,
     isPrive: (b: any) => effectiveKlantType(b) === 'prive',
     afvulSessies,
+    skuVoorRegel: (r: any) => r?.sku || (r?.artikel_key ? (artikelen||[]).find((a: any) => a.key === r.artikel_key)?.artikelnummer : null) || null,
   })
   // Achter de picklijst de pakbon van elke bestelling erop, voor in de doos
   // (zonder concept-markering, zie PakbonExport). Klantgegevens van de live
-  // klantkaart, zoals bij de losse pakbon; de datum is die van het picken, en
-  // zolang er nog niets gepickt is vandaag — dan pak je hem in.
-  const doosPakbonnen = (lijst: Picklijst): PicklijstPakbonnen => ({
+  // klantkaart, zoals bij de losse pakbon; de datum is vandaag — dan pak je in.
+  const doosPakbonnen = (lijst: Picklijst, picks: any[]): PicklijstPakbonnen => ({
     afvullingen: av, batches: bat, sessies: afvulSessies,
     bestellingen: lijst.orders.flatMap(o => {
       const b = (bestellingen || []).find((x: any) => x.id === o.bestelling_id)
       if (!b) return []
-      const picks = picksVoorOrder(b.id)
-      return [{order: {...resolveKlantSnapshot(b, klanten), pakbon_datum: picks.length ? pakbonDatumVoor(b) : tod()}, picks}]
+      return [{order: {...resolveKlantSnapshot(b, klanten), pakbon_datum: tod()},
+        picks: picks.filter((p: any) => p.bestelling_id === b.id)}]
     }),
   })
-  const printVerzamelPicklijst = () => {
-    const lijst = picklijstVoor(bestellingen)
+  const printPicklijstVoor = (orders: any[]) => {
+    const {lijst, reservering} = picklijstMetReservering(orders, bestellingPicks || [], picklijstOpties())
     if (!lijst.orders.length) { setMelding(t('msg_picklijst_leeg')); return }
-    printPicklijst(lijst, breweryDetails || {}, appName, factuurLogo || logo,
-      {onGeblokkeerd: setMelding, pakbonnen: doosPakbonnen(lijst)})
+    let pickId = newId(bestellingPicks || [])
+    const nieuwePicks = reservering.map(r => ({
+      id: pickId++, ...r, bron_locatie_id: undefined, uitlevering_id: null, accijns_id: null,
+    }))
+    const allePicks = [...(bestellingPicks || []), ...nieuwePicks]
+    const geprint = printPicklijst(lijst, breweryDetails || {}, appName, factuurLogo || logo,
+      {onGeblokkeerd: setMelding, pakbonnen: doosPakbonnen(lijst, allePicks)})
+    // Printvenster geblokkeerd: niets vastleggen, de volgende poging reserveert opnieuw.
+    if (!geprint || !nieuwePicks.length) return
+    setBestellingPicks((prev: any[]) => [...(prev || []), ...nieuwePicks])
+    for (const id of new Set(nieuwePicks.map(p => p.bestelling_id))) {
+      const b = (bestellingen || []).find((x: any) => x.id === id)
+      const stuks = nieuwePicks.filter(p => p.bestelling_id === id).reduce((s, p) => s + p.aantal, 0)
+      logAudit(auditLog, setAuditLog, {
+        entiteit: 'Bestelling',
+        entiteit_id: id,
+        actie: 'gewijzigd',
+        omschrijving: `Voorraad gereserveerd bij het afdrukken van de picklijst — ${b?.klant_naam || orderNummer(b)} (${stuks} stuks)`,
+      })
+    }
   }
+  const printVerzamelPicklijst = () => printPicklijstVoor(bestellingen)
   // Dezelfde picklijst voor één bestelling (⋯ in de bestelling): wat er nog
   // gepickt moet worden, met uit welk lot je het pakt, en de pakbon erachter.
   const printOrderPicklijst = () => {
     if (!selectedOrder) return
-    const lijst = picklijstVoor([selectedOrder])
-    if (!lijst.orders.length) { setMelding(t('msg_picklijst_leeg')); return }
-    printPicklijst(lijst, breweryDetails || {}, appName, factuurLogo || logo,
-      {onGeblokkeerd: setMelding, pakbonnen: doosPakbonnen(lijst)})
+    printPicklijstVoor([selectedOrder])
   }
 
   // Beschikbare bieren voor dropdown (vanuit producten + artikelen fallback)
