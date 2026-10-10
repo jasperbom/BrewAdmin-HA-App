@@ -1632,7 +1632,7 @@
   "lbl_pakbon_nog_te_picken": "to be picked",
   "order_print_pakbon_concept_uitleg": "Preliminary packing slip: unpicked lines appear without batch and best-before date",
   "order_print_picklijst": "Print pick list",
-  "order_print_picklijst_uitleg": "One pick list for all orders still to be picked: totals per beer, batch suggestion (shortest best-before first) and the split per order",
+  "order_print_picklijst_uitleg": "One pick list for all orders still to be picked: totals per beer, batch suggestion (shortest best-before first) and the split per order. Followed by the packing slip of each order, to put in the box",
   "msg_picklijst_leeg": "There is nothing to pick",
   "lbl_picklijst_document": "PICK LIST",
   "lbl_pakbon_document": "PACKING SLIP",

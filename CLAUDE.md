@@ -66,7 +66,10 @@ BrewAdmin-HA-App/
 │   │   │                           # HACCP › Allergenen
 │   │   ├── BatchRapportExport.tsx  # Batchdossier → print-HTML / printvenster / PDF-download
 │   │   └── PakbonExport.tsx        # Pakbon, picklijst, factuur, herinnering. Deelt
-│   │                               # `DOC_CSS`/`esc`/`breweryBlock`/`openPrint` met het dossier
+│   │                               # `DOC_CSS`/`esc`/`breweryBlock`/`openPrint` met het dossier.
+│   │                               # De picklijst drukt de pakbonnen voor in de doos mee
+│   │                               # (`PicklijstPakbonnen`, elk op een eigen blad): géén concept,
+│   │                               # een invulvak voor lot/THT/batch van wat nog niet gepickt is
 │   │   ├── batch/                  # De batchpagina in delen: BatchKop + KetenRegel (Recept › Product ›
 │   │   │                           # Tank), EtiketKaart (etiket & website; modi batch/product/recept),
 │   │   │                           # EtiketBijwerken (de énige schrijfweg voor het etiket, overal te openen

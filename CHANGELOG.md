@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.0] — 2026-10-10
+
+### Picklijst afdrukken: de pakbonnen voor in de doos komen mee
+
+Wie de picklijst afdrukt, krijgt daarachter nu meteen de pakbon van elke
+bestelling die erop staat, elk op een eigen blad en in dezelfde volgorde als
+"Per bestelling". Zo leg je bij het inpakken de pakbon direct in de doos.
+
+- **Geen concept.** Deze pakbonnen dragen geen markering "Concept — nog niet
+  volledig gepickt": de bestelde regels staan er gewoon op, met het aantal dat
+  in de doos gaat. De losse pakbon vóór het picken (⋯ › Pakbon afdrukken) blijft
+  wél een concept.
+- **Lot, THT en batch** zijn pas na het picken bekend. Bij wat nog niet gepickt
+  is staat een invulvak, zodat je de lotcode van de krat erop kunt schrijven;
+  wat al wel gepickt is, staat er met lotcode, THT en batch op.
+- Datum = de pickdatum, en zolang er nog niets gepickt is vandaag. De
+  klantgegevens komen van de klantkaart, net als bij de losse pakbon.
+- Geldt voor de picklijst van alle bestellingen én voor de picklijst van één
+  bestelling (⋯ in de bestelling).
+
+---
+
 ## [1.12.99] — 2026-10-08
 
 ### Allergenen opzoeken: de app zoekt de allergenen van ingrediënten op

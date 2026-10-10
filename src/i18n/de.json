@@ -1632,7 +1632,7 @@
   "lbl_pakbon_nog_te_picken": "noch zu picken",
   "order_print_pakbon_concept_uitleg": "Vorläufiger Lieferschein: noch nicht gepickte Zeilen erscheinen ohne Charge und MHD",
   "order_print_picklijst": "Pickliste drucken",
-  "order_print_picklijst_uitleg": "Eine Pickliste für alle noch zu pickenden Bestellungen: Summen je Bier, Chargenvorschlag (kürzestes MHD zuerst) und die Aufteilung je Bestellung",
+  "order_print_picklijst_uitleg": "Eine Pickliste für alle noch zu pickenden Bestellungen: Summen je Bier, Chargenvorschlag (kürzestes MHD zuerst) und die Aufteilung je Bestellung. Dahinter der Lieferschein jeder Bestellung, für den Karton",
   "msg_picklijst_leeg": "Es gibt nichts zu picken",
   "lbl_picklijst_document": "PICKLISTE",
   "lbl_pakbon_document": "LIEFERSCHEIN",

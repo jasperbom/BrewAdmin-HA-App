@@ -23,6 +23,7 @@ import Modal from '../components/ui/Modal'
 import BevestigKnop from '../components/ui/BevestigKnop'
 import SectionHeader from '../components/ui/SectionHeader'
 import { printPakbon, printFactuur, printPicklijst, buildPakbonHTML, buildFactuurHTML } from '../components/PakbonExport'
+import type { PicklijstPakbonnen } from '../components/PakbonExport'
 import MailModal from '../components/MailModal'
 import { herbruikbareBetaallink, betaallinkRecord } from '../utils/mollieLink'
 import WcProductModal from '../components/WcProductModal'
@@ -43,7 +44,7 @@ import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../uti
 import { totaliseerRegels } from '../utils/centen'
 import { regelBedrag, corrigeerRegelBtw } from '../utils/orderRegel'
 import { matchAfvullingenVoorRegel, bestellingenOmTePicken, verzamelPicklijst, orderNummer, orderProductId, onGepickteRegels, herkomstVanPick } from '../utils/picking'
-import type { PickHerkomstData } from '../utils/picking'
+import type { PickHerkomstData, Picklijst } from '../utils/picking'
 import {
   bestellingBron, filterBestellingen, statusTellingen, volgendeOrderStap, orderTotalen, leesBestellingStartFilter,
 } from '../utils/bestelling'
@@ -429,18 +430,33 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     isPrive: (b: any) => effectiveKlantType(b) === 'prive',
     afvulSessies,
   })
+  // Achter de picklijst de pakbon van elke bestelling erop, voor in de doos
+  // (zonder concept-markering, zie PakbonExport). Klantgegevens van de live
+  // klantkaart, zoals bij de losse pakbon; de datum is die van het picken, en
+  // zolang er nog niets gepickt is vandaag — dan pak je hem in.
+  const doosPakbonnen = (lijst: Picklijst): PicklijstPakbonnen => ({
+    afvullingen: av, batches: bat, sessies: afvulSessies,
+    bestellingen: lijst.orders.flatMap(o => {
+      const b = (bestellingen || []).find((x: any) => x.id === o.bestelling_id)
+      if (!b) return []
+      const picks = picksVoorOrder(b.id)
+      return [{order: {...resolveKlantSnapshot(b, klanten), pakbon_datum: picks.length ? pakbonDatumVoor(b) : tod()}, picks}]
+    }),
+  })
   const printVerzamelPicklijst = () => {
     const lijst = picklijstVoor(bestellingen)
     if (!lijst.orders.length) { setMelding(t('msg_picklijst_leeg')); return }
-    printPicklijst(lijst, breweryDetails || {}, appName, factuurLogo || logo, {onGeblokkeerd: setMelding})
+    printPicklijst(lijst, breweryDetails || {}, appName, factuurLogo || logo,
+      {onGeblokkeerd: setMelding, pakbonnen: doosPakbonnen(lijst)})
   }
   // Dezelfde picklijst voor één bestelling (⋯ in de bestelling): wat er nog
-  // gepickt moet worden, met uit welk lot je het pakt.
+  // gepickt moet worden, met uit welk lot je het pakt, en de pakbon erachter.
   const printOrderPicklijst = () => {
     if (!selectedOrder) return
     const lijst = picklijstVoor([selectedOrder])
     if (!lijst.orders.length) { setMelding(t('msg_picklijst_leeg')); return }
-    printPicklijst(lijst, breweryDetails || {}, appName, factuurLogo || logo, {onGeblokkeerd: setMelding})
+    printPicklijst(lijst, breweryDetails || {}, appName, factuurLogo || logo,
+      {onGeblokkeerd: setMelding, pakbonnen: doosPakbonnen(lijst)})
   }
 
   // Beschikbare bieren voor dropdown (vanuit producten + artikelen fallback)

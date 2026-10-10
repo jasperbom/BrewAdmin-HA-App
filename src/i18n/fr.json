@@ -1629,7 +1629,7 @@
   "lbl_pakbon_nog_te_picken": "à prélever",
   "order_print_pakbon_concept_uitleg": "Bon de livraison provisoire : les lignes non prélevées apparaissent sans lot ni DLUO",
   "order_print_picklijst": "Imprimer liste de prélèvement",
-  "order_print_picklijst_uitleg": "Une liste de prélèvement pour toutes les commandes encore à prélever : totaux par bière, suggestion de lot (DLUO la plus courte en premier) et répartition par commande",
+  "order_print_picklijst_uitleg": "Une liste de prélèvement pour toutes les commandes encore à prélever : totaux par bière, suggestion de lot (DLUO la plus courte en premier) et répartition par commande. Suivie du bon de livraison de chaque commande, à glisser dans le carton",
   "msg_picklijst_leeg": "Rien à prélever",
   "lbl_picklijst_document": "LISTE DE PRÉLÈVEMENT",
   "lbl_pakbon_document": "BON DE LIVRAISON",
