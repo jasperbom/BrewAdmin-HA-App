@@ -71,7 +71,6 @@ export const DOC_CSS = `
   th.chk, td.chk { width: 7mm; padding-left: 2mm; padding-right: 0; }
   .lotcode { font-family: 'Courier New', Courier, monospace; font-weight: bold; white-space: nowrap; }
   .box { display: inline-block; width: 4.5mm; height: 4.5mm; border: 1.5px solid #6b7280; border-radius: 1mm; vertical-align: middle; }
-  .invul { display: inline-block; width: 16mm; height: 4mm; border-bottom: 1px dotted #9ca3af; }
   .paginascheiding { break-after: page; page-break-after: always; height: 0; }
   @media screen { .paginascheiding { max-width: 210mm; margin: 0 auto; border-top: 2px dashed #d1d5db; } }
   .sub-title { font-size: 9pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin: 6mm 0 2mm; }
@@ -281,19 +280,19 @@ function buildPakbonBody(
   // gepickt is staat dan op de bestelde regel zelf — batch, inhoud en THT zijn
   // nog onbekend. Zolang zo'n regel bestaat is het document een concept.
   // Uitzondering: de pakbon voor in de doos (`voorDeDoos`, samen met de
-  // picklijst afgedrukt). Wat besteld is gaat in de doos, dus de regel staat er
-  // gewoon op en er komt geen concept boven; lot, THT en batch zijn pas na het
-  // picken bekend en krijgen een invulvak in plaats van een gok.
+  // picklijst afgedrukt). Het afdrukken reserveert de voorraad, dus lot, THT en
+  // batch staan er via de picks al op; geen concept. Alleen wat niet
+  // gereserveerd kon worden (tekort, eerst uitslaan) staat als gewone regel
+  // zonder lot.
   const openRegels = onGepickteRegels(order, picks)
-  const invul = '<span class="invul"></span>'
   const openRows = openRegels.map((r: any) => voorDeDoos
     ? `<tr>
       <td>${esc(r.bier_naam || '—')}</td>
       <td>${esc(r.verpakking_type || '—')}</td>
       <td>—</td>
-      <td>${invul}</td>
-      <td>${invul}</td>
-      <td>${invul}</td>
+      <td>—</td>
+      <td>—</td>
+      <td>—</td>
       <td class="r">${esc(r.aantal)}</td>
     </tr>`
     : `<tr class="open">
@@ -525,9 +524,9 @@ export function printPicklijst(
   appName: string,
   factuurLogo: string | null | undefined,
   extra: Pick<PrintExtra, 'onGeblokkeerd'> & {pakbonnen?: PicklijstPakbonnen} = {}
-): void {
+): boolean {
   const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo, extra.pakbonnen)
-  openPrint(r.bodyHtml, r.filename, DOC_CSS, extra.onGeblokkeerd)
+  return openPrint(r.bodyHtml, r.filename, DOC_CSS, extra.onGeblokkeerd)
 }
 
 // Volledige standalone HTML (voor tests en een eventuele mail-PDF).

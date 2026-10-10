@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchAfvullingenVoorRegel, orderProductId, telOpenstaandeBestellingen, bestellingenOmTePicken, afvullingHoortBijBierNaam, onGepickteRegels, verzamelPicklijst, orderNummer, herkomstVanAfvulling, herkomstVanPick } from '../picking'
+import { matchAfvullingenVoorRegel, orderProductId, telOpenstaandeBestellingen, bestellingenOmTePicken, afvullingHoortBijBierNaam, onGepickteRegels, verzamelPicklijst, orderNummer, herkomstVanAfvulling, herkomstVanPick, reserveerVoorPicklijst, picklijstMetReservering } from '../picking'
 
 // Referentiedata: één product "Tripel Phase" met verpakking 033 fles. De SKU
 // is in het verleden gewijzigd van "OUD033-1" naar "TAFL033-1"; de huidige
@@ -228,11 +228,13 @@ describe('bestellingenOmTePicken', () => {
     expect(lijst.map((b: any) => b.id)).toEqual([1])
   })
 
-  it('na "Picks terugdraaien" (nieuw, concept-picks dekken alles) blijft de order in beeld, maar niet op de verzamelpicklijst', () => {
+  it('na "Picks terugdraaien" (nieuw, concept-picks dekken alles) blijft de order in beeld, ook op de verzamelpicklijst', () => {
     const bestellingen = [{ id: 1, status: 'nieuw', datum: '2026-07-10', regels: [{ id: 10, aantal: 24, type: 'bier', bier_naam: 'Blond', verpakking_type: 'fles' }] }]
     const picks = [{ id: 100, bestelling_id: 1, regel_id: 10, aantal: 24, uitlevering_id: null, uitlevering_ids: [] }]
     expect(bestellingenOmTePicken(bestellingen, picks).map((b: any) => b.id)).toEqual([1])
-    expect(verzamelPicklijst(bestellingen, picks, { afvullingen: [], beschikbaar: () => 0, data }).orders).toEqual([])
+    const lijst = verzamelPicklijst(bestellingen, picks, { afvullingen: [], beschikbaar: () => 0, data })
+    expect(lijst.orders.map(o => [o.bestelling_id, o.stuks])).toEqual([[1, 24]])
+    expect(lijst.regels[0].tekort).toBe(0)
   })
 
   it('een order met alleen merch of vrije regels hoort er niet bij', () => {
@@ -293,21 +295,23 @@ describe('verzamelPicklijst — één picklijst over meerdere bestellingen', () 
     {id: 3, status: 'gepickt', datum: '2026-09-03', klant_naam: 'Kees', regels: [{id: 1, bier_naam: 'Blond', verpakking_type: 'fles', aantal: 6}]},
     {id: 4, status: 'nieuw', datum: '2026-09-04', klant_naam: 'Truus', regels: [{id: 1, bier_naam: 'Blond', verpakking_type: 'fles', aantal: 6}]},
   ]
-  // Order 4 is al volledig gepickt (status nog nieuw) → telt niet mee.
+  // Order 4 is al gereserveerd (concept-pick, status nog nieuw): hij staat erop
+  // met zijn eigen afvulling. Order 3 is gepickt en telt niet mee.
   const picks = [{id: 1, bestelling_id: 4, regel_id: 1, afvulling_id: 11, batch_id: 2, aantal: 6}]
   const lijst = verzamelPicklijst(bestellingen, picks, {
     afvullingen, beschikbaar: (a: any) => Number(a.hoeveelheid), data: {bat},
   })
 
-  it('telt de open bierregels op per bier + verpakking, oudste order eerst', () => {
-    expect(lijst.regels.map(r => [r.bier_naam, r.verpakking_type, r.totaal])).toEqual([['Blond', 'fles', 36], ['IPA', 'blik', 6]])
-    expect(lijst.regels[0].orders.map(o => [o.ref, o.aantal, o.prive])).toEqual([['M-0015', 24, false], ['WC-501', 12, true]])
-    expect(lijst.totaal).toBe(42)
+  it('telt de bierregels op per bier + verpakking, oudste order eerst', () => {
+    expect(lijst.regels.map(r => [r.bier_naam, r.verpakking_type, r.totaal])).toEqual([['Blond', 'fles', 42], ['IPA', 'blik', 6]])
+    expect(lijst.regels[0].orders.map(o => [o.ref, o.aantal, o.prive])).toEqual([['M-0015', 24, false], ['WC-501', 12, true], ['M-4', 6, true]])
+    expect(lijst.totaal).toBe(48)
   })
 
-  it('geeft een FEFO-suggestie zonder geblokkeerde afvullingen en meldt het tekort', () => {
+  it('reservering en FEFO-suggestie per afvulling samen, zonder geblokkeerde afvullingen; meldt het tekort', () => {
     const [blond, ipa] = lijst.regels
-    expect(blond.suggesties.map(s => [s.batch_nummer, s.aantal])).toEqual([['B23', 5], ['B27', 31]])
+    // B27: 6 gereserveerd voor order 4 + 31 voorgesteld voor de rest.
+    expect(blond.suggesties.map(s => [s.batch_nummer, s.aantal])).toEqual([['B23', 5], ['B27', 37]])
     expect(blond.tekort).toBe(0)
     expect(ipa.suggesties).toEqual([])
     expect(ipa.tekort).toBe(6)
@@ -317,6 +321,7 @@ describe('verzamelPicklijst — één picklijst over meerdere bestellingen', () 
     expect(lijst.orders.map(o => [o.ref, o.klant, o.levering, o.stuks])).toEqual([
       ['M-0015', 'Café De Kroon', 'verzenden', 30],
       ['WC-501', 'Jan', 'afhalen', 12],
+      ['M-4', 'Truus', '', 6],
     ])
     expect(lijst.orders[1].afhaalmoment).toBe('2026-09-12 10:00')
   })
@@ -368,6 +373,71 @@ describe('verzamelPicklijst — lotcode per suggestie', () => {
   it('zonder sessies: een lege lotcode — nooit het batchnummer als lot', () => {
     const lijst = verzamelPicklijst(bestellingen, [], {afvullingen, beschikbaar: (a: any) => Number(a.hoeveelheid), data: {bat}})
     expect(lijst.regels[0].suggesties.map(s => s.lotcode)).toEqual(['L2607-B1', ''])
+  })
+})
+
+describe('reserveerVoorPicklijst / picklijstMetReservering — de voorraad vast bij het afdrukken', () => {
+  const bat = [{id: 1, biernaam: 'Blond', batch_nummer: '2607'}, {id: 2, biernaam: 'Blond', batch_nummer: '2610'}]
+  const afvullingen = [
+    {id: 10, batch_id: 1, artikel_sku: 'BL33', verpakking_type: 'fles', hoeveelheid: 20, tht: '2026-12-01', lotcode: 'L2607-B1'},
+    {id: 11, batch_id: 2, artikel_sku: 'BL33', verpakking_type: 'fles', hoeveelheid: 40, tht: '2027-03-01', lotcode: 'L2610-B1'},
+    {id: 12, batch_id: 2, artikel_sku: 'BL33', verpakking_type: 'fles', hoeveelheid: 50, tht: '2026-11-01', lotcode: 'L2610-B9', geblokkeerd: true},
+  ]
+  const blond = (id: number, aantal: number) => ({id, bier_naam: 'Blond', verpakking_type: 'fles', sku: 'BL33', aantal})
+  const bestellingen = [
+    {id: 1, status: 'nieuw', datum: '2026-09-02', klant_naam: 'Jan', regels: [blond(1, 12)]},
+    {id: 2, status: 'bevestigd', datum: '2026-09-01', klant_naam: 'Piet', regels: [blond(1, 24), {id: 2, bier_naam: 'IPA', verpakking_type: 'blik', aantal: 6}]},
+    // Al gereserveerd (concept-pick dekt alles): krijgt er niets bij.
+    {id: 3, status: 'nieuw', datum: '2026-09-03', klant_naam: 'Kees', regels: [blond(1, 6)]},
+    // Al uitgeleverd terwijl de status nog nieuw is: eerst terugdraaien, nooit erbij reserveren.
+    {id: 5, status: 'nieuw', datum: '2026-09-04', klant_naam: 'Truus', regels: [blond(1, 10)]},
+    {id: 6, status: 'gepickt', datum: '2026-08-01', klant_naam: 'Ans', regels: [blond(1, 99)]},
+  ]
+  const picks = [
+    {id: 1, bestelling_id: 3, regel_id: 1, afvulling_id: 11, batch_id: 2, aantal: 6, uitlevering_id: null, uitlevering_ids: []},
+    {id: 2, bestelling_id: 5, regel_id: 1, afvulling_id: 11, batch_id: 2, aantal: 4, uitlevering_id: 77, uitlevering_ids: [77]},
+  ]
+  // Zoals de pagina: wat al gereserveerd is, is niet meer beschikbaar.
+  const vrij = (a: any) => Number(a.hoeveelheid) - picks.filter(p => p.afvulling_id === a.id).reduce((s, p) => s + p.aantal, 0)
+  const opts = {afvullingen, beschikbaar: vrij, data: {bat}}
+
+  it('oudste bestelling eerst, per regel kortste THT eerst, nooit uit een geblokkeerde afvulling', () => {
+    expect(reserveerVoorPicklijst(bestellingen, picks, opts)).toEqual([
+      {bestelling_id: 2, regel_id: 1, afvulling_id: 10, batch_id: 1, aantal: 20},
+      {bestelling_id: 2, regel_id: 1, afvulling_id: 11, batch_id: 2, aantal: 4},
+      {bestelling_id: 1, regel_id: 1, afvulling_id: 11, batch_id: 2, aantal: 12},
+    ])
+  })
+
+  it('deelt een afvulling nooit vaker uit dan er vrij is; de rest blijft open', () => {
+    const krap = {...opts, beschikbaar: (a: any) => (a.id === 10 ? 20 : a.id === 11 ? 10 : 0)}
+    const r = reserveerVoorPicklijst(bestellingen, picks, krap)
+    expect(r.filter(x => x.afvulling_id === 11).reduce((s, x) => s + x.aantal, 0)).toBe(10)
+    expect(r.filter(x => x.bestelling_id === 1)).toEqual([{bestelling_id: 1, regel_id: 1, afvulling_id: 11, batch_id: 2, aantal: 6}])
+  })
+
+  it('de picklijst toont de gereserveerde lots; wat niet op voorraad is blijft tekort', () => {
+    const {lijst} = picklijstMetReservering(bestellingen, picks, opts)
+    const [bl, ipa] = lijst.regels
+    expect(bl.totaal).toBe(48)
+    // L2610-B1: 6 (Kees) + 4 (Piet) + 12 (Jan) gereserveerd + 6 voorgesteld voor het restant van Truus.
+    expect(bl.suggesties.map(s => [s.lotcode, s.aantal])).toEqual([['L2607-B1', 20], ['L2610-B1', 28]])
+    expect(bl.tekort).toBe(0)
+    expect(ipa.tekort).toBe(6)
+    // De uitgeleverde pick van Truus staat er niet als "pak uit"; haar restant wel als open.
+    expect(lijst.orders.map(o => [o.ref, o.stuks])).toEqual([['M-2', 30], ['M-1', 12], ['M-3', 6], ['M-5', 6]])
+  })
+
+  it('nog een keer afdrukken: niets nieuws te reserveren en dezelfde lots', () => {
+    const eerste = picklijstMetReservering(bestellingen, picks, opts)
+    const metReservering = [...picks, ...eerste.reservering]
+    const nogEens = picklijstMetReservering(bestellingen, metReservering, {
+      ...opts,
+      beschikbaar: (a: any) => vrij(a) - eerste.reservering.filter(r => r.afvulling_id === a.id).reduce((s, r) => s + r.aantal, 0),
+    })
+    expect(nogEens.reservering).toEqual([])
+    expect(nogEens.lijst.regels[0].suggesties.map(s => [s.lotcode, s.aantal]))
+      .toEqual(eerste.lijst.regels[0].suggesties.map(s => [s.lotcode, s.aantal]))
   })
 })
 

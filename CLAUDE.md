@@ -68,8 +68,12 @@ BrewAdmin-HA-App/
 │   │   └── PakbonExport.tsx        # Pakbon, picklijst, factuur, herinnering. Deelt
 │   │                               # `DOC_CSS`/`esc`/`breweryBlock`/`openPrint` met het dossier.
 │   │                               # De picklijst drukt de pakbonnen voor in de doos mee
-│   │                               # (`PicklijstPakbonnen`, elk op een eigen blad): géén concept,
-│   │                               # een invulvak voor lot/THT/batch van wat nog niet gepickt is
+│   │                               # (`PicklijstPakbonnen`, elk op een eigen blad, géén concept).
+│   │                               # Afdrukken reserveert eerst de voorraad per bestelling
+│   │                               # (`picklijstMetReservering` in utils/picking.ts: picks zonder
+│   │                               # uitlevering, FEFO, vrije voorraad buiten de AGP), zodat lot/THT/
+│   │                               # batch op de pakbon staan en de pickmodal al ingevuld is; pas
+│   │                               # bewaren als het printvenster openging
 │   │   ├── batch/                  # De batchpagina in delen: BatchKop + KetenRegel (Recept › Product ›
 │   │   │                           # Tank), EtiketKaart (etiket & website; modi batch/product/recept),
 │   │   │                           # EtiketBijwerken (de énige schrijfweg voor het etiket, overal te openen

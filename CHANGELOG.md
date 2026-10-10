@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.1] — 2026-10-10
+
+### Picklijst afdrukken reserveert de voorraad: lot, THT en batch staan op de pakbon
+
+De pakbonnen die met de picklijst meekomen hadden bij wat nog niet gepickt was
+een invulvak voor lot, THT en batch — veel handwerk. Nu legt het afdrukken de
+voorraad meteen vast.
+
+- **Reservering bij het afdrukken.** Per bestelling (oudste eerst) kiest de app
+  de afvulling met de kortste THT uit de vrije voorraad buiten de AGP en legt
+  die vast als pick zonder uitlevering. Lot, THT en batch staan dan op de
+  pakbon in de doos, en de picklijst noemt dezelfde lots.
+- **Bevestigen is één klik.** Het pickvenster van de bestelling staat daarna al
+  ingevuld met de gereserveerde lots; *Picks bevestigen* maakt de uitlevering,
+  zoals altijd. Een ander lot kiezen kan daar nog.
+- **Opnieuw afdrukken** (papierstoring) reserveert niets dubbel: dezelfde lots,
+  dezelfde pakbonnen. Lukt het printvenster niet (pop-ups geblokkeerd), dan
+  wordt er ook niets vastgelegd.
+- **Tekort.** Wat niet vrij op voorraad ligt (nog in de AGP: eerst uitslaan)
+  blijft open: rood op de picklijst, op de pakbon een regel zonder lot.
+- De reservering staat in het logboek van de bestelling.
+
+---
+
 ## [1.13.0] — 2026-10-10
 
 ### Picklijst afdrukken: de pakbonnen voor in de doos komen mee

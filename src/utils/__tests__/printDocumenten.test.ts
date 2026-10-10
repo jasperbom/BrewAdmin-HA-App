@@ -122,24 +122,24 @@ describe('picklijst met de pakbonnen voor in de doos', () => {
     expect(html.indexOf('WC-4321')).toBeLessThan(html.indexOf('M-0017'))
   })
 
-  it('geen concept en geen "nog te picken": de bestelde regels gaan zo in de doos', () => {
-    const {html} = buildPicklijstHTML(lijst, {naam: 'Test'}, 'App', null, pakbonnen([{order: hoek, picks: []}]))
+  it('gereserveerd: lotcode, THT en batch uit de reservering, geen concept', () => {
+    const picks = [{id: 1, regel_id: 1, afvulling_id: 5, batch_id: 9, aantal: 12},
+      {id: 2, regel_id: 2, afvulling_id: 5, batch_id: 9, aantal: 6}]
+    const {html} = buildPicklijstHTML(lijst, {naam: 'Test'}, 'App', null, pakbonnen([{order: hoek, picks}]))
+    expect(aantalKeer(html, '<td class="lotcode">L2607-B1</td>')).toBe(2)
+    expect(html).toContain('28-09-2027')
+    expect(html).toContain('#2607')
+    expect(html).not.toContain('class="badge badge-concept"')
+  })
+
+  it('niet te reserveren (tekort): een gewone regel zonder lot, geen concept en geen "nog te picken"', () => {
+    const picks = [{id: 1, regel_id: 1, afvulling_id: 5, batch_id: 9, aantal: 12}]
+    const {html} = buildPicklijstHTML(lijst, {naam: 'Test'}, 'App', null, pakbonnen([{order: hoek, picks}]))
     expect(html).not.toContain('class="badge badge-concept"')
     expect(html).not.toContain('nog te picken')
     expect(html).not.toContain('<tr class="open">')
-    expect(html).toContain('Hoekdubbel')
-    expect(html).toContain('<td class="r">12</td>')
-    // Lot, THT en batch zijn pas na het picken bekend: een invulvak per regel.
-    expect(aantalKeer(html, '<span class="invul"></span>')).toBe(6)
-  })
-
-  it('al gepickt: lotcode en THT van de pick, alleen het restant krijgt invulvakken', () => {
-    const picks = [{id: 1, regel_id: 1, afvulling_id: 5, batch_id: 9, aantal: 12}]
-    const {html} = buildPicklijstHTML(lijst, {naam: 'Test'}, 'App', null, pakbonnen([{order: hoek, picks}]))
-    expect(html).toContain('<td class="lotcode">L2607-B1</td>')
-    expect(html).toContain('28-09-2027')
-    expect(aantalKeer(html, '<span class="invul"></span>')).toBe(3)
-    expect(html).not.toContain('class="badge badge-concept"')
+    expect(html).toContain('<td class="r">6</td>')
+    expect(html).not.toContain('class="invul"')
   })
 
   it('de losse pakbon vóór het picken blijft een concept', () => {
