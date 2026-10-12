@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { t, getLang } from '../i18n'
 import { landOpties } from '../utils/btwCategorie'
 import { BESTEL_URL_STANDAARD } from '../utils/levering'
+import { ORDER_MAIL_SOORTEN, MAIL_HANDELING, mailAutoAan, zetMailAuto } from '../utils/orderMail'
 import { peppolSchemaVoor } from '../utils/ubl'
 import { controleerTemplate } from '../utils/template'
 import { FACTUUR_CSS_DEFAULT, FACTUUR_HTML_DEFAULT, FACTUUR_TEMPLATE_VELDEN } from '../utils/factuurTemplate'
@@ -1965,24 +1966,26 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       {/* E-mailtemplates */}
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_mail_templates_title')}</h2>
-        <p className="text-sm text-gray-500 mb-4">{t('settings_mail_templates_desc')}</p>
+        <p className="text-sm text-gray-500 mb-1">{t('settings_mail_templates_desc')}</p>
+        <p className="text-sm text-gray-500 mb-4">{t('settings_mail_auto_uitleg')}</p>
         <div className="flex flex-col gap-5">
-          {/* `factuur_betaald` is de tekst voor een factuur die al voldaan is
-              (webshoporder betaald in WooCommerce, kassaverkoop) — die vraagt
-              niet om een overboeking. */}
-          {/* `verzending` is de verzendbevestiging die bij "Markeer verzonden"
-              wordt aangeboden (met track & trace); `bestelling` bevat via
-              {levering} de afhaal- of bezorgtekst, incl. de link waarmee een
-              afhaalklant zijn moment kiest (utils/levering.ts). `afhaal_gemist`
-              is de mail voor een afhaalklant die niet kwam opdagen, met via
-              {afhaalregel} dezelfde link om een nieuw moment te kiezen. */}
-          {(['pakbon','factuur','factuur_betaald','bestelling','verzending','afhaal_gemist'] as const).map((kind) => {
+          {/* De mails in de volgorde van een bestelling (utils/orderMail.ts).
+              Per mail: onderwerp en tekst (leeg = de standaard) en "Automatisch
+              versturen" bij de handeling die erbij hoort (`MAIL_HANDELING`).
+              `factuur_betaald` is de tekst voor een factuur die al voldaan is
+              en volgt de instelling van `factuur`; `afhaal_gemist` heeft geen
+              handeling (het afhaalmoment verstrijkt vanzelf). {levering} in de
+              bestelbevestiging en {afhaalregel} in de afspraak-gemist-mail komen
+              uit utils/levering.ts. */}
+          {ORDER_MAIL_SOORTEN.map((kind) => {
             const labelKey = `settings_mail_template_${kind}`
             const varsHintKey = `settings_mail_vars_${kind}`
             const defaultSubject = t(`mail_${kind}_subject_default`)
             const defaultBody = t(`mail_${kind}_body_default`)
             const tpl = (mailTemplates as any)?.[kind] || {subject:'', body:''}
             const isCustom = (tpl.subject && tpl.subject.trim()) || (tpl.body && tpl.body.trim())
+            const handeling = MAIL_HANDELING[kind]
+            const autoAan = mailAutoAan(mailTemplates, kind)
             const updateTpl = (field: 'subject'|'body', val: string) => {
               setMailTemplates((p: any) => ({
                 ...(p || {}),
@@ -1996,12 +1999,32 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   {isCustom && (
                     <button
                       type="button"
-                      onClick={() => setMailTemplates((p: any) => ({...(p || {}), [kind]: {subject:'', body:''}}))}
+                      onClick={() => setMailTemplates((p: any) => ({...(p || {}), [kind]: {...((p || {})[kind] || {}), subject:'', body:''}}))}
                       className="text-xs text-gray-500 hover:text-gray-700 underline"
                     >
                       {t('settings_mail_reset_default')}
                     </button>
                   )}
+                </div>
+                <div className="mb-3">
+                  {kind === 'factuur_betaald' ? (
+                    <p className="text-xs text-gray-500">{t('settings_mail_auto_volgt_factuur')}</p>
+                  ) : handeling == null ? (
+                    <p className="text-xs text-gray-500">{t('settings_mail_auto_handmatig')}</p>
+                  ) : (<>
+                    <label className="flex items-center gap-3 cursor-pointer w-fit">
+                      <div className="relative">
+                        <input type="checkbox" checked={autoAan} className="sr-only peer"
+                          onChange={(e: any) => setMailTemplates((p: any) => zetMailAuto(p, kind, e.target.checked, new Date().toISOString()))} />
+                        <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
+                      </div>
+                      <span className="text-sm font-medium text-gray-700">{t('settings_mail_auto')}</span>
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">{t(`settings_mail_auto_${handeling}`)}</p>
+                    {autoAan && !smtpCreds?.enabled && (
+                      <p className="text-xs text-orange-700 mt-1">{t('settings_mail_auto_geen_smtp')}</p>
+                    )}
+                  </>)}
                 </div>
                 <div className="flex flex-col gap-2">
                   <div>

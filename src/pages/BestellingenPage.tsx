@@ -3,7 +3,7 @@ import { t, getLang } from '../i18n'
 import { newId, wcGet, wcPut, wcPost, volgendFactuurNummer, volgendBestelNummer } from '../utils/api'
 import { wcFoutMelding } from '../utils/wcFout'
 import { geslotenPeriodeSets, magFactuurMuteren, standaardBtwPct, artikelBtwPct } from '../utils/btw'
-import { orderIsGefactureerd, breweryMetTermijn, vervaldatumTekst } from '../utils/facturen'
+import { orderIsGefactureerd, breweryMetTermijn } from '../utils/facturen'
 import {
   bouwOrderFactuur, btwOverzicht, voorafFactuurBlokkade, voorafBlokkadeSleutel, orderFactuurVan,
   factuurIsGecrediteerd, bouwCreditnota,
@@ -32,12 +32,15 @@ import { crafteryMeta } from '../utils/craftery'
 import { bierInvulVelden, bierInfoVoorArtikel } from '../utils/bierinfo'
 import { htmlToPdfBase64 } from '../utils/pdf'
 import { qrDataUrl } from '../utils/qr'
-import { factuurMailBetaalVars } from '../utils/factuurMail'
 import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding } from '../utils/wcOrderImport'
 import { wcTerugschrijfPlan, wcSyncVelden, WcSyncDoel } from '../utils/wcTerugschrijven'
+import { afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, MailKnop } from '../utils/levering'
 import {
-  leveringMailVars, verzendMailVars, afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, afhaalGemistMailVars, bestelLink, afhaalMailKnop, afhaalGemistMailKnop, MailKnop,
-} from '../utils/levering'
+  bouwOrderMail, bouwFactuurMail, mailAutoAan, autoMailReden, naMailVerstuurd, mailAuditTekst,
+} from '../utils/orderMail'
+import type { OrderMail, OrderMailSoort, AnnuleringCredit } from '../utils/orderMail'
+import { verzendMail } from '../utils/mailVerzenden'
+import type { MailOpdracht } from '../utils/mailVerzenden'
 import { logAudit } from '../utils/audit'
 import { resolveKlantSnapshot, findKlantVoorOrder } from '../utils/klant'
 import { verkoopFactuurBoeking, stornoBoekingVoor, voegBoekingToe } from '../utils/journaal'
@@ -544,6 +547,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       if (r.nieuw.length || Object.keys(r.updates).length) {
         setBestellingen((prev: any[]) => pasImportToe(prev, r))
         importAuditRegels(r).forEach(a => logAudit(auditLog, setAuditLog, {entiteit: 'Bestelling', ...a}))
+        // Automatisch versturen aan: de bevestiging, alleen voor wat hier echt
+        // nieuw binnenkwam (`pasImportToe` slaat een bekende order over).
+        const bekend = new Set((bestellingen || []).map((b: any) => b?.wc_order_id).filter((id: any) => id != null))
+        bevestigAutomatisch(r.nieuw.filter((b: any) => !bekend.has(b.wc_order_id)))
       }
       setWcMsg(importMelding(r, t))
     } catch(e: any) {
@@ -702,6 +709,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     }
     setBestellingen((prev: any[]) => [...(prev||[]), nb])
     logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:nb.id, actie:'aangemaakt', omschrijving:`Handmatig — ${nb.klant_naam}`})
+    // Automatisch versturen aan: de bestelbevestiging (de bestelling gaat op Bevestigd).
+    bevestigAutomatisch([nb])
     setShowManualModal(false)
     setManualForm(emptyManual)
     setManualVerzending({enabled: false, naam: '', prijs: '', btw_pct: '21'})
@@ -1111,7 +1120,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       omschrijving: `${selectedOrder.klant_naam} — verzonden (logistiek, geen fiscaal effect)${tracking ? ` · track & trace ${tracking}` : ''}`,
     })
     setVerzondenModal(null)
-    if (verzondenModal.mailen) mailOrderVerzending(bijgewerkt)
+    // Automatisch versturen aan: meteen, zonder venster; anders eerst het venster.
+    if (verzondenModal.mailen) {
+      if (mailAutoAan(mailTemplates, 'verzending')) {
+        void verstuurAutomatisch('verzending', selectedOrder.id, () => bouwOrderMail('verzending', metKlantkaart(bijgewerkt), mailCtx))
+      } else {
+        mailOrderVerzending(bijgewerkt)
+      }
+    }
     void schrijfTerugNaarWc(bijgewerkt, 'verzonden')
   }
 
@@ -1327,6 +1343,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       omschrijving: `${selectedOrder.klant_naam} — afgerond, factuur ${factuurNummer}${bestaandeFactuur ? ' (al vooraf gemaakt)' : ''} (${alleUitleveringenVoorOrder.length} uitleveringen)`,
     })
     setShowAfrondModal(false)
+    // Automatische mails (Instellingen → E-mailtemplates): de factuur als hij
+    // nu gemaakt is (een vooraf gemaakte factuur had toen zijn moment), de
+    // pakbon met zijn definitieve nummer.
+    const afgerond = {...selectedOrder, status: 'afgerond', factuur_id: factuurId, factuur_nummer: factuurNummer, pakbon_nummer: pakbonNummer}
+    if (verkoopFact && magAutomatisch('factuur', afgerond)) void verstuurAutomatisch('factuur', selectedOrder.id, () => factuurMail(afgerond, verkoopFact))
+    if (magAutomatisch('pakbon', afgerond)) void verstuurAutomatisch('pakbon', selectedOrder.id, () => pakbonMail(afgerond))
     return true
   }
 
@@ -1385,6 +1407,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       })
       setShowVoorafModal(false)
       gelukt = true
+      const metFactuur = {...selectedOrder, factuur_id: factuur.id, factuur_nummer: nummer}
+      if (magAutomatisch('factuur', metFactuur)) void verstuurAutomatisch('factuur', selectedOrder.id, () => factuurMail(metFactuur, factuur))
     } finally {
       if (!gelukt) {
         voorafBezigRef.current = false
@@ -1459,6 +1483,15 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [annuleerBezig, setAnnuleerBezig] = useState(false)
   // Waarom annuleren niet doorging (het creditnotanummer), in de modal zelf.
   const [annuleerFout, setAnnuleerFout] = useState('')
+  // De klant een annuleringsmail sturen (vinkje in de modal; standaard aan als
+  // dat kan). Automatisch versturen aan: meteen; anders eerst het mailvenster.
+  const [annuleerMailen, setAnnuleerMailen] = useState(false)
+  const openAnnuleren = () => {
+    setAnnuleerFout('')
+    const email = metKlantkaart(selectedOrder)?.klant_email || ''
+    setAnnuleerMailen(!!smtpCreds?.enabled && !!String(email).trim())
+    setShowAnnuleerModal(true)
+  }
   const annuleerOrder = async () => {
     if (!selectedOrder || annuleerBezigRef.current) return
     annuleerBezigRef.current = true
@@ -1498,6 +1531,18 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       void schrijfTerugNaarWc({...selectedOrder, status: 'geannuleerd'}, 'geannuleerd',
         teruggeboekt ? {uitgeslagen: false} : undefined)
       setShowAnnuleerModal(false)
+      // De annuleringsmail, met de creditnota als die er net kwam.
+      if (annuleerMailen) {
+        const geannuleerd = {...selectedOrder, status: 'geannuleerd'}
+        const credit = creditnota ? {creditnota: creditnota.factuurnummer || '', factuur: factuur.factuurnummer || ''} : null
+        if (!mailAutoAan(mailTemplates, 'annulering')) {
+          // Eerst het venster: op de bestelling blijven, daar staat het.
+          mailOrderAnnulering(geannuleerd, credit)
+          return
+        }
+        void verstuurAutomatisch('annulering', selectedOrder.id,
+          () => bouwOrderMail('annulering', metKlantkaart(geannuleerd), mailCtx, {credit}))
+      }
       openOrder(null)
     } finally {
       annuleerBezigRef.current = false
@@ -1807,15 +1852,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     to: string
     subject: string
     text: string
-    attachments?: {filename: string, contentBase64: string, mimeType: string}[]
-    /** Type mail — bepaalt het log-bericht en (bij 'bevestiging') een status-
-     * overgang van 'nieuw' naar 'bevestigd' na succesvolle verzending; bij
-     * 'verzending' wordt de datum van de verzendbevestiging op de order gezet,
-     * bij 'afhaal_gemist' die van de afspraak-gemist-mail. */
-    kind?: 'pakbon' | 'factuur' | 'bevestiging' | 'verzending' | 'afhaal_gemist'
+    attachments?: MailOpdracht['attachments']
+    /** Soort mail — bepaalt de logregel en wat er na het verzenden op de
+     * bestelling verandert (`naMailVerstuurd` in utils/orderMail.ts: de
+     * bevestiging zet 'nieuw' op 'bevestigd', de verzendbevestiging haar datum). */
+    kind?: OrderMailSoort
     mollie?: {amountCent: number, description: string, redirectUrl: string, factuurnummer?: string,
       bestaandeLink?: {url: string} | null, onLinkAangemaakt?: (l: {id: string, url: string}) => void} | null
-    regenerateAttachments?: (payUrl: string) => Promise<{filename: string, contentBase64: string, mimeType: string}[] | null>
+    regenerateAttachments?: MailOpdracht['regenerateAttachments']
     /** Knoppen onder de mail: afhaalmoment kiezen/verzetten en "Bekijk je
      * bestelling" (utils/levering → afhaalMailKnop, bestelLink). */
     linkButtons?: MailKnop[] | null
@@ -1846,213 +1890,181 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     setTerugdraaiVraag(false)
   }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Een leeggebleven variabele (geen track & trace, geen leveringstekst) mag
-  // geen dubbele witregel achterlaten in de mail.
-  const interpolate = (tpl: string, vars: Record<string, string>): string =>
-    Object.keys(vars).reduce((acc, k) => acc.split(`{${k}}`).join(vars[k] ?? ''), tpl)
-      .replace(/\n{3,}/g, '\n\n')
+  // ── Mails bij een bestelling (utils/orderMail.ts) ───────────────────────
+  // Eén opbouw voor het mailvenster en de automatische mails: dezelfde tekst,
+  // knoppen en bijlagen. Naam en e-mailadres komen van de live klantkaart.
+  const mailCtx = {
+    sjablonen: mailTemplates,
+    brouwerij: (breweryDetails as any)?.naam || appName || '',
+    storeUrl: wcCreds?.storeUrl || '',
+    bestelUrlSjabloon: wcCreds?.bestelUrl,
+  }
+  const mailAfzender = {brewery: breweryDetails as any, logoDataUri: factuurLogo || logo, replyTo: (breweryDetails as any)?.email}
+  const metKlantkaart = (order: any): any => resolveKlantSnapshot(order, klanten) || order
+  type MailMetBijlagen = OrderMail & Partial<MailOpdracht>
 
-  // Pakt subject/body uit ingestelde mail_templates; valt terug op de i18n-default
-  // wanneer de gebruiker niets heeft ingevuld (lege string of niet aanwezig).
-  const tplOrDefault = (key: 'pakbon'|'factuur'|'factuur_betaald'|'bestelling'|'verzending'|'afhaal_gemist', field: 'subject'|'body'): string => {
-    const stored = (mailTemplates as any)?.[key]?.[field]
-    if (typeof stored === 'string' && stored.trim()) return stored
-    return t(`mail_${key}_${field === 'subject' ? 'subject' : 'body'}_default`)
+  const pakbonMail = async (order: any): Promise<MailMetBijlagen> => {
+    const o = {...metKlantkaart(order), pakbon_datum: pakbonDatumVoor(order)}
+    const {html, filename} = buildPakbonHTML(o, picksVoorOrder(order.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo, {sessies: afvulSessies})
+    const pdfBase64 = await htmlToPdfBase64(html)
+    return {...bouwOrderMail('pakbon', o, mailCtx),
+      attachments: [{filename: `${filename}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}]}
   }
 
-  const mailOrderPakbon = async () => {
-    if (!selectedOrder) return
+  const factuurMail = async (order: any, factuur: any): Promise<MailMetBijlagen> => {
+    const o = metKlantkaart(order)
+    // Termijn van de klantkaart (anders de brouwerij) — PDF, {vervaldatum}
+    // en te-laat-badge rekenen zo met dezelfde datum (utils/facturen.ts).
+    const breweryMet = breweryMetTermijn(factuur, klanten, breweryDetails)
+    const factuurNr = factuur.factuurnummer || `F-${factuur.id}`
+    const pdfBase64 = await htmlToPdfBase64(buildFactuurHTML(o, factuur, breweryMet, appName, factuurLogo||logo))
+    const inst = (breweryDetails as any) || {}
+    // Mollie-betaallink: zelfde regels als op Administratie → Facturen — alleen
+    // voor openstaande (niet-betaalde, niet-credit) facturen met een positief
+    // bedrag, en alleen als Mollie aanstaat. Redirect-URL uit de instelling,
+    // met de brouwerij-website als fallback.
+    const normUrl = (u: string) => {
+      const v = (u || '').trim()
+      return v && !/^https?:\/\//i.test(v) ? `https://${v}` : v
+    }
+    const amountCent = Number.isFinite(factuur.bruto_cent)
+      ? Math.round(factuur.bruto_cent)
+      : Math.round((factuur.bruto || 0) * 100)
+    const mollieCtx = ((mollieCreds as any)?.enabled && amountCent > 0
+      && factuur.status !== 'credit' && factuur.status !== 'betaald')
+      ? {
+          amountCent,
+          description: `${t('mollie_desc_factuur')} ${factuurNr}${inst.naam ? ' · ' + inst.naam : ''}`,
+          redirectUrl: normUrl((mollieCreds as any)?.redirectUrl || inst.website || ''),
+          factuurnummer: factuurNr,
+          // Eén betaallink per factuur (utils/mollieLink.ts): een eerder
+          // meegestuurde link gaat opnieuw mee, een nieuwe komt op de factuur.
+          bestaandeLink: herbruikbareBetaallink(factuur, amountCent),
+          onLinkAangemaakt: (l: {id: string, url: string}) =>
+            setVerkoopFacturen((prev: any[]) => (prev || []).map((f: any) =>
+              f.id === factuur.id ? {...f, mollie_link: betaallinkRecord(l, amountCent)} : f)),
+        }
+      : null
+    // Bij een Mollie-betaallink de PDF opnieuw bouwen mét QR-code + link erin.
+    const regenerateAttachments = mollieCtx ? async (payUrl: string) => {
+      const qr = await qrDataUrl(payUrl)
+      const pdf2 = await htmlToPdfBase64(buildFactuurHTML(o, factuur, breweryMet, appName, factuurLogo||logo, {url: payUrl, qrDataUrl: qr}))
+      return [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdf2, mimeType: 'application/pdf'}]
+    } : undefined
+    return {...bouwFactuurMail(o, factuur, {...mailCtx, klanten, brewery: breweryDetails}),
+      attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
+      mollie: mollieCtx, regenerateAttachments}
+  }
+
+  // De creditnota van een geannuleerde, gefactureerde bestelling (voor {creditregel}).
+  const annuleringCredit = (order: any): AnnuleringCredit | null => {
+    const cn = (verkoopFacturen || []).find((f: any) => f.status === 'credit' && f.bestelling_id === order?.id)
+    if (!cn) return null
+    const origineel = (verkoopFacturen || []).find((f: any) => f.id === cn.credit_van_factuur_id)
+    return {creditnota: cn.factuurnummer || '', factuur: origineel?.factuurnummer || order?.factuur_nummer || ''}
+  }
+
+  const openMailVenster = (title: string, m: MailMetBijlagen) => setMailModal({
+    title, to: m.to, subject: m.subject, text: m.text, kind: m.soort,
+    attachments: m.attachments, linkButtons: m.linkButtons, mollie: m.mollie || null,
+    regenerateAttachments: m.regenerateAttachments,
+  })
+
+  const mailMetPdf = async (title: string, bouw: () => Promise<MailMetBijlagen>) => {
     setMailGenerating(true)
     try {
-      const orderVoorPakbon = {...resolvedSelectedOrder!, pakbon_datum: pakbonDatumVoor(selectedOrder)}
-      const {html, filename} = buildPakbonHTML(orderVoorPakbon, picksVoorOrder(selectedOrder.id), av, bat, breweryDetails||{}, appName, factuurLogo||logo, {sessies: afvulSessies})
-      const pdfBase64 = await htmlToPdfBase64(html)
-      const pakbonNr = selectedOrder.pakbon_nummer || `P-${selectedOrder.id}`
-      const vars = {
-        naam: (resolvedSelectedOrder?.klant_naam || resolvedSelectedOrder?.klant_bedrijf || ''),
-        nr: pakbonNr,
-        brouwerij: (breweryDetails as any)?.naam || appName || '',
-      }
-      setMailModal({
-        title: t('mail_modal_title_pakbon'),
-        to: (resolvedSelectedOrder?.klant_email || ''),
-        subject: interpolate(tplOrDefault('pakbon', 'subject'), vars),
-        text: interpolate(tplOrDefault('pakbon', 'body'), vars),
-        attachments: [{filename: `${filename}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
-        kind: 'pakbon',
-      })
+      openMailVenster(title, await bouw())
     } catch (e: any) {
       setMelding(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
     }
     setMailGenerating(false)
   }
 
-  const mailOrderFactuur = async () => {
+  const mailOrderPakbon = () => {
+    if (!selectedOrder) return
+    void mailMetPdf(t('mail_modal_title_pakbon'), () => pakbonMail(selectedOrder))
+  }
+
+  // Een webshoporder is meestal al afgerekend vóór hij hier wordt afgerond;
+  // de factuur staat dan op betaald en de klant krijgt de "al voldaan"-mail
+  // (utils/factuurMail.ts), niet een verzoek om over te maken.
+  const mailOrderFactuur = () => {
     if (!selectedOrder) return
     const factuur = orderFactuurVan(selectedOrder, verkoopFacturen)
     if (!factuur) { setMelding(t('err_no_invoice_for_order')); return }
-    setMailGenerating(true)
-    try {
-      // Termijn van de klantkaart (anders de brouwerij) — PDF, {vervaldatum}
-      // en te-laat-badge rekenen zo met dezelfde datum (utils/facturen.ts).
-      const breweryMet = breweryMetTermijn(factuur, klanten, breweryDetails)
-      const html = buildFactuurHTML(resolvedSelectedOrder!, factuur, breweryMet, appName, factuurLogo||logo)
-      const factuurNr = factuur.factuurnummer || `F-${factuur.id}`
-      const pdfBase64 = await htmlToPdfBase64(html)
-      const bedrag = fmt(factuur.bruto || 0)
-      const verval = vervaldatumTekst(factuur, klanten, breweryDetails)
-      const inst = (breweryDetails as any) || {}
-      // Een webshoporder is meestal al afgerekend (iDEAL, creditcard …) vóór
-      // hij hier wordt afgerond; de factuur staat dan op betaald. Die klant
-      // krijgt de "al voldaan"-mail (template `factuur_betaald`) met de
-      // betaaldatum en -methode uit WooCommerce — niet een verzoek om
-      // over te maken. Zelfde logica als op Administratie → Facturen
-      // (utils/factuurMail.ts).
-      const betaal = factuurMailBetaalVars(factuur)
-      const vars = {
-        naam: (resolvedSelectedOrder?.klant_naam || resolvedSelectedOrder?.klant_bedrijf || ''),
-        nr: factuurNr,
-        bedrag,
-        vervaldatum: verval,
-        iban: inst.iban || '',
-        brouwerij: inst.naam || appName || '',
-        betaaldatum: betaal.betaaldatum,
-        betaalwijze: betaal.betaalwijze,
-        betaalregel: betaal.betaalregel,
-      }
-      // Mollie-betaallink: zelfde regels als op Administratie → Facturen — alleen
-      // voor openstaande (niet-betaalde, niet-credit) facturen met een positief
-      // bedrag, en alleen als Mollie aanstaat. Redirect-URL uit de instelling,
-      // met de brouwerij-website als fallback.
-      const normUrl = (u: string) => {
-        const s = (u || '').trim()
-        return s && !/^https?:\/\//i.test(s) ? `https://${s}` : s
-      }
-      const amountCent = Number.isFinite(factuur.bruto_cent)
-        ? Math.round(factuur.bruto_cent)
-        : Math.round((factuur.bruto || 0) * 100)
-      const mollieCtx = ((mollieCreds as any)?.enabled && amountCent > 0
-        && factuur.status !== 'credit' && factuur.status !== 'betaald')
-        ? {
-            amountCent,
-            description: `${t('mollie_desc_factuur')} ${factuurNr}${inst.naam ? ' · ' + inst.naam : ''}`,
-            redirectUrl: normUrl((mollieCreds as any)?.redirectUrl || inst.website || ''),
-            factuurnummer: factuurNr,
-            // Eén betaallink per factuur (utils/mollieLink.ts): een eerder
-            // meegestuurde link gaat opnieuw mee, een nieuwe komt op de factuur.
-            bestaandeLink: herbruikbareBetaallink(factuur, amountCent),
-            onLinkAangemaakt: (l: {id: string, url: string}) =>
-              setVerkoopFacturen((prev: any[]) => (prev || []).map((f: any) =>
-                f.id === factuur.id ? {...f, mollie_link: betaallinkRecord(l, amountCent)} : f)),
-          }
-        : null
-      // Bij een Mollie-betaallink de PDF opnieuw bouwen mét QR-code + link erin.
-      const regenerateAttachments = mollieCtx ? async (payUrl: string) => {
-        const qr = await qrDataUrl(payUrl)
-        const html2 = buildFactuurHTML(resolvedSelectedOrder!, factuur, breweryMet, appName, factuurLogo||logo, {url: payUrl, qrDataUrl: qr})
-        const pdf2 = await htmlToPdfBase64(html2)
-        return [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdf2, mimeType: 'application/pdf'}]
-      } : undefined
-      setMailModal({
-        title: t('mail_modal_title_factuur'),
-        to: (resolvedSelectedOrder?.klant_email || ''),
-        subject: interpolate(tplOrDefault(betaal.kind, 'subject'), vars),
-        text: interpolate(tplOrDefault(betaal.kind, 'body'), vars),
-        attachments: [{filename: `Factuur-${factuurNr}.pdf`, contentBase64: pdfBase64, mimeType: 'application/pdf'}],
-        kind: 'factuur',
-        mollie: mollieCtx,
-        regenerateAttachments,
-      })
-    } catch (e: any) {
-      setMelding(t('mail_pdf_failed') + (e?.message ? `: ${e.message}` : ''))
-    }
-    setMailGenerating(false)
+    void mailMetPdf(t('mail_modal_title_factuur'), () => factuurMail(selectedOrder, factuur))
   }
 
-  const regelLijstVoorMail = (order: any): string => (order?.regels||[]).map((r: any) =>
-    `- ${r.aantal}× ${r.bier_naam || r.omschrijving || ''}${r.verpakking_type ? ` (${r.verpakking_type})` : ''}`
-  ).join('\n')
-
+  // Bestelbevestiging: {levering} is de afhaal- of bezorgtekst; de knop om een
+  // afhaalmoment te kiezen en die naar de bestelling in de webshop komen onder
+  // de mail (utils/levering.ts).
   const mailOrderBevestiging = () => {
     if (!selectedOrder) return
-    const orderRef = orderNummer(selectedOrder)
-    // {levering}: afhalen of bezorgen (er volgt een verzendbevestiging) — zie
-    // utils/levering.ts. De link waarmee de afhaalklant zijn moment kiest of
-    // verzet staat niet in de tekst maar als knop onder de mail; de
-    // winkel-URL is nodig om die link na te bouwen.
-    const storeUrl = wcCreds?.storeUrl || ''
-    const levering = leveringMailVars(selectedOrder, {storeUrl})
-    const afhaalKnop = afhaalMailKnop(selectedOrder, {storeUrl})
-    const vars = {
-      naam: (resolvedSelectedOrder?.klant_naam || resolvedSelectedOrder?.klant_bedrijf || ''),
-      nr: orderRef,
-      regels: regelLijstVoorMail(selectedOrder),
-      brouwerij: (breweryDetails as any)?.naam || appName || '',
-      ...levering,
-    }
-    // Knop naar de bestelling in de webshop: het eigen sjabloon uit de
-    // instellingen, anders de link die de import per order bepaalde
-    // ("Mijn account → bestelling" voor een klant met account, anders de
-    // bedankpagina met ordersleutel). Zonder een van beide géén knop — een
-    // gegokte URL wordt een 404.
-    const orderUrl = bestelLink(wcCreds?.storeUrl, selectedOrder.wc_order_id, selectedOrder.wc_order_key,
-      {sjabloon: wcCreds?.bestelUrl, bestelUrl: selectedOrder.wc_bestel_url})
-    setMailModal({
-      title: t('mail_modal_title_bestelling'),
-      to: (resolvedSelectedOrder?.klant_email || ''),
-      subject: interpolate(tplOrDefault('bestelling', 'subject'), vars),
-      text: interpolate(tplOrDefault('bestelling', 'body'), vars),
-      kind: 'bevestiging',
-      linkButtons: [
-        afhaalKnop,
-        orderUrl ? {url: orderUrl, label: t('mail_bestelling_knop'), textLine: t('mail_bestelling_knop_regel')} : null,
-      ].filter((k): k is MailKnop => !!k),
-    })
+    openMailVenster(t('mail_modal_title_bestelling'), bouwOrderMail('bestelling', metKlantkaart(selectedOrder), mailCtx))
   }
 
   // Verzendbevestiging: direct na "Markeer verzonden" (met de zojuist ingevulde
   // track & trace) of later opnieuw vanaf de orderknoppen.
   const mailOrderVerzending = (order: any = selectedOrder) => {
     if (!order) return
-    const vars = {
-      naam: (resolvedSelectedOrder?.klant_naam || resolvedSelectedOrder?.klant_bedrijf || order.klant_naam || ''),
-      nr: orderNummer(order),
-      regels: regelLijstVoorMail(order),
-      brouwerij: (breweryDetails as any)?.naam || appName || '',
-      ...verzendMailVars(order),
-    }
-    setMailModal({
-      title: t('mail_modal_title_verzending'),
-      to: (resolvedSelectedOrder?.klant_email || order.klant_email || ''),
-      subject: interpolate(tplOrDefault('verzending', 'subject'), vars),
-      text: interpolate(tplOrDefault('verzending', 'body'), vars),
-      kind: 'verzending',
-    })
+    openMailVenster(t('mail_modal_title_verzending'), bouwOrderMail('verzending', metKlantkaart(order), mailCtx))
   }
 
   // Afspraak gemist: de afhaalklant is niet komen opdagen. De mail noemt het
   // gemiste moment en heeft onderaan dezelfde afhaalpagina-knop waarmee de
-  // klant een nieuw moment kiest (utils/levering.ts). Het nieuwe moment komt
-  // bij de volgende WooCommerce-import vanzelf op de bestelling terecht.
+  // klant een nieuw moment kiest. Het nieuwe moment komt bij de volgende
+  // WooCommerce-import vanzelf op de bestelling terecht.
   const mailOrderAfhaalGemist = () => {
     if (!selectedOrder) return
-    const storeUrl = wcCreds?.storeUrl || ''
-    const vars = {
-      naam: (resolvedSelectedOrder?.klant_naam || resolvedSelectedOrder?.klant_bedrijf || ''),
-      nr: orderNummer(selectedOrder),
-      regels: regelLijstVoorMail(selectedOrder),
-      brouwerij: (breweryDetails as any)?.naam || appName || '',
-      ...afhaalGemistMailVars(selectedOrder, {storeUrl}),
+    openMailVenster(t('mail_modal_title_afhaal_gemist'), bouwOrderMail('afhaal_gemist', metKlantkaart(selectedOrder), mailCtx))
+  }
+
+  // Annulering: direct na het annuleren of later opnieuw vanaf de orderknoppen.
+  const mailOrderAnnulering = (order: any = selectedOrder, credit: AnnuleringCredit | null = annuleringCredit(order)) => {
+    if (!order) return
+    openMailVenster(t('mail_modal_title_annulering'), bouwOrderMail('annulering', metKlantkaart(order), mailCtx, {credit}))
+  }
+
+  // ── Automatisch versturen (Instellingen → E-mailtemplates) ──────────────
+  // Bij de handeling zelf, zonder venster. Nooit erop wachten: de handeling is
+  // al gedaan. Een mislukte mail komt als melding op de pagina en in het
+  // logboek van de bestelling; een gelukte alleen in het logboek.
+  const verstuurAutomatisch = async (soort: OrderMailSoort, orderId: number, bouw: () => MailMetBijlagen | Promise<MailMetBijlagen>) => {
+    let naar = ''
+    try {
+      const m = await bouw()
+      naar = m.to
+      await verzendMail(m, mailAfzender)
+      setBestellingen((prev: any[]) => (prev || []).map((b: any) =>
+        b.id === orderId ? {...b, ...naMailVerstuurd(b, m.soort, tod())} : b))
+      logAudit(auditLog, setAuditLog, {entiteit: 'Bestelling', entiteit_id: orderId, actie: 'gewijzigd',
+        omschrijving: mailAuditTekst(m.soort, naar, true)})
+    } catch (e: any) {
+      const fout = e?.message || ''
+      setMelding(t('mail_auto_mislukt').replace('{mail}', t(`settings_mail_template_${soort}`))
+        .replace('{email}', naar || '—').replace('{fout}', fout))
+      logAudit(auditLog, setAuditLog, {entiteit: 'Bestelling', entiteit_id: orderId, actie: 'gewijzigd',
+        omschrijving: `${mailAuditTekst(soort, naar || '—', true)} mislukt: ${fout}`})
     }
-    const knop = afhaalGemistMailKnop(selectedOrder, {storeUrl})
-    setMailModal({
-      title: t('mail_modal_title_afhaal_gemist'),
-      to: (resolvedSelectedOrder?.klant_email || ''),
-      subject: interpolate(tplOrDefault('afhaal_gemist', 'subject'), vars),
-      text: interpolate(tplOrDefault('afhaal_gemist', 'body'), vars),
-      kind: 'afhaal_gemist',
-      linkButtons: knop ? [knop] : [],
-    })
+  }
+  // Mag deze mail nu vanzelf? Zonder mailserver zeggen we dat op de pagina:
+  // anders denk je dat de klant bericht kreeg.
+  const magAutomatisch = (soort: OrderMailSoort, order: any): boolean => {
+    const reden = autoMailReden(soort, metKlantkaart(order), {sjablonen: mailTemplates, smtpAan: !!smtpCreds?.enabled})
+    if (reden === 'geen_smtp') setMelding(t('mail_auto_geen_smtp').replace('{mail}', t(`settings_mail_template_${soort}`)))
+    return reden === null
+  }
+  // Voor de vensters vooraf: gaat deze mail bij de handeling vanzelf, en naar wie?
+  const gaatAutomatischNaar = (soort: OrderMailSoort, order: any): string => {
+    const k = metKlantkaart(order)
+    return autoMailReden(soort, k, {sjablonen: mailTemplates, smtpAan: !!smtpCreds?.enabled}) === null
+      ? String(k?.klant_email || '') : ''
+  }
+  // Na een webshopimport of een handmatige bestelling: de bevestiging.
+  const bevestigAutomatisch = (orders: any[]) => {
+    for (const b of orders) {
+      if (magAutomatisch('bestelling', b)) void verstuurAutomatisch('bestelling', b.id, () => bouwOrderMail('bestelling', metKlantkaart(b), mailCtx))
+    }
   }
 
   // --- RENDER ---
@@ -2190,7 +2202,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       acties.push({id: 'vrije_regel', label: t('btn_vrije_regel'), onClick: () => { setVrijeRegelForm({omschrijving: '', aantal: '1', prijs_per_stuk: '', btw_pct: '21'}); setVrijeRegelFout(''); setShowVrijeRegelModal(true) }})
     }
     if (terugdraaiing) acties.push({id: 'terugdraaien', label: t('order_picks_terugdraaien'), title: blokkadeTekst(terugdraaiing) || undefined, onClick: () => setTerugdraaiVraag(true)})
-    if (open) acties.push({id: 'annuleren', label: t('order_cancel'), soort: 'gevaar', onClick: () => { setAnnuleerFout(''); setShowAnnuleerModal(true) }})
+    if (status === 'geannuleerd') acties.push(mailActie('mail_annulering', t('order_mail_annulering'), () => mailOrderAnnulering()))
+    if (open) acties.push({id: 'annuleren', label: t('order_cancel'), soort: 'gevaar', onClick: openAnnuleren})
 
     // ── Klant en levering ──────────────────────────────────────────────────
     // Leest live van de klantkaart (via klant_id of e-mail), zodat een
@@ -2469,39 +2482,18 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
             linkButtons={mailModal.linkButtons}
             onClose={() => setMailModal(null)}
             onSent={(sentTo) => {
-              // Per maild-type een leesbare log-omschrijving — wordt onderaan de
-              // order in het logboekje getoond. Gebruik het werkelijk gebruikte
-              // adres (in de modal bewerkt), niet het oorspronkelijke klant-adres.
+              // Logregel en wat er op de bestelling verandert (de bevestiging zet
+              // 'nieuw' op 'bevestigd', de verzendbevestiging haar datum; elke
+              // mail onthoudt dat hij verstuurd is, zodat hij niet nog eens
+              // automatisch gaat) — utils/orderMail.ts. Het werkelijk gebruikte
+              // adres (in het venster bewerkt), niet het oorspronkelijke.
               const naar = sentTo || mailModal.to
-              const omschrijving =
-                mailModal.kind === 'pakbon'      ? `Pakbon gemaild naar ${naar}` :
-                mailModal.kind === 'factuur'     ? `Factuur gemaild naar ${naar}` :
-                mailModal.kind === 'bevestiging' ? `Bevestigingsmail verstuurd naar ${naar}` :
-                mailModal.kind === 'verzending'  ? `Verzendbevestiging gemaild naar ${naar}` :
-                mailModal.kind === 'afhaal_gemist' ? `Afspraak-gemist-mail gemaild naar ${naar}` :
-                `Mail verstuurd: ${mailModal.subject}`
-              logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id: selectedOrder.id, actie:'gewijzigd', omschrijving})
-              // Onthoud wanneer de verzendbevestiging de deur uit ging, zodat
-              // de order laat zien dat de klant al bericht heeft gehad.
-              if (mailModal.kind === 'verzending') {
+              const soort = mailModal.kind
+              logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id: selectedOrder.id, actie:'gewijzigd',
+                omschrijving: soort ? mailAuditTekst(soort, naar, false) : `Mail verstuurd: ${mailModal.subject}`})
+              if (soort) {
                 setBestellingen((prev: any[]) => prev.map((b: any) =>
-                  b.id === selectedOrder.id ? {...b, verzendbevestiging_datum: tod()} : b
-                ))
-              }
-              // Idem voor de afspraak-gemist-mail: zo zie je bij de order dat
-              // de klant al gevraagd is een nieuw moment te kiezen.
-              if (mailModal.kind === 'afhaal_gemist') {
-                setBestellingen((prev: any[]) => prev.map((b: any) =>
-                  b.id === selectedOrder.id ? {...b, afhaal_gemist_datum: tod()} : b
-                ))
-              }
-              // Status-overgang: een 'nieuw' order wordt 'bevestigd' zodra de
-              // bevestigingsmail succesvol is verzonden. Latere statussen
-              // (gepickt/verzonden/...) worden niet overschreven — een resend
-              // verandert de status dus niet.
-              if (mailModal.kind === 'bevestiging' && selectedOrder.status === 'nieuw') {
-                setBestellingen((prev: any[]) => prev.map((b: any) =>
-                  b.id === selectedOrder.id ? {...b, status: 'bevestigd'} : b
+                  b.id === selectedOrder.id ? {...b, ...naMailVerstuurd(b, soort, tod())} : b
                 ))
               }
             }}
@@ -2525,6 +2517,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     <li>{t('order_afrond_punt_nummers')}</li>
                   </>)}
                   <li>{t('order_afrond_punt_status')}</li>
+                  {/* Automatisch versturen (Instellingen → E-mailtemplates). */}
+                  {!orderFactuur && gaatAutomatischNaar('factuur', selectedOrder) && (
+                    <li>{t('order_afrond_auto_factuur').replace('{email}', gaatAutomatischNaar('factuur', selectedOrder))}</li>
+                  )}
+                  {gaatAutomatischNaar('pakbon', selectedOrder) && (
+                    <li>{t('order_afrond_auto_pakbon').replace('{email}', gaatAutomatischNaar('pakbon', selectedOrder))}</li>
+                  )}
                 </ul>
               </div>
               {/* AGP: Type uitlevering en bestemmingsgegevens */}
@@ -2847,6 +2846,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       onChange={e => setVerzondenModal(m => m && ({...m, mailen: e.target.checked}))} />
                     <span>
                       <span className="font-medium text-gray-700">{t('verzonden_modal_mailen').replace('{email}', email)}</span>
+                      {smtpCreds?.enabled && <span className="block text-xs text-gray-500">{t(mailAutoAan(mailTemplates, 'verzending') ? 'mail_direct_hint' : 'mail_voorbeeld_hint')}</span>}
                       {afhalen && <span className="block text-xs text-gray-500">{t('verzonden_modal_afhaal_hint')}</span>}
                       {!smtpCreds?.enabled && <span className="block text-xs text-orange-700">{t('mail_no_smtp')}</span>}
                     </span>
@@ -2886,6 +2886,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     .replace('{bedrag}', fmt(Number(crediteren.bruto || 0)))}
                 </p>
               )}
+              {(() => {
+                const email = String(metKlantkaart(selectedOrder)?.klant_email || '').trim()
+                if (!email) return null
+                return (
+                  <label className={`flex items-start gap-2 text-sm rounded px-3 py-2 border ${smtpCreds?.enabled ? 'border-gray-200 bg-gray-50 cursor-pointer' : 'border-orange-200 bg-orange-50 cursor-not-allowed'}`}
+                    title={smtpCreds?.enabled ? '' : t('mail_no_smtp')}>
+                    <input type="checkbox" className="t-checkbox mt-0.5" checked={annuleerMailen} disabled={!smtpCreds?.enabled || annuleerBezig}
+                      onChange={e => setAnnuleerMailen(e.target.checked)} />
+                    <span>
+                      <span className="font-medium text-gray-700">{t('annuleer_modal_mailen').replace('{email}', email)}</span>
+                      {smtpCreds?.enabled
+                        ? <span className="block text-xs text-gray-500">{t(mailAutoAan(mailTemplates, 'annulering') ? 'mail_direct_hint' : 'mail_voorbeeld_hint')}</span>
+                        : <span className="block text-xs text-orange-700">{t('mail_no_smtp')}</span>}
+                    </span>
+                  </label>
+                )
+              })()}
               {annuleerFout && (
                 <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{annuleerFout}</div>
               )}
@@ -2910,6 +2927,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   <li>{t('order_vooraf_punt_betaald').replace('{datum}', selectedOrder.wc_betaald_datum ? fmtD(selectedOrder.wc_betaald_datum) : '—')}</li>
                   <li>{t('order_vooraf_punt_open')}</li>
                   <li>{t('order_vooraf_punt_regels')}</li>
+                  {gaatAutomatischNaar('factuur', selectedOrder) && (
+                    <li>{t('order_afrond_auto_factuur').replace('{email}', gaatAutomatischNaar('factuur', selectedOrder))}</li>
+                  )}
                 </ul>
               </div>
               <div className="flex justify-between text-sm">

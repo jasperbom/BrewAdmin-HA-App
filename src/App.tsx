@@ -16,7 +16,9 @@ import { logAudit, setAuditUser, auditGebruiker } from './utils/audit'
 import { rolMagKey } from './utils/rollen'
 import { bfStatusOvergang } from './utils/bfStatus'
 import { migreerInternGebruik } from './utils/internGebruik'
-import { findKlantVoorOrder } from './utils/klant'
+import { findKlantVoorOrder, resolveKlantSnapshot } from './utils/klant'
+import { autoMailReden, bouwOrderMail, naMailVerstuurd, mailAuditTekst } from './utils/orderMail'
+import { verzendMail } from './utils/mailVerzenden'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, accijnsAangifteBoeking, btwAangifteBoeking, voegBoekingToe } from './utils/journaal'
 import { periodeKeyLabel, standaardBtwPct } from './utils/btw'
 import { wcFoutMelding } from './utils/wcFout'
@@ -1587,7 +1589,39 @@ function App() {
   // verouderde closures in de interval).
   const wcImportRefs = React.useRef<any>({})
   wcImportRefs.current = {artikelen, productArtikelen, producten, bat, btwTarieven, merchArtikelen, btwInst,
-    klanten, bestellingen, bestellingPicks, wcCreds, auditLog}
+    klanten, bestellingen, bestellingPicks, wcCreds, auditLog,
+    mailTemplates, smtpCreds, breweryDetails, appName, logo, factuurLogo}
+  // Automatisch versturen aan (Instellingen → E-mailtemplates): de
+  // bestelbevestiging voor wat deze import echt nieuw binnenhaalde
+  // (`pasImportToe` slaat een bekende order over). Dezelfde mail als op de
+  // bestellingenpagina (utils/orderMail.ts); alleen voor bestellingen van na
+  // het aanzetten, en nooit twee keer. Een mislukte mail in het synclog.
+  const bevestigNieuweWebshopOrders = (nieuw: any[], bekendeOrders: any[]) => {
+    const r = wcImportRefs.current
+    const bekend = new Set((bekendeOrders || []).map((b: any) => b?.wc_order_id).filter((id: any) => id != null))
+    const ctx = {sjablonen: r.mailTemplates, brouwerij: r.breweryDetails?.naam || r.appName || '',
+      storeUrl: r.wcCreds?.storeUrl || '', bestelUrlSjabloon: r.wcCreds?.bestelUrl}
+    for (const b of nieuw.filter((n: any) => !bekend.has(n.wc_order_id))) {
+      const order = resolveKlantSnapshot(b, r.klanten || []) || b
+      if (autoMailReden('bestelling', order, {sjablonen: r.mailTemplates, smtpAan: !!r.smtpCreds?.enabled}) !== null) continue
+      const mail = bouwOrderMail('bestelling', order, ctx)
+      verzendMail(mail, {brewery: r.breweryDetails, logoDataUri: r.factuurLogo || r.logo, replyTo: r.breweryDetails?.email})
+        .then(() => {
+          setBestellingen((prev: any[]) => (prev || []).map((x: any) =>
+            x.id === b.id ? {...x, ...naMailVerstuurd(x, 'bestelling', tod())} : x))
+          logAudit(wcImportRefs.current.auditLog, setAuditLog, {entiteit: 'Bestelling', entiteit_id: b.id, actie: 'gewijzigd',
+            omschrijving: mailAuditTekst('bestelling', mail.to, true)})
+        })
+        .catch((e: any) => {
+          const fout = e?.message || ''
+          logAudit(wcImportRefs.current.auditLog, setAuditLog, {entiteit: 'Bestelling', entiteit_id: b.id, actie: 'gewijzigd',
+            omschrijving: `${mailAuditTekst('bestelling', mail.to, true)} mislukt: ${fout}`})
+          setWcSyncLog((prev: any[]) => [{id: Date.now(), ts: new Date().toISOString(), type: 'fout',
+            msg: t('mail_auto_mislukt').replace('{mail}', t('settings_mail_template_bestelling'))
+              .replace('{email}', mail.to).replace('{fout}', fout), details: ''}, ...(prev || [])].slice(0, 100))
+        })
+    }
+  }
   // `opMelding`: aangeroepen omdat de server een order meldt die hier nog
   // ontbreekt — dan niet op het interval wachten (utils/wcOrderImport →
   // importLeaseVrij). Timers roepen hem zonder argument aan.
@@ -1621,6 +1655,7 @@ function App() {
       if (res.nieuw.length || Object.keys(res.updates).length) {
         setBestellingen((prev: any[]) => pasImportToe(prev, res))
         importAuditRegels(res).forEach(a => logAudit(r.auditLog, setAuditLog, {entiteit: 'Bestelling', ...a}))
+        bevestigNieuweWebshopOrders(res.nieuw, vers || [])
         setWcSyncLog((prev: any[]) => [{id: Date.now(), ts: new Date().toISOString(), type: 'pull',
           msg: importMelding(res, t), details: ''}, ...(prev || [])].slice(0, 100))
         if (res.nieuw.length && notificatieInst?.on_screen !== false) {

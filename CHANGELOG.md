@@ -4,6 +4,41 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.2] — 2026-10-10
+
+### Annuleringsmail, en elke mail bij een bestelling kan automatisch
+
+- **Annuleringsmail.** Nieuw sjabloon in Instellingen → E-mailtemplates, met
+  `{creditregel}`: was de bestelling al gefactureerd, dan noemt de mail de
+  factuur en de creditnota. In het annuleervenster staat een vinkje
+  "Annuleringsmail sturen naar …"; achteraf kan het ook via ⋯ → Mail annulering.
+- **Automatisch versturen, per mail.** Bij elk sjabloon staat een schakelaar met
+  de handeling erbij. Staat hij aan, dan gaat de mail bij die handeling meteen
+  de deur uit, zonder voorbeeldvenster, naar het e-mailadres van de bestelling:
+  - bestelbevestiging: bij een nieuwe bestelling (webshopimport, ook de
+    periodieke, of handmatig aangemaakt); alleen voor bestellingen die
+    binnenkomen nadat je hem aanzet, en de bestelling gaat daarna op Bevestigd;
+  - verzendbevestiging: bij Markeer verzonden;
+  - factuur: zodra de factuur gemaakt wordt (afronden of Factuur maken), met de
+    factuur als bijlage en zo nodig de Mollie-betaallink; een al betaalde
+    factuur krijgt de tekst "al betaald";
+  - pakbon: bij afronden, met de pakbon (definitief nummer) als bijlage;
+  - annuleringsmail: bij annuleren.
+
+  De afspraak-gemist-mail blijft met de hand: daar is geen handeling.
+- **Nooit twee keer.** De bestelling onthoudt welke mails de klant al kreeg
+  (`mails_verstuurd`), met de hand of automatisch; een mail gaat nooit twee
+  keer automatisch. In het logboek van de bestelling staat "(automatisch)".
+  Mislukt een automatische mail, of is er geen mailserver, dan zegt de pagina
+  dat; bij de periodieke import komt het in het synclog.
+- De vensters van verzonden, annuleren, afronden en Factuur maken zeggen vooraf
+  welke mail er automatisch meegaat.
+- Eén opbouw voor alle bestelmails (`utils/orderMail.ts`) en één verzendkern
+  (`utils/mailVerzenden.ts`, ook voor het mailvenster): een automatische mail is
+  precies de mail die je met de hand zou sturen.
+
+---
+
 ## [1.13.1] — 2026-10-10
 
 ### Picklijst afdrukken reserveert de voorraad: lot, THT en batch staan op de pakbon
