@@ -276,6 +276,11 @@ BrewAdmin-HA-App/
 │   │   ├── wcProduct.ts    # WooCommerce-productkaart per artikel: payload bouwen (lege velden gaan
 │   │   │                   # nooit mee — een push wist niets), winkelantwoord lezen, verschillen
 │   │   │                   # app ↔ winkel, prijsomrekening excl./incl. BTW, categorieënboom
+│   │   ├── wcVoorraad.ts   # De voorraad die naar WooCommerce gaat (één telling voor "↑ Push voorraad"
+│   │   │                   # én de automatische push na een verkoop): `wcVoorraadVoorArtikel` (beschikbaar
+│   │   │                   # na picks/uitleveringen/afboekingen min open bestellingen, nooit geblokkeerd),
+│   │   │                   # `wcVoorraadLijst` (+ merch met eigen voorraad), `gewijzigdeVoorraad` (afwijkend
+│   │   │                   # van `wc.voorraad_gepusht`), `pushWcVoorraad`, `volgendeVoorraadPoging`
 │   │   ├── batchRapport.ts # Batchdossier (vanaf Brouwen te openen; `batchIsAfgerond` =
 │   │   │                   # Afgevuld/Verpakt/Gesloten markeert het definitieve dossier, een
 │   │   │                   # eerder dossier noemt de fase): kerncijfers, tijdlijn,
@@ -467,6 +472,16 @@ BrewAdmin-HA-App/
 │   │   │                   # (al voldaan — webshoporder betaald in WooCommerce, kassa, vinkje) + de
 │   │   │                   # betaalvariabelen {betaalregel}/{betaaldatum}/{betaalwijze}; gedeeld door
 │   │   │                   # Facturen en de bestellingenpagina
+│   │   ├── orderMail.ts    # De mails bij een bestelling (bevestiging, verzending, afspraak gemist,
+│   │   │                   # annulering, pakbon, factuur): sjabloon of standaard (`mailTekst`), variabelen
+│   │   │                   # (`bouwOrderMail`/`bouwFactuurMail`) — dezelfde mail in het venster en
+│   │   │                   # automatisch. Automatisch versturen per mail (`mail_templates[soort].auto`)
+│   │   │                   # bij zijn handeling (`MAIL_HANDELING`: nieuw, verzonden, factuur, afgerond,
+│   │   │                   # geannuleerd; afspraak gemist alleen met de hand, factuur_betaald volgt
+│   │   │                   # factuur): `autoMailReden` (nooit twee keer — `mails_verstuurd` op de order —,
+│   │   │                   # bevestiging alleen voor bestellingen van na `auto_sinds`), `naMailVerstuurd`
+│   │   ├── mailVerzenden.ts # Eén mail de deur uit (`verzendMail`: Mollie-link, HTML met logo en knoppen,
+│   │   │                   # platte tekst, bijlagen, `MailFout`) — gedeeld door MailModal en de automaat
 │   │   ├── mollieLink.ts   # Eén Mollie-betaallink per verkoopfactuur (`mollie_link`), hergebruikt door elke volgende mail
 │   │   ├── ubl.ts          # E-factuur in UBL 2.1 / PEPPOL BIS Billing 3.0: cent-exact, multi-tarief TaxSubtotals, kortingen als AllowanceCharge, creditnota als CreditNote-document
 │   │   ├── csv.ts          # CSV-export: `csvCel`/`csvRij`/`csvTekst` zijn formule-veilig (apostrof vóór = + - @ tab/CR,
@@ -1320,7 +1335,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
 | `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie) |
 | `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
-| `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull) |
+| `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull en `voorraad_gepusht`/`voorraad_gepusht_op` = de voorraad bij de laatste push — ook op `merch_artikelen` en de oude `artikelen`) |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
 | `afvullingen` | array | Afvullingen / releases |
 | `uitslagen` | array | Biervoorraaduitslagen |
@@ -1360,7 +1375,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `scan_correcties` | array | Het scangeheugen (`utils/scanGeheugen.ts`): `{tekst, soort, leverancier?, artikelcode?, naam?, kostensoort?, eenheid?}`, de nieuwste 500. Bij elk opslaan van een gescande factuur geleerd (per leverancier + artikelnummer, anders omschrijving); de oude `{tekst, soort}` blijft gelden als algemene correctie. Gaat vóór de indeling van het model |
 | `inkoop_inbox` | array | Facturen per e-mail: de PDF-bijlagen die de server-tick `_inbox_tick` uit het postvak (IMAP) haalde, met `status` `nieuw`/`verwerkt`/`genegeerd`. Item: `{id, ontvangen, mail_datum, van, van_naam, onderwerp, message_id, bijlage: {naam, bestand}, grootte, sha256, status, factuur_id?, afgehandeld?}`. De server voegt alleen nieuwe items toe (bestand `inbox_<sha256[:20]>.pdf` in de bijlagenmap); verwerken, negeren, terugzetten en verwijderen doet de app. Een PDF met een `sha256` die er al in staat (ook genegeerd/verwerkt) komt er nooit nog eens bij. Financiële key: alleen `boekhouding`/`beheer` schrijven. Wel in de Excel-backup |
 | `verkoop_facturen` | array | Verkoopfacturen. `verrekend_alt_id` = verrekend met de schuld aan een alt-rekening (ook nadat de factuur met de hand op betaald is gezet); `vorige_stand` = de stand daarvoor. De factuur van een bestelling draagt `bestelling_id` (opgebouwd door `bouwOrderFactuur` in `utils/orderFactuur.ts`); wordt een gefactureerde bestelling geannuleerd, dan komt er een creditnota met `credit_van_factuur_id` en hetzelfde `bestelling_id` |
-| `bestellingen` | array | WooCommerce-bestellingen. `factuur_id`/`factuur_nummer` = de verkoopfactuur; die kan er al zijn vóór `afgerond` — een betaalde order die nog niet is opgehaald of verzonden, vooraf gefactureerd (Bestellingen "Factuur maken", of Bank vanuit een PSP-uitbetaling). Afronden maakt dan geen tweede factuur, de orderregels liggen vast en annuleren maakt een creditnota |
+| `bestellingen` | array | WooCommerce-bestellingen. `factuur_id`/`factuur_nummer` = de verkoopfactuur; die kan er al zijn vóór `afgerond` — een betaalde order die nog niet is opgehaald of verzonden, vooraf gefactureerd (Bestellingen "Factuur maken", of Bank vanuit een PSP-uitbetaling). Afronden maakt dan geen tweede factuur, de orderregels liggen vast en annuleren maakt een creditnota. `mails_verstuurd: {soort: datum}` = welke mails de klant al kreeg (met de hand of automatisch; `factuur` dekt ook `factuur_betaald`) — een mail gaat nooit twee keer automatisch (`utils/orderMail.ts`) |
 | `bestelling_picks` | array | Pickregels per bestelling |
 | `afboekingen` | array | Biervoorraadbewegingen (vermis, vernietiging, overig). `bron_locatie_id` = waar het bier lág — bepaalt van welke locatie het afgaat én of er accijns verschuldigd wordt. Ontbreekt op records van vóór v1.12.52; die gelden als AGP |
 | `klanten` | array | Klanten |
@@ -1390,7 +1405,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `btw_instellingen` | object | BTW-aangifte-instellingen: `periode` + `standaard_btw` (voorgesteld tarief bij nieuwe artikelen/verkoopregels, default 21% via `standaardBtwPct` in `utils/btw.ts`) |
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
 | `brewery_details` | object | Brouwerijnaam, adres, land (ISO-2), BTW-nr., KvK, PEPPOL-ID/-schema (e-factuur), website (klikbaar logo in mail), `factuur_velden` (zichtbaarheid) en `factuur_template` (`{html, css}` — eigen factuurlayout, leeg = de ingebouwde standaard uit `utils/factuurTemplate.ts`) |
-| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`, `afhaal_gemist`) met `subject`/`body`; leeg = i18n-default. `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}`, `afhaal_gemist` de mail voor een afhaalklant die niet kwam (`{afhaalmoment}` + `{afhaalregel}` met dezelfde link om een nieuw moment te kiezen; knop verschijnt via `afhaalmomentVerstreken`) — zie `utils/levering.ts` |
+| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`, `afhaal_gemist`, `annulering`) met `subject`/`body`; leeg = i18n-default. `auto: true` = automatisch versturen bij de handeling van die mail, `auto_sinds` = wanneer dat aan ging (`zetMailAuto`/`autoMailReden` in `utils/orderMail.ts`; de "al betaald"-factuurmail volgt `factuur`). `annulering` kent `{creditregel}` (de factuur en de creditnota, leeg zonder factuur). `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}`, `afhaal_gemist` de mail voor een afhaalklant die niet kwam (`{afhaalmoment}` + `{afhaalregel}` met dezelfde link om een nieuw moment te kiezen; knop verschijnt via `afhaalmomentVerstreken`) — zie `utils/levering.ts` |
 | `gebruikers_rollen` | object | Rollen per HA-ingress-gebruiker (ERP 4.2): `{gebruikers: {naam: rol}, standaard_rol}` met rollen `beheer`/`boekhouding`/`productie`/`alleen_lezen` — server-side afgedwongen, alleen door `beheer` te wijzigen, lockout-guard |
 | `login_instellingen` | object | Styling van de loginpagina op de directe-toegangspoort: titel/ondertitel/knoptekst, accent-/achtergrondkleur (hex), achtergrondafbeelding (data-url), `logo_tonen`. Server rendert met strikte validatie (`_login_pagina`) — pre-auth, dus nooit ongefilterd |
 | `factuur_counter` | object | *(legacy)* Doorlopend factuurnummer per jaar — vervangen door `nummer_reeksen`, alleen nog als migratie-seed gelezen |
@@ -1404,7 +1419,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `app_name` | string | Naam van de brouwerij-app |
 | `nav_theme` | string | UI-thema (`amber`/`green`/`blue`/`slate`/`red`/`purple`) |
 | `brewfather_creds` *(secure)* | object | Brewfather API-credentials (nooit in backup) |
-| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) `prijzenInclBtw` (voert de winkel prijzen incl. BTW in? default ja — bepaalt de omrekening bij een productpush) en `themaVelden` (Craftery-`_cf_`-velden beheren, default aan), `bestelUrl` (eigen sjabloon voor de bestelpagina van de klant met `{winkel}`/`{id}`/`{sleutel}`; leeg = de bij de import per order bepaalde `wc_bestel_url` — knop in de bestelbevestiging via `bestelLink` in `utils/levering.ts`) — nooit in backup |
+| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) `prijzenInclBtw` (voert de winkel prijzen incl. BTW in? default ja — bepaalt de omrekening bij een productpush) en `themaVelden` (Craftery-`_cf_`-velden beheren, default aan), `voorraadAutoPush` (voorraad vanzelf naar de winkel na een handmatige bestelling, kassaverkoop of annulering; default aan, `utils/wcVoorraad.ts`), `bestelUrl` (eigen sjabloon voor de bestelpagina van de klant met `{winkel}`/`{id}`/`{sleutel}`; leeg = de bij de import per order bepaalde `wc_bestel_url` — knop in de bestelbevestiging via `bestelLink` in `utils/levering.ts`) — nooit in backup |
 | `claude_creds` *(secure)* | object | Anthropic API-key (nooit in backup) |
 | `smtp_creds` *(secure)* | object | SMTP-server (host/port/user/pass/from/security/enabled) voor pakbon-, factuur- en bestelmail (nooit in backup) |
 | `imap_creds` *(secure)* | object | Postvak voor facturen per e-mail: `{enabled, host, port, security (ssl/starttls/none), username, password, mailbox (INBOX), interval (min, 5–1440, default 15), afzenders[]}` (nooit in backup; wachtwoord afgeschermd en bij een gewijzigde bestemming niet ingevuld, net als SMTP). Beheer-only |
@@ -1713,6 +1728,21 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   `wc_import_status.nieuw`; de app importeert dan meteen en de Verkoop-header
   telt ze (`attentie_webshop_nieuw`). Een servertick importeert bewust niet
   zelf: de artikel-/merchherkenning leeft in de app
+- **Voorraad automatisch naar de winkel** (`utils/wcVoorraad.ts`, instelling
+  `woocommerce_creds.voorraadAutoPush`, standaard aan): na een handmatige
+  bestelling, een kassaverkoop of een annulering roept de pagina
+  `onVoorraadGewijzigd` aan; App.tsx (`voorraadNaarWebshop`) wacht
+  `WC_VOORRAAD_WACHT_MS` (een reeks kassaverkopen = één push), importeert
+  eerst de webshoporders (`autoImportWc(false, true)`: niet op het interval
+  wachten) en stuurt dan alleen de `stock_quantity` van de artikelen die
+  afwijken van `wc.voorraad_gepusht`. **Nooit pushen zonder die verse import:**
+  een online bestelling die hier nog ontbreekt verlaagde de winkelvoorraad al,
+  en een absolute push zou dat terugdraaien — juist de oververkoop die dit moet
+  voorkomen. Lukt de import niet (ander tabblad heeft de lease, winkel
+  onbereikbaar), dan opnieuw na `WC_VOORRAAD_HERHAAL_MS`, en na
+  `WC_VOORRAAD_POGINGEN` keer een melding (`msg_wc_voorraad_geen_import`).
+  Een afboeking of een nieuwe afvulling pusht (nog) niet vanzelf: daarvoor
+  blijft "↑ Push voorraad" op Producten
 - **Terugschrijven** (`utils/wcTerugschrijven.ts`, instelling
   `woocommerce_creds.terugschrijven`, standaard uit): `verzonden`/`afgerond` →
   `PUT orders/<id> {status: completed}` (+ privé-ordernotitie met de track &

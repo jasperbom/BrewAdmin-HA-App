@@ -10,27 +10,13 @@
 import React from 'react'
 import Modal from './ui/Modal'
 import Btn from './ui/Btn'
-import { mailSendApi, mollieCreatePayment, MailAttachment, MailInlineImage } from '../utils/api'
-import { buildMailHtml, dataUriToInlineImage, MailBrewery } from '../utils/mailTemplate'
+import { MailAttachment } from '../utils/api'
+import { buildMailHtml, MailBrewery } from '../utils/mailTemplate'
 import { MailKnop } from '../utils/levering'
+import { verzendMail, logoAlsInline, LOGO_CID, MailFout, MollieMailContext } from '../utils/mailVerzenden'
 import { t } from '../i18n'
 
-/** Context om een Mollie-betaallink aan de mail toe te voegen. Aanwezig
- *  wanneer een (openstaande) verkoopfactuur wordt gemaild én Mollie aanstaat. */
-export interface MollieMailContext {
-  amountCent: number
-  description: string
-  redirectUrl: string
-  factuurnummer?: string
-  /** Al eerder met deze factuur meegestuurde link (`herbruikbareBetaallink`
-   *  in utils/mollieLink.ts). Aanwezig → die link gaat mee en er wordt géén
-   *  nieuwe aangemaakt: een Mollie-betaallink verloopt niet, dus elke extra
-   *  link is een extra manier om dezelfde factuur nog eens te betalen. */
-  bestaandeLink?: {url: string} | null
-  /** Direct na het aanmaken van een nieuwe link (vóór het verzenden), zodat
-   *  de aanroeper hem op de factuur bewaart — ook als de mail daarna mislukt. */
-  onLinkAangemaakt?: (link: {id: string, url: string}) => void
-}
+export type { MollieMailContext }
 
 interface Props {
   title: string
@@ -62,8 +48,6 @@ interface Props {
   onSent?: (to: string) => void
 }
 
-const LOGO_CID = 'brewadmin-logo'
-
 export default function MailModal({
   title, initialTo, initialSubject, initialText, attachments,
   brewery, logoDataUri, replyTo, smtpReady, mollie, regenerateAttachments, linkButtons, onClose, onSent,
@@ -86,13 +70,7 @@ export default function MailModal({
 
   // Logo wordt — indien aanwezig — als CID-inline attachment meegestuurd zodat
   // het in elk mailclient (Gmail, Outlook, Apple Mail) wordt gerenderd.
-  const inlineLogo: MailInlineImage | null = React.useMemo(() => {
-    if (!logoDataUri) return null
-    // Extensie afleiden uit de mimeType (image/png → logo.png).
-    const m = /^data:image\/([a-z0-9+.-]+);base64,/i.exec(logoDataUri)
-    const ext = m ? m[1].split('+')[0] : 'png'
-    return dataUriToInlineImage(logoDataUri, LOGO_CID, `logo.${ext}`)
-  }, [logoDataUri])
+  const inlineLogo = React.useMemo(() => logoAlsInline(logoDataUri), [logoDataUri])
 
   // Voor de preview tonen we de betaalknop met een dummy-link (#); de echte
   // Mollie-checkout-URL wordt pas bij het verzenden aangemaakt.
@@ -116,65 +94,27 @@ export default function MailModal({
 
   const inputCls = 'border border-gray-300 rounded px-3 py-2 text-sm w-full t-input'
 
+  // Het verzenden zelf (betaallink, HTML, bijlagen) is gedeeld met de
+  // automatische mails: utils/mailVerzenden.ts.
   const send = async () => {
     if (!to.trim()) { setStatus({type:'err', msg: t('mail_no_recipient')}); return }
     if (!subject.trim()) { setStatus({type:'err', msg: t('mail_no_subject')}); return }
     setSending(true); setStatus(null)
     try {
-      // Optioneel eerst een Mollie-betaling aanmaken en de checkout-URL in de
-      // mail verwerken. Mislukt dit, dan niet verzenden (de link is de bedoeling).
-      let payUrl = ''
-      if (wantMollie && mollie) {
-        try {
-          payUrl = mollie.bestaandeLink?.url || aangemaakteLink.current
-          if (!payUrl) {
-            const res = await mollieCreatePayment({
-              amountCent: mollie.amountCent,
-              description: mollie.description,
-              redirectUrl: mollie.redirectUrl,
-            })
-            payUrl = res.checkoutUrl
-            aangemaakteLink.current = payUrl
-            mollie.onLinkAangemaakt?.({id: String(res.id || ''), url: payUrl})
-          }
-        } catch (e: any) {
-          setStatus({type:'err', msg: `${t('mollie_link_failed')}: ${e?.message || ''}`})
-          setSending(false)
-          return
-        }
-      }
-      // In de HTML komen nette knoppen; in de platte tekst de kale links.
-      const finalText = text
-        + (linkButtons || []).map(k => `\n\n${k.textLine}\n${k.url}`).join('')
-        + (payUrl ? `\n\n${t('mollie_pay_line')}\n${payUrl}` : '')
-      const finalHtml = buildMailHtml(text, brewery || {}, {
-        logoCid: inlineLogo ? LOGO_CID : undefined,
-        linkButtons: linkButtons || undefined,
-        payButton: payUrl ? {url: payUrl, label: t('mollie_pay_button')} : undefined,
-      })
-      // Bijlagen: bij een betaallink de factuur-PDF opnieuw bouwen mét QR +
-      // link erin. Mislukt dat, dan gewoon de al gegenereerde PDF meesturen.
-      let finalAttachments = attachments
-      if (payUrl && regenerateAttachments) {
-        try {
-          const re = await regenerateAttachments(payUrl)
-          if (re && re.length) finalAttachments = re
-        } catch { /* val terug op de oorspronkelijke bijlage */ }
-      }
-      await mailSendApi({
-        to: to.split(/[,;]/).map(s => s.trim()).filter(Boolean),
-        subject,
-        text: finalText,
-        html: finalHtml,
-        replyTo,
-        attachments: finalAttachments,
-        inlineImages: inlineLogo ? [inlineLogo] : undefined,
-      })
+      await verzendMail({
+        to, subject, text, attachments, linkButtons, regenerateAttachments,
+        mollie: wantMollie && mollie ? {
+          ...mollie,
+          bestaandeLink: mollie.bestaandeLink || (aangemaakteLink.current ? {url: aangemaakteLink.current} : null),
+          onLinkAangemaakt: (l) => { aangemaakteLink.current = l.url; mollie.onLinkAangemaakt?.(l) },
+        } : null,
+      }, {brewery, logoDataUri, replyTo})
       setStatus({type:'ok', msg: t('mail_send_success')})
       if (onSent) onSent(to.trim())
       setTimeout(() => onClose(), 1200)
     } catch (e: any) {
-      setStatus({type:'err', msg: `${t('mail_send_failed')}: ${e?.message || ''}`})
+      const betaallink = e instanceof MailFout && e.stap === 'betaallink'
+      setStatus({type:'err', msg: `${t(betaallink ? 'mollie_link_failed' : 'mail_send_failed')}: ${e?.message || ''}`})
     }
     setSending(false)
   }
