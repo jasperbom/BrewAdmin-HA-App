@@ -276,6 +276,11 @@ BrewAdmin-HA-App/
 │   │   ├── wcProduct.ts    # WooCommerce-productkaart per artikel: payload bouwen (lege velden gaan
 │   │   │                   # nooit mee — een push wist niets), winkelantwoord lezen, verschillen
 │   │   │                   # app ↔ winkel, prijsomrekening excl./incl. BTW, categorieënboom
+│   │   ├── wcVoorraad.ts   # De voorraad die naar WooCommerce gaat (één telling voor "↑ Push voorraad"
+│   │   │                   # én de automatische push na een verkoop): `wcVoorraadVoorArtikel` (beschikbaar
+│   │   │                   # na picks/uitleveringen/afboekingen min open bestellingen, nooit geblokkeerd),
+│   │   │                   # `wcVoorraadLijst` (+ merch met eigen voorraad), `gewijzigdeVoorraad` (afwijkend
+│   │   │                   # van `wc.voorraad_gepusht`), `pushWcVoorraad`, `volgendeVoorraadPoging`
 │   │   ├── batchRapport.ts # Batchdossier (vanaf Brouwen te openen; `batchIsAfgerond` =
 │   │   │                   # Afgevuld/Verpakt/Gesloten markeert het definitieve dossier, een
 │   │   │                   # eerder dossier noemt de fase): kerncijfers, tijdlijn,
@@ -1330,7 +1335,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
 | `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie) |
 | `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
-| `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull) |
+| `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull en `voorraad_gepusht`/`voorraad_gepusht_op` = de voorraad bij de laatste push — ook op `merch_artikelen` en de oude `artikelen`) |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
 | `afvullingen` | array | Afvullingen / releases |
 | `uitslagen` | array | Biervoorraaduitslagen |
@@ -1414,7 +1419,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `app_name` | string | Naam van de brouwerij-app |
 | `nav_theme` | string | UI-thema (`amber`/`green`/`blue`/`slate`/`red`/`purple`) |
 | `brewfather_creds` *(secure)* | object | Brewfather API-credentials (nooit in backup) |
-| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) `prijzenInclBtw` (voert de winkel prijzen incl. BTW in? default ja — bepaalt de omrekening bij een productpush) en `themaVelden` (Craftery-`_cf_`-velden beheren, default aan), `bestelUrl` (eigen sjabloon voor de bestelpagina van de klant met `{winkel}`/`{id}`/`{sleutel}`; leeg = de bij de import per order bepaalde `wc_bestel_url` — knop in de bestelbevestiging via `bestelLink` in `utils/levering.ts`) — nooit in backup |
+| `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) `prijzenInclBtw` (voert de winkel prijzen incl. BTW in? default ja — bepaalt de omrekening bij een productpush) en `themaVelden` (Craftery-`_cf_`-velden beheren, default aan), `voorraadAutoPush` (voorraad vanzelf naar de winkel na een handmatige bestelling, kassaverkoop of annulering; default aan, `utils/wcVoorraad.ts`), `bestelUrl` (eigen sjabloon voor de bestelpagina van de klant met `{winkel}`/`{id}`/`{sleutel}`; leeg = de bij de import per order bepaalde `wc_bestel_url` — knop in de bestelbevestiging via `bestelLink` in `utils/levering.ts`) — nooit in backup |
 | `claude_creds` *(secure)* | object | Anthropic API-key (nooit in backup) |
 | `smtp_creds` *(secure)* | object | SMTP-server (host/port/user/pass/from/security/enabled) voor pakbon-, factuur- en bestelmail (nooit in backup) |
 | `imap_creds` *(secure)* | object | Postvak voor facturen per e-mail: `{enabled, host, port, security (ssl/starttls/none), username, password, mailbox (INBOX), interval (min, 5–1440, default 15), afzenders[]}` (nooit in backup; wachtwoord afgeschermd en bij een gewijzigde bestemming niet ingevuld, net als SMTP). Beheer-only |
@@ -1723,6 +1728,21 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   `wc_import_status.nieuw`; de app importeert dan meteen en de Verkoop-header
   telt ze (`attentie_webshop_nieuw`). Een servertick importeert bewust niet
   zelf: de artikel-/merchherkenning leeft in de app
+- **Voorraad automatisch naar de winkel** (`utils/wcVoorraad.ts`, instelling
+  `woocommerce_creds.voorraadAutoPush`, standaard aan): na een handmatige
+  bestelling, een kassaverkoop of een annulering roept de pagina
+  `onVoorraadGewijzigd` aan; App.tsx (`voorraadNaarWebshop`) wacht
+  `WC_VOORRAAD_WACHT_MS` (een reeks kassaverkopen = één push), importeert
+  eerst de webshoporders (`autoImportWc(false, true)`: niet op het interval
+  wachten) en stuurt dan alleen de `stock_quantity` van de artikelen die
+  afwijken van `wc.voorraad_gepusht`. **Nooit pushen zonder die verse import:**
+  een online bestelling die hier nog ontbreekt verlaagde de winkelvoorraad al,
+  en een absolute push zou dat terugdraaien — juist de oververkoop die dit moet
+  voorkomen. Lukt de import niet (ander tabblad heeft de lease, winkel
+  onbereikbaar), dan opnieuw na `WC_VOORRAAD_HERHAAL_MS`, en na
+  `WC_VOORRAAD_POGINGEN` keer een melding (`msg_wc_voorraad_geen_import`).
+  Een afboeking of een nieuwe afvulling pusht (nog) niet vanzelf: daarvoor
+  blijft "↑ Push voorraad" op Producten
 - **Terugschrijven** (`utils/wcTerugschrijven.ts`, instelling
   `woocommerce_creds.terugschrijven`, standaard uit): `verzonden`/`afgerond` →
   `PUT orders/<id> {status: completed}` (+ privé-ordernotitie met de track &

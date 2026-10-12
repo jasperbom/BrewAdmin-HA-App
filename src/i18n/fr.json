@@ -5615,5 +5615,11 @@
   "order_afrond_auto_factuur": "La facture sera envoyée automatiquement à {email}",
   "order_afrond_auto_pakbon": "Le bon de livraison sera envoyé automatiquement à {email}",
   "mail_auto_mislukt": "{mail} n'a pas pu être envoyé automatiquement à {email} : {fout}",
-  "mail_auto_geen_smtp": "{mail} n'a pas été envoyé automatiquement : aucun serveur e-mail n'est configuré."
+  "mail_auto_geen_smtp": "{mail} n'a pas été envoyé automatiquement : aucun serveur e-mail n'est configuré.",
+  "settings_wc_voorraad_auto_title": "Mettre à jour le stock automatiquement",
+  "settings_wc_voorraad_auto_hint": "Après une commande manuelle, une vente en caisse ou une annulation, le nouveau stock est envoyé automatiquement à la boutique en ligne, afin que ce qui est épuisé ici ne puisse plus être commandé en ligne. Les nouvelles commandes de la boutique sont d'abord récupérées ; ensuite, seuls les articles dont le stock a changé sont envoyés.",
+  "settings_wc_voorraad_auto": "Envoyer le stock à la boutique automatiquement après une vente",
+  "msg_wc_voorraad_auto": "Stock mis à jour automatiquement après une vente : {lijst}",
+  "msg_wc_voorraad_auto_mislukt": "Le stock de {namen} n'a pas pu être envoyé à la boutique. Consultez le journal WooCommerce ou envoyez le stock manuellement.",
+  "msg_wc_voorraad_geen_import": "Stock non envoyé à la boutique : les commandes de la boutique n'ont pas pu être récupérées au préalable. Envoyez le stock manuellement dans Produits dès que la boutique est à nouveau accessible."
 }

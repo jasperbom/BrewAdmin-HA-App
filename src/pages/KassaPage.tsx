@@ -90,6 +90,8 @@ interface KassaPageProps {
   setMerchVoorraadLog?: any
   /** Navigatie van de schil (App.tsx): de lege kassa verwijst naar Producten. */
   gaNaar?: GaNaar
+  /** Na een verkoop: de nieuwe voorraad naar de webshop (App.tsx, utils/wcVoorraad.ts). */
+  onVoorraadGewijzigd?: () => void
 }
 
 /** De vensters van de kassa. Er staat er hooguit één open — een stapel, zodat
@@ -119,7 +121,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
   btwInst = {}, btwTarieven = [0, 9, 21],
   merchArtikelen = [], setMerchArtikelen = () => {},
   merchVoorraadLog = [], setMerchVoorraadLog = () => {},
-  gaNaar,
+  gaNaar, onVoorraadGewijzigd,
 }) => {
   // Standaard BTW-tarief uit de instellingen (21% tenzij anders ingesteld)
   const stdBtw = standaardBtwPct(btwInst, btwTarieven)
@@ -752,6 +754,9 @@ const KassaPage: React.FC<KassaPageProps> = ({
       actie: 'aangemaakt',
       omschrijving: `Kassa — ${factuurNummer} ${klantNaam} ${fmt(factuur.bruto)} (${betaalwijze})`,
     })
+
+    // Wat hier verkocht is, is online niet meer te koop.
+    onVoorraadGewijzigd?.()
 
     // Bureau: de afrekendialoog sluit. Telefoon: het onderblad Bon blijft open
     // en toont de afgeronde verkoop (printen, nieuwe verkoop).

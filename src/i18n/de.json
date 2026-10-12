@@ -5615,5 +5615,11 @@
   "order_afrond_auto_factuur": "Die Rechnung wird automatisch an {email} gemailt",
   "order_afrond_auto_pakbon": "Der Lieferschein wird automatisch an {email} gemailt",
   "mail_auto_mislukt": "{mail} konnte nicht automatisch an {email} gemailt werden: {fout}",
-  "mail_auto_geen_smtp": "{mail} wurde nicht automatisch gemailt: Es ist kein E-Mail-Server eingerichtet."
+  "mail_auto_geen_smtp": "{mail} wurde nicht automatisch gemailt: Es ist kein E-Mail-Server eingerichtet.",
+  "settings_wc_voorraad_auto_title": "Bestand automatisch aktualisieren",
+  "settings_wc_voorraad_auto_hint": "Nach einer manuellen Bestellung, einem Kassenverkauf oder einer Stornierung geht der neue Bestand automatisch an den Webshop, damit online nicht mehr bestellt werden kann, was hier ausverkauft ist. Zuerst werden neue Webshop-Bestellungen abgerufen; danach werden nur Artikel mit geändertem Bestand gesendet.",
+  "settings_wc_voorraad_auto": "Bestand nach einem Verkauf automatisch an den Webshop senden",
+  "msg_wc_voorraad_auto": "Bestand nach einem Verkauf automatisch aktualisiert: {lijst}",
+  "msg_wc_voorraad_auto_mislukt": "Der Bestand von {namen} konnte nicht an den Webshop gesendet werden. Siehe das WooCommerce-Protokoll oder sende den Bestand manuell.",
+  "msg_wc_voorraad_geen_import": "Bestand nicht an den Webshop gesendet: Die Webshop-Bestellungen konnten nicht zuerst abgerufen werden. Sende den Bestand unter Produkte manuell, sobald der Webshop wieder erreichbar ist."
 }

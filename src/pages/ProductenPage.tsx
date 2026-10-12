@@ -5,6 +5,7 @@ import { _fetchedKeys } from '../utils/api'
 import LegeStaat from '../components/ui/LegeStaat'
 import WcProductModal from '../components/WcProductModal'
 import { WcVelden, bouwWcPayload, leesWcProduct, wcRegulierePrijsExcl, wcArtikelPush, wcMetaStandNaPush, wcMetaUitProduct, wcMetStand, wcVoorraadPayload } from '../utils/wcProduct'
+import { wcVoorraadVoorArtikel, metGepushteVoorraad } from '../utils/wcVoorraad'
 import {
   bierInvulVelden, afgeleideBierInfo, bierInfoVoorArtikel, bierInfoWeergave,
 } from '../utils/bierinfo'
@@ -32,7 +33,7 @@ import { rebrandMaxSplitsing, splitsAfvullingVoorRebrand } from '../utils/rebran
 import { agpGereserveerdPerAfvulling } from '../utils/kassa'
 import { beschikbaarVoorAfvulling as beschikbaarNaPicks, beschikbaarPerLocatieNaPicks } from '../utils/beschikbaarheid'
 import { afvullingVerkoopbaar } from '../utils/haccp'
-import { getAgpLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, batchHoortBijProduct, openBestellingReserveringen, gereserveerdVoorArtikel, accijnsMaandGesloten } from '../utils/calculations'
+import { getAgpLocatie, berekenVoorcalcVoorAfvulling, berekenProductKostprijs, batchHoortBijProduct, openBestellingReserveringen, accijnsMaandGesloten } from '../utils/calculations'
 import { bouwAfboekingAccijnsRecord } from '../utils/afboeking'
 import { standaardBtwPct } from '../utils/btw'
 import { SkuEigenaar, skuConflicten, vrijeSku } from '../utils/sku'
@@ -1194,45 +1195,12 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
   };
 
   // Voorraad die naar WooCommerce gepusht wordt: fysiek beschikbaar minus
-  // zachte reserveringen uit open bestellingen. WooCommerce verlaagt zijn
-  // eigen voorraad al zodra een bestelling binnenkomt — zonder deze aftrek
-  // zou een push die verlaging weer ongedaan maken (oversell-risico).
-  //
-  // Matching in drie tiers (zelfde volgorde als getAvailableAfvullingen op de
-  // bestellingenpagina): eerst de exacte artikel-SKU op de afvulling, dan het
-  // product op de afvulling (wordt bij afvullen gezet, niet op de batch!),
-  // pas daarna via de batch. De oude matcher keek alléén naar de batch,
-  // waardoor afvullingen met product/SKU maar zonder batch-productkoppeling
-  // niet meetelden en er te weinig (of 0) gepusht werd.
-  const wcBeschikbaarVoorArt = (art: any) => {
-    const artVt = (art.verpakking_type || '').toLowerCase();
-    const artNaam = (art.biernaam || '').toLowerCase();
-    const vpMatch = (a: any) => {
-      const avVt = (a.verpakking_type || '').toLowerCase();
-      if (!avVt || !artVt) return false;
-      if (avVt === artVt) return true;
-      // Afvulling draagt vaak de verpakkingsNAAM ("Vichy 33cL"), het artikel
-      // het TYPE ("fles") — map via de verpakkingenlijst, hoofdletterongevoelig.
-      return (verpakkingen||[]).some((v: any) =>
-        (v.type || '').toLowerCase() === artVt && (v.naam || '').toLowerCase() === avVt);
-    };
-    const fysiek = (av||[]).filter((a: any) => {
-      // Geblokkeerd na een afgekeurde sluitcontrole (CCP 2) mag nooit in de
-      // webshop te koop staan.
-      if (!afvullingVerkoopbaar(a)) return false;
-      // Tier 1: afvulling met artikel-SKU matcht uitsluitend op die SKU
-      if (a.artikel_sku) return a.artikel_sku === art.artikelnummer;
-      // Tier 2: product op de afvulling zelf
-      if (art._product_id && a.product_id === art._product_id) return vpMatch(a);
-      // Tier 3: via de batch (oude afvullingen zonder product/SKU)
-      const b = bat.find((bx: any) => bx.id === a.batch_id);
-      if (!b) return false;
-      const bierMatch = (art._product_id && b.product_id === art._product_id)
-        || (!!artNaam && ((b.naam || '').toLowerCase() === artNaam || (b.biernaam || '').toLowerCase() === artNaam));
-      return bierMatch && vpMatch(a);
-    }).reduce((s: number, a: any) => s + beschikbaarVoorAfvulling(a), 0);
-    return Math.max(0, fysiek - gereserveerdVoorArtikel(openReserveringen, art, skuData));
-  };
+  // zachte reserveringen uit open bestellingen (WooCommerce verlaagt zijn
+  // eigen voorraad al bij een binnengekomen bestelling). Eén telling voor deze
+  // knop en de automatische push na een verkoop: utils/wcVoorraad.ts.
+  const wcVoorraadCtx = {afvullingen: av || [], batches: bat || [], verpakkingen: verpakkingen || [],
+    reserveringen: openReserveringen, beschikbaar: beschikbaarVoorAfvulling, skuData}
+  const wcBeschikbaarVoorArt = (art: any) => wcVoorraadVoorArtikel(art, wcVoorraadCtx);
 
   // WooCommerce-winkels voeren prijzen doorgaans inclusief BTW in; de
   // instelling staat bij de koppeling (leeg = inclusief).
@@ -1328,6 +1296,9 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     // zegt de etiketkaart of de website achterloopt op het etiket.
     const gesynct: Record<number, {wc_id?: number, permalink?: string}> = {};
     const standen: Record<number, any> = {};
+    // Wat er per artikel aan voorraad verstuurd is: de automatische push na
+    // een verkoop stuurt daarna alleen wat afwijkt (utils/wcVoorraad.ts).
+    const voorraadPa: Record<number, number> = {};
     try {
       let bijgewerkt = 0;
       // Fouten per artikel verzamelen i.p.v. de hele push afbreken: één trage
@@ -1373,6 +1344,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
             continue;
           }
           if (volledig && art._pa) gesynct[art.id] = {wc_id: r.vooraf.id, permalink: r.vooraf.permalink};
+          if (art._pa) voorraadPa[art.id] = beschikbaar;
           // De stand die verstuurd/ontvangen is, ook bij de voorraadpush (de
           // winkel meldt zijn meta terug; die push verandert hem niet).
           if (themaAan && art._pa) {
@@ -1386,11 +1358,12 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
         }
       }
       setWcCreds((prev: any) => ({...prev, lastSync: new Date().toISOString()}));
-      if (Object.keys(gesynct).length || Object.keys(standen).length) {
+      if (Object.keys(gesynct).length || Object.keys(standen).length || Object.keys(voorraadPa).length) {
         const nu = new Date().toISOString();
         setProductArtikelen((prev: any[]) => prev.map((a: any) => {
-          if (!gesynct[a.id] && !standen[a.id]) return a;
-          const wc = gesynct[a.id] ? {...(a.wc || {}), ...gesynct[a.id], gesynct: nu} : (a.wc || {});
+          if (!gesynct[a.id] && !standen[a.id] && voorraadPa[a.id] === undefined) return a;
+          let wc = gesynct[a.id] ? {...(a.wc || {}), ...gesynct[a.id], gesynct: nu} : (a.wc || {});
+          if (voorraadPa[a.id] !== undefined) wc = metGepushteVoorraad(wc, voorraadPa[a.id], nu);
           return {...a, wc: wcMetStand(wc, standen[a.id], nu)};
         }));
       }

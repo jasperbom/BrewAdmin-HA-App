@@ -7,7 +7,11 @@ import {
 } from './utils/route'
 import { detailTitel } from './utils/detailTitel'
 import { afgeleideThemaKleuren } from './utils/kleurContrast'
-import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet, newId } from './utils/api'
+import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet, wcPut, newId } from './utils/api'
+import { wcVoorraadLijst, gewijzigdeVoorraad, pushWcVoorraad, metGepushteVoorraad, volgendeVoorraadPoging, WC_VOORRAAD_WACHT_MS } from './utils/wcVoorraad'
+import { openBestellingReserveringen } from './utils/calculations'
+import { beschikbaarVoorAfvulling as beschikbaarNaPicks } from './utils/beschikbaarheid'
+import { merchGereserveerd } from './utils/merch'
 import { maakAppIcoon } from './utils/icoon'
 import { tod } from './utils/format'
 import { crafteryLees } from './utils/craftery'
@@ -1590,7 +1594,8 @@ function App() {
   const wcImportRefs = React.useRef<any>({})
   wcImportRefs.current = {artikelen, productArtikelen, producten, bat, btwTarieven, merchArtikelen, btwInst,
     klanten, bestellingen, bestellingPicks, wcCreds, auditLog,
-    mailTemplates, smtpCreds, breweryDetails, appName, logo, factuurLogo}
+    mailTemplates, smtpCreds, breweryDetails, appName, logo, factuurLogo,
+    av, uit, verplaatsingen, afboekingen, locaties, verpakkingen, rol: whoami?.rol}
   // Automatisch versturen aan (Instellingen → E-mailtemplates): de
   // bestelbevestiging voor wat deze import echt nieuw binnenhaalde
   // (`pasImportToe` slaat een bekende order over). Dezelfde mail als op de
@@ -1625,8 +1630,12 @@ function App() {
   // `opMelding`: aangeroepen omdat de server een order meldt die hier nog
   // ontbreekt — dan niet op het interval wachten (utils/wcOrderImport →
   // importLeaseVrij). Timers roepen hem zonder argument aan.
-  const autoImportWc = React.useCallback(async (opMelding: boolean = false) => {
-    if (wcImportBezig.current) return
+  // `forceer`: de automatische voorraadpush wil eerst de nieuwste webshoporders
+  // kennen — dan niet op het interval wachten (wel op de lease van een ander
+  // tabblad). Geeft de bestellingen na de import terug, null als er niet
+  // geïmporteerd is (lease, fout).
+  const autoImportWc = React.useCallback(async (opMelding: boolean = false, forceer: boolean = false): Promise<any[] | null> => {
+    if (wcImportBezig.current) return null
     wcImportBezig.current = true
     const r0 = wcImportRefs.current
     const interval = Math.max(0, Number(r0.wcCreds?.importInterval ?? 15) || 0)
@@ -1638,7 +1647,7 @@ function App() {
       const ontbrekend = opMelding
         ? telNieuweWebshopOrders(status, (await refreshBestellingen()) ?? wcImportRefs.current.bestellingen)
         : 0
-      if (!importLeaseVrij(status, Date.now(), TAB_ID, interval, ontbrekend)) return
+      if (!importLeaseVrij(status, Date.now(), TAB_ID, forceer ? 0 : interval, ontbrekend)) return null
       setWcImportStatus((prev: any) => ({...(prev || {}), bezig_tot: Date.now() + WC_IMPORT_LEASE_MS, door: TAB_ID}))
       leaseGezet = true
       // Verse bestellingen van de server (null = dit tabblad schreef net
@@ -1675,15 +1684,114 @@ function App() {
         schoon.verwijderd.forEach((b: any) => logAudit(wcImportRefs.current.auditLog, setAuditLog, {
           entiteit: 'Bestelling', entiteit_id: b.id, actie: 'verwijderd',
           omschrijving: `Dubbele webshopimport opgeruimd (WC-${b.wc_order_nummer || b.wc_order_id})`}))
+        return schoon.lijst
       }
+      return (res.nieuw.length || Object.keys(res.updates).length) ? pasImportToe(na ?? vers ?? [], res) : (na ?? vers ?? [])
     } catch (e: any) {
       setWcSyncLog((prev: any[]) => [{id: Date.now(), ts: new Date().toISOString(), type: 'fout',
         msg: t('msg_wc_import_failed').replace('{msg}', wcFoutMelding(e, t)), details: e?.message || ''}, ...(prev || [])].slice(0, 100))
       if (leaseGezet) setWcImportStatus((prev: any) => ({...(prev || {}), bezig_tot: null, door: null}))
+      return null
     } finally {
       wcImportBezig.current = false
     }
   }, [wcImportStatus, notificatieInst?.on_screen])
+  const autoImportRef = React.useRef(autoImportWc)
+  autoImportRef.current = autoImportWc
+
+  // ── Voorraad automatisch naar de webshop (utils/wcVoorraad.ts) ──────────
+  // Na een handmatige bestelling, een kassaverkoop of een annulering: anders
+  // blijft een bier dat hier uitverkocht raakt online te koop. Eerst de
+  // webshoporders ophalen (een online bestelling die hier nog ontbreekt,
+  // verlaagde daar de voorraad al — zonder import zou deze push hem weer
+  // ophogen), dan alleen de artikelen sturen die afwijken van de vorige push.
+  // Een paar seconden wachten bundelt een reeks kassaverkopen tot één push.
+  const wcVoorraadTimer = React.useRef<any>(null)
+  const wcVoorraadBezig = React.useRef(false)
+  const wcVoorraadOpnieuw = React.useRef(false)
+  const wcVoorraadMislukt = React.useRef(0)
+  const voerVoorraadPushUit = async (): Promise<void> => {
+    if (wcVoorraadBezig.current) { wcVoorraadOpnieuw.current = true; return }
+    wcVoorraadBezig.current = true
+    const log = (type: string, msg: string, details = '') =>
+      setWcSyncLog((prev: any[]) => [{id: Date.now() + Math.random(), ts: new Date().toISOString(), type, msg, details}, ...(prev || [])].slice(0, 100))
+    try {
+      const r0 = wcImportRefs.current
+      if (!r0.wcCreds?.enabled || !r0.wcCreds?.storeUrl || r0.wcCreds?.voorraadAutoPush === false) return
+      const versBestellingen = await autoImportRef.current(false, true)
+      if (versBestellingen === null) {
+        // Geen verse webshoporders (ander tabblad importeert, winkel
+        // onbereikbaar): dan niet pushen, maar straks opnieuw (utils/wcVoorraad).
+        const wacht = volgendeVoorraadPoging(wcVoorraadMislukt.current)
+        if (wacht !== null) {
+          wcVoorraadMislukt.current += 1
+          clearTimeout(wcVoorraadTimer.current)
+          wcVoorraadTimer.current = setTimeout(() => { void voerVoorraadPushUit() }, wacht)
+        } else {
+          wcVoorraadMislukt.current = 0
+          log('fout', t('msg_wc_voorraad_geen_import'))
+          setWcAutoMelding(t('msg_wc_voorraad_geen_import'))
+          setTimeout(() => setWcAutoMelding(''), 12000)
+        }
+        return
+      }
+      wcVoorraadMislukt.current = 0
+      const r = wcImportRefs.current
+      const bestellingenNu = versBestellingen
+      const picks = r.bestellingPicks || []
+      const voorraadData = {bestellingPicks: picks, bestellingen: bestellingenNu, uit: r.uit || [], afboekingen: r.afboekingen || [],
+        locaties: r.locaties || [], verplaatsingen: r.verplaatsingen || []} as any
+      const lijst = wcVoorraadLijst({
+        productArtikelen: r.productArtikelen, producten: r.producten, artikelen: r.artikelen, merchArtikelen: r.merchArtikelen,
+        merchGereserveerd: merchGereserveerd(bestellingenNu, r.merchArtikelen || []),
+      }, {
+        afvullingen: r.av || [], batches: r.bat || [], verpakkingen: r.verpakkingen || [],
+        reserveringen: openBestellingReserveringen(bestellingenNu, picks),
+        beschikbaar: (a: any) => beschikbaarNaPicks(a, voorraadData),
+        skuData: {producten: r.producten, productArtikelen: r.productArtikelen, artikelen: r.artikelen, merchArtikelen: r.merchArtikelen},
+      })
+      const teDoen = gewijzigdeVoorraad(lijst)
+      if (!teDoen.length) return
+      const uitkomst = await pushWcVoorraad(teDoen, {get: wcGet, put: wcPut})
+      // Onthouden wat er verstuurd is — alleen als deze rol die lijst mag
+      // schrijven; anders stuurt de volgende push hetzelfde nog eens (onschuldig).
+      const nu = new Date().toISOString()
+      const per = (soort: string) => new Map(uitkomst.gelukt.filter(g => g.soort === soort).map(g => [g.id, g.voorraad]))
+      const pa = per('product_artikel'), art = per('artikel'), merch = per('merch')
+      const bij = (lijstIn: any[], m: Map<any, number>, sleutel: (x: any) => any) =>
+        (lijstIn || []).map((x: any) => m.has(sleutel(x)) ? {...x, wc: metGepushteVoorraad(x.wc, m.get(sleutel(x))!, nu)} : x)
+      if (pa.size && rolMagKey(r.rol, 'product_artikelen')) setProductArtikelen((prev: any[]) => bij(prev, pa, (x: any) => x.id))
+      if (art.size && rolMagKey(r.rol, 'artikelen')) setArtikelen((prev: any[]) => bij(prev, art, (x: any) => x.id ?? x.key))
+      if (merch.size && rolMagKey(r.rol, 'merch_artikelen')) setMerchArtikelen((prev: any[]) => bij(prev, merch, (x: any) => x.id))
+      if (uitkomst.gelukt.length) {
+        log('push', t('msg_wc_voorraad_auto').replace('{lijst}',
+          uitkomst.gelukt.map(g => `${g.naam}: ${g.voorraad}×`).join(', ')))
+      }
+      const misluktNamen = [...uitkomst.onbekend.map(o => o.naam), ...uitkomst.mislukt.map(m => m.regel.naam)]
+      for (const o of uitkomst.onbekend) log('fout', t('msg_wc_sku_onbekend').replace('{sku}', o.sku).replace('{naam}', o.naam))
+      for (const m of uitkomst.mislukt) log('fout', `${m.regel.naam} — ${wcFoutMelding(m.fout, t)}`, String((m.fout as any)?.message || ''))
+      if (misluktNamen.length) {
+        setWcAutoMelding(t('msg_wc_voorraad_auto_mislukt').replace('{namen}', misluktNamen.slice(0, 3).join(', ') + (misluktNamen.length > 3 ? '…' : '')))
+        setTimeout(() => setWcAutoMelding(''), 12000)
+      }
+    } catch (e: any) {
+      log('fout', t('msg_wc_push_failed').replace('{msg}', wcFoutMelding(e, t)), e?.message || '')
+    } finally {
+      wcVoorraadBezig.current = false
+      if (wcVoorraadOpnieuw.current) {
+        wcVoorraadOpnieuw.current = false
+        voorraadNaarWebshop()
+      }
+    }
+  }
+  // Voor de pagina's: "de voorraad is net veranderd".
+  const voorraadNaarWebshop = () => {
+    const c = wcImportRefs.current.wcCreds
+    if (!c?.enabled || !c?.storeUrl || c?.voorraadAutoPush === false) return
+    clearTimeout(wcVoorraadTimer.current)
+    wcVoorraadTimer.current = setTimeout(() => { void voerVoorraadPushUit() }, WC_VOORRAAD_WACHT_MS)
+  }
+
   React.useEffect(() => {
     if (!wcAutoImportAan) return
     // Eerste ronde kort na het laden, met wat spreiding zodat twee tabbladen
@@ -2596,8 +2704,8 @@ function App() {
           : <BatchesPage {...batchFlowProps} stand={batchesStand} onStand={kiesBatchesStand} />)}
         {page==='tool_phcorrectie' && <GereedschapPage tool="ph" />}
         {page==='tool_waterprofiel' && <GereedschapPage tool="water" waterProfielen={waterProfielen} setWaterProfielen={setWaterProfielen} waterDoelprofielen={waterDoelprofielen} setWaterDoelprofielen={setWaterDoelprofielen} claudeCreds={claudeCreds} />}
-        {page==='bestellingen' && <BestellingenPage bat={bat} av={av} afvulSessies={afvulSessies} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} recordId={recordId} onOpenRecord={openRecord('bestellingen')} gaNaar={gaNaar} verliesRegistraties={verliesRegistraties} conditionerenDagen={planningInst?.conditioneren_dagen} recepten={recepten} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} accijnsAangiftes={accijnsAangiftes} afboekingen={afboekingen} smtpCreds={smtpCreds} mollieCreds={mollieCreds} mailTemplates={mailTemplates} btwTarieven={btwTarieven} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} setJournaal={setJournaal} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} navDoel={doelVoor('bestellingen')} onNavDoelConsumed={wisNavDoel} verkoopCtx={verkoopCtx} />}
-        {page==='kassa' && <KassaPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} producten={producten} productArtikelen={productArtikelen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} factuurLogo={factuurLogo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} klanten={klanten} setKlanten={setKlanten} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsAangiftes={accijnsAangiftes} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} gaNaar={gaNaar} />}
+        {page==='bestellingen' && <BestellingenPage bat={bat} av={av} afvulSessies={afvulSessies} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} wcCreds={wcCreds} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} logo={logo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} factuurLogo={factuurLogo} recordId={recordId} onOpenRecord={openRecord('bestellingen')} gaNaar={gaNaar} verliesRegistraties={verliesRegistraties} conditionerenDagen={planningInst?.conditioneren_dagen} recepten={recepten} klanten={klanten} setKlanten={setKlanten} auditLog={auditLog} setAuditLog={setAuditLog} producten={producten} productArtikelen={productArtikelen} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} accijnsAangiftes={accijnsAangiftes} afboekingen={afboekingen} smtpCreds={smtpCreds} mollieCreds={mollieCreds} mailTemplates={mailTemplates} btwTarieven={btwTarieven} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} setJournaal={setJournaal} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} navDoel={doelVoor('bestellingen')} onNavDoelConsumed={wisNavDoel} verkoopCtx={verkoopCtx} onVoorraadGewijzigd={voorraadNaarWebshop} />}
+        {page==='kassa' && <KassaPage bat={bat} av={av} uit={uit} setUit={setUit} acc={acc} setAcc={setAcc} artikelen={artikelen} verpakkingen={verpakkingen} producten={producten} productArtikelen={productArtikelen} bestellingen={bestellingen} setBestellingen={setBestellingen} bestellingPicks={bestellingPicks} setBestellingPicks={setBestellingPicks} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} accijnsInst={accijnsInst} breweryDetails={breweryDetails} appName={appName} factuurLogo={factuurLogo} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} log={log} setLog={setLog} klanten={klanten} setKlanten={setKlanten} locaties={locaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} accijnsAangiftes={accijnsAangiftes} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} btwInst={btwInst} btwTarieven={btwTarieven} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} gaNaar={gaNaar} onVoorraadGewijzigd={voorraadNaarWebshop} />}
         {page==='klanten' && <KlantenPage klanten={klanten} setKlanten={setKlanten} bestellingen={bestellingen} setBestellingen={setBestellingen} verkoopFacturen={verkoopFacturen} breweryDetails={breweryDetails} smtpCreds={smtpCreds} factuurLogo={factuurLogo} logo={logo} appName={appName} setPage={setPage} gaNaar={gaNaar} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('klanten')} onNavDoelConsumed={wisNavDoel} />}
         {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} bestellingen={bestellingen} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} />}
         {page==='voorraad' && <VoorraadPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} bi={bi} lots={lots} setLots={setLots} ing={ing} log={log} setLog={setLog} producten={producten} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} setAfboekingen={setAfboekingen} accijnsInst={accijnsInst} accijnsAangiftes={accijnsAangiftes} verliezen={verliesRegistraties} bestellingen={bestellingen} bestellingPicks={bestellingPicks} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('voorraad')} onNavDoelConsumed={wisNavDoel} />}

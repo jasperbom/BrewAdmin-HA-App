@@ -5615,5 +5615,11 @@
   "order_afrond_auto_factuur": "La factura se enviará automáticamente a {email}",
   "order_afrond_auto_pakbon": "El albarán se enviará automáticamente a {email}",
   "mail_auto_mislukt": "{mail} no se pudo enviar automáticamente a {email}: {fout}",
-  "mail_auto_geen_smtp": "{mail} no se ha enviado automáticamente: no hay ningún servidor de correo configurado."
+  "mail_auto_geen_smtp": "{mail} no se ha enviado automáticamente: no hay ningún servidor de correo configurado.",
+  "settings_wc_voorraad_auto_title": "Actualizar el stock automáticamente",
+  "settings_wc_voorraad_auto_hint": "Tras un pedido manual, una venta en caja o una cancelación, el nuevo stock se envía automáticamente a la tienda online, para que lo que se agota aquí ya no se pueda pedir online. Primero se recuperan los pedidos nuevos de la tienda; después solo se envían los artículos cuyo stock ha cambiado.",
+  "settings_wc_voorraad_auto": "Enviar el stock a la tienda automáticamente tras una venta",
+  "msg_wc_voorraad_auto": "Stock actualizado automáticamente tras una venta: {lijst}",
+  "msg_wc_voorraad_auto_mislukt": "No se pudo enviar el stock de {namen} a la tienda. Consulta el registro de WooCommerce o envía el stock a mano.",
+  "msg_wc_voorraad_geen_import": "Stock no enviado a la tienda: no se pudieron obtener antes los pedidos de la tienda. Envía el stock a mano en Productos cuando la tienda vuelva a estar disponible."
 }

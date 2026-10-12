@@ -5615,5 +5615,11 @@
   "order_afrond_auto_factuur": "The invoice will be emailed automatically to {email}",
   "order_afrond_auto_pakbon": "The packing slip will be emailed automatically to {email}",
   "mail_auto_mislukt": "{mail} could not be emailed automatically to {email}: {fout}",
-  "mail_auto_geen_smtp": "{mail} was not emailed automatically: no email server has been set up."
+  "mail_auto_geen_smtp": "{mail} was not emailed automatically: no email server has been set up.",
+  "settings_wc_voorraad_auto_title": "Update stock automatically",
+  "settings_wc_voorraad_auto_hint": "After a manual order, a POS sale or a cancellation the new stock goes to the webshop automatically, so whatever sells out here can no longer be ordered online. New webshop orders are fetched first; then only the items whose stock changed are sent.",
+  "settings_wc_voorraad_auto": "Send stock to the webshop automatically after a sale",
+  "msg_wc_voorraad_auto": "Stock updated automatically after a sale: {lijst}",
+  "msg_wc_voorraad_auto_mislukt": "The stock of {namen} could not be sent to the webshop. See the WooCommerce log or push the stock manually.",
+  "msg_wc_voorraad_geen_import": "Stock not sent to the webshop: the webshop orders could not be fetched first. Push the stock manually on Products once the webshop is reachable again."
 }

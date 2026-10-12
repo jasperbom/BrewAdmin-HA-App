@@ -5615,5 +5615,11 @@
   "order_afrond_auto_factuur": "De factuur wordt automatisch gemaild naar {email}",
   "order_afrond_auto_pakbon": "De pakbon wordt automatisch gemaild naar {email}",
   "mail_auto_mislukt": "{mail} kon niet automatisch gemaild worden naar {email}: {fout}",
-  "mail_auto_geen_smtp": "{mail} is niet automatisch gemaild: er is geen e-mailserver ingesteld."
+  "mail_auto_geen_smtp": "{mail} is niet automatisch gemaild: er is geen e-mailserver ingesteld.",
+  "settings_wc_voorraad_auto_title": "Voorraad automatisch bijwerken",
+  "settings_wc_voorraad_auto_hint": "Na een handmatige bestelling, een kassaverkoop of een annulering gaat de nieuwe voorraad vanzelf naar de webshop, zodat wat hier uitverkocht raakt online niet meer te bestellen is. Eerst worden nieuwe webshopbestellingen opgehaald; daarna gaan alleen de artikelen waarvan de voorraad veranderde.",
+  "settings_wc_voorraad_auto": "Voorraad na een verkoop automatisch naar de webshop",
+  "msg_wc_voorraad_auto": "Voorraad automatisch bijgewerkt na een verkoop: {lijst}",
+  "msg_wc_voorraad_auto_mislukt": "De voorraad van {namen} kon niet naar de webshop. Zie het WooCommerce-logboek of push de voorraad met de hand.",
+  "msg_wc_voorraad_geen_import": "Voorraad niet naar de webshop gestuurd: de webshopbestellingen konden niet eerst worden opgehaald. Push de voorraad met de hand op Producten zodra de webshop weer bereikbaar is."
 }

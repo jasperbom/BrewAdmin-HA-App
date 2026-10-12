@@ -4,6 +4,40 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.3] — 2026-10-12
+
+### Voorraad vanzelf naar de webshop na een verkoop
+
+Verkocht je hier iets (een handmatige bestelling of aan de kassa) en raakte
+een bier daardoor uitverkocht, dan stond het online nog te koop tot iemand op
+"↑ Push voorraad" drukte. Nu gaat de nieuwe voorraad vanzelf naar de webshop:
+
+- **Wanneer:** na het opslaan van een handmatige bestelling, na een
+  kassaverkoop en na het annuleren van een bestelling (dan komt de voorraad
+  weer vrij). Een paar seconden na de laatste verkoop, zodat een reeks
+  kassaverkopen één push wordt.
+- **Eerst de webshoporders ophalen.** Een online bestelling die hier nog niet
+  binnen is, heeft de webshopvoorraad al verlaagd; een push zonder die
+  bestelling zou de voorraad weer ophogen. Daarom importeert de app eerst
+  (zonder op het importinterval te wachten) en rekent dan pas. Lukt dat niet,
+  omdat een ander tabblad net importeert of de webshop niet bereikbaar is, dan
+  gaat er niets naar de winkel: de app probeert het een paar keer opnieuw en
+  meldt het daarna.
+- **Alleen wat veranderd is.** Alleen de voorraad (`stock_quantity`) van de
+  artikelen die afwijken van de vorige push; de productkaart in de webshop
+  blijft onaangeroerd. Het artikel onthoudt wat er verstuurd is
+  (`wc.voorraad_gepusht`). Merch met eigen voorraad gaat mee.
+- **Dezelfde telling als de knop.** "↑ Push voorraad" op Producten en de
+  automatische push rekenen nu met één functie (`utils/wcVoorraad.ts`):
+  beschikbaar na picks, uitleveringen en afboekingen, min wat open bestellingen
+  reserveren; een geblokkeerde afvulling staat nooit te koop.
+- **Instelling:** Instellingen → Koppelingen → WooCommerce → *Voorraad automatisch
+  bijwerken* (standaard aan). Een mislukte push staat in het
+  WooCommerce-logboek en als melding in beeld.
+
+Een afboeking of een nieuwe afvulling pusht nog niet vanzelf; daarvoor blijft
+de knop op Producten.
+
 ## [1.13.2] — 2026-10-10
 
 ### Annuleringsmail, en elke mail bij een bestelling kan automatisch

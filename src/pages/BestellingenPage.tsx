@@ -141,6 +141,8 @@ interface BestellingenPageProps {
   smtpCreds?: any
   mollieCreds?: any
   mailTemplates?: any
+  /** Na een handmatige bestelling of een annulering: de nieuwe voorraad naar de webshop (App.tsx). */
+  onVoorraadGewijzigd?: () => void
   btwTarieven?: (number | string)[]
   btwInst?: any
   btwAangiftes?: any[]
@@ -180,6 +182,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   smtpCreds={enabled:false},
   mollieCreds={enabled:false},
   mailTemplates={},
+  onVoorraadGewijzigd,
   btwTarieven=[0, 9, 21],
   btwInst={}, btwAangiftes=[], bankKoppelingen={},
   setJournaal=()=>{},
@@ -711,6 +714,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     logAudit(auditLog, setAuditLog, {entiteit:'Bestelling', entiteit_id:nb.id, actie:'aangemaakt', omschrijving:`Handmatig — ${nb.klant_naam}`})
     // Automatisch versturen aan: de bestelbevestiging (de bestelling gaat op Bevestigd).
     bevestigAutomatisch([nb])
+    // Het bestelde bier is gereserveerd: online is er nu minder te koop.
+    onVoorraadGewijzigd?.()
     setShowManualModal(false)
     setManualForm(emptyManual)
     setManualVerzending({enabled: false, naam: '', prijs: '', btw_pct: '21'})
@@ -1530,6 +1535,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       // `cancelled` en zijn voorraad terugboeken — net als BrewAdmin nu doet.
       void schrijfTerugNaarWc({...selectedOrder, status: 'geannuleerd'}, 'geannuleerd',
         teruggeboekt ? {uitgeslagen: false} : undefined)
+      // De reservering valt weg (en teruggedraaid bier ligt er weer): online
+      // weer te koop. Een webshoporder boekt WooCommerce bij `cancelled` zelf
+      // terug; de push zet dan hetzelfde getal.
+      onVoorraadGewijzigd?.()
       setShowAnnuleerModal(false)
       // De annuleringsmail, met de creditnota als die er net kwam.
       if (annuleerMailen) {

@@ -771,13 +771,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setBfTesting(false);
   };
 
-  const [wcForm, setWcForm] = React.useState<any>({storeUrl: wcCreds?.storeUrl||'', consumerKey: wcCreds?.consumerKey||'', consumerSecret: wcCreds?.consumerSecret||'', enabled: wcCreds?.enabled||false, importStatussen: wcCreds?.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds?.importVanaf || '', prijzenInclBtw: wcCreds?.prijzenInclBtw !== false, themaVelden: wcCreds?.themaVelden !== false, terugschrijven: wcCreds?.terugschrijven === true, importInterval: wcCreds?.importInterval ?? 15, bestelUrl: wcCreds?.bestelUrl || ''});
+  const [wcForm, setWcForm] = React.useState<any>({storeUrl: wcCreds?.storeUrl||'', consumerKey: wcCreds?.consumerKey||'', consumerSecret: wcCreds?.consumerSecret||'', enabled: wcCreds?.enabled||false, importStatussen: wcCreds?.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds?.importVanaf || '', prijzenInclBtw: wcCreds?.prijzenInclBtw !== false, themaVelden: wcCreds?.themaVelden !== false, terugschrijven: wcCreds?.terugschrijven === true, voorraadAutoPush: wcCreds?.voorraadAutoPush !== false, importInterval: wcCreds?.importInterval ?? 15, bestelUrl: wcCreds?.bestelUrl || ''});
   const [wcTesting, setWcTesting] = React.useState(false);
   const [wcMsg, setWcMsg] = React.useState('');
   const wcFormInitialized = React.useRef(false);
   React.useEffect(() => {
     if (!wcFormInitialized.current && (wcCreds?.storeUrl || wcCreds?.consumerKey || wcCreds?.enabled)) {
-      setWcForm({storeUrl: wcCreds.storeUrl||'', consumerKey: wcCreds.consumerKey||'', consumerSecret: wcCreds.consumerSecret||'', enabled: wcCreds.enabled||false, importStatussen: wcCreds.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds.importVanaf || '', prijzenInclBtw: wcCreds.prijzenInclBtw !== false, themaVelden: wcCreds.themaVelden !== false, terugschrijven: wcCreds.terugschrijven === true, importInterval: wcCreds.importInterval ?? 15, bestelUrl: wcCreds.bestelUrl || ''});
+      setWcForm({storeUrl: wcCreds.storeUrl||'', consumerKey: wcCreds.consumerKey||'', consumerSecret: wcCreds.consumerSecret||'', enabled: wcCreds.enabled||false, importStatussen: wcCreds.importStatussen || WC_IMPORT_STATUSSEN_DEFAULT, importVanaf: wcCreds.importVanaf || '', prijzenInclBtw: wcCreds.prijzenInclBtw !== false, themaVelden: wcCreds.themaVelden !== false, terugschrijven: wcCreds.terugschrijven === true, voorraadAutoPush: wcCreds.voorraadAutoPush !== false, importInterval: wcCreds.importInterval ?? 15, bestelUrl: wcCreds.bestelUrl || ''});
       wcFormInitialized.current = true;
     }
   }, [wcCreds?.storeUrl, wcCreds?.consumerKey, wcCreds?.enabled]);
@@ -2286,6 +2286,20 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 )}
               </div>
             )}
+          </div>
+          {/* Voorraad automatisch bijwerken na een verkoop hier (handmatige
+              bestelling, kassa, annulering) — utils/wcVoorraad.ts. Standaard
+              aan: zonder loopt de webshop achter en wordt er verkocht wat er
+              niet meer is. */}
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-1">{t('settings_wc_voorraad_auto_title')}</h3>
+            <p className="text-xs text-gray-500 mb-3">{t('settings_wc_voorraad_auto_hint')}</p>
+            <label className="flex items-center gap-2 cursor-pointer w-fit">
+              <input type="checkbox" checked={wcForm.voorraadAutoPush !== false}
+                onChange={(e: any) => setWcForm((f: any) => ({...f, voorraadAutoPush: e.target.checked}))}
+                className="w-4 h-4 rounded border-gray-300 t-checkbox" />
+              <span className="text-sm font-medium text-gray-700">{t('settings_wc_voorraad_auto')}</span>
+            </label>
           </div>
           {/* Terugschrijven: verzonden/afgerond → voltooid, geannuleerd →
               geannuleerd (alleen zolang er niets is uitgeslagen — zie
