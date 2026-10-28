@@ -59,8 +59,9 @@ BrewAdmin-HA-App/
 │   │   │                           # lot, lotvenster Ingrediënten), ItemKiezer, InkoopTotalen, Onderblad, Segment
 │   │   ├── InkoopInbox.tsx         # Facturen › Inkoop → status "Te verwerken": de wachtrij met doorgestuurde PDF-facturen
 │   │   ├── InkoopMailInstellingen.tsx # Instellingen → Koppelingen → Facturen per e-mail (`imap_creds`, test, status)
-│   │   ├── RuimtekoelingInstellingen.tsx # Instellingen → Home Assistant → "Airco bij te warme tanks":
-│   │   │                           # airco's, tanks, drempels en de status per airco (`ruimtekoeling_status`)
+│   │   ├── RuimteklimaatInstellingen.tsx # Instellingen → Home Assistant → "Ruimteklimaat bijsturen":
+│   │   │                           # apparaten (koelen/verwarmen/beide), tanks, drempels en de status per
+│   │   │                           # apparaat (`ruimteklimaat_status`)
 │   │   ├── AllergenenOpzoeken.tsx  # Blad "Allergenen opzoeken" (één voor de hele app, net als Etiket bijwerken):
 │   │   │                           # per ingrediënt het voorstel met bron, aanvinken, Aanpassen, Overnemen. Open
 │   │   │                           # het met `useAllergenenOpzoeken()?.open(ingredientIds)` — null zonder schrijfrecht
@@ -243,10 +244,10 @@ BrewAdmin-HA-App/
 │   │   │                   # schema/cold-crash), tolerantieband, instelruimte na een setpoint-/
 │   │   │                   # stapwissel, wegloopdetectie (Theil-Sen-trend) en sensorstilte —
 │   │   │                   # server.py spiegelt deze regels in Python
-│   │   ├── ruimtekoeling.ts # Airco bijzetten als een tank zijn setpoint niet haalt: opslagvorm
-│   │   │                   # (`ha_instellingen.ruimtekoeling`), defaults (= `_RUIMTEKOELING_DEFAULTS`,
-│   │   │                   # pytest bewaakt het) en de statusteksten. De regeling zelf zit in
-│   │   │                   # server.py (`_ruimtekoeling_tick`), zie "Home Assistant" hieronder
+│   │   ├── ruimteklimaat.ts # De ruimte bijsturen (koelen/verwarmen) als een tank zijn setpoint niet
+│   │   │                   # haalt: opslagvorm (`ha_instellingen.ruimteklimaat`), defaults
+│   │   │                   # (= `_RUIMTEKLIMAAT_DEFAULTS`, pytest bewaakt het) en de statusteksten. De
+│   │   │                   # regeling zelf zit in server.py (`_ruimteklimaat_tick`), zie "Home Assistant"
 │   │   ├── haccp.ts        # Kritische beheerspunten CCP 1/2/3: risicoklasse, stabiliteit, vrijgave-oordeel, sluitcontrole, allergenenvergelijking, afwijkingen
 │   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch>-B<n>, THT per klasse, sessie-blokkades
 │   │   ├── agp.ts          # Verplaatsen/uitslaan uit de AGP (verplaatsing + accijns), uitslag op
@@ -809,11 +810,14 @@ WooCommerce ontbreekt, en ruimt de site op bij uitzetten) en de tanktemperatuurb
 zelf, het uitlezen van het werkelijke climate-setpoint én de
 alarmadministratie; tests bewaken dat de drempel-defaults en de
 setpoint-leeftijd in server.py en tankbewaking.ts gelijk blijven).
-`TestRuimtekoeling` bewaakt de airco bij een te warme tank: "haalt het niet"
-(hangt boven het doel, zakt niet; níét vlak na een setpointwissel of bij een
-zakkende cold crash), nooit kouder dan de warmste tank, nooit een draaiende
-airco overnemen, loslaten na handmatig ingrijpen (ook bij een afgerond
-setpoint), minimale looptijd, opruimen bij uitzetten — de tick tegen een nep-airco.
+`TestRuimteklimaat` bewaakt het bijsturen van de ruimte: "haalt het niet" aan
+beide kanten (hangt naast het doel en nadert niet; níét vlak na een
+setpointwissel of bij een zakkende cold crash), alleen de ingestelde richting,
+niets bij een tegenstrijdige vraag, koelen nooit kouder dan de warmste tank en
+verwarmen nooit warmer dan de tank die warmte vraagt, de andere tanks
+beschermd, nooit een draaiend apparaat overnemen, loslaten na handmatig
+ingrijpen (ook bij een afgerond setpoint), minimale looptijd, opruimen bij
+uitzetten — de tick tegen een nep-apparaat.
 De facturen per e-mail hebben een eigen blok: `_inbox_lees_bericht` (PDF's herkennen
 op inhoud i.p.v. type of naam, doorgestuurd als bijlage, afzenderfilter, dubbel, grenzen,
 kapotte invoer), de ophaalronde tegen een nepclient én tegen een echte mini-IMAP-server
@@ -1391,7 +1395,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `afboekingen` | array | Biervoorraadbewegingen (vermis, vernietiging, overig). `bron_locatie_id` = waar het bier lág — bepaalt van welke locatie het afgaat én of er accijns verschuldigd wordt. Ontbreekt op records van vóór v1.12.52; die gelden als AGP |
 | `klanten` | array | Klanten |
 | `gist_metingen` | array | Gistingsmetingen per batch. Automatische metingen (`auto: true`, server-tick `_auto_metingen_tick`) dragen naast de lokale `datum`/`tijd` een absoluut `ts` (ISO met offset) — dat gaat in de bewaking voor (`_meting_epoch`/`metingTs`), anders geeft de wintertijdwissel een vals "sensor stil". De server dunt automatische metingen ouder dan 48 u eens per dag uit tot één per batch per uur (`_dun_auto_metingen`); handmatige rijen blijven altijd staan |
-| `ruimtekoeling_status` | object | Welke airco de app voor de tanks aanzette, alleen door de server geschreven (`_ruimtekoeling_tick`): `{laatste_check, koelers: {<entity>: {eigen, sinds, setpoint, gezien_setpoint, doel_setpoint, pauze_tot, stand, reden, airco_stand, ruimte, tank, laatste_actie, fout}}}`. `eigen` = de app zette hem aan en hij staat nog zo; alleen dan zet de app hem ook weer uit. Beheer-only, de app leest hem met een gewone GET. Niet in de Excel-backup, niet terug te zetten (regenereert) |
+| `ruimteklimaat_status` | object | Welk klimaatapparaat de app voor de tanks aanzette, alleen door de server geschreven (`_ruimteklimaat_tick`): `{laatste_check, apparaten: {<entity>: {eigen, richting, sinds, setpoint, gezien_setpoint, doel_setpoint, pauze_tot, stand, reden, apparaat_stand, ruimte, tank, laatste_actie, fout}}}`. `eigen` = de app zette het aan en het staat nog zo; alleen dan zet de app het ook weer uit. Beheer-only, de app leest hem met een gewone GET. Niet in de Excel-backup, niet terug te zetten (regenereert) |
 | `tank_setpoints` | array | Werkelijk setpoint per tank, gelezen van de gekoppelde climate-entity door de server-tick `_lees_tank_setpoints`: `{tank, entity, setpoint, sinds, gezien}`. `sinds` = moment van de laatste setpoint-wissel (leeg bij de eerste waarneming — een herstart mag geen instelvenster starten), `gezien` = laatste geslaagde uitlezing (ouder dan 2 uur = terugval op het schema). Alleen de server schrijft hier; bewust **niet** in de Excel-backup (regenereert vanzelf) |
 | `wc_import_status` | object | Stand van de automatische WooCommerce-import. Server (`_wc_orders_tick`, interval = `woocommerce_creds.importInterval`): `nieuw` = webshoporders die nog niet als bestelling bestaan, `gemeld_ids` = waarvoor al een HA-melding ging, `laatste_check`/`laatste_fout`. Tabbladen: `bezig_tot`/`door` = import-lease, `laatste_import*`. Bewust **niet** beheer-only (elke schrijvende rol importeert) en niet in de backup (regenereert). De import zelf blijft in de app (`utils/wcOrderImport.ts`) |
 | `website_telemetrie` | object | Website-telemetrie naar de plugin Craftery Brouwerij: `{enabled, interval_min (15–240, default 60), onderdelen: {gisting, sensoren, hop_kg, mout_kg, liters_tank, liters_verpakt, batches_gebrouwen}}` — alles standaard uit, alleen een echte `true` telt. **Beheer-only**; wel in de Excel-backup |
@@ -1422,7 +1426,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `login_instellingen` | object | Styling van de loginpagina op de directe-toegangspoort: titel/ondertitel/knoptekst, accent-/achtergrondkleur (hex), achtergrondafbeelding (data-url), `logo_tonen`. Server rendert met strikte validatie (`_login_pagina`) — pre-auth, dus nooit ongefilterd |
 | `factuur_counter` | object | *(legacy)* Doorlopend factuurnummer per jaar — vervangen door `nummer_reeksen`, alleen nog als migratie-seed gelezen |
 | `nummer_reeksen` | object | Server-beheerde nummerreeksen (`factuur`/`creditnota` per jaar; `bestelling` = kort doorlopend `M-`-nummer voor handmatige orders, geen jaarreset), atomair uitgegeven via `POST /api/nextnr` — nooit client-side muteren |
-| `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`, en `bewaking` = drempels van de temperatuurbewaking; leeg veld = default uit `utils/tankbewaking.ts`; `ruimtekoeling` = airco bij een te warme tank: `{enabled, start_marge, start_min, daling, stop_marge, stop_min, koelers: [{id, entity, setpoint, tanks, zelfde_ruimte}]}`, defaults in `utils/ruimtekoeling.ts`) |
+| `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`, en `bewaking` = drempels van de temperatuurbewaking; leeg veld = default uit `utils/tankbewaking.ts`; `ruimteklimaat` = de ruimte bijsturen als een tank zijn setpoint niet haalt: `{enabled, start_marge, start_min, herstel, stop_marge, stop_min, apparaten: [{id, entity, richting (koelen/verwarmen/beide), koelen_tot, verwarmen_tot, tanks, zelfde_ruimte}]}`, defaults in `utils/ruimteklimaat.ts`) |
 | `notificatie_instellingen` | object | Meldingsinstellingen: HA `notify`-service + scherm-melding (herbruikbaar voor alle notificaties) |
 | `bank_koppelingen` | object | Koppeling banktransacties (sleutel `txKey`) aan facturen, BTW, accijns, SNd, kapitaal, aflossing en PSP-bundels — dé bron van wat er gekoppeld is; de vlaggen op `bank_transacties` volgen hieruit (zie hieronder) |
 | `app_logo` | string\|null | Base64 app-logo |
@@ -1449,7 +1453,7 @@ Backup en restore gaan via Excel (`.xlsx`) — **niet** via JSON. De functies `e
 - **Bestandsstructuur:** 81 array-sheets (één per datasleutel, `bouwBackupWerkboek`; o.a. `BankTransacties` en `BankAfschriften` voor de bewaarde bankafschriften, `AccijnsAangiftes`, `BtwAangiftes`, `Journaal`; lijsten van losse waarden als rijen `{waarde}`) + één `Instellingen`-sheet voor objects (`INST_JSON_KEYS`, o.a. `bank_koppelingen` en `bank_saldi`), primitieven en logo's
 - **Geneste objecten** binnen array-items worden als JSON-string opgeslagen en bij import teruggeparsed
 - **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`, `imap_creds`) zitten **nooit** in de Excel-backup en alleen gemaskeerd in de download-ZIP van een serverbackup (zonder db-kopie, `_backup_to_zip`); de serverbackup op schijf en offsite bevat ze **alleen versleuteld** (ERP 5.8, zie "Security constraints"), zodat die volledig herstelbaar blijft zonder leesbare geheimen
-- **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`, `website_telemetrie_status`, `inkoop_inbox_status`, `ruimtekoeling_status`) staat bewust niet in de backup — die regenereert vanzelf
+- **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`, `website_telemetrie_status`, `inkoop_inbox_status`, `ruimteklimaat_status`) staat bewust niet in de backup — die regenereert vanzelf
 
 Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `excelExport` (nieuw sheet of rij in Instellingen) én aan de import-callback in `doImport`.
 
@@ -1874,24 +1878,28 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 - Addon ingress at port 8099
 - `X-Ingress-Path` header used to detect HA environment
 - HA Supervisor API accessed for token/info if needed
-- **Ruimtekoeling** (`_ruimtekoeling_tick`, in de loop van de tankbewaking, elke
+- **Ruimteklimaat** (`_ruimteklimaat_tick`, in de loop van de tankbewaking, elke
   5 min; standaard uit): haalt een tank zijn setpoint niet — al `start_min`
-  minuten `start_marge` erboven, nooit gerekend van vóór de laatste
-  setpointwissel, en hij zakt niet sneller dan `daling` °C/uur — dan zet de
-  server een airco (`climate.*`) op `cool`. Dezelfde tanklijst als de bewaking
-  (`_bewaakte_batches`: `_lees_tank_setpoints` laat tanks buiten de set vallen).
-  Regels die zo moeten blijven: **nooit een airco overnemen** die al aan staat;
-  is hij met de hand bijgesteld (andere modus, of een ander setpoint dan de
-  airco zelf meldde na het zetten — `gezien_setpoint`), dan laat de app hem los
-  en blijft er zes uur vanaf; alleen een airco die nog `eigen` is zet de app
-  weer uit. In dezelfde ruimte (`zelfde_ruimte`, standaard) nooit kouder dan
-  het warmste tank-setpoint en meteen uit als een tank te koud wordt — een tank
-  met alleen koeling kan zichzelf niet opwarmen. Uit na minstens een uur als
-  alle tanks `stop_min` binnen `stop_marge` zijn, en ook zonder bier, zonder
-  verse meting of als de functie uitgaat. Aan/uit: push via
-  `notificatie_instellingen` + serveraudit `ruimtekoeling`. Vloerverwarming of
-  andere verwarming in de ruimte regelt de app niet: dat hoort in een
-  HA-automatisering op de stand van de airco
+  minuten `start_marge` ernaast, nooit gerekend van vóór de laatste
+  setpointwissel, en hij nadert niet sneller dan `herstel` °C/uur — dan zet de
+  server een klimaatapparaat (`climate.*`) op `cool` of `heat`, voor zover het
+  die richting mag (`richting`: koelen/verwarmen/beide). Dezelfde tanklijst als
+  de bewaking (`_bewaakte_batches`: `_lees_tank_setpoints` laat tanks buiten de
+  set vallen). Regels die zo moeten blijven: **nooit een apparaat overnemen**
+  dat al aan staat; is het met de hand bijgesteld (andere modus, of een ander
+  setpoint dan het apparaat zelf meldde na het zetten — `gezien_setpoint`), dan
+  laat de app het los en blijft er zes uur vanaf; alleen een apparaat dat nog
+  `eigen` is zet de app weer uit. Vraagt de ene tank koeling en de andere
+  warmte, dan niets (`tegenstrijdig`). In dezelfde ruimte (`zelfde_ruimte`,
+  standaard): koelen nooit kouder dan het warmste tank-setpoint, verwarmen
+  nooit warmer dan het setpoint van de tanks die warmte vragen (gisttanks
+  hebben vrijwel altijd koeling, zelden verwarming), en meteen uit als een tank
+  de verkeerde kant op gaat. Uit na minstens een uur als alle tanks `stop_min`
+  binnen `stop_marge` zijn, en ook zonder bier, zonder verse meting of als de
+  functie uitgaat. Aan/uit: push via `notificatie_instellingen` + serveraudit
+  `ruimteklimaat`. Andere verwarming of koeling in de ruimte (vloerverwarming)
+  regelt de app niet: dat hoort in een HA-automatisering op de stand van het
+  apparaat
 
 ---
 

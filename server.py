@@ -1931,7 +1931,7 @@ _KEY_TYPES = {
         'brewery_details', 'mail_templates', 'factuur_counter',
         'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
         'wc_import_status', 'website_telemetrie', 'website_telemetrie_status',
-        'inkoop_inbox_status', 'ruimtekoeling_status',
+        'inkoop_inbox_status', 'ruimteklimaat_status',
         'coldcrash_instellingen', 'planning_instellingen',
         'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
         'haccp_instellingen',
@@ -2920,8 +2920,8 @@ _BEHEER_KEYS = frozenset((
     'website_telemetrie', 'website_telemetrie_status',
     # Stand van het postvak met inkoopfacturen: alleen de server schrijft hem.
     'inkoop_inbox_status',
-    # Welke airco de app voor de tanks aanzette: alleen de server schrijft hem.
-    'ruimtekoeling_status',
+    # Welk klimaatapparaat de app voor de tanks aanzette: alleen de server schrijft hem.
+    'ruimteklimaat_status',
 ))
 
 # Financiële vastlegging: alleen `boekhouding` (en `beheer`).
@@ -3237,7 +3237,7 @@ _CLIMATE_ENTITY_RE = re.compile(r'^climate\.[a-z0-9][a-z0-9_-]*$')
 
 
 def _ha_climate_staat(entity_id: str) -> dict | None:
-    """De stand van een climate-entity (airco, thermostaat), of None als hij
+    """De stand van een climate-entity (airco, warmtepomp, thermostaat), of None als hij
     niet te lezen is (HA weg, entity onbekend, `unavailable`/`unknown`).
     `stand` = de hvac-modus (`off`, `cool`, …), `setpoint` = het doel,
     `ruimte` = de gemeten ruimtetemperatuur."""
@@ -5612,8 +5612,8 @@ def _sensor_tanks(ha_inst: dict) -> set:
 
 
 def _bewaakte_batches(batches: list, sensor_tanks: set) -> list:
-    """Batches die écht in een tank met sensor liggen. De bewaking en de
-    ruimtekoeling gebruiken precies deze lijst: `_lees_tank_setpoints` laat de
+    """Batches die écht in een tank met sensor liggen. De bewaking en het
+    ruimteklimaat gebruiken precies deze lijst: `_lees_tank_setpoints` laat de
     regels van tanks buiten de set vallen, dus een kleinere set zou de
     setpointwissels van de andere tanks vergeten."""
     return [b for b in batches or []
@@ -5775,45 +5775,57 @@ def _tank_bewaking_tick() -> None:
              level=logging.INFO if ok else logging.ERROR)
 
 
-# ── Ruimtekoeling: de airco bijzetten als de glycol het niet haalt ──────────
-# Haalt een gisttank zijn setpoint niet — hij hangt boven het doel en zakt niet
-# meer, terwijl de koeling zijn best doet — dan helpt een koelere ruimte: er
-# lekt minder warmte de tank in, en staat de glycolkoeler in dezelfde ruimte,
-# dan koelt ook zijn condensor beter. Deze tick zet daarvoor een airco op
-# koelen en zet hem weer uit zodra de tanks op temperatuur zijn. Opslagvorm en
-# defaults: src/utils/ruimtekoeling.ts (een pytest houdt de defaults gelijk).
+# ── Ruimteklimaat: de ruimte bijsturen als een tank zijn setpoint niet haalt ──
+# Haalt een gisttank zijn setpoint niet met zijn eigen koeling of verwarming —
+# hij blijft ernaast hangen en komt niet meer dichterbij — dan helpt de ruimte
+# eromheen: koeler als de tanks te warm blijven (minder warmte die de koeling
+# moet afvoeren), warmer als ze te koud blijven (een ale in een koude ruimte in
+# de winter). Deze tick zet daarvoor een klimaatapparaat (`climate.*`: airco,
+# warmtepomp, kachel met thermostaat) op koelen of verwarmen en zet het weer uit
+# zodra de tanks op temperatuur zijn. Opslagvorm en defaults:
+# src/utils/ruimteklimaat.ts (een pytest houdt de defaults gelijk).
 #
-#  • "Haalt het niet": minstens `start_marge` boven het doel, al `start_min`
-#    minuten (nooit gerekend van vóór de laatste setpointwissel), en de
-#    temperatuur zakt niet sneller dan `daling` °C/uur. Een tank die na een
-#    stapwissel of in een cold crash netjes zakt, krijgt dus geen airco.
-#  • De app neemt nooit een airco over die al aan staat, en blijft er zes uur
-#    vanaf zodra iemand hem zelf anders zet.
-#  • Staan de tanks in dezelfde ruimte (`zelfde_ruimte`, standaard ja), dan
-#    nooit kouder dan het warmste tank-setpoint — een tank met alleen koeling
-#    kan zichzelf niet opwarmen — en meteen uit als een tank te koud wordt.
+#  • "Haalt het niet": minstens `start_marge` naast het doel, al `start_min`
+#    minuten (nooit gerekend van vóór de laatste setpointwissel), en hij komt
+#    niet sneller dan `herstel` °C/uur dichterbij. Een tank die na een
+#    stapwissel of in een cold crash netjes zakt, krijgt dus geen hulp.
+#  • Per apparaat: koelen, verwarmen of beide. Wil de ene tank koeling en de
+#    andere warmte, dan doet de app niets (`tegenstrijdig`).
+#  • De app neemt nooit een apparaat over dat al aan staat, en blijft er zes uur
+#    vanaf zodra iemand het zelf anders zet.
+#  • Staan de tanks in dezelfde ruimte (`zelfde_ruimte`, standaard ja):
+#    koelen nooit kouder dan het warmste tank-setpoint (een tank met alleen
+#    koeling kan zichzelf niet opwarmen) en meteen uit als een tank te koud
+#    wordt; verwarmen nooit warmer dan het setpoint van de tanks die warmte
+#    nodig hebben en meteen uit als een tank te warm wordt. Bij verwarmen telt
+#    alleen de tank die warmte vraagt, omdat gisttanks vrijwel altijd koeling
+#    hebben (een warmere ruimte vangen ze zelf op) en zelden verwarming.
 #  • Uit als alle tanks `stop_min` minuten binnen `stop_marge` van hun doel zijn
 #    (na minstens een uur), als er geen bewaakte tank of verse meting meer is,
-#    of als de functie of deze airco uit de instellingen verdwijnt.
+#    of als de functie of dit apparaat uit de instellingen verdwijnt.
 
-_RUIMTEKOELING_DEFAULTS = {
+_RUIMTEKLIMAAT_DEFAULTS = {
     'start_marge': 1.0,
     'start_min': 60.0,
-    'daling': 0.2,
+    'herstel': 0.2,
     'stop_marge': 0.3,
     'stop_min': 30.0,
 }
-# Deze twee mogen 0 zijn ("elke daling telt", "pas uit als hij op het doel
+# Deze twee mogen 0 zijn ("elke beweging telt", "pas uit als hij op het doel
 # zit"); de rest moet groter dan 0 zijn, anders geldt de default.
-_RUIMTEKOELING_NUL_MAG = frozenset(('daling', 'stop_marge'))
-_RK_SETPOINT_DEFAULT = 18.0
+_RUIMTEKLIMAAT_NUL_MAG = frozenset(('herstel', 'stop_marge'))
+_RK_KOELEN_TOT_DEFAULT = 18.0
+_RK_VERWARMEN_TOT_DEFAULT = 20.0
+_RK_RICHTINGEN = ('koelen', 'verwarmen', 'beide')
+_RK_HVAC = {'koelen': 'cool', 'verwarmen': 'heat'}
+_RK_ANDERS = {'koelen': 'verwarmen', 'verwarmen': 'koelen'}
 _RK_MIN_AAN_S = _UUR_S          # minstens een uur aan: geen pendelende compressor
 _RK_PAUZE_S = 6 * _UUR_S        # na handmatig ingrijpen blijft de app eraf
-_RK_TREND_S = 3 * _UUR_S        # venster voor "zakt hij nog"
-_RK_KOUD_MARGE = 1.0            # zoveel onder het doel is een tank te koud
+_RK_TREND_S = 3 * _UUR_S        # venster voor "komt hij nog dichterbij"
+_RK_GRENS = 1.0                 # zoveel naast het doel is een tank te koud/te warm
 _RK_TERUGBLIK_S = 24 * _UUR_S   # hoe ver de metingen terug meetellen
 _RK_STATUS_TIK_S = 900          # ongewijzigde status hooguit elk kwartier schrijven
-_RK_TITEL = 'BrewAdmin — ruimtekoeling'
+_RK_TITEL = 'BrewAdmin — ruimteklimaat'
 
 
 def _rk_getal(waarde) -> float | None:
@@ -5821,51 +5833,75 @@ def _rk_getal(waarde) -> float | None:
     return None if isinstance(waarde, bool) else _eindig_of_none(waarde)
 
 
-def _ruimtekoeling_cfg(ha_inst: dict) -> dict:
-    """`ha_instellingen.ruimtekoeling` genormaliseerd: alleen een echte `true`
-    zet hem aan, onzinwaarden vallen terug op de defaults, airco's zonder
-    geldige climate-entity (of dubbel) vallen weg. Spiegelt ruimtekoelingInst()
-    in src/utils/ruimtekoeling.ts."""
-    ruw = (ha_inst or {}).get('ruimtekoeling')
+def _ruimteklimaat_cfg(ha_inst: dict) -> dict:
+    """`ha_instellingen.ruimteklimaat` genormaliseerd: alleen een echte `true`
+    zet hem aan, onzinwaarden vallen terug op de defaults, apparaten zonder
+    geldige climate-entity (of dubbel) vallen weg. Spiegelt ruimteklimaatInst()
+    in src/utils/ruimteklimaat.ts."""
+    ruw = (ha_inst or {}).get('ruimteklimaat')
     ruw = ruw if isinstance(ruw, dict) else {}
     cfg: dict = {'enabled': ruw.get('enabled') is True}
-    for sleutel, default in _RUIMTEKOELING_DEFAULTS.items():
+    for sleutel, default in _RUIMTEKLIMAAT_DEFAULTS.items():
         waarde = _rk_getal(ruw.get(sleutel))
         geldig = waarde is not None and (
-            waarde >= 0 if sleutel in _RUIMTEKOELING_NUL_MAG else waarde > 0)
+            waarde >= 0 if sleutel in _RUIMTEKLIMAAT_NUL_MAG else waarde > 0)
         cfg[sleutel] = waarde if geldig else default
-    koelers, gezien = [], set()
-    for k in ruw.get('koelers') if isinstance(ruw.get('koelers'), list) else []:
-        if not isinstance(k, dict):
+    apparaten, gezien = [], set()
+    for a in ruw.get('apparaten') if isinstance(ruw.get('apparaten'), list) else []:
+        if not isinstance(a, dict):
             continue
-        entity = k.get('entity')
+        entity = a.get('entity')
         if not isinstance(entity, str) or not _CLIMATE_ENTITY_RE.match(entity) or entity in gezien:
             continue
         gezien.add(entity)
-        sp = _rk_getal(k.get('setpoint'))
-        tanks = k.get('tanks') if isinstance(k.get('tanks'), list) else []
-        koelers.append({
+        koelen_tot = _rk_getal(a.get('koelen_tot'))
+        verwarmen_tot = _rk_getal(a.get('verwarmen_tot'))
+        tanks = a.get('tanks') if isinstance(a.get('tanks'), list) else []
+        apparaten.append({
             'entity': entity,
-            'setpoint': sp if sp is not None else _RK_SETPOINT_DEFAULT,
+            'richting': a.get('richting') if a.get('richting') in _RK_RICHTINGEN else 'koelen',
+            'koelen_tot': koelen_tot if koelen_tot is not None else _RK_KOELEN_TOT_DEFAULT,
+            'verwarmen_tot': verwarmen_tot if verwarmen_tot is not None else _RK_VERWARMEN_TOT_DEFAULT,
             'tanks': sorted({str(t).strip() for t in tanks
                              if isinstance(t, (str, int)) and not isinstance(t, bool)
                              and str(t).strip()}),
-            'zelfde_ruimte': k.get('zelfde_ruimte') is not False,
+            'zelfde_ruimte': a.get('zelfde_ruimte') is not False,
         })
-    cfg['koelers'] = koelers
+    cfg['apparaten'] = apparaten
     return cfg
+
+
+def _rk_mag(apparaat: dict, richting: str) -> bool:
+    """Mag dit apparaat in deze richting helpen?"""
+    return apparaat.get('richting') in (richting, 'beide')
+
+
+def _rk_reeks_sinds(punten: list, past) -> float | None:
+    """Begin van de aaneengesloten reeks aan het eind waarvoor `past(temp)`
+    geldt, of None als het laatste punt er al niet aan voldoet."""
+    sinds = None
+    for ts, t in reversed(punten):
+        if not past(t):
+            break
+        sinds = ts
+    return sinds
 
 
 def _rk_tank(doel, doel_sinds, punten: list, now: float, cfg: dict,
              stil_s: float) -> dict:
-    """Wat zegt de reeks van één tank over de ruimtekoeling? `te_warm` = de
-    koeling haalt het doel niet (zie het blok hierboven), `op_temp` = al
-    `stop_min` minuten niet meer dan `stop_marge` boven het doel, `te_koud` =
-    meer dan _RK_KOUD_MARGE eronder. Zonder doel of verse meting (`vers`
+    """Wat zegt de reeks van één tank over het ruimteklimaat?
+
+    `wil` = 'koelen'/'verwarmen': de tank haalt zijn doel niet aan die kant
+    (zie het blok hierboven). `bijna` = hij zit wel buiten de startmarge, maar
+    nog niet lang genoeg of hij komt nog dichterbij. `klaar_koelen` = al
+    `stop_min` minuten niet meer dan `stop_marge` erboven (`klaar_verwarmen`
+    eronder). `te_koud`/`te_warm` = meer dan _RK_GRENS naast het doel: de
+    bescherming van de andere tanks. Zonder doel of verse meting (`vers`
     False) zegt de reeks niets."""
     uit = {'vers': False, 'doel': doel, 'temp': None, 'afwijking': None,
-           'te_warm': False, 'warm_min': None, 'trend': None,
-           'op_temp': False, 'te_koud': False}
+           'wil': None, 'bijna': None, 'buiten_min': None, 'trend': None,
+           'klaar_koelen': False, 'klaar_verwarmen': False,
+           'te_koud': False, 'te_warm': False}
     punten = sorted(punten or [])
     if not punten:
         return uit
@@ -5874,45 +5910,56 @@ def _rk_tank(doel, doel_sinds, punten: list, now: float, cfg: dict,
     if doel is None or now - laatste_ts > stil_s:
         return uit
     afwijking = temp - doel
-    uit.update(vers=True, afwijking=afwijking, te_koud=afwijking < -_RK_KOUD_MARGE)
+    uit.update(vers=True, afwijking=afwijking,
+               te_koud=afwijking < -_RK_GRENS, te_warm=afwijking > _RK_GRENS)
 
     # Van vóór de laatste setpointwissel telt niets: toen gold een ander doel,
-    # en direct na een stap omlaag hoort het bier er per definitie boven.
+    # en direct na een stapwissel hoort het bier er per definitie naast.
     grens = doel_sinds if doel_sinds is not None else float('-inf')
-
-    warm_sinds = None
-    for ts, t in reversed(punten):
-        if t - doel <= cfg['start_marge']:
-            break
-        warm_sinds = ts
-    if warm_sinds is not None:
-        warm_min = (now - max(warm_sinds, grens)) / 60.0
+    marge = cfg['start_marge']
+    for richting, teken in (('koelen', 1.0), ('verwarmen', -1.0)):
+        buiten_sinds = _rk_reeks_sinds(punten, lambda t: (t - doel) * teken > marge)
+        if buiten_sinds is None:
+            continue
+        buiten_min = (now - max(buiten_sinds, grens)) / 60.0
         trend = _trend_per_uur(punten, max(now - _RK_TREND_S, grens), now)
-        uit.update(warm_min=warm_min, trend=trend,
-                   te_warm=(warm_min >= cfg['start_min'] and trend is not None
-                            and trend > -cfg['daling']))
+        # Hoe snel komt hij dichterbij? Bij te warm is dat zakken, bij te koud stijgen.
+        herstel = -trend * teken if trend is not None else None
+        haalt_niet = (buiten_min >= cfg['start_min'] and herstel is not None
+                      and herstel < cfg['herstel'])
+        uit.update(buiten_min=buiten_min, trend=trend,
+                   **({'wil': richting} if haalt_niet else {'bijna': richting}))
 
-    ok_sinds = None
-    for ts, t in reversed(punten):
-        if t - doel > cfg['stop_marge']:
-            break
-        ok_sinds = ts
-    uit['op_temp'] = ok_sinds is not None and (now - ok_sinds) / 60.0 >= cfg['stop_min']
+    stop = cfg['stop_marge']
+    for richting, past in (('koelen', lambda t: t - doel <= stop),
+                           ('verwarmen', lambda t: doel - t <= stop)):
+        sinds = _rk_reeks_sinds(punten, past)
+        uit[f'klaar_{richting}'] = sinds is not None and (now - sinds) / 60.0 >= cfg['stop_min']
     return uit
 
 
-def _rk_setpoint(koeler: dict, tanks: list, staat: dict | None) -> float:
-    """Waarop de app de airco zet: de ingestelde temperatuur — maar in de
-    ruimte van de tanks nooit kouder dan het warmste tank-setpoint — naar
-    boven afgerond op de stapgrootte van de airco en binnen zijn bereik."""
+def _rk_setpoint(apparaat: dict, richting: str, tanks: list, staat: dict | None) -> float:
+    """Waarop de app het apparaat zet. Koelen: de ingestelde temperatuur, maar
+    in de ruimte van de tanks nooit kouder dan het warmste tank-setpoint.
+    Verwarmen: de ingestelde temperatuur, maar nooit warmer dan het setpoint
+    van de tanks die warmte nodig hebben. Afgerond op de stapgrootte van het
+    apparaat — naar de veilige kant — en binnen zijn bereik."""
     staat = staat or {}
     stap = staat.get('stap') if (staat.get('stap') or 0) > 0 else 0.5
-    sp = koeler['setpoint']
-    if koeler.get('zelfde_ruimte', True):
+    zelfde = apparaat.get('zelfde_ruimte', True)
+    if richting == 'koelen':
+        sp = apparaat['koelen_tot']
         doelen = [t['doel'] for t in tanks if isinstance(t.get('doel'), (int, float))]
-        if doelen:
+        if zelfde and doelen:
             sp = max(sp, max(doelen))
-    sp = math.ceil(sp / stap - 1e-9) * stap
+        sp = math.ceil(sp / stap - 1e-9) * stap
+    else:
+        sp = apparaat['verwarmen_tot']
+        doelen = [t['doel'] for t in tanks if isinstance(t.get('doel'), (int, float))
+                  and 'verwarmen' in (t.get('wil'), t.get('bijna'))]
+        if zelfde and doelen:
+            sp = min(sp, min(doelen))
+        sp = math.floor(sp / stap + 1e-9) * stap
     if staat.get('min') is not None:
         sp = max(sp, staat['min'])
     if staat.get('max') is not None:
@@ -5921,14 +5968,16 @@ def _rk_setpoint(koeler: dict, tanks: list, staat: dict | None) -> float:
 
 
 def _rk_van_ons(staat: dict | None, regel: dict) -> bool:
-    """Staat de airco nog zoals de app hem zette: koelen, op hetzelfde
-    setpoint? Anders heeft iemand hem zelf bijgesteld of uitgezet.
+    """Staat het apparaat nog zoals de app het zette: dezelfde stand (koelen of
+    verwarmen), hetzelfde setpoint? Anders heeft iemand het zelf bijgesteld of
+    uitgezet.
 
-    Vergeleken wordt met `gezien_setpoint`: wat de airco zélf meldde in de
-    eerste ronde nadat de app hem zette. Een airco die ons setpoint afrondt of
-    negeert, lijkt zo niet 'met de hand bijgesteld' — dan liet de app hem
-    anders aan staan zonder hem ooit nog uit te zetten."""
-    if not staat or staat.get('stand') != 'cool':
+    Vergeleken wordt met `gezien_setpoint`: wat het apparaat zélf meldde in de
+    eerste ronde nadat de app het zette. Een apparaat dat ons setpoint afrondt
+    of negeert, lijkt zo niet 'met de hand bijgesteld' — dan liet de app het
+    anders aan staan zonder het ooit nog uit te zetten."""
+    hvac = _RK_HVAC.get(regel.get('richting'))
+    if not staat or not hvac or staat.get('stand') != hvac:
         return False
     ref = regel.get('gezien_setpoint')
     if not isinstance(ref, (int, float)) or staat.get('setpoint') is None:
@@ -5937,58 +5986,90 @@ def _rk_van_ons(staat: dict | None, regel: dict) -> bool:
     return abs(staat['setpoint'] - ref) < max(0.1, stap / 2)
 
 
-def _rk_besluit(koeler: dict, tanks: list, staat: dict | None, vorige: dict,
+def _rk_besluit(apparaat: dict, tanks: list, staat: dict | None, vorige: dict,
                 now: float, cfg: dict) -> dict:
-    """Wat moet er met deze airco gebeuren? Puur, zonder I/O.
+    """Wat moet er met dit apparaat gebeuren? Puur, zonder I/O.
 
     `tanks` = de analyses (_rk_tank plus tank/batch_id/naam) van de bewaakte
-    tanks die deze airco helpt; `staat` = _ha_climate_staat (None =
-    onbereikbaar); `vorige` = zijn regel uit `ruimtekoeling_status`. Geeft
-    {actie: None|'aan'|'uit'|'setpoint', stand, reden, setpoint, tank,
-    vrijgeven}; `vrijgeven` = iemand heeft hem overgenomen."""
+    tanks die dit apparaat helpt; `staat` = _ha_climate_staat (None =
+    onbereikbaar); `vorige` = zijn regel uit `ruimteklimaat_status`. Geeft
+    {actie: None|'aan'|'uit'|'setpoint', richting, stand, reden, setpoint,
+    tank, vrijgeven}; `vrijgeven` = iemand heeft het overgenomen."""
     def zwaarst(lijst):
-        return max(lijst, key=lambda t: t.get('afwijking') or 0) if lijst else None
+        return max(lijst, key=lambda t: abs(t.get('afwijking') or 0)) if lijst else None
 
-    warm = [t for t in tanks if t['te_warm']]
-    wachtend = [t for t in tanks if t['vers'] and (t['afwijking'] or 0) > cfg['start_marge']]
-    koud = [t for t in tanks if koeler.get('zelfde_ruimte', True) and t['vers'] and t['te_koud']]
-    res = {'actie': None, 'stand': 'uit', 'reden': None, 'setpoint': None,
-           'tank': zwaarst(warm) or zwaarst(wachtend), 'vrijgeven': False}
+    zelfde = apparaat.get('zelfde_ruimte', True)
+    vraag = {r: [t for t in tanks if t['wil'] == r] for r in ('koelen', 'verwarmen')}
+    wachtend = [t for t in tanks if t['bijna'] and _rk_mag(apparaat, t['bijna'])]
+    res = {'actie': None, 'richting': None, 'stand': 'uit', 'reden': None,
+           'setpoint': None, 'tank': None, 'vrijgeven': False}
     if staat is None:
-        return {**res, 'stand': 'onbereikbaar'}
-    sp = _rk_setpoint(koeler, tanks, staat)
-    res['setpoint'] = sp
+        return {**res, 'stand': 'onbereikbaar', 'richting': vorige.get('richting'),
+                'tank': zwaarst(vraag['koelen'] + vraag['verwarmen'])}
 
-    if vorige.get('eigen') is True:
+    def beschermd(richting):
+        """De tank die deze richting niet verdraagt (alleen in dezelfde ruimte)."""
+        if not zelfde:
+            return None
+        kant = 'te_koud' if richting == 'koelen' else 'te_warm'
+        return next((t for t in tanks if t['vers'] and t[kant]), None)
+
+    def tegen(richting):
+        """Een tank in dezelfde ruimte die juist de andere kant op wil."""
+        if not zelfde:
+            return None
+        return zwaarst(vraag[_RK_ANDERS[richting]])
+
+    richting = vorige.get('richting')
+    if vorige.get('eigen') is True and richting in _RK_HVAC:
+        sp = _rk_setpoint(apparaat, richting, tanks, staat)
+        res.update(richting=richting, setpoint=sp, tank=zwaarst(
+            vraag[richting] or [t for t in tanks if t['bijna'] == richting]))
         if not _rk_van_ons(staat, vorige):
             return {**res, 'stand': 'overgenomen', 'vrijgeven': True}
-        if koud:
-            return {**res, 'actie': 'uit', 'reden': 'te_koud', 'tank': koud[0]}
+        if not _rk_mag(apparaat, richting):
+            return {**res, 'actie': 'uit', 'reden': 'uitgezet'}
+        if (t := beschermd(richting)):
+            return {**res, 'actie': 'uit', 'reden': 'beschermd', 'tank': t}
+        if (t := tegen(richting)):
+            return {**res, 'actie': 'uit', 'reden': 'tegenstrijdig', 'tank': t}
         vers = [t for t in tanks if t['vers']]
         if not vers:
             return {**res, 'actie': 'uit', 'reden': 'geen_tanks' if not tanks else 'geen_meting'}
         sinds = _iso_naar_epoch(vorige.get('sinds'))
         lang_genoeg = sinds is None or now - sinds >= _RK_MIN_AAN_S
-        if lang_genoeg and not warm and all(t['op_temp'] for t in vers):
+        if lang_genoeg and not vraag[richting] and all(t[f'klaar_{richting}'] for t in vers):
             return {**res, 'actie': 'uit', 'reden': 'op_temperatuur'}
         eigen_sp = vorige.get('setpoint')
         if not isinstance(eigen_sp, (int, float)) or abs(eigen_sp - sp) >= 0.05:
             return {**res, 'actie': 'setpoint', 'stand': 'aan'}
         return {**res, 'stand': 'aan'}
 
-    if not warm:
-        return {**res, 'stand': 'wacht' if wachtend else 'uit'}
+    gevraagd = [r for r in ('koelen', 'verwarmen') if vraag[r] and _rk_mag(apparaat, r)]
+    if not gevraagd:
+        t = zwaarst(wachtend)
+        return {**res, 'stand': 'wacht' if t else 'uit', 'tank': t,
+                'richting': t['bijna'] if t else None}
+    if len(gevraagd) > 1:
+        return {**res, 'stand': 'tegenstrijdig',
+                'tank': zwaarst(vraag['koelen'] + vraag['verwarmen'])}
+    richting = gevraagd[0]
+    sp = _rk_setpoint(apparaat, richting, tanks, staat)
+    res.update(richting=richting, setpoint=sp, tank=zwaarst(vraag[richting]))
     pauze_tot = _iso_naar_epoch(vorige.get('pauze_tot'))
     if pauze_tot is not None and now < pauze_tot:
         return {**res, 'stand': 'pauze'}
     if staat['stand'] != 'off':
         return {**res, 'stand': 'bezet'}
-    if 'cool' not in staat['modi']:
-        return {**res, 'stand': 'geen_koelstand'}
-    if koud:
-        return {**res, 'stand': 'te_koud', 'tank': koud[0]}
-    if staat.get('ruimte') is not None and staat['ruimte'] <= sp:
-        return {**res, 'stand': 'al_koel'}
+    if _RK_HVAC[richting] not in staat['modi']:
+        return {**res, 'stand': 'geen_stand'}
+    if (t := tegen(richting)):
+        return {**res, 'stand': 'tegenstrijdig', 'tank': t}
+    if (t := beschermd(richting)):
+        return {**res, 'stand': 'beschermd', 'tank': t}
+    ruimte = staat.get('ruimte')
+    if ruimte is not None and (ruimte <= sp if richting == 'koelen' else ruimte >= sp):
+        return {**res, 'stand': 'al_op_temp'}
     return {**res, 'actie': 'aan', 'stand': 'aan', 'reden': 'haalt_het_niet'}
 
 
@@ -5999,26 +6080,32 @@ def _rk_tank_samenvatting(t: dict | None) -> dict | None:
     rond = lambda v, n=2: round(v, n) if isinstance(v, (int, float)) else None
     return {'tank': t.get('tank'), 'batch_id': t.get('batch_id'), 'naam': t.get('naam'),
             'temp': rond(t.get('temp')), 'doel': rond(t.get('doel')),
-            'trend': rond(t.get('trend')), 'warm_min': rond(t.get('warm_min'), 0)}
+            'trend': rond(t.get('trend')), 'buiten_min': rond(t.get('buiten_min'), 0)}
 
 
-def _rk_melding(naam: str, soort: str, reden: str | None, sp, tank: dict | None) -> str:
+def _rk_melding(naam: str, soort: str, richting: str | None, reden: str | None,
+                sp, tank: dict | None) -> str:
     """Pushtekst bij aan- of uitzetten. Bewust in het Nederlands, net als de
     andere serverpushes."""
     wie = f"{tank.get('naam')} in {tank.get('tank')}" if tank else ''
     if soort == 'aan':
+        werkwoord = 'koelt de ruimte op' if richting == 'koelen' else 'verwarmt de ruimte tot'
+        beweging = 'zakt' if richting == 'koelen' else 'stijgt'
         if tank and tank.get('temp') is not None and tank.get('doel') is not None:
-            return (f"{naam} koelt mee op {sp:g} °C: {wie} haalt {tank['doel']:.1f} °C "
-                    f"niet ({tank['temp']:.1f} °C en zakt niet verder).")
-        return f"{naam} koelt mee op {sp:g} °C: een tank haalt zijn setpoint niet."
-    if reden == 'te_koud' and tank and tank.get('temp') is not None:
-        return f"{naam} uit: {wie} wordt te koud ({tank['temp']:.1f} °C)."
+            return (f"{naam} {werkwoord} {sp:g} °C: {wie} haalt {tank['doel']:.1f} °C "
+                    f"niet ({tank['temp']:.1f} °C en {beweging} niet verder).")
+        return f"{naam} {werkwoord} {sp:g} °C: een tank haalt zijn setpoint niet."
+    if reden == 'beschermd' and tank and tank.get('temp') is not None:
+        kant = 'te koud' if richting == 'koelen' else 'te warm'
+        return f"{naam} uit: {wie} wordt {kant} ({tank['temp']:.1f} °C)."
+    if reden == 'tegenstrijdig' and tank:
+        return f"{naam} uit: {wie} heeft juist het omgekeerde nodig."
     if reden == 'geen_tanks':
-        return f"{naam} uit: er ligt geen bier meer in een tank die hem nodig heeft."
+        return f"{naam} uit: er ligt geen bier meer in een tank die het nodig heeft."
     if reden == 'geen_meting':
         return f"{naam} uit: er komen geen temperatuurmetingen van de tanks meer binnen."
     if reden == 'uitgezet':
-        return f"{naam} uit: de ruimtekoeling staat uit in BrewAdmin."
+        return f"{naam} uit: het ruimteklimaat staat uit in BrewAdmin."
     return f"{naam} weer uit: de tanks zijn op temperatuur."
 
 
@@ -6029,10 +6116,12 @@ def _rk_uitvoeren(entity: str, besluit: dict, staat: dict | None, vorige: dict,
     volgende ronde het opnieuw probeert."""
     nu_iso = datetime.datetime.fromtimestamp(now, datetime.timezone.utc).isoformat()
     tank = _rk_tank_samenvatting(besluit.get('tank'))
+    eigen = vorige.get('eigen') is True
     regel = {
         'entity': entity,
         'naam': (staat or {}).get('naam') or vorige.get('naam') or entity,
-        'eigen': vorige.get('eigen') is True,
+        'eigen': eigen,
+        'richting': vorige.get('richting') if eigen else besluit.get('richting'),
         'sinds': vorige.get('sinds'),
         'setpoint': vorige.get('setpoint'),
         'gezien_setpoint': vorige.get('gezien_setpoint'),
@@ -6041,7 +6130,7 @@ def _rk_uitvoeren(entity: str, besluit: dict, staat: dict | None, vorige: dict,
         'stand': besluit['stand'],
         'reden': besluit.get('reden'),
         'doel_setpoint': besluit.get('setpoint'),
-        'airco_stand': (staat or {}).get('stand'),
+        'apparaat_stand': (staat or {}).get('stand'),
         'ruimte': (staat or {}).get('ruimte'),
         'tank': tank,
         'fout': None,
@@ -6050,23 +6139,26 @@ def _rk_uitvoeren(entity: str, besluit: dict, staat: dict | None, vorige: dict,
         regel.update(eigen=False, sinds=None, setpoint=None, gezien_setpoint=None,
                      pauze_tot=datetime.datetime.fromtimestamp(
                          now + _RK_PAUZE_S, datetime.timezone.utc).isoformat())
-        _log('ruimtekoeling', f'{entity}: met de hand bijgesteld — de app blijft er zes uur vanaf')
+        _log('ruimteklimaat', f'{entity}: met de hand bijgesteld — de app blijft er zes uur vanaf')
     actie, sp, naam = besluit.get('actie'), besluit.get('setpoint'), regel['naam']
+    richting = besluit.get('richting')
     if actie == 'aan':
-        if not _ha_climate_dienst('set_hvac_mode', {'entity_id': entity, 'hvac_mode': 'cool'}):
+        if not _ha_climate_dienst('set_hvac_mode', {'entity_id': entity, 'hvac_mode': _RK_HVAC[richting]}):
             regel.update(stand='fout', fout='dienst')
             return regel, None
-        # Koelt hij eenmaal, dan is hij van ons — ook als het setpoint niet
-        # lukt: dat probeert de volgende ronde opnieuw (actie 'setpoint').
+        # Staat hij eenmaal in de stand, dan is hij van ons — ook als het
+        # setpoint niet lukt: dat probeert de volgende ronde opnieuw.
         temp_ok = _ha_climate_dienst('set_temperature', {'entity_id': entity, 'temperature': sp})
-        regel.update(eigen=True, sinds=nu_iso, pauze_tot=None, gezien_setpoint=None,
+        regel.update(eigen=True, richting=richting, sinds=nu_iso, pauze_tot=None,
+                     gezien_setpoint=None,
                      setpoint=sp if temp_ok else (staat or {}).get('setpoint'),
                      fout=None if temp_ok else 'setpoint',
-                     laatste_actie={'soort': 'aan', 'op': nu_iso, 'reden': besluit.get('reden'),
-                                    'setpoint': sp, 'tank': tank})
-        _audit_write('ruimtekoeling', 'ruimtekoeling_status', entity=entity,
-                     handeling='aan', setpoint=sp, tank=(tank or {}).get('tank'))
-        return regel, _rk_melding(naam, 'aan', None, sp, tank)
+                     laatste_actie={'soort': 'aan', 'richting': richting, 'op': nu_iso,
+                                    'reden': besluit.get('reden'), 'setpoint': sp, 'tank': tank})
+        _audit_write('ruimteklimaat', 'ruimteklimaat_status', entity=entity,
+                     handeling='aan', richting=richting, setpoint=sp,
+                     tank=(tank or {}).get('tank'))
+        return regel, _rk_melding(naam, 'aan', richting, None, sp, tank)
     if actie == 'setpoint':
         if _ha_climate_dienst('set_temperature', {'entity_id': entity, 'temperature': sp}):
             regel.update(setpoint=sp, gezien_setpoint=None)
@@ -6078,62 +6170,63 @@ def _rk_uitvoeren(entity: str, besluit: dict, staat: dict | None, vorige: dict,
             regel.update(stand='fout', fout='dienst')
             return regel, None
         regel.update(eigen=False, sinds=None, setpoint=None, gezien_setpoint=None, stand='uit',
-                     laatste_actie={'soort': 'uit', 'op': nu_iso, 'reden': besluit.get('reden'),
-                                    'tank': tank})
-        _audit_write('ruimtekoeling', 'ruimtekoeling_status', entity=entity,
-                     handeling='uit', reden=besluit.get('reden'))
-        return regel, _rk_melding(naam, 'uit', besluit.get('reden'), sp, tank)
-    # Eerste ronde na het zetten: onthoud wat de airco zelf meldt (zie _rk_van_ons).
+                     laatste_actie={'soort': 'uit', 'richting': richting, 'op': nu_iso,
+                                    'reden': besluit.get('reden'), 'tank': tank})
+        _audit_write('ruimteklimaat', 'ruimteklimaat_status', entity=entity,
+                     handeling='uit', richting=richting, reden=besluit.get('reden'))
+        return regel, _rk_melding(naam, 'uit', richting, besluit.get('reden'), sp, tank)
+    # Eerste ronde na het zetten: onthoud wat het apparaat zelf meldt (zie _rk_van_ons).
     if regel['eigen'] and staat and regel['gezien_setpoint'] is None:
         regel['gezien_setpoint'] = staat.get('setpoint')
     return regel, None
 
 
-def _rk_kern(koelers: dict) -> dict:
+def _rk_kern(apparaten: dict) -> dict:
     """Wat er in de status écht veranderd moet zijn om hem weg te schrijven —
     zonder de meetwaarden die elke ronde een tiende verschuiven."""
-    velden = ('eigen', 'stand', 'reden', 'setpoint', 'gezien_setpoint', 'doel_setpoint',
-              'pauze_tot', 'fout', 'laatste_actie', 'airco_stand')
+    velden = ('eigen', 'richting', 'stand', 'reden', 'setpoint', 'gezien_setpoint',
+              'doel_setpoint', 'pauze_tot', 'fout', 'laatste_actie', 'apparaat_stand')
     return {e: {**{k: r.get(k) for k in velden},
                 'tank': (r.get('tank') or {}).get('tank')}
-            for e, r in (koelers or {}).items() if isinstance(r, dict)}
+            for e, r in (apparaten or {}).items() if isinstance(r, dict)}
 
 
-def _ruimtekoeling_tick() -> None:
-    """Eén ronde ruimtekoeling (zie het blok hierboven). Draait in dezelfde
+def _ruimteklimaat_tick() -> None:
+    """Eén ronde ruimteklimaat (zie het blok hierboven). Draait in dezelfde
     loop als de tankbewaking, maar staat er los van aan of uit."""
     with _data_lock:
         ha_inst = _read_json('ha_instellingen', {}) or {}
-        status = _read_json('ruimtekoeling_status', {}) or {}
-    cfg = _ruimtekoeling_cfg(ha_inst)
-    oud = status.get('koelers') if isinstance(status.get('koelers'), dict) else {}
-    aan = cfg['enabled'] and bool(ha_inst.get('enabled')) and bool(cfg['koelers'])
+        status = _read_json('ruimteklimaat_status', {}) or {}
+    cfg = _ruimteklimaat_cfg(ha_inst)
+    oud = status.get('apparaten') if isinstance(status.get('apparaten'), dict) else {}
+    aan = cfg['enabled'] and bool(ha_inst.get('enabled')) and bool(cfg['apparaten'])
     if not aan and not oud:
         return
     now = time.time()
-    koelers = {k['entity']: k for k in cfg['koelers']} if aan else {}
+    apparaten = {a['entity']: a for a in cfg['apparaten']} if aan else {}
     nieuw: dict = {}
     meldingen: list = []
 
-    # Opruimen: een airco die de app aanzette maar die hij niet meer stuurt
-    # (functie uit, airco uit de lijst). Zet iemand hem intussen zelf anders,
-    # dan laten we hem gewoon los.
+    # Opruimen: een apparaat dat de app aanzette maar niet meer stuurt (functie
+    # uit, apparaat uit de lijst). Zet iemand het intussen zelf anders, dan
+    # laten we het gewoon los.
     for entity, regel in oud.items():
-        if entity in koelers or not isinstance(regel, dict) or regel.get('eigen') is not True:
+        if entity in apparaten or not isinstance(regel, dict) or regel.get('eigen') is not True:
             continue
         staat = _ha_climate_staat(entity)
         if staat is None:
             nieuw[entity] = {**regel, 'stand': 'onbereikbaar'}
             continue
         if _rk_van_ons(staat, regel):
-            besluit = {'actie': 'uit', 'stand': 'uit', 'reden': 'uitgezet', 'setpoint': None}
+            besluit = {'actie': 'uit', 'richting': regel.get('richting'), 'stand': 'uit',
+                       'reden': 'uitgezet', 'setpoint': None}
             regel_na, melding = _rk_uitvoeren(entity, besluit, staat, regel, now)
             if melding:
                 meldingen.append(melding)
             if regel_na.get('eigen'):
                 nieuw[entity] = regel_na  # uitzetten mislukt: volgende ronde opnieuw
 
-    if koelers:
+    if apparaten:
         sensor_tanks = _sensor_tanks(ha_inst)
         with _data_lock:
             batches = _read_json('batches', []) or []
@@ -6151,12 +6244,12 @@ def _ruimtekoeling_tick() -> None:
             a.update(tank=str(b.get('tank')), batch_id=b.get('id'),
                      naam=b.get('naam') or b.get('biernaam') or f"batch {b.get('id')}")
             analyses.append(a)
-        for entity, koeler in koelers.items():
-            bediend = set(koeler['tanks']) if koeler['tanks'] else sensor_tanks
+        for entity, apparaat in apparaten.items():
+            bediend = set(apparaat['tanks']) if apparaat['tanks'] else sensor_tanks
             tanks = [a for a in analyses if a['tank'] in bediend]
             vorige = oud.get(entity) if isinstance(oud.get(entity), dict) else {}
             staat = _ha_climate_staat(entity)
-            besluit = _rk_besluit(koeler, tanks, staat, vorige, now, cfg)
+            besluit = _rk_besluit(apparaat, tanks, staat, vorige, now, cfg)
             regel, melding = _rk_uitvoeren(entity, besluit, staat, vorige, now)
             nieuw[entity] = regel
             if melding:
@@ -6169,14 +6262,14 @@ def _ruimtekoeling_tick() -> None:
     if (_rk_kern(nieuw) != _rk_kern(oud) or vorige_check is None
             or now - vorige_check >= _RK_STATUS_TIK_S):
         with _data_lock:
-            _write_json('ruimtekoeling_status', {
+            _write_json('ruimteklimaat_status', {
                 'laatste_check': datetime.datetime.fromtimestamp(
                     now, datetime.timezone.utc).isoformat(),
-                'koelers': nieuw,
+                'apparaten': nieuw,
             })
 
     for m in meldingen:
-        _log('ruimtekoeling', m)
+        _log('ruimteklimaat', m)
     if not meldingen:
         return
     with _data_lock:
@@ -6184,16 +6277,16 @@ def _ruimtekoeling_tick() -> None:
     if not notif.get('enabled') or not notif.get('notify_service'):
         return
     for m in meldingen:
-        ok = _ha_notify(notif['notify_service'], _RK_TITEL, m)
-        if not ok:
-            _log('ruimtekoeling', f'notify mislukt — {m}', level=logging.ERROR)
+        if not _ha_notify(notif['notify_service'], _RK_TITEL, m):
+            _log('ruimteklimaat', f'notify mislukt — {m}', level=logging.ERROR)
 
 
 def _tank_bewaking_loop(interval: float = 300.0) -> None:
     """Achtergrondloop: beoordeel elke 5 minuten de tanktemperaturen. De
     automatische metingen komen elke 10 minuten binnen, dus vaker kijken heeft
     geen zin — en trager zou een wegloper onnodig lang laten lopen. In dezelfde
-    ronde: de ruimtekoeling (airco bij een tank die zijn setpoint niet haalt)."""
+    ronde: het ruimteklimaat (de ruimte bijsturen als een tank zijn setpoint
+    niet haalt)."""
     time.sleep(45)  # ná de eerste ronde automatische metingen
     while True:
         try:
@@ -6201,9 +6294,9 @@ def _tank_bewaking_loop(interval: float = 300.0) -> None:
         except Exception as exc:
             _log('tank-bewaking', f'error: {exc}', level=logging.ERROR)
         try:
-            _ruimtekoeling_tick()
+            _ruimteklimaat_tick()
         except Exception as exc:
-            _log('ruimtekoeling', f'error: {exc}', level=logging.ERROR)
+            _log('ruimteklimaat', f'error: {exc}', level=logging.ERROR)
         time.sleep(interval)
 
 
@@ -6417,7 +6510,7 @@ def _backup_to_zip(date_str: str) -> bytes | None:
 _NIET_TERUGZETBAAR = frozenset((
     'nummer_reeksen', 'tank_setpoints', 'wc_import_status',
     'website_telemetrie_status', 'inkoop_inbox_status', 'app_logo_icoon',
-    'ruimtekoeling_status',
+    'ruimteklimaat_status',
 ))
 
 

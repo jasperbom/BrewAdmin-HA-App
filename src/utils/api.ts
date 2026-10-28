@@ -1101,11 +1101,11 @@ export const websiteStatus = async (): Promise<any> => {
   }
 }
 
-// `ruimtekoeling_status` (welke airco de app voor de tanks aanzette) schrijft
-// alleen de server. Ook hier een gewone GET, geen useStore.
-export const ruimtekoelingStatus = async (): Promise<any> => {
+// `ruimteklimaat_status` (welk klimaatapparaat de app voor de tanks aanzette)
+// schrijft alleen de server. Ook hier een gewone GET, geen useStore.
+export const ruimteklimaatStatus = async (): Promise<any> => {
   try {
-    const r = await fetch(API_BASE + 'ruimtekoeling_status', {headers: {'Cache-Control': 'no-cache'}})
+    const r = await fetch(API_BASE + 'ruimteklimaat_status', {headers: {'Cache-Control': 'no-cache'}})
     if (!r.ok) return {}
     const d = await r.json()
     return d && typeof d === 'object' && !Array.isArray(d) ? d : {}
