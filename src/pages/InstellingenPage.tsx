@@ -2836,7 +2836,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <Btn v="secondary" s="sm" onClick={() => addHaEntity('climates', {tank: '', auto_setpoint: false})}>{t('btn_climate_toevoegen')}</Btn>
       </div>
 
-      {/* ── Ruimteklimaat bijsturen (de server regelt het) ── */}
+      {/* ── Airco voor de tanks (de server regelt het) ── */}
       <RuimteklimaatInstellingen
         inst={haInst?.ruimteklimaat}
         setInst={v => setHaInst((p: any) => ({...p, ruimteklimaat: v}))}

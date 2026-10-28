@@ -1501,39 +1501,27 @@ export interface HaInst {
   // Drempelwaarden voor het beoordelen van de automatische metingen; de
   // rekenregels staan in src/utils/tankbewaking.ts (server.py spiegelt ze).
   bewaking?: TankBewakingInst
-  // ── Ruimteklimaat ────────────────────────────────────────────────────────
-  // De ruimte bijsturen (koelen of verwarmen) als een tank zijn setpoint niet
-  // haalt met zijn eigen koeling of verwarming. De server regelt het
-  // (`_ruimteklimaat_tick`); opslagvorm en defaults in src/utils/ruimteklimaat.ts.
+  // ── Airco voor de tanks ──────────────────────────────────────────────────
+  // De airco van de ruimte bijzetten (koelen of verwarmen) als een tank zijn
+  // setpoint niet haalt met zijn eigen koeling of verwarming. De server regelt
+  // het (`_ruimteklimaat_tick`); opslagvorm en defaults in src/utils/ruimteklimaat.ts.
   ruimteklimaat?: RuimteklimaatInst
 }
 
 export type KlimaatRichting = 'koelen' | 'verwarmen' | 'beide'
 
-// Een klimaatapparaat (climate-entity: airco, warmtepomp, kachel met
-// thermostaat) dat de app mag bijzetten voor de tanks.
-export interface KlimaatApparaat {
-  id: number
-  entity: string              // climate.*
-  richting?: KlimaatRichting  // wat het mag doen (standaard koelen)
-  koelen_tot?: number         // °C waarop het koelt (standaard 18)
-  verwarmen_tot?: number      // °C waarop het verwarmt (standaard 20)
-  tanks?: string[]            // tanks waarvoor het bijspringt; leeg = alle tanks met een sensor
-  // De tanks staan in deze ruimte (standaard ja): koelen nooit kouder dan het
-  // warmste tank-setpoint, verwarmen nooit warmer dan het setpoint van de tanks
-  // die warmte vragen, en uit zodra een tank de verkeerde kant op gaat. Nee =
-  // het stuurt een andere ruimte, bijvoorbeeld die van een koelmachine.
-  zelfde_ruimte?: boolean
-}
-
 export interface RuimteklimaatInst {
   enabled?: boolean
-  start_marge?: number      // °C naast het doel
-  start_min?: number        // minuten dat het zo blijft
-  herstel?: number          // °C/uur — nadert hij sneller, dan haalt de tank het zelf
-  stop_marge?: number       // °C van het doel waarbinnen het weer uit mag
-  stop_min?: number         // minuten dat het zo moet blijven
-  apparaten?: KlimaatApparaat[]
+  entity?: string             // climate.* — de airco in de ruimte van de tanks
+  richting?: KlimaatRichting  // wat hij mag doen (standaard koelen)
+  koelen_tot?: number         // °C waarop hij koelt (standaard 18; nooit kouder dan de warmste tank)
+  verwarmen_tot?: number      // °C waarop hij verwarmt (standaard 20; nooit warmer dan de tank die warmte vraagt)
+  tanks?: string[]            // tanks in de ruimte van de airco; leeg = alle tanks met een sensor
+  start_marge?: number        // °C naast het doel
+  start_min?: number          // minuten dat het zo blijft
+  herstel?: number            // °C/uur — nadert hij sneller, dan haalt de tank het zelf
+  stop_marge?: number         // °C van het doel waarbinnen hij weer uit mag
+  stop_min?: number           // minuten dat het zo moet blijven
 }
 
 // Zie `BewakingInst` in src/utils/tankbewaking.ts — daar staat ook wat elke

@@ -33,7 +33,7 @@ import {
 import { schoonTakenOp, deactiveerStandaardMetingen } from './utils/taken'
 import { batchStapGereed, huidigeStapIdx, huidigeStapStartMs, dagenInStap } from './utils/vergisting'
 import { BEWAAKTE_STATUSSEN, beoordeelBatches, tankAlarmTekst } from './utils/tankbewaking'
-import { actieveKlimaatApparaten, type RuimteklimaatStatus } from './utils/ruimteklimaat'
+import { aircoActief, type RuimteklimaatStatus } from './utils/ruimteklimaat'
 import { attentiePosten, attentieDoel, AttentieDoel, attentieVoorPagina, attentieTotaal } from './utils/attentie'
 import { attentieLabel } from './utils/attentieTekst'
 import type { VerkoopCtx } from './utils/verkoopOverzicht'
@@ -1558,10 +1558,10 @@ function App() {
     return () => clearInterval(id)
   }, [bewakingAan, heeftTankBatch])
 
-  // ── Ruimteklimaat ──────────────────────────────────────────────────────────
-  // Zet de server een klimaatapparaat bij voor een tank die zijn setpoint niet
-  // haalt, dan hoort dat in de "Nu actief"-strook: anders staat de brouwer in
-  // een koude (of warme) ruimte zonder te weten waarom. De status schrijft
+  // ── Airco voor de tanks ────────────────────────────────────────────────────
+  // Zet de server de airco bij voor een tank die zijn setpoint niet haalt, dan
+  // hoort dat in de "Nu actief"-strook: anders staat de brouwer in een koude
+  // (of warme) ruimte zonder te weten waarom. De status schrijft
   // alleen de server; hier een gewone GET in hetzelfde ritme als de tick.
   const ruimteklimaatAan = !!(haInst?.enabled && haInst?.ruimteklimaat?.enabled)
   const [rkStatus, setRkStatus] = React.useState<RuimteklimaatStatus>({})
@@ -1934,16 +1934,17 @@ function App() {
       key: `carb:${x.id}`, soort: 'carboniseren', actie: false, batchId: x.id,
       tekst: t('nu_chip_carboniseren').replace('{batch}', x.naam), onOpen: () => openBatch(x.id),
     })
-    // Een klimaatapparaat dat de app bijzette: wéten, geen melding (de push kwam al).
-    for (const k of (ruimteklimaatAan ? actieveKlimaatApparaten(rkStatus) : [])) {
-      const tank = k.laatste_actie?.tank || k.tank
+    // De airco die de app bijzette: wéten, geen melding (de push kwam al).
+    const airco = ruimteklimaatAan ? aircoActief(rkStatus) : null
+    if (airco) {
+      const tank = airco.laatste_actie?.tank || airco.tank
       const batchId = typeof tank?.batch_id === 'number' ? tank.batch_id : undefined
-      const richting = k.richting === 'verwarmen' ? 'verwarmen' : 'koelen'
+      const richting = airco.richting === 'verwarmen' ? 'verwarmen' : 'koelen'
       chips.push({
-        key: `rk:${k.entity}`, soort: 'ruimteklimaat', actie: false, batchId,
+        key: 'rk:airco', soort: 'ruimteklimaat', actie: false, batchId,
         tekst: (tank?.tank ? t(`nu_chip_ruimteklimaat_${richting}`).replace('{tank}', tank.tank)
                            : t(`nu_chip_ruimteklimaat_${richting}_kaal`))
-          .replace('{apparaat}', k.naam || k.entity),
+          .replace('{airco}', airco.naam || airco.entity || ''),
         onOpen: () => batchId != null ? openBatch(batchId) : setPage('instellingen'),
       })
     }

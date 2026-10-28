@@ -1,7 +1,7 @@
-// Ruimteklimaat: de ruimte bijsturen wanneer een gisttank zijn setpoint niet
-// haalt met zijn eigen koeling of verwarming — koelen als de tanks te warm
-// blijven, verwarmen als ze te koud blijven. De regeling zelf draait op de
-// server (`_ruimteklimaat_tick` in server.py, in dezelfde ronde als de
+// Airco voor de tanks: de airco van de ruimte bijzetten wanneer een gisttank
+// zijn setpoint niet haalt met zijn eigen koeling of verwarming — koelen als
+// de tanks te warm blijven, verwarmen als ze te koud blijven. De regeling zelf
+// draait op de server (`_ruimteklimaat_tick` in server.py, in dezelfde ronde als de
 // tankbewaking), zodat hij ook werkt als de app dicht is. Hier alleen de
 // opslagvorm (`ha_instellingen.ruimteklimaat`), de standaardwaarden en de
 // vertaling van de status die de server schrijft (`ruimteklimaat_status`)
@@ -10,18 +10,18 @@
 // De regels in het kort (zie server.py voor de onderbouwing):
 //   • aan: een tank zit al `start_min` minuten minstens `start_marge` naast
 //     zijn doel en komt niet sneller dan `herstel` °C/uur dichterbij;
-//   • per apparaat koelen, verwarmen of beide; vraagt de ene tank koeling en
+//   • de airco mag koelen, verwarmen of beide; vraagt de ene tank koeling en
 //     de andere warmte, dan gebeurt er niets;
-//   • in dezelfde ruimte: koelen nooit kouder dan het warmste tank-setpoint,
-//     verwarmen nooit warmer dan het setpoint van de tanks die warmte vragen,
-//     en meteen uit als een tank de verkeerde kant op gaat;
-//   • de app neemt nooit een apparaat over dat al aan staat, en blijft er zes
-//     uur vanaf als iemand het zelf bijstelt;
+//   • koelen nooit kouder dan het warmste tank-setpoint, verwarmen nooit
+//     warmer dan het setpoint van de tanks die warmte vragen, en meteen uit
+//     als een tank de verkeerde kant op gaat;
+//   • de app neemt de airco nooit over als hij al aan staat, en blijft er zes
+//     uur vanaf als iemand hem zelf bijstelt;
 //   • uit als alle tanks `stop_min` minuten binnen `stop_marge` zijn (na
 //     minstens een uur), of als er niets meer te bewaken valt.
 
 import { t } from '../i18n'
-import type { RuimteklimaatInst, KlimaatApparaat, KlimaatRichting } from '../types'
+import type { RuimteklimaatInst, KlimaatRichting } from '../types'
 
 export const RUIMTEKLIMAAT_DEFAULTS = {
   start_marge: 1.0,
@@ -32,7 +32,7 @@ export const RUIMTEKLIMAAT_DEFAULTS = {
 }
 export type RuimteklimaatDrempel = keyof typeof RUIMTEKLIMAAT_DEFAULTS
 
-/** Waarop het apparaat komt als er niets is ingevuld (°C). */
+/** Waarop de airco komt als er niets is ingevuld (°C). */
 export const RK_KOELEN_TOT_DEFAULT = 18
 export const RK_VERWARMEN_TOT_DEFAULT = 20
 
@@ -50,7 +50,11 @@ export interface RuimteklimaatCfg {
   herstel: number
   stop_marge: number
   stop_min: number
-  apparaten: Array<Required<Omit<KlimaatApparaat, 'id'>>>
+  entity: string | null
+  richting: KlimaatRichting
+  koelen_tot: number
+  verwarmen_tot: number
+  tanks: string[]
 }
 
 const getal = (v: unknown): number | null => {
@@ -59,13 +63,13 @@ const getal = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null
 }
 
-/** Mag dit apparaat in deze richting helpen? */
+/** Mag de airco in deze richting helpen? */
 export const magRichting = (richting: KlimaatRichting | undefined, r: 'koelen' | 'verwarmen'): boolean =>
   (richting ?? 'koelen') === r || richting === 'beide'
 
 /** Zelfde normalisatie als `_ruimteklimaat_cfg` in server.py: alleen een
- *  echte `true` zet hem aan, onzin valt terug op de defaults, apparaten zonder
- *  geldige climate-entity (of dubbel) tellen niet mee. */
+ *  echte `true` zet hem aan, onzin valt terug op de defaults, een airco zonder
+ *  geldige climate-entity telt niet (`entity` null). */
 export function ruimteklimaatInst(ruw: RuimteklimaatInst | null | undefined): RuimteklimaatCfg {
   const r: any = ruw && typeof ruw === 'object' ? ruw : {}
   const cfg: any = { enabled: r.enabled === true }
@@ -74,25 +78,14 @@ export function ruimteklimaatInst(ruw: RuimteklimaatInst | null | undefined): Ru
     const geldig = n != null && (NUL_MAG.has(k) ? n >= 0 : n > 0)
     cfg[k] = geldig ? n : RUIMTEKLIMAAT_DEFAULTS[k]
   }
-  const gezien = new Set<string>()
-  cfg.apparaten = []
-  for (const a of Array.isArray(r.apparaten) ? r.apparaten : []) {
-    if (!a || typeof a !== 'object') continue
-    const entity = a.entity
-    if (typeof entity !== 'string' || !CLIMATE_RE.test(entity) || gezien.has(entity)) continue
-    gezien.add(entity)
-    const tanks = Array.isArray(a.tanks) ? a.tanks : []
-    cfg.apparaten.push({
-      entity,
-      richting: KLIMAAT_RICHTINGEN.includes(a.richting) ? a.richting : 'koelen',
-      koelen_tot: getal(a.koelen_tot) ?? RK_KOELEN_TOT_DEFAULT,
-      verwarmen_tot: getal(a.verwarmen_tot) ?? RK_VERWARMEN_TOT_DEFAULT,
-      tanks: [...new Set<string>(tanks
-        .filter((x: unknown) => (typeof x === 'string' || typeof x === 'number') && String(x).trim() !== '')
-        .map((x: unknown) => String(x).trim()))].sort(),
-      zelfde_ruimte: a.zelfde_ruimte !== false,
-    })
-  }
+  const tanks = Array.isArray(r.tanks) ? r.tanks : []
+  cfg.entity = typeof r.entity === 'string' && CLIMATE_RE.test(r.entity) ? r.entity : null
+  cfg.richting = KLIMAAT_RICHTINGEN.includes(r.richting) ? r.richting : 'koelen'
+  cfg.koelen_tot = getal(r.koelen_tot) ?? RK_KOELEN_TOT_DEFAULT
+  cfg.verwarmen_tot = getal(r.verwarmen_tot) ?? RK_VERWARMEN_TOT_DEFAULT
+  cfg.tanks = [...new Set<string>(tanks
+    .filter((x: unknown) => (typeof x === 'string' || typeof x === 'number') && String(x).trim() !== '')
+    .map((x: unknown) => String(x).trim()))].sort()
   return cfg as RuimteklimaatCfg
 }
 
@@ -125,28 +118,24 @@ export interface KlimaatActie {
   tank?: KlimaatTank | null
 }
 
-export interface KlimaatApparaatStatus {
-  entity: string
+/** `ruimteklimaat_status` — alleen de server schrijft hier. */
+export interface RuimteklimaatStatus {
+  laatste_check?: string
+  entity?: string
   naam?: string
-  eigen?: boolean                 // de app zette het aan en het staat nog zo
+  eigen?: boolean                 // de app zette de airco aan en hij staat nog zo
   richting?: 'koelen' | 'verwarmen' | null
   sinds?: string | null
   setpoint?: number | null        // wat de app vroeg
-  doel_setpoint?: number | null   // waarop het nu zou komen
+  doel_setpoint?: number | null   // waarop hij nu zou komen
   pauze_tot?: string | null
   stand?: KlimaatStand
   reden?: KlimaatReden | null
-  apparaat_stand?: string | null  // hvac-modus volgens HA
+  airco_stand?: string | null     // hvac-modus volgens HA
   ruimte?: number | null
   tank?: KlimaatTank | null
   laatste_actie?: KlimaatActie | null
   fout?: string | null
-}
-
-/** `ruimteklimaat_status` — alleen de server schrijft hier. */
-export interface RuimteklimaatStatus {
-  laatste_check?: string
-  apparaten?: Record<string, KlimaatApparaatStatus>
 }
 
 const getalTekst = (v: number | null | undefined, cijfers = 1): string =>
@@ -178,13 +167,13 @@ export function herstelSnelheid(tank: KlimaatTank | null | undefined): number | 
   return tank.temp > tank.doel ? -tank.trend : tank.trend
 }
 
-const richtingVan = (s: KlimaatApparaatStatus): 'koelen' | 'verwarmen' =>
+const richtingVan = (s: RuimteklimaatStatus): 'koelen' | 'verwarmen' =>
   s.richting === 'verwarmen' ? 'verwarmen' : 'koelen'
 
-/** Eén regel die zegt wat het apparaat nu doet en waarom. */
-export function klimaatStatusTekst(s: KlimaatApparaatStatus | null | undefined, nuMs: number = Date.now(),
+/** Eén regel die zegt wat de airco nu doet en waarom. */
+export function klimaatStatusTekst(s: RuimteklimaatStatus | null | undefined, nuMs: number = Date.now(),
                                    cfg?: Pick<RuimteklimaatCfg, 'herstel'>): string {
-  if (!s) return t('rk_stand_nog_niet')
+  if (!s || !s.stand) return t('rk_stand_nog_niet')
   const tank = s.tank
   switch (s.stand) {
     case 'aan': {
@@ -200,7 +189,7 @@ export function klimaatStatusTekst(s: KlimaatApparaatStatus | null | undefined, 
         .replace('{snelheid}', getalTekst(herstel))
     }
     case 'bezet':
-      return t('rk_stand_bezet').replace('{modus}', s.apparaat_stand || '?')
+      return t('rk_stand_bezet').replace('{modus}', s.airco_stand || '?')
     case 'al_op_temp':
       return t('rk_stand_al_op_temp')
         .replace('{ruimte}', getalTekst(s.ruimte))
@@ -224,7 +213,7 @@ export function klimaatStatusTekst(s: KlimaatApparaatStatus | null | undefined, 
 }
 
 /** Wat de app als laatste deed: "Laatst uitgezet: 15:20 — de tanks waren op temperatuur". */
-export function klimaatLaatsteActieTekst(s: KlimaatApparaatStatus | null | undefined, nuMs: number = Date.now()): string {
+export function klimaatLaatsteActieTekst(s: RuimteklimaatStatus | null | undefined, nuMs: number = Date.now()): string {
   const a = s?.laatste_actie
   if (!a || (a.soort !== 'aan' && a.soort !== 'uit')) return ''
   const sleutel = a.soort === 'uit' ? 'rk_laatst_uit'
@@ -238,7 +227,7 @@ export function klimaatLaatsteActieTekst(s: KlimaatApparaatStatus | null | undef
 
 /** Toon van de status: accent = de app stuurt bij, oranje = de app wil maar
  *  mag niet, rood = iets werkt niet, grijs = niets aan de hand. */
-export function klimaatToon(s: KlimaatApparaatStatus | null | undefined): 'accent' | 'oranje' | 'rood' | 'grijs' {
+export function klimaatToon(s: RuimteklimaatStatus | null | undefined): 'accent' | 'oranje' | 'rood' | 'grijs' {
   switch (s?.stand) {
     case 'aan': return 'accent'
     case 'bezet': case 'al_op_temp': case 'beschermd': case 'tegenstrijdig': case 'pauze': case 'overgenomen': return 'oranje'
@@ -247,9 +236,7 @@ export function klimaatToon(s: KlimaatApparaatStatus | null | undefined): 'accen
   }
 }
 
-/** De apparaten die de app nu aan heeft staan (voor de "Nu actief"-strook). */
-export function actieveKlimaatApparaten(status: RuimteklimaatStatus | null | undefined): KlimaatApparaatStatus[] {
-  const a = status?.apparaten
-  if (!a || typeof a !== 'object') return []
-  return Object.values(a).filter(r => r && r.eigen === true)
+/** Heeft de app de airco nu aan staan (voor de "Nu actief"-strook)? */
+export function aircoActief(status: RuimteklimaatStatus | null | undefined): RuimteklimaatStatus | null {
+  return status && status.eigen === true && status.entity ? status : null
 }
