@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.6] — 2026-10-28
+
+### Airco voor de tanks
+
+Haalt een gisttank zijn setpoint niet met zijn eigen koeling of verwarming, dan
+kan de app nu de airco van de ruimte bijzetten: koelen als de tanks te warm
+blijven, verwarmen als ze te koud blijven. Instellen onder Instellingen → Home
+Assistant → *Airco voor de tanks* (standaard uit). Je kiest de airco (een
+`climate`-entity in Home Assistant), wat hij mag (koelen, verwarmen of beide) en
+welke tanks in zijn ruimte staan.
+
+- **Wanneer aan:** een tank zit al een uur minstens 1 °C naast zijn setpoint en
+  komt niet sneller dan 0,2 °C per uur dichterbij. Een tank die na een
+  stapwissel of tijdens een cold crash netjes naar zijn doel beweegt, krijgt dus
+  geen hulp; vlak na een setpointwissel telt de tank pas mee na dat uur. Alle
+  drempels zijn instelbaar.
+- **Wanneer uit:** zodra alle tanks een half uur binnen 0,3 °C van hun setpoint
+  zitten (na minstens een uur draaien), als er geen bier meer in de tanks ligt,
+  als er geen verse metingen meer binnenkomen, of als je de functie uitzet.
+- **Andere tanks beschermd:** de airco koelt nooit verder dan het warmste
+  tank-setpoint (een tank met alleen koeling kan zichzelf niet opwarmen) en
+  verwarmt nooit verder dan het setpoint van de tank die warmte nodig heeft.
+  Gaat een tank de verkeerde kant op, dan gaat de airco meteen uit. Wil de ene
+  tank koeling en de andere warmte, dan doet de app niets.
+- **Jouw airco blijft van jou:** de app neemt de airco nooit over als hij al aan
+  staat. Zet je hem zelf uit of anders, dan blijft de app er zes uur vanaf.
+- **Zichtbaar:** de kaart toont wat de airco doet en waarom; zolang de app hem
+  aan heeft, staat hij in de strook *Nu actief*. Aan- en uitzetten gaat als
+  melding via Meldingen en in het serverauditlog.
+
+De server regelt het (in dezelfde ronde als de tankbewaking, elke vijf
+minuten), dus het werkt ook als de app dicht is. Nieuwe key
+`ruimteklimaat_status` (alleen de server schrijft hem).
+
+---
+
 ## [1.13.3] — 2026-10-12
 
 ### Voorraad vanzelf naar de webshop na een verkoop

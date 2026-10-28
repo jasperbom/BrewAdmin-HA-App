@@ -31,6 +31,7 @@ import { geheimOpnieuwNodig } from '../utils/geheimen'
 import Icon from '../components/ui/Icon'
 import WebsiteTelemetrie from '../components/WebsiteTelemetrie'
 import InkoopMailInstellingen, { POSTVAK_KAART_ID } from '../components/InkoopMailInstellingen'
+import RuimteklimaatInstellingen from '../components/RuimteklimaatInstellingen'
 
 // Instelbare drempels van de temperatuurbewaking. De volgorde is die van het
 // oordeel zelf: eerst wat "normaal" is, dan wanneer het meldenswaardig wordt,
@@ -2834,6 +2835,19 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
         <Btn v="secondary" s="sm" onClick={() => addHaEntity('climates', {tank: '', auto_setpoint: false})}>{t('btn_climate_toevoegen')}</Btn>
       </div>
+
+      {/* ── Airco voor de tanks (de server regelt het) ── */}
+      <RuimteklimaatInstellingen
+        inst={haInst?.ruimteklimaat}
+        setInst={v => setHaInst((p: any) => ({...p, ruimteklimaat: v}))}
+        sensorenAan={!!haInst?.enabled}
+        tanks={(tanks || []).map((tk: any) => ({id: String(tk.id), naam: tk.naam}))}
+        sensorTanks={[...new Set<string>((Array.isArray(haInst?.sensors) ? haInst.sensors : [])
+          .filter((s: any) => s?.tank && s?.entity).map((s: any) => String(s.tank)))]}
+        renderEntityPicker={renderEntityPicker}
+        onOntdek={() => discoverDomain('climate')}
+        ontdekBezig={haDiscovering === 'climate'}
+        onAudit={omschrijving => logAudit(auditLog, setAuditLog, {entiteit: 'Instelling', entiteit_id: 0, actie: 'gewijzigd', omschrijving})} />
 
       {/* ── Dimmers / Lights ── */}
       <div className={card}>
