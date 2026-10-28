@@ -7,7 +7,7 @@ import {
 } from './utils/route'
 import { detailTitel } from './utils/detailTitel'
 import { afgeleideThemaKleuren } from './utils/kleurContrast'
-import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet, wcPut, newId } from './utils/api'
+import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet, wcPut, newId, ruimtekoelingStatus } from './utils/api'
 import { wcVoorraadLijst, gewijzigdeVoorraad, pushWcVoorraad, metGepushteVoorraad, volgendeVoorraadPoging, WC_VOORRAAD_WACHT_MS } from './utils/wcVoorraad'
 import { openBestellingReserveringen } from './utils/calculations'
 import { beschikbaarVoorAfvulling as beschikbaarNaPicks } from './utils/beschikbaarheid'
@@ -33,6 +33,7 @@ import {
 import { schoonTakenOp, deactiveerStandaardMetingen } from './utils/taken'
 import { batchStapGereed, huidigeStapIdx, huidigeStapStartMs, dagenInStap } from './utils/vergisting'
 import { BEWAAKTE_STATUSSEN, beoordeelBatches, tankAlarmTekst } from './utils/tankbewaking'
+import { actieveKoelers, type RuimtekoelingStatus } from './utils/ruimtekoeling'
 import { attentiePosten, attentieDoel, AttentieDoel, attentieVoorPagina, attentieTotaal } from './utils/attentie'
 import { attentieLabel } from './utils/attentieTekst'
 import type { VerkoopCtx } from './utils/verkoopOverzicht'
@@ -99,6 +100,7 @@ const WERKRUIMTE_ICOON = { productie: 'factory', verkoop: 'store', administratie
 const NU_ACTIEF_DOT: Record<string, string> = {
   brouwen: 'bg-blue-500', carboniseren: 'bg-purple-500',
   stap: 'bg-orange-600', carb_doel: 'bg-green-600', alarm: 'bg-red-600', waarschuwing: 'bg-orange-600', webshop: 'bg-blue-600',
+  ruimtekoeling: 'bg-sky-500',
 };
 // Per-apparaat, bewust NIET via useStore/server gesynchroniseerd: rechtstreeks
 // in localStorage (met try/catch — een privévenster kan het weigeren). Zo
@@ -1556,6 +1558,21 @@ function App() {
     return () => clearInterval(id)
   }, [bewakingAan, heeftTankBatch])
 
+  // ── Ruimtekoeling ──────────────────────────────────────────────────────────
+  // Zet de server een airco bij voor een tank die zijn setpoint niet haalt,
+  // dan hoort dat in de "Nu actief"-strook: anders staat de brouwer in een
+  // koude brouwerij zonder te weten waarom. De status schrijft alleen de
+  // server; hier een gewone GET in hetzelfde ritme als de tick.
+  const ruimtekoelingAan = !!(haInst?.enabled && haInst?.ruimtekoeling?.enabled)
+  const [rkStatus, setRkStatus] = React.useState<RuimtekoelingStatus>({})
+  React.useEffect(() => {
+    if (!ruimtekoelingAan) { setRkStatus({}); return }
+    const haal = () => { ruimtekoelingStatus().then(setRkStatus) }
+    haal()
+    const id = setInterval(haal, 5 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [ruimtekoelingAan])
+
   // ── Facturen per e-mail ────────────────────────────────────────────────────
   // De server haalt het postvak zelf op (ook als de app dicht is); de lijst
   // verversen we hier periodiek, zodat een factuur die net binnenkwam op de tab
@@ -1859,7 +1876,7 @@ function App() {
   // Vervangt de gestapelde sticky meldingsbalken die de nav afdekten.
   type NuActiefChip = {
     key: string
-    soort: 'brouwen' | 'carboniseren' | 'stap' | 'carb_doel' | 'alarm' | 'waarschuwing' | 'webshop'
+    soort: 'brouwen' | 'carboniseren' | 'stap' | 'carb_doel' | 'alarm' | 'waarschuwing' | 'webshop' | 'ruimtekoeling'
     tekst: string
     actie: boolean
     knop?: string
@@ -1917,8 +1934,19 @@ function App() {
       key: `carb:${x.id}`, soort: 'carboniseren', actie: false, batchId: x.id,
       tekst: t('nu_chip_carboniseren').replace('{batch}', x.naam), onOpen: () => openBatch(x.id),
     })
+    // Een airco die de app bijzette: wéten, geen melding (de push kwam al).
+    for (const k of (ruimtekoelingAan ? actieveKoelers(rkStatus) : [])) {
+      const tank = k.laatste_actie?.tank || k.tank
+      const batchId = typeof tank?.batch_id === 'number' ? tank.batch_id : undefined
+      chips.push({
+        key: `rk:${k.entity}`, soort: 'ruimtekoeling', actie: false, batchId,
+        tekst: (tank?.tank ? t('nu_chip_ruimtekoeling').replace('{tank}', tank.tank) : t('nu_chip_ruimtekoeling_kaal'))
+          .replace('{airco}', k.naam || k.entity),
+        onOpen: () => batchId != null ? openBatch(batchId) : setPage('instellingen'),
+      })
+    }
     return chips
-  }, [openTankAlarmen, stapGereedBatches, carbDoelBereikt, wcAutoMelding, brouwendeBatches, carboniserendeBatches, bat])
+  }, [openTankAlarmen, stapGereedBatches, carbDoelBereikt, wcAutoMelding, brouwendeBatches, carboniserendeBatches, bat, ruimtekoelingAan, rkStatus])
 
   const doExport = () => {
     excelExport({

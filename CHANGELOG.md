@@ -4,6 +4,39 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.4] — 2026-10-28
+
+### Airco bij als een tank zijn setpoint niet haalt
+
+Haalt een gisttank zijn setpoint niet met de glycolkoeling, dan kan de app nu
+een airco op koelen zetten. Een koelere ruimte betekent minder warmte die de
+koeling moet afvoeren. Instellen onder Instellingen → Home Assistant → *Airco
+bij te warme tanks* (standaard uit).
+
+- **Wanneer aan:** een tank staat al een uur minstens 1 °C boven zijn setpoint
+  en zakt niet sneller dan 0,2 °C per uur. Een tank die na een stapwissel of
+  tijdens een cold crash netjes zakt, krijgt dus geen airco; vlak na een
+  setpointwissel telt de tank pas mee na dat uur. Alle drempels zijn instelbaar.
+- **Wanneer uit:** zodra alle tanks een half uur binnen 0,3 °C van hun setpoint
+  zitten (na minstens een uur draaien), als er geen bier meer in de tanks ligt,
+  als er geen verse metingen meer binnenkomen, of als je de functie uitzet.
+- **Andere tanks beschermd:** staan de tanks in dezelfde ruimte, dan koelt de
+  airco nooit verder dan het warmste tank-setpoint (een ale op 18,5 °C met
+  alleen koeling kan zichzelf niet opwarmen) en gaat hij meteen uit als een tank
+  te koud wordt. Voor een airco in een andere ruimte, bijvoorbeeld bij de
+  glycolkoeler, zet je dat uit.
+- **Jouw airco blijft van jou:** de app neemt nooit een airco over die al aan
+  staat. Zet je hem zelf uit of anders, dan blijft de app er zes uur vanaf.
+- **Zichtbaar:** de kaart toont per airco wat hij doet en waarom; zolang de app
+  hem aan heeft, staat hij in de strook *Nu actief*. Aan- en uitzetten gaat als
+  melding via Meldingen en in het serverauditlog.
+
+De server regelt het (in dezelfde ronde als de tankbewaking, elke vijf
+minuten), dus het werkt ook als de app dicht is. Nieuwe key
+`ruimtekoeling_status` (alleen de server schrijft hem).
+
+---
+
 ## [1.13.3] — 2026-10-12
 
 ### Voorraad vanzelf naar de webshop na een verkoop

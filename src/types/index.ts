@@ -1501,6 +1501,33 @@ export interface HaInst {
   // Drempelwaarden voor het beoordelen van de automatische metingen; de
   // rekenregels staan in src/utils/tankbewaking.ts (server.py spiegelt ze).
   bewaking?: TankBewakingInst
+  // ── Ruimtekoeling ────────────────────────────────────────────────────────
+  // Een airco bijzetten als een tank zijn setpoint niet haalt met de
+  // glycolkoeling. De server regelt het (`_ruimtekoeling_tick`); opslagvorm
+  // en defaults in src/utils/ruimtekoeling.ts.
+  ruimtekoeling?: RuimtekoelingInst
+}
+
+// Een airco (climate-entity) die de app mag bijzetten voor de tanks.
+export interface RuimteKoeler {
+  id: number
+  entity: string            // climate.* — de airco
+  setpoint?: number         // °C waarop de app hem zet (standaard 18)
+  tanks?: string[]          // tanks waarvoor hij bijspringt; leeg = alle tanks met een sensor
+  // De tanks staan in deze ruimte (standaard ja): dan nooit kouder dan het
+  // warmste tank-setpoint, en uit zodra een tank te koud wordt. Nee = hij
+  // koelt een andere ruimte, bijvoorbeeld die van de glycolkoeler.
+  zelfde_ruimte?: boolean
+}
+
+export interface RuimtekoelingInst {
+  enabled?: boolean
+  start_marge?: number      // °C boven het doel
+  start_min?: number        // minuten dat het zo blijft
+  daling?: number           // °C/uur — zakt hij sneller, dan haalt de koeling het nog
+  stop_marge?: number       // °C boven het doel waaronder hij weer uit mag
+  stop_min?: number         // minuten dat het zo moet blijven
+  koelers?: RuimteKoeler[]
 }
 
 // Zie `BewakingInst` in src/utils/tankbewaking.ts — daar staat ook wat elke

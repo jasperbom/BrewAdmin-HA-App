@@ -3247,6 +3247,376 @@ class TestTankBewaking:
             self._clean()
 
 
+class TestRuimtekoeling:
+    """De airco bijzetten als een tank zijn setpoint niet haalt.
+
+    Het geval uit de praktijk: een cold crash op 2 °C die al een dag op 3,5 °C
+    hangt terwijl de koeling op 100 % draait. Wat níét mag: een airco aanzetten
+    voor een tank die netjes zakt, een airco overnemen die iemand zelf gebruikt,
+    of een ale op 18,5 °C kouder maken dan hij hoort."""
+
+    NU = 1_800_000_000.0
+    CFG = srv._ruimtekoeling_cfg({})
+    STIL = 45 * 60
+
+    @classmethod
+    def _reeks(cls, temps, stap_min=10):
+        """Meetpunten tot nu; temps[0] is het oudste punt."""
+        stap = stap_min * 60
+        start = cls.NU - (len(temps) - 1) * stap
+        return [(start + i * stap, t) for i, t in enumerate(temps)]
+
+    @classmethod
+    def _vlak(cls, temp, uren):
+        return cls._reeks([temp] * (uren * 6 + 1))
+
+    def _tank(self, doel, punten, doel_sinds=None, tank='F1', naam='Kadeblond', cfg=None):
+        a = srv._rk_tank(doel, self.NU - 5 * 86400 if doel_sinds is None else doel_sinds,
+                         punten, self.NU, cfg or self.CFG, self.STIL)
+        a.update(tank=tank, batch_id=1, naam=naam)
+        return a
+
+    @staticmethod
+    def _staat(stand='off', setpoint=19.0, ruimte=22.0, **extra):
+        return {'stand': stand, 'setpoint': setpoint, 'ruimte': ruimte, 'min': 17.0,
+                'max': 30.0, 'stap': 1.0, 'naam': 'Airco brouwerij',
+                'modi': ['off', 'heat_cool', 'cool', 'heat', 'fan_only', 'dry'], **extra}
+
+    KOELER = {'entity': 'climate.airco_brouwerij', 'setpoint': 18.0, 'tanks': [],
+              'zelfde_ruimte': True}
+
+    def _besluit(self, tanks, staat, vorige=None, koeler=None):
+        return srv._rk_besluit(koeler or self.KOELER, tanks, staat, vorige or {}, self.NU, self.CFG)
+
+    # ── Haalt de koeling het? ───────────────────────────────────────────────
+
+    def test_hangende_cold_crash_haalt_het_niet(self):
+        a = self._tank(2.0, self._vlak(3.5, 3))
+        assert a['te_warm'] and a['vers'] and abs(a['trend']) < 0.05
+
+    def test_netjes_zakkende_tank_haalt_het_wel(self):
+        # Drie uur lang een halve graad per uur omlaag: de koeling wint.
+        a = self._tank(2.0, self._reeks([6 - i * (0.5 / 6) for i in range(19)]))
+        assert not a['te_warm'] and a['trend'] < -0.4
+
+    def test_vlak_na_een_setpointwissel_nog_niet(self):
+        # Veertig minuten geleden van 18 naar 12: dat het bier er nog boven
+        # zit is de bedoeling, geen falende koeling.
+        a = self._tank(12.0, self._vlak(18, 6), doel_sinds=self.NU - 40 * 60)
+        assert not a['te_warm'] and a['warm_min'] < 60
+
+    def test_binnen_de_startmarge_niet(self):
+        a = self._tank(2.0, self._vlak(2.8, 3))
+        assert not a['te_warm'] and not a['op_temp']
+
+    def test_op_temperatuur_en_te_koud(self):
+        assert self._tank(2.0, self._vlak(2.2, 1))['op_temp']
+        assert not self._tank(2.0, self._reeks([2.2] * 3))['op_temp']   # pas 20 minuten
+        assert self._tank(18.5, self._vlak(17.0, 1))['te_koud']
+
+    def test_stille_sensor_zegt_niets(self):
+        punten = [(ts - 2 * 3600, t) for ts, t in self._vlak(3.5, 3)]
+        a = self._tank(2.0, punten)
+        assert not a['vers'] and not a['te_warm']
+
+    # ── Op welke temperatuur? ───────────────────────────────────────────────
+
+    def test_nooit_kouder_dan_de_warmste_tank_in_de_ruimte(self):
+        tanks = [self._tank(2.0, self._vlak(3.5, 3)),
+                 self._tank(18.5, self._vlak(18.5, 3), tank='F2', naam='Saison')]
+        # De ale op 18,5 °C heeft alleen koeling: de ruimte gaat naar 19, niet 18.
+        assert srv._rk_setpoint(self.KOELER, tanks, self._staat()) == 19.0
+        # Staat de airco in een andere ruimte (bij de glycolkoeler), dan niet.
+        anders = {**self.KOELER, 'zelfde_ruimte': False}
+        assert srv._rk_setpoint(anders, tanks, self._staat()) == 18.0
+        # En nooit buiten het bereik van de airco.
+        laag = {**anders, 'setpoint': 12.0}
+        assert srv._rk_setpoint(laag, tanks, self._staat()) == 17.0
+
+    # ── Het besluit ─────────────────────────────────────────────────────────
+
+    def test_zet_aan_als_een_tank_het_niet_haalt(self):
+        b = self._besluit([self._tank(2.0, self._vlak(3.5, 3))], self._staat())
+        assert b['actie'] == 'aan' and b['setpoint'] == 18.0
+        assert b['tank']['tank'] == 'F1'
+
+    def test_neemt_een_airco_die_al_aan_staat_niet_over(self):
+        b = self._besluit([self._tank(2.0, self._vlak(3.5, 3))], self._staat('heat'))
+        assert b['actie'] is None and b['stand'] == 'bezet'
+
+    def test_niet_aan_als_de_ruimte_al_koel_is(self):
+        b = self._besluit([self._tank(2.0, self._vlak(3.5, 3))], self._staat(ruimte=18.0))
+        assert b['actie'] is None and b['stand'] == 'al_koel'
+
+    def test_niet_aan_als_een_andere_tank_te_koud_is(self):
+        tanks = [self._tank(2.0, self._vlak(3.5, 3)),
+                 self._tank(18.5, self._vlak(17.0, 3), tank='F2', naam='Saison')]
+        b = self._besluit(tanks, self._staat())
+        assert b['actie'] is None and b['stand'] == 'te_koud' and b['tank']['tank'] == 'F2'
+
+    def test_wacht_terwijl_de_tank_nog_niet_lang_genoeg_te_warm_is(self):
+        punten = self._vlak(2.1, 3)[:-3] + self._reeks([3.5, 3.5, 3.5])
+        b = self._besluit([self._tank(2.0, punten)], self._staat())
+        assert b['actie'] is None and b['stand'] == 'wacht'
+
+    def test_pauze_na_handmatig_ingrijpen(self):
+        tot = datetime.datetime.fromtimestamp(self.NU + 3600, datetime.timezone.utc).isoformat()
+        b = self._besluit([self._tank(2.0, self._vlak(3.5, 3))], self._staat(),
+                          vorige={'pauze_tot': tot})
+        assert b['actie'] is None and b['stand'] == 'pauze'
+
+    def _eigen(self, uren_aan=2.0, setpoint=18.0, gezien=18.0):
+        sinds = datetime.datetime.fromtimestamp(self.NU - uren_aan * 3600, datetime.timezone.utc)
+        return {'eigen': True, 'sinds': sinds.isoformat(), 'setpoint': setpoint,
+                'gezien_setpoint': gezien}
+
+    def test_uit_als_de_tanks_op_temperatuur_zijn(self):
+        b = self._besluit([self._tank(2.0, self._vlak(2.2, 2))],
+                          self._staat('cool', 18.0), self._eigen())
+        assert b['actie'] == 'uit' and b['reden'] == 'op_temperatuur'
+
+    def test_minstens_een_uur_aan(self):
+        b = self._besluit([self._tank(2.0, self._vlak(2.2, 2))],
+                          self._staat('cool', 18.0), self._eigen(uren_aan=0.5))
+        assert b['actie'] is None and b['stand'] == 'aan'
+
+    def test_meteen_uit_als_een_tank_te_koud_wordt(self):
+        tanks = [self._tank(2.0, self._vlak(3.0, 2)),
+                 self._tank(18.5, self._vlak(17.2, 2), tank='F2', naam='Saison')]
+        b = self._besluit(tanks, self._staat('cool', 18.0), self._eigen(uren_aan=0.2))
+        assert b['actie'] == 'uit' and b['reden'] == 'te_koud'
+
+    def test_uit_zonder_tank_of_verse_meting(self):
+        b = self._besluit([], self._staat('cool', 18.0), self._eigen())
+        assert b['actie'] == 'uit' and b['reden'] == 'geen_tanks'
+        stil = [(ts - 2 * 3600, t) for ts, t in self._vlak(3.5, 3)]
+        b = self._besluit([self._tank(2.0, stil)], self._staat('cool', 18.0), self._eigen())
+        assert b['actie'] == 'uit' and b['reden'] == 'geen_meting'
+
+    def test_met_de_hand_bijgesteld_is_overgenomen(self):
+        warm = [self._tank(2.0, self._vlak(3.5, 3))]
+        for staat in (self._staat('off', 18.0), self._staat('cool', 21.0), self._staat('heat', 18.0)):
+            b = self._besluit(warm, staat, self._eigen())
+            assert b['vrijgeven'] and b['actie'] is None and b['stand'] == 'overgenomen'
+
+    def test_een_afgerond_setpoint_is_niet_overgenomen(self):
+        # De app vroeg 18,5; de airco zegt stappen van 0,5 te kennen maar meldt
+        # 18. Dat telt als van ons (hij kreeg het setpoint, hij rondt af).
+        warm = [self._tank(2.0, self._vlak(3.5, 3))]
+        b = self._besluit(warm, self._staat('cool', 18.0, stap=0.5),
+                          self._eigen(setpoint=18.5, gezien=18.0),
+                          koeler={**self.KOELER, 'setpoint': 18.5, 'zelfde_ruimte': False})
+        assert not b['vrijgeven'] and b['actie'] is None and b['stand'] == 'aan'
+
+    def test_setpoint_schuift_mee_met_een_warmere_tank(self):
+        tanks = [self._tank(2.0, self._vlak(3.5, 3)),
+                 self._tank(20.0, self._vlak(20.0, 3), tank='F2', naam='Saison')]
+        b = self._besluit(tanks, self._staat('cool', 18.0), self._eigen())
+        assert b['actie'] == 'setpoint' and b['setpoint'] == 20.0
+
+    def test_onbereikbare_airco_doet_niets(self):
+        b = self._besluit([self._tank(2.0, self._vlak(3.5, 3))], None, self._eigen())
+        assert b['actie'] is None and b['stand'] == 'onbereikbaar'
+
+    # ── Instellingen ────────────────────────────────────────────────────────
+
+    def test_instellingen_vallen_terug_op_defaults(self):
+        cfg = srv._ruimtekoeling_cfg({'ruimtekoeling': {
+            'enabled': 'ja', 'start_marge': 0, 'start_min': '90', 'daling': 0,
+            'stop_marge': -1, 'koelers': [
+                {'entity': 'climate.airco_brouwerij', 'setpoint': '19', 'tanks': ['F1', 2, True, '']},
+                {'entity': 'climate.airco_brouwerij'},        # dubbel
+                {'entity': 'sensor.geen_airco'},              # geen climate
+                {'entity': 'climate.airco_technische_ruimte', 'zelfde_ruimte': False}]}})
+        assert cfg['enabled'] is False                        # alleen een echte true
+        assert cfg['start_marge'] == 1.0 and cfg['start_min'] == 90.0
+        assert cfg['daling'] == 0.0                            # 0 mag
+        assert cfg['stop_marge'] == 0.3
+        assert [k['entity'] for k in cfg['koelers']] == [
+            'climate.airco_brouwerij', 'climate.airco_technische_ruimte']
+        eerste, tweede = cfg['koelers']
+        assert eerste['setpoint'] == 19.0 and eerste['tanks'] == ['2', 'F1']
+        assert eerste['zelfde_ruimte'] is True
+        assert tweede['setpoint'] == srv._RK_SETPOINT_DEFAULT and tweede['zelfde_ruimte'] is False
+
+    def test_python_en_typescript_gebruiken_dezelfde_defaults(self):
+        bron = (Path(__file__).resolve().parent.parent
+                / 'src' / 'utils' / 'ruimtekoeling.ts').read_text(encoding='utf-8')
+        blok = bron.split('RUIMTEKOELING_DEFAULTS')[1].split('}')[0]
+        ts_waarden = dict(re.findall(r'(\w+):\s*([\d.]+)', blok))
+        assert ts_waarden, 'RUIMTEKOELING_DEFAULTS niet gevonden in ruimtekoeling.ts'
+        for sleutel, waarde in srv._RUIMTEKOELING_DEFAULTS.items():
+            assert float(ts_waarden[sleutel]) == waarde, f'{sleutel} loopt uiteen'
+        sp = re.search(r'RK_SETPOINT_DEFAULT = ([\d.]+)', bron)
+        assert sp and float(sp.group(1)) == srv._RK_SETPOINT_DEFAULT
+
+    # ── De tick tegen een nep-airco ─────────────────────────────────────────
+
+    @staticmethod
+    def _clean():
+        conn = srv._db()
+        with conn:
+            for key in ('batches', 'gist_metingen', 'tank_alarmen', 'tank_setpoints'):
+                conn.execute('DELETE FROM records WHERE key=?', (key,))
+                conn.execute('DELETE FROM versies WHERE key=?', (key,))
+            for key in ('ha_instellingen', 'notificatie_instellingen', 'ruimtekoeling_status'):
+                conn.execute('DELETE FROM kv WHERE key=?', (key,))
+                conn.execute('DELETE FROM versies WHERE key=?', (key,))
+
+    @pytest.fixture()
+    def airco(self, monkeypatch):
+        """Een nep-airco in HA: `staat` is wat HA meldt, `aanroepen` wat de
+        server vroeg. Een aanroep werkt de staat bij zoals HA dat zou doen."""
+        staat = {'climate.airco_brouwerij': self._staat()}
+        aanroepen, meldingen = [], []
+
+        def dienst(service, data):
+            aanroepen.append((service, dict(data)))
+            s = staat[data['entity_id']]
+            if service == 'set_hvac_mode':
+                s['stand'] = data['hvac_mode']
+            else:
+                s['setpoint'] = float(data['temperature'])
+            return True
+
+        monkeypatch.setattr(srv, '_ha_climate_staat',
+                            lambda e: dict(staat[e]) if staat.get(e) else None)
+        monkeypatch.setattr(srv, '_ha_climate_dienst', dienst)
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (meldingen.append(m) or True))
+        yield {'staat': staat, 'aanroepen': aanroepen, 'meldingen': meldingen}
+        self._clean()
+
+    def _seed(self, temps, doel=2.0, enabled=True, koeler=None):
+        srv._write_json('ha_instellingen', {
+            'enabled': True,
+            'sensors': [{'id': 1, 'tank': 'F1', 'entity': 'sensor.sensor_4'}],
+            'ruimtekoeling': {'enabled': enabled, 'koelers': [koeler or {
+                'id': 1, 'entity': 'climate.airco_brouwerij', 'setpoint': 18, 'tanks': ['F1']}]}})
+        srv._write_json('notificatie_instellingen',
+                        {'enabled': True, 'notify_service': 'mobile_app_test'})
+        srv._write_json('batches', [{
+            'id': 1, 'naam': 'Kadeblond', 'tank': 'F1', 'status': 'Conditioneren',
+            'vergistingsprofiel': [{'temp': doel, 'tijd': 6}],
+            'vergisting_stap_start': (datetime.datetime.now(datetime.timezone.utc)
+                                      - datetime.timedelta(days=3)).isoformat()}])
+        self._meet(temps)
+
+    @staticmethod
+    def _meet(temps):
+        srv._write_json('gist_metingen', TestTankBewaking._metingen(1, temps))
+
+    @staticmethod
+    def _status(entity='climate.airco_brouwerij'):
+        return (srv._read_json('ruimtekoeling_status', {}) or {}).get('koelers', {}).get(entity)
+
+    @staticmethod
+    def _schuif_sinds(uren, entity='climate.airco_brouwerij'):
+        """Doe alsof de app de airco `uren` geleden aanzette."""
+        st = srv._read_json('ruimtekoeling_status', {})
+        st['koelers'][entity]['sinds'] = (datetime.datetime.now(datetime.timezone.utc)
+                                          - datetime.timedelta(hours=uren)).isoformat()
+        srv._write_json('ruimtekoeling_status', st)
+
+    def test_zet_aan_en_weer_uit(self, app, airco):
+        self._seed([3.5] * 19)
+        srv._ruimtekoeling_tick()
+        assert airco['aanroepen'] == [
+            ('set_hvac_mode', {'entity_id': 'climate.airco_brouwerij', 'hvac_mode': 'cool'}),
+            ('set_temperature', {'entity_id': 'climate.airco_brouwerij', 'temperature': 18.0})]
+        regel = self._status()
+        assert regel['eigen'] is True and regel['stand'] == 'aan' and regel['setpoint'] == 18.0
+        assert regel['tank']['tank'] == 'F1' and regel['laatste_actie']['soort'] == 'aan'
+        assert len(airco['meldingen']) == 1 and 'Kadeblond' in airco['meldingen'][0]
+
+        # De tank zakt naar 2,1 °C. Maar de airco draait pas net: nog niet uit.
+        self._meet([2.1] * 13)
+        srv._ruimtekoeling_tick()
+        assert len(airco['aanroepen']) == 2 and self._status()['eigen'] is True
+
+        # Een uur later: uit, met een herstelmelding.
+        self._schuif_sinds(2)
+        srv._ruimtekoeling_tick()
+        assert airco['aanroepen'][-1] == (
+            'set_hvac_mode', {'entity_id': 'climate.airco_brouwerij', 'hvac_mode': 'off'})
+        regel = self._status()
+        assert regel['eigen'] is False and regel['laatste_actie']['reden'] == 'op_temperatuur'
+        assert len(airco['meldingen']) == 2 and 'op temperatuur' in airco['meldingen'][1]
+
+    def test_laat_een_airco_los_die_iemand_zelf_uitzet(self, app, airco):
+        self._seed([3.5] * 19)
+        srv._ruimtekoeling_tick()
+        srv._ruimtekoeling_tick()               # eerste ronde ná het zetten: setpoint gezien
+        airco['staat']['climate.airco_brouwerij']['stand'] = 'off'   # de brouwer zet hem uit
+        n = len(airco['aanroepen'])
+        srv._ruimtekoeling_tick()
+        regel = self._status()
+        assert regel['eigen'] is False and regel['stand'] == 'overgenomen' and regel['pauze_tot']
+        # Ook de ronde daarna: geen nieuwe poging, de tank is nog steeds warm.
+        srv._ruimtekoeling_tick()
+        assert len(airco['aanroepen']) == n and self._status()['stand'] == 'pauze'
+
+    def test_laat_een_airco_los_die_iemand_bijstelt(self, app, airco):
+        self._seed([3.5] * 19)
+        srv._ruimtekoeling_tick()
+        srv._ruimtekoeling_tick()
+        airco['staat']['climate.airco_brouwerij']['setpoint'] = 22.0
+        srv._ruimtekoeling_tick()
+        assert self._status()['eigen'] is False
+        # De app zet hem later ook niet uit: hij is nu van de brouwer.
+        self._meet([2.0] * 13)
+        self._schuif_sinds(3)
+        srv._ruimtekoeling_tick()
+        assert airco['staat']['climate.airco_brouwerij']['stand'] == 'cool'
+
+    def test_neemt_een_draaiende_airco_niet_over(self, app, airco):
+        airco['staat']['climate.airco_brouwerij'] = self._staat('heat')
+        self._seed([3.5] * 19)
+        srv._ruimtekoeling_tick()
+        assert airco['aanroepen'] == [] and self._status()['stand'] == 'bezet'
+
+    def test_uitzetten_van_de_functie_ruimt_op(self, app, airco):
+        self._seed([3.5] * 19)
+        srv._ruimtekoeling_tick()
+        self._seed([3.5] * 19, enabled=False)
+        srv._ruimtekoeling_tick()
+        assert airco['aanroepen'][-1][1]['hvac_mode'] == 'off'
+        assert self._status() is None
+        assert 'staat uit in BrewAdmin' in airco['meldingen'][-1]
+        # Daarna is er niets meer te doen.
+        n = len(airco['aanroepen'])
+        srv._ruimtekoeling_tick()
+        assert len(airco['aanroepen']) == n
+
+    def test_zonder_instelling_niets(self, app, airco):
+        self._seed([3.5] * 19, enabled=False)
+        srv._ruimtekoeling_tick()
+        assert airco['aanroepen'] == [] and srv._read_json('ruimtekoeling_status') is None
+
+    def test_gezonde_tank_niets(self, app, airco):
+        self._seed([2.3] * 19)
+        srv._ruimtekoeling_tick()
+        assert airco['aanroepen'] == [] and self._status()['stand'] == 'uit'
+
+    def test_schrijft_niet_elke_ronde(self, app, airco):
+        self._seed([3.5] * 19)
+        srv._ruimtekoeling_tick()
+        srv._ruimtekoeling_tick()
+        versie = srv._data_version('ruimtekoeling_status')
+        srv._ruimtekoeling_tick()
+        assert srv._data_version('ruimtekoeling_status') == versie
+
+    def test_tank_buiten_de_lijst_telt_niet(self, app, airco):
+        self._seed([3.5] * 19, koeler={'id': 1, 'entity': 'climate.airco_brouwerij',
+                                       'setpoint': 18, 'tanks': ['F2']})
+        srv._ruimtekoeling_tick()
+        assert airco['aanroepen'] == []
+
+    def test_status_is_niet_terug_te_zetten_en_alleen_beheer(self):
+        assert 'ruimtekoeling_status' in srv._NIET_TERUGZETBAAR
+        assert 'ruimtekoeling_status' in srv._BEHEER_KEYS
+        assert srv._KEY_TYPES['ruimtekoeling_status'] == 'object'
+
+
 # ── Lokale tijd zoals de app (dag-datums, wintertijd) ───────────────────────
 
 # POSIX-notatie van Europe/Amsterdam: werkt ook zonder tzdata in de container.

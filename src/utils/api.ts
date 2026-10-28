@@ -1101,6 +1101,19 @@ export const websiteStatus = async (): Promise<any> => {
   }
 }
 
+// `ruimtekoeling_status` (welke airco de app voor de tanks aanzette) schrijft
+// alleen de server. Ook hier een gewone GET, geen useStore.
+export const ruimtekoelingStatus = async (): Promise<any> => {
+  try {
+    const r = await fetch(API_BASE + 'ruimtekoeling_status', {headers: {'Cache-Control': 'no-cache'}})
+    if (!r.ok) return {}
+    const d = await r.json()
+    return d && typeof d === 'object' && !Array.isArray(d) ? d : {}
+  } catch (e) {
+    return {}
+  }
+}
+
 // ── Facturen per e-mail (postvak) ────────────────────────────────────────────
 // Antwoorden komen als {ok, fout?: {code, oorzaak?}} (server: `_inbox_*`), ook bij
 // een weigering of onbereikbare server, zodat de schermen één vorm lezen.
