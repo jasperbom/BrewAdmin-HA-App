@@ -109,7 +109,7 @@ const KassaBon: React.FC<KassaBonProps> = ({
                 <span className="flex-1 min-w-0 break-words font-medium text-gray-800 leading-tight">
                   {r.bier_naam}
                   {r.verpakking_type && <span className="text-gray-400 font-normal"> · {r.verpakking_type}</span>}
-                  {r.prijsType === 'b2b' && <span className="ml-1 text-[10px] font-semibold bg-blue-100 text-blue-700 px-1 py-0.5 rounded align-middle">B2B</span>}
+                  {r.prijsType === 'b2b' && <span className="ml-1 text-[11px] font-semibold bg-blue-100 text-blue-700 px-1 py-0.5 rounded align-middle">B2B</span>}
                 </span>
                 {/* Negatieve marge: het tapdoel is 44 px, de regel blijft zo hoog als de naam. */}
                 <button type="button" onClick={() => onVerwijder(idx)} disabled={vergrendeld} aria-label={t('pos_regel_verwijderen')}
@@ -127,7 +127,7 @@ const KassaBon: React.FC<KassaBonProps> = ({
                 </div>
                 <span className="text-xs text-gray-400">×</span>
                 <span className="text-sm text-gray-600 whitespace-nowrap">{fmt(kassaStuksprijs(r.prijs_per_stuk, r.btw_pct, w.inclBtw))}</span>
-                {!w.inclBtw && <span className="text-[10px] text-gray-400">{r.btw_pct}%</span>}
+                {!w.inclBtw && <span className="text-xs text-gray-400">{r.btw_pct}%</span>}
                 <span className="ml-auto text-sm font-semibold text-gray-700 whitespace-nowrap">{fmt(w.regels[idx] ?? 0)}</span>
               </div>
             </div>
@@ -140,7 +140,7 @@ const KassaBon: React.FC<KassaBonProps> = ({
       {cart.length > 0 && (
         <div className="border-t pt-3 space-y-1 text-sm">
           <div className="flex justify-between gap-2 text-gray-500">
-            <span>{w.inclBtw ? t('pos_subtotaal_incl') : t('pos_subtotaal')}</span><span className="whitespace-nowrap">{fmt(w.subtotaal)}</span>
+            <span>{w.inclBtw ? t('pos_subtotaal_incl') : t('pos_subtotaal')}</span><span className="whitespace-nowrap cijfer">{fmt(w.subtotaal)}</span>
           </div>
           {w.klantkorting > 0 && (
             <div className="flex justify-between gap-2 text-green-600">
@@ -173,7 +173,7 @@ const KassaBon: React.FC<KassaBonProps> = ({
             </div>
           )}
           <div className="flex justify-between gap-2 font-bold text-lg text-gray-800 pt-1">
-            <span>{t('pos_totaal')}</span><span className="whitespace-nowrap">{fmt(w.totaal)}</span>
+            <span>{t('pos_totaal')}</span><span className="whitespace-nowrap cijfer">{fmt(w.totaal)}</span>
           </div>
           {w.inclBtw && (
             <div className="flex justify-between gap-2 text-xs text-gray-500">

@@ -71,7 +71,7 @@ const ArtikelenKaart: React.FC<ArtikelenKaartProps> = (p) => (
                 {p.skuBadge(a)}
                 {a.gn_code && <span className="text-xs text-gray-500">{t('lbl_gn_code')} {a.gn_code}</span>}
                 {p.webshopAan && a.artikelnummer && (
-                  <span className={`px-1.5 py-0.5 rounded-full text-[11px] font-medium ${wcAan ? 'bg-green-50 text-green-700 ring-1 ring-green-200' : 'bg-gray-100 text-gray-600'}`}
+                  <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${wcAan ? 'bg-green-50 text-green-700 ring-1 ring-green-200' : 'bg-gray-100 text-gray-600'}`}
                     title={wcAan ? t('tip_artikel_wc_push_aan') : t('tip_artikel_wc_push_uit')}>
                     {wcAan ? t('product_webshop_aan') : t('product_webshop_uit')}
                   </span>

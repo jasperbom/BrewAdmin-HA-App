@@ -69,7 +69,7 @@ const FactuurKiezer: React.FC<FactuurKiezerProps> = ({ tx, soort, facturen, bank
                       <span className="block text-xs text-gray-500">
                         {fmtD(f.datum) || '—'}
                         {r.klopt && <span className="ml-2 text-green-700 font-medium">✓ {t('bank_kies_bedrag_klopt')}</span>}
-                        {r.betaald && <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">{t('factuur_paid')}</span>}
+                        {r.betaald && <span className="ml-2 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700">{t('factuur_paid')}</span>}
                         {r.elders && <span className="block text-orange-700">{t('bank_kies_elders')}</span>}
                       </span>
                     </span>

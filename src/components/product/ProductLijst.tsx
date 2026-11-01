@@ -8,6 +8,7 @@ import { lijstChips } from '../../utils/productPagina'
 import type { ProductEtiketOordeel, ProductLijstGroepen } from '../../utils/productPagina'
 import type { VoorraadVerpakking } from '../../utils/verkoopOverzicht'
 import type { ChipTekst } from '../../utils/verkoopDashboard'
+import { PIL_KLEUR } from '../ui/StatusPil'
 
 // De productlijst (SPEC M: 280 px links op het bureau; op de telefoon de
 // lijst vóór het detailscherm): per bier de stip, de naam, de alcohol en per
@@ -30,12 +31,8 @@ interface ProductLijstProps {
   geenProducten: boolean
 }
 
-const CHIP: Record<ChipTekst['kleur'], string> = {
-  grijs: 'bg-gray-100 text-gray-700',
-  rood: 'bg-red-100 text-red-700',
-  oranje: 'bg-orange-100 text-orange-800',
-  groen: 'bg-green-100 text-green-700',
-}
+// Eén tabel voor alle statuspillen (components/ui/StatusPil.tsx).
+const CHIP = PIL_KLEUR
 
 const ProductLijst: React.FC<ProductLijstProps> = ({ groepen, voorraadVan, etiketVan, ebcVan, sel, onKies, zoek, onZoek, geenProducten }) => {
   const taal = getLang()

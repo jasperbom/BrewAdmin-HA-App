@@ -129,7 +129,7 @@ const Samenvatting: React.FC<{
 }> = ({ tot, teLaat, teLaatTonen, onTeLaat, periodeUit, smal, btwLabel }) => (
   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 px-1" aria-live="polite">
     <span>{tot.aantal === 1 ? t('fct_som_aantal_1') : t('fct_som_aantal').replace('{n}', String(tot.aantal))}</span>
-    <span>{t('fct_som_samen')} <b className="text-gray-900 tabular-nums">{fmt(tot.bruto)}</b></span>
+    <span>{t('fct_som_samen')} <b className="text-gray-900 cijfer">{fmt(tot.bruto)}</b></span>
     {smal && tot.aantal > 0 && (
       <span className="tabular-nums text-gray-500">
         {t('lbl_netto')} {fmt(tot.netto)} · {btwLabel} {fmt(tot.btw)}
@@ -746,6 +746,8 @@ function FacturenSectie() {
     regenerateAttachments?: (payUrl: string) => Promise<{filename: string, contentBase64: string, mimeType: string}[] | null>
     // Extra actie na succesvol verzenden (bijv. de herinnering-status markeren).
     afterSent?: () => void
+    // false = de uitnodiging onder de mail begint uit (betalingsherinnering).
+    uitnodiging?: boolean
   }>(null)
   const [mailGenerating, setMailGenerating] = React.useState<number | null>(null)
 
@@ -900,6 +902,8 @@ function FacturenSectie() {
         factuurId: factuur.id,
         mollie: mollieCtx,
         regenerateAttachments,
+        // Om geld vragen en tegelijk uitnodigen voor de bierengroep past niet.
+        uitnodiging: false,
         afterSent: () => {
           if (niveau === 'herinnering') markeerHerinnering(factuur.id)
           else if (niveau === 'tweede_herinnering') markeerTweedeHerinnering(factuur.id)
@@ -1659,6 +1663,7 @@ function FacturenSectie() {
           smtpReady={!!smtpCreds?.enabled}
           mollie={mailModal.mollie}
           regenerateAttachments={mailModal.regenerateAttachments}
+          uitnodiging={mailModal.uitnodiging !== false}
           onClose={() => setMailModal(null)}
           onSent={(sentTo) => {
             if (mailModal.factuurId) {

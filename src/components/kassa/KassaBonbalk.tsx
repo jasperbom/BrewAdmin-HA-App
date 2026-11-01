@@ -36,7 +36,7 @@ const KassaBonbalk: React.FC<KassaBonbalkProps> = ({ stuks, totaal, afgerond, on
     <div className="max-w-7xl mx-auto h-16 px-4 flex items-center gap-2" role="region" aria-label={t('pos_bon')}>
       <div className="flex-1 min-w-0 truncate text-sm text-gray-700" aria-live="polite">
         {stuks > 0 ? (
-          <>{stuksTekst(stuks)} · <span className="font-bold text-gray-900">{fmt(totaal)}</span></>
+          <>{stuksTekst(stuks)} · <span className="font-bold text-gray-900 cijfer">{fmt(totaal)}</span></>
         ) : afgerond != null ? (
           <><span className="font-semibold text-green-700">✓ {t('pos_verkoop_gelukt')}</span> · {fmt(afgerond)}</>
         ) : (

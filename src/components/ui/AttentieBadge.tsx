@@ -54,7 +54,7 @@ const AttentieBadge: React.FC<AttentieBadgeProps> = ({
             <div className="rounded-lg shadow-xl border border-white/10 overflow-hidden text-white" style={{ background: achtergrond }}>
               <div className="px-3 py-2 border-b border-white/10">
                 <div className="text-sm font-semibold">{t('attentie_titel')}</div>
-                <div className="text-[11px] text-white/60">{titel}</div>
+                <div className="text-xs text-white/60">{titel}</div>
               </div>
               {posten.map(p => (
                 <button

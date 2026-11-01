@@ -346,7 +346,12 @@ _NAV_THEMAS: dict[str, dict[str, str]] = {
                'pale': '#f5f3ff', 'text': '#4c1d95', 'btn': '#7c3aed', 'btnH': '#6d28d9', 'btnA': '#5b21b6'},
     'sand':   {'from': '#3d3833', 'bg': '#faf8f5', 'accent': '#7d6450', 'light': '#e8e0d5',
                'pale': '#f5f1ea', 'text': '#4a3f36', 'btn': '#7d6450', 'btnH': '#6a5442', 'btnA': '#574536'},
+    # Craftery: het nieuwe ontwerp van de Craftery-webshop — inkt, papier, amber.
+    'craftery': {'from': '#151311', 'bg': '#f3eee4', 'accent': '#eba640', 'light': '#f8deb4',
+                 'pale': '#fffcf3', 'text': '#151311', 'btn': '#eba640', 'btnH': '#f5be62', 'btnA': '#d9a04a'},
 }
+# Het thema zonder (geldige) keuze; App.tsx gebruikt dezelfde standaard
+# (THEMA_STANDAARD).
 _THEMA_STANDAARD = 'amber'
 _THEMA_STYLE_RE = re.compile(rb'<style id="thema-init"></style>')
 _THEMA_COLOR_RE = re.compile(rb'(<meta name="theme-color" content=")[^"]*(")')
@@ -866,8 +871,87 @@ def _build_email(creds: dict, payload: dict) -> tuple[email.message.EmailMessage
     return msg, to_list + cc_list + bcc_list
 
 
-def _bf_request(uid: str, api_key: str, url: str, method: str = 'GET', data: bytes | None = None) -> tuple[int, bytes]:
-    """Make a request to the Brewfather API; returns (status, body)."""
+# Wat de Brewfather-doorgang mag schrijven. Sinds API 3.1.0 kan een sleutel
+# met schrijfrechten ook recepten, batches en voorraaditems wijzigen (ERP-punt
+# S4), dus een allowlist: de voorraad van één ingrediënt (alleen het getal) en
+# de status + meetwaarden van één batch (BrewAdmin is leidend en schrijft terug,
+# utils/bfTerugschrijven.ts). Een nieuwe schrijfactie hoort eerst hier bij te
+# komen. Brewfather negeert onbekende velden zonder melding — nog een reden om
+# alleen bekende velden door te laten.
+_BF_PATCH_PAD_RE = re.compile(r'^inventory/(fermentables|hops|miscs|yeasts)/[A-Za-z0-9_-]{1,64}$')
+_BF_PATCH_VELDEN = frozenset({'inventory', 'inventory_adjust'})
+_BF_BATCH_PAD_RE = re.compile(r'^batches/[A-Za-z0-9_-]{1,64}$')
+# Spiegel van BF_STATUSSEN en BF_MEETVELDEN in src/utils/bfTerugschrijven.ts.
+_BF_BATCH_STATUSSEN = ('Planning', 'Brewing', 'Fermenting', 'Conditioning', 'Completed', 'Archived')
+_BF_BATCH_VELDEN = (
+    'measuredOg', 'measuredFg', 'measuredPreBoilGravity', 'measuredBoilSize',
+    'measuredKettleSize', 'measuredBatchSize', 'measuredBottlingSize',
+    'measuredMashPh', 'measuredFermentationPh',
+)
+_BF_FOUT_MAX = 300  # tekens van Brewfathers eigen foutmelding
+
+
+def _bf_getal_ok(v) -> bool:
+    return not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v)
+
+
+def _bf_patch_toegestaan(subpad: str, body) -> bool:
+    """Mag deze PATCH door naar Brewfather? De voorraad van één ingrediënt
+    (een eindig getal), of de status en meetwaarden van één batch. Nooit een
+    leeg bericht, nooit `null` (dat wist in Brewfather een gemeten waarde)."""
+    if not isinstance(body, dict) or not body:
+        return False
+    if _BF_PATCH_PAD_RE.match(subpad or ''):
+        return set(body) <= _BF_PATCH_VELDEN and all(_bf_getal_ok(v) for v in body.values())
+    if _BF_BATCH_PAD_RE.match(subpad or ''):
+        for k, v in body.items():
+            if k == 'status':
+                if v not in _BF_BATCH_STATUSSEN:
+                    return False
+            elif k not in _BF_BATCH_VELDEN or not _bf_getal_ok(v):
+                return False
+        return True
+    return False
+
+
+def _bf_retry_after(waarde) -> str | None:
+    """`Retry-After` van Brewfather alleen doorgeven als het een redelijk
+    aantal seconden is (0–3600); een datum of rommel laten we vallen."""
+    s = str(waarde or '').strip()
+    if s.isdigit() and int(s) <= 3600:
+        return s
+    return None
+
+
+def _bf_foutmelding(code: int, raw: bytes) -> bytes:
+    """Brewfathers eigen foutmelding, ingekort en zonder stuurtekens, als JSON
+    voor de app: `{"error": "brewfather", "status": 429, "message": "…"}`.
+    Vroeger werd elke fout een lege `{}` en zag de gebruiker alleen een code."""
+    tekst = ''
+    try:
+        d = json.loads(raw.decode('utf-8', 'replace'))
+        if isinstance(d, dict):
+            tekst = str(d.get('message') or d.get('error') or d.get('msg') or '')
+        elif isinstance(d, str):
+            tekst = d
+    except Exception:
+        tekst = raw.decode('utf-8', 'replace')
+        # Een HTML-foutpagina (proxy, onderhoud) is geen melding voor de gebruiker.
+        if '<' in tekst:
+            tekst = ''
+    tekst = ''.join(c if c.isprintable() else ' ' for c in tekst)
+    tekst = ' '.join(tekst.split())[:_BF_FOUT_MAX]
+    return json.dumps({'error': 'brewfather', 'status': code, 'message': tekst},
+                      ensure_ascii=False).encode()
+
+
+def _bf_request(uid: str, api_key: str, url: str, method: str = 'GET',
+                data: bytes | None = None) -> tuple[int, bytes, str | None]:
+    """Make a request to the Brewfather API; returns (status, body, retry_after).
+
+    Bij een HTTP-fout is de body Brewfathers eigen melding (`_bf_foutmelding`)
+    en `retry_after` de wachttijd uit de kop, zodat de app bij een 429 zegt
+    waarom en zo lang wacht als Brewfather vraagt."""
     auth = base64.b64encode(f'{uid}:{api_key}'.encode()).decode()
     headers = {'Authorization': f'Basic {auth}', 'Accept': 'application/json'}
     if data is not None:
@@ -877,11 +961,16 @@ def _bf_request(uid: str, api_key: str, url: str, method: str = 'GET', data: byt
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
-            return resp.status, resp.read()
+            return resp.status, resp.read(), None
     except urllib.error.HTTPError as e:
-        return e.code, b'{}'
+        try:
+            raw = e.read(4096) or b''
+        except Exception:
+            raw = b''
+        retry = _bf_retry_after(e.headers.get('Retry-After') if e.headers else None)
+        return e.code, _bf_foutmelding(e.code, raw), retry
     except Exception:
-        return 502, b'{}'
+        return 502, json.dumps({'error': 'brewfather_onbereikbaar'}).encode(), None
 
 
 # ── Backup system (AGP 7-year retention) ──────────────────────────────────
@@ -2758,6 +2847,24 @@ _DATA_IMG_RE = re.compile(r'^data:image/(png|jpe?g|gif|webp|svg\+xml);base64,[A-
 _LOGIN_AFB_MAX = 1_500_000  # ~1,1 MB afbeelding als base64
 
 
+_LOGIN_ACCENT_STANDAARD = '#b45309'
+_LOGIN_ACHTERGROND_STANDAARD = '#1c1917'
+
+
+def _tekst_op_kleur(hex_kleur: str) -> str:
+    """Inkt of wit, wat het meeste contrast geeft op deze (#rrggbb-)kleur."""
+    try:
+        r, g, b = (int(hex_kleur[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    except (ValueError, TypeError, IndexError):
+        return '#ffffff'
+    lin = lambda c: c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+    inkt = 0.2126 * lin(0x15 / 255) + 0.7152 * lin(0x13 / 255) + 0.0722 * lin(0x11 / 255)
+    op_wit = 1.05 / (lum + 0.05)
+    op_inkt = (lum + 0.05) / (inkt + 0.05)
+    return '#151311' if op_inkt > op_wit else '#ffffff'
+
+
 def _login_pagina() -> bytes:
     """Render de loginpagina met de opgeslagen styling (of de defaults)."""
     import html as _html
@@ -2775,8 +2882,11 @@ def _login_pagina() -> bytes:
         w = inst.get(veld)
         return w if isinstance(w, str) and _KLEUR_RE.match(w) else standaard
 
-    accent = kleur('accent', '#b45309')
-    achtergrond = kleur('achtergrond', '#1c1917')
+    accent = kleur('accent', _LOGIN_ACCENT_STANDAARD)
+    achtergrond = kleur('achtergrond', _LOGIN_ACHTERGROND_STANDAARD)
+    # Tekst óp de knop: inkt op een licht accent (amber), anders wit — wit op
+    # amber is 2:1.
+    knop_tekst_kleur = _tekst_op_kleur(accent)
     # CSS-shorthand: kleur als laatste; afbeelding alleen wanneer die het
     # strikte data-url-patroon volgt (nooit ruwe invoer in de CSS).
     body_bg = achtergrond
@@ -2802,6 +2912,7 @@ def _login_pagina() -> bytes:
               .replace('__ONDERTITEL__', ondertitel)
               .replace('__KNOP__', knop)
               .replace('__ACCENT__', accent)
+              .replace('__KNOPTEKST__', knop_tekst_kleur)
               .replace('__ACHTERGROND__', achtergrond)
               .replace('__BODY_BG__', body_bg)
               .replace('__LOGO__', logo_html)
@@ -2832,7 +2943,7 @@ letter-spacing:.05em;color:#a8a29e;margin-bottom:.25rem}
 input{width:100%;box-sizing:border-box;padding:.55rem .7rem;margin-bottom:1rem;
 border-radius:.5rem;border:1px solid #44403c;background:#1c1917;color:#e7e5e4}
 button{width:100%;padding:.6rem;border:none;border-radius:.5rem;
-background:__ACCENT__;color:#fff;font-weight:600;cursor:pointer}
+background:__ACCENT__;color:__KNOPTEKST__;font-weight:600;cursor:pointer}
 button:hover{filter:brightness(.85)}
 .onthoud{display:flex;align-items:center;gap:.5rem;text-transform:none;
 letter-spacing:normal;font-size:.8rem;color:#d6d3d1;margin:-.25rem 0 1rem;cursor:pointer}
@@ -7161,43 +7272,52 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             return
 
         uid, api_key = creds
-        status, data = _bf_request(uid, api_key, f'{BF_API_BASE}/{bf_subpath}')
+        status, data, retry = _bf_request(uid, api_key, f'{BF_API_BASE}/{bf_subpath}')
+        self._bf_antwoord(status, data, retry)
 
+    def _bf_antwoord(self, status: int, data: bytes, retry: str | None):
+        """Het antwoord van Brewfather doorgeven, met `Retry-After` erbij."""
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', len(data))
+        if retry is not None:
+            self.send_header('Retry-After', retry)
         self._add_security_headers()
         self.end_headers()
         self.wfile.write(data)
 
     def _bf_proxy_patch(self):
-        """Proxy a PATCH request to Brewfather, delivered as browser POST."""
+        """Proxy a PATCH request to Brewfather, delivered as browser POST.
+
+        Alleen wat `_bf_patch_toegestaan` toelaat (de voorraad van één
+        ingrediënt); de rest krijgt 403 en een auditregel."""
         full = self.path
         idx = full.find(BF_PATCH_PREFIX)
         bf_subpath = full[idx + len(BF_PATCH_PREFIX):]
         if not _valid_bf_path(bf_subpath):
             self._json(400, {'error': 'invalid path'})
             return
-        creds = _load_bf_creds()
-        if creds is None:
-            self._json(401, {'error': 'no credentials configured'})
-            return
         body = self._read_body()
         if body is None:
             return
         try:
-            json.loads(body)
-        except json.JSONDecodeError:
+            geparsed = _json_laden_strikt(body)
+        except (json.JSONDecodeError, ValueError):
             self._json(400, {'error': 'invalid json'})
             return
+        if not _bf_patch_toegestaan(bf_subpath, geparsed):
+            _audit_write('brewfather_geweigerd', bf_subpath[:120],
+                         ip=self.client_address[0], rol=self._rol(),
+                         gebruiker=self._ingress_user())
+            self._json(403, {'error': 'brewfather_niet_toegestaan'})
+            return
+        creds = _load_bf_creds()
+        if creds is None:
+            self._json(401, {'error': 'no credentials configured'})
+            return
         uid, api_key = creds
-        status, data = _bf_request(uid, api_key, f'{BF_API_BASE}/{bf_subpath}', 'PATCH', body)
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Content-Length', len(data))
-        self._add_security_headers()
-        self.end_headers()
-        self.wfile.write(data)
+        status, data, retry = _bf_request(uid, api_key, f'{BF_API_BASE}/{bf_subpath}', 'PATCH', body)
+        self._bf_antwoord(status, data, retry)
 
     def _bf_test(self):
         """Test Brewfather credentials supplied in the POST body."""
@@ -7221,7 +7341,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(400, {'error': 'invalid userId'})
             return
 
-        status, _ = _bf_request(uid, key, f'{BF_API_BASE}/batches?limit=1')
+        status, _, _ = _bf_request(uid, key, f'{BF_API_BASE}/batches?limit=1')
         self._json(200, {'ok': status == 200})
 
     # ── WooCommerce proxy ──────────────────────────────────────────────────

@@ -893,7 +893,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
               className="flex-1 min-w-0 min-h-tap flex items-center gap-1.5 px-3 rounded-lg border border-gray-200 bg-white text-sm text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
               <span className="text-gray-500 flex-shrink-0">{t('pos_klant')}:</span>
               <span className="font-semibold text-gray-900 truncate">{klantNaamKort}</span>
-              {selectedKlant && isZakelijk && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 flex-shrink-0">{t('lbl_zakelijk')}</span>}
+              {selectedKlant && isZakelijk && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 flex-shrink-0">{t('lbl_zakelijk')}</span>}
               <span aria-hidden="true" className="ml-auto pl-1 text-gray-400 flex-shrink-0">▾</span>
             </button>
             <KassaInclSchakelaar aan={toonInclBtw} onWissel={setInclKeuze} />
@@ -927,7 +927,7 @@ const KassaPage: React.FC<KassaPageProps> = ({
                 {tegels}
               </div>
             </div>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 lg:sticky lg:top-20">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 lg:sticky lg:top-28 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
               {bonInhoud('kolom', undefined, cart.length > 0 && (
                 <Btn v="green" s="lg" cls="w-full text-base" onClick={openAfrekenen}>
                   {t('pos_afrekenen')} · {fmt(bonTotalen.bruto)}
@@ -957,11 +957,11 @@ const KassaPage: React.FC<KassaPageProps> = ({
               <span className="text-gray-500 flex-shrink-0">{t('pos_klant')}:</span>
               <span className="font-semibold text-gray-900 truncate">{klantNaamKort}</span>
               {selectedKlant && (
-                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${isZakelijk ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                <span className={`text-xs font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${isZakelijk ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
                   {isZakelijk ? t('lbl_zakelijk') : t('lbl_prive')}
                 </span>
               )}
-              {kortingPct > 0 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700 flex-shrink-0">{t('lbl_korting_pct').replace('{pct}', String(kortingPct))}</span>}
+              {kortingPct > 0 && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700 flex-shrink-0">{t('lbl_korting_pct').replace('{pct}', String(kortingPct))}</span>}
               <span aria-hidden="true" className="ml-auto pl-1 text-gray-400 flex-shrink-0">›</span>
             </button>,
             cart.length > 0 && (

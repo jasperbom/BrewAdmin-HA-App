@@ -6,6 +6,20 @@ export default {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'system-ui', 'sans-serif'],
       },
       colors: {
+        // Grijs via CSS-variabelen (`--grijs-*`, RGB-drietallen in index.css):
+        // standaard exact het grijs van Tailwind, een thema kan er een eigen
+        // schaal van maken (Craftery: warm, met 400/500 op 4,5:1 — craftery.css).
+        gray: Object.fromEntries(
+          [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]
+            .map(n => [n, `rgb(var(--grijs-${n}) / <alpha-value>)`]),
+        ),
+        // Oranje = "let op" (waarschuwing, BTW, overige kosten). Standaard het
+        // oranje van Tailwind; Craftery maakt er roest van, zodat een
+        // waarschuwing niet op de amber knoppen lijkt.
+        orange: Object.fromEntries(
+          [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]
+            .map(n => [n, `rgb(var(--oranje-${n}) / <alpha-value>)`]),
+        ),
         brew: {
           50:  '#fef9f0',
           100: '#fef0d6',

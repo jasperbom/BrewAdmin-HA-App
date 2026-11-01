@@ -58,6 +58,16 @@ describe('afgeleideThemaKleuren op de ingebouwde thema\'s', () => {
     }
   })
 
+  it('tekst óp de knop (btnText, anders wit) haalt 4,5:1 in elke stand, wit op de effen kop ook', () => {
+    for (const [naam, th] of Object.entries(NAV_THEMES)) {
+      const opKnop = th.btnText || '#ffffff'
+      for (const vlak of [th.btn, th.btnH, th.btnA, th.accent]) {
+        expect(contrast(opKnop, vlak), `${naam} knoptekst op ${vlak}`).toBeGreaterThanOrEqual(4.5)
+      }
+      expect(contrast('#ffffff', th.hdr || th.btnA), `${naam} sectiekop`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
   it('verandert niets aan een thema dat het al haalt (blauw)', () => {
     const th = NAV_THEMES.blue
     expect(afgeleideThemaKleuren(th.accent, ['#ffffff', th.bg, th.pale]).accentRand).toBe(th.accent)

@@ -70,7 +70,7 @@ const TankReinigingForm: React.FC<Props> = ({
       <button type="button"
         onClick={() => { setOpen(true); setForm(leegForm(standaardDoor || '')) }}
         className="text-xs font-medium hover:underline mt-1 flex items-center gap-1 min-h-[32px]"
-        style={{ color: 'var(--t-accent)' }}>
+        style={{ color: 'var(--t-accent-text, var(--t-accent))' }}>
         + {t('dash_tank_reiniging_vastleggen')}
       </button>
     )

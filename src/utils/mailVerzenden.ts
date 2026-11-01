@@ -14,6 +14,9 @@ import type { MailAttachment, MailInlineImage } from './api'
 import { buildMailHtml, dataUriToInlineImage } from './mailTemplate'
 import type { MailBrewery } from './mailTemplate'
 import type { MailKnop } from './levering'
+import { mailUitnodiging, uitnodigingTekst } from './mailUitnodiging'
+import type { MailUitnodiging } from './mailUitnodiging'
+import { WHATSAPP_CID, WHATSAPP_LOGO_PNG } from './whatsappLogo'
 import { t } from '../i18n'
 
 /** Context om een Mollie-betaallink aan de mail toe te voegen. Aanwezig
@@ -45,6 +48,10 @@ export interface MailOpdracht {
   /** Bouwt de bijlagen opnieuw met de betaallink erin (QR + link op de
    *  factuur-PDF). Mislukt dat, dan gaat de oorspronkelijke bijlage mee. */
   regenerateAttachments?: (payUrl: string) => Promise<MailAttachment[] | null>
+  /** `false` = zonder de uitnodiging onder de mail (betalingsherinnering, of
+   *  uitgezet in het mailvenster). Anders gaat hij mee zodra er een link is
+   *  ingesteld (`brewery.mail_uitnodiging`, utils/mailUitnodiging.ts). */
+  uitnodiging?: boolean
 }
 
 export interface MailAfzender {
@@ -73,6 +80,14 @@ export function logoAlsInline(logoDataUri: string | null | undefined): MailInlin
   const m = /^data:image\/([a-z0-9+.-]+);base64,/i.exec(logoDataUri)
   const ext = m ? m[1].split('+')[0] : 'png'
   return dataUriToInlineImage(logoDataUri, LOGO_CID, `logo.${ext}`)
+}
+
+/**
+ * Het WhatsApp-logo als inline bijlage, alleen als de uitnodiging naar WhatsApp
+ * wijst (anders gaat er geen ongebruikt plaatje mee).
+ */
+export function whatsappAlsInline(u: MailUitnodiging | null | undefined): MailInlineImage | null {
+  return u?.whatsapp ? dataUriToInlineImage(WHATSAPP_LOGO_PNG, WHATSAPP_CID, 'whatsapp.png') : null
 }
 
 /** Een lijst ontvangers uit "a@x.nl, b@y.nl; c@z.nl". */
@@ -104,13 +119,18 @@ export async function verzendMail(m: MailOpdracht, afzender: MailAfzender): Prom
   const logo = logoAlsInline(afzender.logoDataUri)
   // In de HTML nette knoppen; in de platte tekst de kale links.
   const knoppen = m.linkButtons || []
+  const uitnodiging = m.uitnodiging === false ? null : mailUitnodiging(afzender.brewery)
+  const waLogo = whatsappAlsInline(uitnodiging)
   const text = m.text
     + knoppen.map(k => `\n\n${k.textLine}\n${k.url}`).join('')
     + (payUrl ? `\n\n${t('mollie_pay_line')}\n${payUrl}` : '')
+    + (uitnodiging ? uitnodigingTekst(uitnodiging) : '')
   const html = buildMailHtml(m.text, afzender.brewery || {}, {
     logoCid: logo ? LOGO_CID : undefined,
     linkButtons: knoppen.length ? knoppen : undefined,
     payButton: payUrl ? {url: payUrl, label: t('mollie_pay_button')} : undefined,
+    uitnodiging,
+    whatsappCid: waLogo ? WHATSAPP_CID : undefined,
   })
   let attachments = m.attachments
   if (payUrl && m.regenerateAttachments) {
@@ -127,7 +147,7 @@ export async function verzendMail(m: MailOpdracht, afzender: MailAfzender): Prom
       html,
       replyTo: afzender.replyTo,
       attachments,
-      inlineImages: logo ? [logo] : undefined,
+      inlineImages: logo || waLogo ? [logo, waLogo].filter((b): b is MailInlineImage => !!b) : undefined,
     })
   } catch (e: any) {
     throw new MailFout('verzenden', String(e?.message || ''))

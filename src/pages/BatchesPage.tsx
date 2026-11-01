@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { t } from '../i18n'
 import { tod } from '../utils/format'
 import { logAudit } from '../utils/audit'
@@ -27,6 +27,9 @@ import { useUndo } from '../components/ui/UndoBar'
 import { useSmalScherm } from '../components/ui/useSmalScherm'
 import { useBreedte } from '../components/ui/useBreedte'
 import LopendLijst from '../components/batches/LopendLijst'
+import BfNieuwKaart from '../components/batches/BfNieuwKaart'
+import { bfNieuweBatches, receptVoorBfBatch, bfBatchDatum, bfBatchNaam, bfVoorstelBatch, bfKoppelWijziging } from '../utils/bfKoppeling'
+import { toonMelding } from '../components/ui/AppMelding'
 import type { LopendRij, LopendWeergave } from '../components/batches/LopendLijst'
 import GeslotenLijst from '../components/batches/GeslotenLijst'
 import type { GeslotenRij } from '../components/batches/GeslotenLijst'
@@ -51,6 +54,10 @@ export interface BatchesPageProps {
   onNavDoelConsumed?: () => void
   /** *+ Nieuwe batch*: het blad "Wat brouw je?" (App.tsx → openNieuweBatch). */
   onNieuweBatch?: (verzoek?: NieuweBatchVerzoek) => void
+  /** Brewfather staat aan en de laatste sync kwam binnen: "Nieuw in Brewfather" op Lopend. */
+  bfAan?: boolean
+  bfBatchLijst?: any[] | null
+  vernieuwBfBatches?: () => Promise<{ ok: boolean, fout?: string }>
 
   bat: any[]; setBat: Zetter
   bi: any[]; setBi: Zetter
@@ -105,7 +112,7 @@ let terugkeer: { zoek: string; product: string; recept: string; tot: number } | 
  */
 const BatchesPage: React.FC<BatchesPageProps> = (p) => {
   const {
-    stand, onStand, onOpenBatch, gaNaar, navDoel = null, onNavDoelConsumed, onNieuweBatch,
+    stand, onStand, onOpenBatch, gaNaar, navDoel = null, onNavDoelConsumed, onNieuweBatch, bfAan = false, bfBatchLijst = null, vernieuwBfBatches,
     bat, setBat, bi, setBi, ing, lots, av, producten, recepten, gistMetingen, setGistMetingen,
     log, setLog, auditLog, setAuditLog,
   } = p
@@ -130,6 +137,35 @@ const BatchesPage: React.FC<BatchesPageProps> = (p) => {
   // Een nieuwe batch: het blad "Wat brouw je?" (één blad in App.tsx, ook voor
   // de brouwzaal, een recept en een product). Na Inplannen opent de batch.
   const openNieuw = () => onNieuweBatch?.({})
+  // Lopende Brewfather-batches die nog aan geen batch hangen (utils/bfKoppeling.ts).
+  // Eén keer per sessie opgehaald, op het moment dat iemand Lopend opent.
+  const bfOpgehaald = useRef(false)
+  useEffect(() => {
+    if (!bfAan || stand !== 'lopend' || bfBatchLijst !== null || bfOpgehaald.current || !vernieuwBfBatches) return
+    bfOpgehaald.current = true
+    void vernieuwBfBatches()
+  }, [bfAan, stand, bfBatchLijst, vernieuwBfBatches])
+  const bfNieuw = useMemo(() => bfAan && bfBatchLijst ? bfNieuweBatches(bfBatchLijst, bat || []) : [], [bfAan, bfBatchLijst, bat])
+  const planBfBatch = (bf: any) => onNieuweBatch?.({
+    receptId: receptVoorBfBatch(bf, recepten || []), datum: bfBatchDatum(bf), brewfather: bf,
+  })
+  // Staat de batch hier al (zelfde recept, brouwdag dichtbij), dan koppelen in
+  // plaats van een tweede batch plannen.
+  const bfVoorstel = (bf: any) => {
+    const b = bfVoorstelBatch(bf, bat || [], (x: any) => {
+      const tt = titelVan(x)
+      return [tt.titel, tt.receptNaam || '', x.naam || ''].filter(Boolean)
+    })
+    return b ? { id: b.id as number, label: titelVan(b).label } : null
+  }
+  const koppelBfBatch = (bf: any, batchId: number) => {
+    if (!(bat || []).some((b: any) => b?.id === batchId)) return
+    setBat((prev: any[]) => (prev || []).map((b: any) => b?.id === batchId ? { ...b, ...bfKoppelWijziging(bf) } : b))
+    const naam = `${bfBatchNaam(bf)}${bf.batchNo != null ? ` #${bf.batchNo}` : ''}`
+    logAudit(auditLog, setAuditLog, { entiteit: 'Batch', entiteit_id: batchId, actie: 'gewijzigd',
+      omschrijving: t('audit_brewfather_gekoppeld').replace('{naam}', naam) })
+    toonMelding(t('bf_gekoppeld').replace('{naam}', naam))
+  }
   const [metingVoor, setMetingVoor] = useState<number | null>(null)
 
   const titelVan = (b: any) => batchTitel(b, { producten, recepten }, t('lbl_naamloos'))
@@ -353,6 +389,10 @@ const BatchesPage: React.FC<BatchesPageProps> = (p) => {
             {t('batches_alleen_taken')} <span aria-hidden="true">×</span>
           </button>
         </div>
+      )}
+
+      {stand === 'lopend' && bfNieuw.length > 0 && onNieuweBatch && (
+        <BfNieuwKaart batches={bfNieuw} onPlan={planBfBatch} voorstelVoor={bfVoorstel} onKoppel={koppelBfBatch} />
       )}
 
       <div ref={lijstRef}>

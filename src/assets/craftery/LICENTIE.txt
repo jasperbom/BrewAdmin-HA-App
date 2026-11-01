@@ -1,0 +1,13 @@
+Lettertypes in deze map
+=======================
+
+Space Grotesk   © The Space Grotesk Project Authors
+IBM Plex Mono   © IBM Corp.
+Caveat          © The Caveat Project Authors
+Jost            © The Jost Project Authors (Owen Earl / indestructible type*)
+
+Alle vier vallen onder de SIL Open Font License 1.1:
+https://openfontlicense.org/open-font-license-official-text/
+
+Bron: Google Fonts (alleen de Latijnse tekenset, woff2).
+We hosten ze zelf, zodat bezoekers geen verbinding met Google maken.

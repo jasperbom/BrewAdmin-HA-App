@@ -435,6 +435,9 @@ describe('overzichtCijfers', () => {
     expect(overzichtCijfers(bron())).toEqual({
       omzetCent: 10000 + 5000 - 2000,
       inkoopCent: 4000 + 500,
+      // Vorige maand (september): factuur 4; inkoop 2 is van augustus.
+      omzetVorigeCent: 30000,
+      inkoopVorigeCent: 0,
       debiteurenCent: 12100 + 36300,
       debiteurenN: 2,
       crediteurenCent: 4840 + 1210,
@@ -447,5 +450,16 @@ describe('overzichtCijfers', () => {
     const ctx = { klanten: [], breweryDetails: null, vandaagIso: b.vandaagIso }
     const lijst = filterVerkoopFacturen(b.verkoopFacturen, { status: 'alles', bereik: periodeBereik('deze_maand', vandaag) }, ctx)
     expect(overzichtCijfers(b).omzetCent).toBe(verkoopTotalen(lijst).netto_cent)
+  })
+
+  it('vorige maand = de totaalregel van Facturen met periode "vorige maand", ook over de jaargrens', () => {
+    const b = bron()
+    const ctx = { klanten: [], breweryDetails: null, vandaagIso: b.vandaagIso }
+    const lijst = filterVerkoopFacturen(b.verkoopFacturen, { status: 'alles', bereik: periodeBereik('vorige_maand', vandaag) }, ctx)
+    expect(overzichtCijfers(b).omzetVorigeCent).toBe(verkoopTotalen(lijst).netto_cent)
+    const januari = { ...b, vandaag: new Date('2027-01-10T12:00:00'), vandaagIso: '2027-01-10',
+      verkoopFacturen: [{ id: 9, datum: '2026-12-15', netto: 50, bruto: 60.5, status: 'betaald' }] }
+    expect(overzichtCijfers(januari).omzetVorigeCent).toBe(5000)
+    expect(overzichtCijfers(januari).omzetCent).toBe(0)
   })
 })

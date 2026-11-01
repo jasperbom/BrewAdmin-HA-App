@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import { t } from '../i18n'
+import { THEMA_STANDAARD } from './constants'
 
 // Excel kapt celwaarden boven ~32.767 tekens stil af. Elke cel die daar in de
 // buurt komt (grote geneste JSON, base64) wordt daarom opgesplitst in
@@ -244,7 +245,7 @@ export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
     }
     for (const k of INST_JSON_KEYS) pushInst(k, JSON.stringify(data[k] ?? {}))
     inst.push({sleutel: 'app_name',  waarde: data.app_name  ?? ''})
-    inst.push({sleutel: 'nav_theme', waarde: data.nav_theme ?? 'amber'})
+    inst.push({sleutel: 'nav_theme', waarde: data.nav_theme ?? THEMA_STANDAARD})
     pushInst('app_logo',     typeof data.app_logo === 'string' ? data.app_logo : '')
     pushInst('factuur_logo', typeof data.factuur_logo === 'string' ? data.factuur_logo : '')
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inst), 'Instellingen')

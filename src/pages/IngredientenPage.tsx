@@ -20,6 +20,8 @@ import { alsBestand } from '../utils/afbeelding'
 import { registreerScanCorrectie, leerKoppelingen } from '../utils/scanGeheugen'
 import SectionHeader from '../components/ui/SectionHeader'
 import SearchInput from '../components/ui/SearchInput'
+import { useUndo } from '../components/ui/UndoBar'
+import PaginaMelding from '../components/bestelling/PaginaMelding'
 import { useStore } from '../utils/api'
 import { logAudit } from '../utils/audit'
 import { bepaalRollover } from '../utils/btw'
@@ -64,6 +66,11 @@ interface Props {
 }
 
 type ThtFilter = 'alle' | 'verlopen' | 'binnenkort'
+
+// Id's van de terugweg (UndoBar) bij verwijderen: prefix + id van het record.
+const ING_UNDO = 'ingredient-verwijder-'
+const VERPAKKING_UNDO = 'verpakking-verwijder-'
+const ONDERDEEL_UNDO = 'onderdeel-verwijder-'
 
 const IngredientenPage: React.FC<Props> = ({
   ing, setIng, lots, setLots, verpakkingen, setVerpakkingen,
@@ -162,6 +169,28 @@ const IngredientenPage: React.FC<Props> = ({
   const [bfMsg, setBfMsg] = useState('')
   const [bfPushing, setBfPushing] = useState(false)
 
+  // Meldingen in de pagina in plaats van alert(): de fout van het open
+  // formulier (er is er steeds één open), van de lotcorrectie en van
+  // ingrediënt verwijderen. Ze verdwijnen bij de volgende handeling.
+  const [formFout, setFormFout] = useState('')
+  const [corrFout, setCorrFout] = useState('')
+  const [ingFout, setIngFout] = useState('')
+  // Een ander venster open of dicht: de melding van het vorige formulier
+  // hoort daar niet meer bij. Idem bij een ander ingrediënt.
+  React.useEffect(() => { setFormFout('') }, [showIngEdit, showODEdit, showODAdd, showVTAdd, showVEdit, showVOntv])
+  React.useEffect(() => { setIngFout('') }, [sel])
+
+  // Verwijderen zonder vraag vooraf: vijf seconden "Ongedaan maken" (UndoBar).
+  // Wat nog terug kan, staat al niet meer in de lijst.
+  const undo = useUndo()
+  const wachtendOp = (prefix: string): number | null => {
+    const id = String(undo.actie?.id || '')
+    return id.startsWith(prefix) ? Number(id.slice(prefix.length)) : null
+  }
+  const ingWeg = wachtendOp(ING_UNDO)
+  const verpakkingWeg = wachtendOp(VERPAKKING_UNDO)
+  const onderdeelWeg = wachtendOp(ONDERDEEL_UNDO)
+
   const addLog = (entry: any) => setLog((prev: any[]) => [...prev, { id: newId(prev || []), datum: tod(), ...entry }])
 
   // Id's vergelijken als getal: een lot uit een import of oudere versie kan
@@ -241,8 +270,8 @@ const IngredientenPage: React.FC<Props> = ({
     if (amount === null) { setBfMsg(t('msg_bf_push_eenheid')); return }
     setBfPushing(true); setBfMsg('')
     try {
-      const ok = await bfPushInventory(ingredient.brewfather_cat, ingredient.brewfather_id, amount)
-      setBfMsg(ok ? t('msg_bf_push_success') : t('msg_bf_push_failed').replace('{msg}', 'HTTP error'))
+      const res = await bfPushInventory(ingredient.brewfather_cat, ingredient.brewfather_id, amount)
+      setBfMsg(res.ok ? t('msg_bf_push_success') : t('msg_bf_push_failed').replace('{msg}', res.melding || ''))
     } catch (e: any) { setBfMsg(t('msg_bf_push_failed').replace('{msg}', e.message || String(e))) }
     setBfPushing(false)
   }
@@ -256,6 +285,7 @@ const IngredientenPage: React.FC<Props> = ({
     lotFotos.forEach(f => URL.revokeObjectURL(f.url))
     setLotFotos([])
     setLotFout(null)
+    setCorrFout('')
     setShowLot(null)
   }
 
@@ -263,6 +293,7 @@ const IngredientenPage: React.FC<Props> = ({
     lotFotos.forEach(f => URL.revokeObjectURL(f.url))
     setLotFotos([])
     setLotFout(null)
+    setCorrFout('')
     setShowLot(lot)
     setLotEdit({
       lotnummer: lot.lotnummer || '',
@@ -353,12 +384,13 @@ const IngredientenPage: React.FC<Props> = ({
   }
 
   const doCorrectie = (lot: any) => {
+    setCorrFout('')
     const delta = Number(lotCorr.delta)
-    if (!delta || delta <= 0) { alert(t('err_valid_qty')); return }
+    if (!delta || delta <= 0) { setCorrFout(t('err_valid_qty')); return }
     const corrEenh = lotCorr.eenheid || lot.eenheid
     const deltaInLot = convertEenheid(delta, corrEenh, lot.eenheid)
-    if (deltaInLot === null) { alert(t('err_convert_units').replace('{from}', corrEenh).replace('{to}', lot.eenheid)); return }
-    if (lotCorr.richting === '-' && deltaInLot > Number(lot.hoeveelheid)) { alert(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${fmtQty(lot.hoeveelheid)} ${lot.eenheid}`)); return }
+    if (deltaInLot === null) { setCorrFout(t('err_convert_units').replace('{from}', corrEenh).replace('{to}', lot.eenheid)); return }
+    if (lotCorr.richting === '-' && deltaInLot > Number(lot.hoeveelheid)) { setCorrFout(t('agp_voorraad_ontoereikend').replace('{beschikbaar}', `${fmtQty(lot.hoeveelheid)} ${lot.eenheid}`)); return }
     const nieuweQty = r3(lotCorr.richting === '+' ? Number(lot.hoeveelheid) + deltaInLot : Number(lot.hoeveelheid) - deltaInLot)
     setLots((prev: any[]) => prev.map((l: any) => l.id !== lot.id ? l : { ...l, hoeveelheid: nieuweQty, beschikbaar: nieuweQty > 0 }))
     logAudit(auditLog, setAuditLog, { entiteit: 'Lot', entiteit_id: lot.id, actie: 'gewijzigd', omschrijving: `Correctie ${lotCorr.richting}${delta} ${corrEenh}` })
@@ -379,13 +411,14 @@ const IngredientenPage: React.FC<Props> = ({
   }
 
   const saveVOntvangst = () => {
+    setFormFout('')
     const n = Number(vOntvForm.aantal)
-    if (!n || n <= 0) { alert(t('err_count_required')); return }
+    if (!n || n <= 0) { setFormFout(t('err_count_required')); return }
     if (vOntvForm.verpakking_id) {
       setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === Number(vOntvForm.verpakking_id) ? { ...v, voorraad: Number(v.voorraad || 0) + n, leverancier: vOntvForm.leverancier || v.leverancier || '', factuurnummer: vOntvForm.factuurnummer || v.factuurnummer || '' } : v))
       logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: Number(vOntvForm.verpakking_id), actie: 'gewijzigd', omschrijving: `Ontvangst +${n}` })
     } else {
-      if (!vOntvForm.naam.trim()) { alert(t('err_name_required')); return }
+      if (!vOntvForm.naam.trim()) { setFormFout(t('err_name_required')); return }
       setVerpakkingen((prev: any[]) => {
         const id = newId(prev)
         logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: id, actie: 'aangemaakt', omschrijving: vOntvForm.naam.trim() })
@@ -401,22 +434,25 @@ const IngredientenPage: React.FC<Props> = ({
   }
 
   const saveVEdit = () => {
-    if (!vEditForm.naam.trim()) { alert(t('err_name_required')); return }
+    setFormFout('')
+    if (!vEditForm.naam.trim()) { setFormFout(t('err_name_required')); return }
     setVerpakkingen((prev: any[]) => prev.map((v: any) => v.id === showVEdit.id ? { ...v, naam: vEditForm.naam.trim(), inhoud_liter: Number(vEditForm.inhoud_liter || 0), type: vEditForm.type || v.type || '', kosten_verpakking: Number(vEditForm.kosten_verpakking || 0), kosten_afsluiting: Number(vEditForm.kosten_afsluiting || 0), kosten_label: Number(vEditForm.kosten_label || 0), leverancier: vEditForm.leverancier || '', factuurnummer: vEditForm.factuurnummer || '' } : v))
     logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: showVEdit.id, actie: 'gewijzigd', omschrijving: vEditForm.naam.trim() })
     setShowVEdit(null)
   }
 
   const saveODEdit = () => {
-    if (!odEditForm.naam.trim()) { alert(t('err_name_required')); return }
+    setFormFout('')
+    if (!odEditForm.naam.trim()) { setFormFout(t('err_name_required')); return }
     setOnderdelen((prev: any[]) => prev.map((o: any) => o.id === showODEdit.id ? { ...o, ...odEditForm, kosten_per_stuk: odEditForm.kosten_per_stuk ? Number(odEditForm.kosten_per_stuk) : 0, voorraad: odEditForm.voorraad !== '' ? Number(odEditForm.voorraad) : Number(o.voorraad || 0) } : o))
     logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: showODEdit.id, actie: 'gewijzigd', omschrijving: odEditForm.naam.trim() })
     setShowODEdit(null)
   }
 
   const saveODAdd = () => {
-    if (!odAddForm.od_id && !odAddForm.naam.trim()) { alert(t('err_name_required')); return }
-    if (!odQty || Number(odQty) <= 0) { alert(t('err_qty_required')); return }
+    setFormFout('')
+    if (!odAddForm.od_id && !odAddForm.naam.trim()) { setFormFout(t('err_name_required')); return }
+    if (!odQty || Number(odQty) <= 0) { setFormFout(t('err_qty_required')); return }
     if (odAddForm.od_id) {
       setOnderdelen((prev: any[]) => prev.map((o: any) => o.id === Number(odAddForm.od_id) ? { ...o, voorraad: Number(o.voorraad || 0) + Number(odQty), lotnr: odAddForm.lotnr || o.lotnr || '', ...(odPrijs ? { kosten_per_stuk: Number(odPrijs) } : {}) } : o))
       logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: Number(odAddForm.od_id), actie: 'gewijzigd', omschrijving: `Ontvangst +${odQty}` })
@@ -431,7 +467,8 @@ const IngredientenPage: React.FC<Props> = ({
   }
 
   const saveVTAdd = () => {
-    if (!vtForm.naam.trim()) { alert(t('err_name_required')); return }
+    setFormFout('')
+    if (!vtForm.naam.trim()) { setFormFout(t('err_name_required')); return }
     const stBedrag = Number(vtForm.statiegeld_bedrag || 0)
     const stSoort: 'snd' | 'fust' | null = vtForm.statiegeld_soort === 'snd' || vtForm.statiegeld_soort === 'fust' ? vtForm.statiegeld_soort : null
     if (showVEdit) {
@@ -460,28 +497,58 @@ const IngredientenPage: React.FC<Props> = ({
     setShowIngEdit(true)
   }
   const saveIngEdit = () => {
-    if (!ingEditForm.naam.trim()) { alert(t('err_name_required')); return }
+    setFormFout('')
+    if (!ingEditForm.naam.trim()) { setFormFout(t('err_name_required')); return }
     const dup = ing.find((i: any) => i.id !== sel && i.naam.toLowerCase().trim() === ingEditForm.naam.trim().toLowerCase())
-    if (dup) { alert(t('agp_duplicaat_ingrediënt')); return }
+    if (dup) { setFormFout(t('agp_duplicaat_ingrediënt')); return }
     setIng((prev: any[]) => prev.map((i: any) => i.id === sel ? { ...i, naam: ingEditForm.naam.trim(), type: ingEditForm.type, fabrikant: ingEditForm.fabrikant } : i))
     logAudit(auditLog, setAuditLog, { entiteit: 'Ingrediënt', entiteit_id: sel!, actie: 'gewijzigd', omschrijving: ingEditForm.naam.trim() })
     setShowIngEdit(false)
   }
   const deleteIng = () => {
     if (!selIng) return
-    if (activeLots(sel!).length > 0) { alert(t('err_cannot_delete_active_lots')); return }
+    setIngFout('')
+    if (activeLots(sel!).length > 0) { setIngFout(t('err_cannot_delete_active_lots')); return }
     // Een lot dat in een batch is gebruikt is de herkomst van die batch
     // (traceerbaarheid, één stap terug): het ingrediënt verwijderen zou die
     // lot meenemen en de batchregel laten wijzen naar een lot dat niet meer
     // bestaat.
     const gebruikt = lots.some((l: any) => vanIng(l, sel) && (bi || []).some((b: any) => b?.lot_id != null && String(b.lot_id) === String(l.id)))
-    if (gebruikt) { alert(t('err_ingredient_lot_in_batch')); return }
-    if (!confirm(t('confirm_delete_ingredient').replace('{naam}', selIng.naam))) return
-    logAudit(auditLog, setAuditLog, { entiteit: 'Ingrediënt', entiteit_id: sel!, actie: 'verwijderd', omschrijving: selIng.naam })
-    setIng((prev: any[]) => prev.filter((i: any) => i.id !== sel))
-    setLots((prev: any[]) => prev.filter((l: any) => !vanIng(l, sel)))
+    if (gebruikt) { setIngFout(t('err_ingredient_lot_in_batch')); return }
+    // Geen vraag vooraf: het ingrediënt verdwijnt meteen uit de lijst, het
+    // echte verwijderen (met zijn lots) volgt na vijf seconden "Ongedaan
+    // maken". Alles hangt aan het id van nú, niet aan wat er dan open staat.
+    const id = sel!
+    const naam = selIng.naam
+    undo.plan(`${ING_UNDO}${id}`, t('undo_ingredient_verwijderd', 'Ingrediënt verwijderd: {naam}').replace('{naam}', naam || t('lbl_naamloos')), () => {
+      logAudit(auditLog, setAuditLog, { entiteit: 'Ingrediënt', entiteit_id: id, actie: 'verwijderd', omschrijving: naam })
+      setIng((prev: any[]) => prev.filter((i: any) => i.id !== id))
+      setLots((prev: any[]) => prev.filter((l: any) => !vanIng(l, id)))
+    })
     setSel(null)
   }
+
+  // Verpakking of onderdeel verwijderen: meteen uit de lijst, echt weg na
+  // vijf seconden "Ongedaan maken".
+  const verwijderVerpakking = (v: any) => {
+    const id = v.id
+    undo.plan(`${VERPAKKING_UNDO}${id}`, t('undo_verpakking_verwijderd', 'Verpakking verwijderd: {naam}').replace('{naam}', v.naam || t('lbl_naamloos')), () => {
+      logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: id, actie: 'verwijderd', omschrijving: v.naam })
+      setVerpakkingen((prev: any[]) => prev.filter((x: any) => x.id !== id))
+    })
+  }
+  const verwijderOnderdeel = (od: any) => {
+    const id = od.id
+    undo.plan(`${ONDERDEEL_UNDO}${id}`, t('undo_onderdeel_verwijderd', 'Onderdeel verwijderd: {naam}').replace('{naam}', od.naam || t('lbl_naamloos')), () => {
+      logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: id, actie: 'verwijderd', omschrijving: od.naam })
+      setOnderdelen((prev: any[]) => prev.filter((x: any) => x.id !== id))
+    })
+  }
+  const zichtbareVerpakkingen = verpakkingen.filter((v: any) => verpakkingWeg == null || Number(v.id) !== verpakkingWeg)
+  const zichtbareOnderdelen = onderdelen.filter((od: any) => onderdeelWeg == null || Number(od.id) !== onderdeelWeg)
+
+  // Validatiefout van het open formulier, vlak boven de knoppen.
+  const formFoutRegel = formFout ? <p role="alert" className="text-sm text-red-600 mt-1">{formFout}</p> : null
 
   const saveOntvangst = ({ factuurForm, productLijst, verpakkingLijst, vrijeRegels, bijlage, totaalManual }: any): boolean => {
     // Lots en ontvangst-log via dezelfde bouwer als Administratie (Facturen, Bank)
@@ -664,6 +731,7 @@ const IngredientenPage: React.FC<Props> = ({
                     const zoek = ingZoek.trim().toLowerCase()
                     let filtered = zoek ? ing.filter((i: any) => i.naam.toLowerCase().includes(zoek) || (i.type || '').toLowerCase().includes(zoek) || (i.fabrikant || '').toLowerCase().includes(zoek)) : ing
                     if (alleenOpVoorraad) filtered = filtered.filter((i: any) => totalQty(i.id) > 0)
+                    if (ingWeg != null) filtered = filtered.filter((i: any) => Number(i.id) !== ingWeg)
                     if (filtered.length === 0) return <tbody><tr><td colSpan={2} className="px-3 py-6 text-center text-gray-400">{t('msg_geen_zoekresultaten')}</td></tr></tbody>
                     const allTypes = [...ingTypes, ...filtered.map((i: any) => i.type || 'Overig').filter((tp: string) => !ingTypes.includes(tp)).filter((tp: string, i: number, a: string[]) => a.indexOf(tp) === i)]
                     return allTypes.map((ingTyp: string) => {
@@ -706,6 +774,7 @@ const IngredientenPage: React.FC<Props> = ({
           {sel && selIng && (<>
             <button className="md:hidden mb-2 flex items-center gap-1 text-sm font-semibold t-back border rounded-xl px-3 py-2 w-full transition-colors" onClick={() => setSel(null)}>{t('btn_back')}</button>
             <div className="flex-1 min-w-0">
+            <PaginaMelding tekst={ingFout} onSluit={() => setIngFout('')} cls="mb-2" />
             <div className="bg-white rounded-xl shadow-card overflow-x-auto">
               <SectionHeader
                 title={<>{selIng.naam}{selIng.fabrikant && <span className="font-normal opacity-70 ml-1">· {selIng.fabrikant}</span>} — {t('ing_lots')}</>}
@@ -783,7 +852,7 @@ const IngredientenPage: React.FC<Props> = ({
                     <span className="text-gray-400">{bfPanelOpen ? '▼' : '▶'}</span>
                     Brewfather
                   </span>
-                  <span className="text-[10px] text-gray-400">{Object.keys(selIng.bf_props).length}</span>
+                  <span className="text-xs text-gray-400">{Object.keys(selIng.bf_props).length}</span>
                 </button>
                 {bfPanelOpen && (
                   <div className="px-4 py-2 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5">
@@ -795,7 +864,7 @@ const IngredientenPage: React.FC<Props> = ({
                       const isLong = typeof v === 'string' && (v.length > 60 || /^note/i.test(k))
                       return (
                         <div key={k} className="flex flex-col min-w-0">
-                          <span className="text-[10px] text-gray-400">{label}</span>
+                          <span className="text-xs text-gray-400">{label}</span>
                           {isLong ? (
                             <button type="button"
                               onClick={() => setShowNote({ label, text: display })}
@@ -840,8 +909,8 @@ const IngredientenPage: React.FC<Props> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {verpakkingen.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">{t('msg_no_packaging')}</td></tr>}
-                  {verpakkingen.map((v: any) => {
+                  {zichtbareVerpakkingen.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">{t('msg_no_packaging')}</td></tr>}
+                  {zichtbareVerpakkingen.map((v: any) => {
                     const stock = vpVoorraad(v)
                     const totk = vpKosten(v)
                     return (
@@ -860,7 +929,7 @@ const IngredientenPage: React.FC<Props> = ({
                         <td className="px-3 py-2.5">
                           <div className="flex gap-1 justify-end">
                             <Btn s="sm" v="ghost" onClick={() => openVTEdit(v)}>✎</Btn>
-                            <button onClick={() => { if (confirm(t('error_confirm_delete_packaging'))) { logAudit(auditLog, setAuditLog, { entiteit: 'Verpakking', entiteit_id: v.id, actie: 'verwijderd', omschrijving: v.naam }); setVerpakkingen((prev: any[]) => prev.filter((x: any) => x.id !== v.id)) } }} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                            <button onClick={() => verwijderVerpakking(v)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
                           </div>
                         </td>
                       </tr>
@@ -890,8 +959,8 @@ const IngredientenPage: React.FC<Props> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {onderdelen.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">{t('onderdeel_none')}</td></tr>}
-                  {onderdelen.map((od: any) => (
+                  {zichtbareOnderdelen.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">{t('onderdeel_none')}</td></tr>}
+                  {zichtbareOnderdelen.map((od: any) => (
                     <tr key={od.id} className={Number(od.voorraad || 0) === 0 ? 'bg-red-50' : ''}>
                       <td className="px-3 py-2.5 font-medium">
                         {od.naam}
@@ -906,7 +975,7 @@ const IngredientenPage: React.FC<Props> = ({
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1 justify-end">
                           <Btn s="sm" v="ghost" onClick={() => { setOdEditForm({ od_id: String(od.id ?? ''), lotnr: od.lotnr || '', naam: od.naam, type: od.type || '', kosten_per_stuk: String(od.kosten_per_stuk || ''), leverancier: od.leverancier || '', factuurnummer: od.factuurnummer || '', voorraad: String(od.voorraad || 0) }); setShowODEdit(od) }}>✎</Btn>
-                          <button onClick={() => { if (confirm(t('error_confirm_delete_packaging'))) { logAudit(auditLog, setAuditLog, { entiteit: 'Onderdeel', entiteit_id: od.id, actie: 'verwijderd', omschrijving: od.naam }); setOnderdelen((prev: any[]) => prev.filter((x: any) => x.id !== od.id)) } }} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                          <button onClick={() => verwijderOnderdeel(od)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
                         </div>
                       </td>
                     </tr>
@@ -1053,7 +1122,7 @@ const IngredientenPage: React.FC<Props> = ({
                                   <button type="button"
                                     onClick={() => setBp(fld.key, formatBrewValue(ingFallback))}
                                     title={t('btn_use_bf_value')}
-                                    className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
+                                    className="text-xs text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
                                     {hint}
                                   </button>
                                 )}
@@ -1074,7 +1143,7 @@ const IngredientenPage: React.FC<Props> = ({
                                     setBp(fld.key, fld.kind === 'number' ? Number(fmtVal) : fmtVal)
                                   }}
                                   title={t('btn_use_bf_value')}
-                                  className="text-[10px] text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
+                                  className="text-xs text-gray-400 hover:text-blue-600 mt-0.5 underline-offset-2 hover:underline cursor-pointer">
                                   {hint}
                                 </button>
                               )}
@@ -1095,7 +1164,7 @@ const IngredientenPage: React.FC<Props> = ({
                               const badgeCls = info.source === 'lot' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
                               return (
                                 <div key={k} className="flex flex-col min-w-0">
-                                  <span className="text-[10px] text-gray-400">{label}</span>
+                                  <span className="text-xs text-gray-400">{label}</span>
                                   <span className="text-sm text-gray-700 flex items-center gap-1.5">
                                     {isLong ? (
                                       <button type="button"
@@ -1106,7 +1175,7 @@ const IngredientenPage: React.FC<Props> = ({
                                     ) : (
                                       <span className="truncate">{display}{unit ? ` ${unit}` : ''}</span>
                                     )}
-                                    <span className={`text-[9px] px-1 py-0.5 rounded ${badgeCls} tracking-wide flex-shrink-0`}>{badge}</span>
+                                    <span className={`text-xs px-1 py-0.5 rounded ${badgeCls} tracking-wide flex-shrink-0`}>{badge}</span>
                                   </span>
                                 </div>
                               )
@@ -1136,6 +1205,7 @@ const IngredientenPage: React.FC<Props> = ({
                     </div>
                     <Btn s="sm" onClick={() => doCorrectie(l)}>{t('ing_correct_btn')}</Btn>
                   </div>
+                  {corrFout && <p role="alert" className="text-sm text-red-600 mt-1">{corrFout}</p>}
                   <div className="mt-2"><input type="text" placeholder={t('ing_correction_reason')} className="w-full border rounded px-2 py-1.5 text-sm text-gray-700" value={lotCorr.reden} onChange={e => setLotCorr(p => ({ ...p, reden: e.target.value }))} /></div>
                 </div>
               )}
@@ -1166,6 +1236,7 @@ const IngredientenPage: React.FC<Props> = ({
               <Sel label={t('lbl_type')} value={ingEditForm.type} onChange={(v: string) => setIngEditForm(f => ({ ...f, type: v }))} opts={ingTypes.map((tp: string) => ({ v: tp, l: BUILTIN_ING_TYPES.includes(tp) ? t('ing_type_' + tp.toLowerCase()) : tp }))} ph={t('packaging_choose_type')} />
               <Inp label={t('ing_manufacturer')} value={ingEditForm.fabrikant} onChange={(v: string) => setIngEditForm(f => ({ ...f, fabrikant: v }))} placeholder={t('ph_manufacturer')} />
             </div>
+            {formFoutRegel}
             <div className="flex justify-end gap-2">
               <Btn v="secondary" onClick={() => setShowIngEdit(false)}>{t('btn_cancel')}</Btn>
               <Btn onClick={saveIngEdit}>{t('btn_save')}</Btn>
@@ -1187,6 +1258,7 @@ const IngredientenPage: React.FC<Props> = ({
               <Inp label={t('lbl_supplier')} value={odEditForm.leverancier} onChange={(v: string) => setOdEditForm(f => ({ ...f, leverancier: v }))} placeholder={t('ph_supplier')} />
               <Inp label={t('lbl_invoice')} value={odEditForm.factuurnummer} onChange={(v: string) => setOdEditForm(f => ({ ...f, factuurnummer: v }))} placeholder="F-2025-001" />
             </div>
+            {formFoutRegel}
             <div className="flex justify-end gap-2">
               <Btn v="secondary" onClick={() => setShowODEdit(null)}>{t('btn_cancel')}</Btn>
               <Btn onClick={saveODEdit}>{t('btn_save')}</Btn>
@@ -1217,6 +1289,7 @@ const IngredientenPage: React.FC<Props> = ({
               <Inp label={t('modal_price_per_unit')} type="number" value={odPrijs} onChange={(v: string) => { setOdPrijs(v); if (v && odQty) setOdTotaalprijs(String((Number(v) * Number(odQty)).toFixed(2))) }} placeholder="0.00" />
               <Inp label={t('lbl_totaalprijs_ex_btw')} type="number" value={odTotaalprijs} onChange={(v: string) => { setOdTotaalprijs(v); if (v && odQty) setOdPrijs(String((Number(v) / Number(odQty)).toFixed(4))) }} placeholder="0.00" />
             </div>
+            {formFoutRegel}
             <div className="flex justify-end gap-2">
               <Btn v="secondary" onClick={() => setShowODAdd(false)}>{t('btn_cancel')}</Btn>
               <Btn onClick={saveODAdd}>{t('btn_save')}</Btn>
@@ -1255,6 +1328,7 @@ const IngredientenPage: React.FC<Props> = ({
                 </div>
               )}
             </div>
+            {formFoutRegel}
             <div className="flex justify-end gap-2">
               <Btn v="secondary" onClick={() => { setShowVTAdd(false); setShowVEdit(null) }}>{t('btn_cancel')}</Btn>
               <Btn onClick={saveVTAdd}>{t('btn_save')}</Btn>

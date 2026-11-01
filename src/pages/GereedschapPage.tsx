@@ -17,6 +17,12 @@ import Inp from '../components/ui/Inp'
 import Sel from '../components/ui/Sel'
 import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
+import { useUndo } from '../components/ui/UndoBar'
+
+// Id-voorvoegsels van de terugweg (UndoBar) bij verwijderen: zolang die loopt
+// is het profiel al uit beeld, maar nog niet weg.
+const PROFIEL_UNDO = 'water-profiel-weg-'
+const DOEL_UNDO = 'water-doel-weg-'
 
 interface GereedschapPageProps {
   tool?: string
@@ -95,7 +101,7 @@ const PhCorrectieTool: React.FC = () => {
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
             <div className="text-xs font-semibold text-gray-500 mb-2">{t('tool_ph_resultaat')}</div>
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <span className="text-3xl font-bold" style={{ color: 'var(--t-accent)' }}>
+              <span className="text-3xl font-bold" style={{ color: 'var(--t-accent-text, var(--t-accent))' }}>
                 {res.ml.toFixed(res.ml < 10 ? 2 : 1)}
               </span>
               <span className="text-lg font-semibold text-gray-600">mL</span>
@@ -182,7 +188,9 @@ interface WaterToolProps {
 }
 
 const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, doelprofielen, setDoelprofielen, claudeCreds }) => {
-  const lijst = Array.isArray(profielen) ? profielen : []
+  const undo = useUndo()
+  const wachtendId = String(undo.actie?.id || '')
+  const lijst = (Array.isArray(profielen) ? profielen : []).filter(p => wachtendId !== `${PROFIEL_UNDO}${p.id}`)
   const [actiefIdState, setActiefId] = useState<number | null>(null)
   const actief = lijst.find(p => p.id === actiefIdState) ?? lijst[lijst.length - 1] ?? null
 
@@ -278,11 +286,17 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, d
     setProfielen((prev: any[]) => (Array.isArray(prev) ? prev : []).map((p: any) => p.id === actief.id ? {...p, ...patch} : p))
   }
 
+  // Meteen uit beeld, vijf seconden terugweg (UndoBar) in plaats van een
+  // confirm(); daarna echt weg.
   const verwijderActief = () => {
     if (!actief) return
-    if (!confirm(t('confirm_water_profiel_verwijderen'))) return
-    setProfielen((prev: any[]) => (Array.isArray(prev) ? prev : []).filter((p: any) => p.id !== actief.id))
-    setActiefId(null)
+    const id = actief.id
+    undo.plan(`${PROFIEL_UNDO}${id}`,
+      t('undo_water_profiel_verwijderd', 'Waterprofiel verwijderd: {naam}').replace('{naam}', actief.naam || t('lbl_onbekend')),
+      () => {
+        setProfielen((prev: any[]) => (Array.isArray(prev) ? prev : []).filter((p: any) => p.id !== id))
+        setActiefId(prev => prev === id ? null : prev)
+      })
   }
 
   // Getal-invoer: leeg veld ↔ null, anders number
@@ -297,7 +311,7 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, d
   const verd = Math.min(100, Math.max(0, parseFloat(verdunning) || 0))
 
   // Doelprofiel: ingebouwd stijlprofiel óf eigen profiel (waarde 'c<id>').
-  const eigenDoelLijst = Array.isArray(doelprofielen) ? doelprofielen : []
+  const eigenDoelLijst = (Array.isArray(doelprofielen) ? doelprofielen : []).filter(p => wachtendId !== `${DOEL_UNDO}${p.id}`)
   const eigenDoel = doelKey.startsWith('c')
     ? eigenDoelLijst.find(p => 'c' + p.id === doelKey) ?? null
     : null
@@ -322,11 +336,17 @@ const WaterProfielTool: React.FC<WaterToolProps> = ({ profielen, setProfielen, d
     setDoelprofielen((prev: any[]) => (Array.isArray(prev) ? prev : []).map((p: any) => p.id === eigenDoel.id ? {...p, ...patch} : p))
   }
 
+  // Zelfde terugweg als bij een bronprofiel. Tijdens het wachten staat de
+  // keuze op "Kies…" (de optie is uit de lijst); ongedaan maken zet hem terug.
   const verwijderEigenDoel = () => {
     if (!eigenDoel) return
-    if (!confirm(t('confirm_water_doel_verwijderen'))) return
-    setDoelprofielen((prev: any[]) => (Array.isArray(prev) ? prev : []).filter((p: any) => p.id !== eigenDoel.id))
-    setDoelKey('')
+    const id = eigenDoel.id
+    undo.plan(`${DOEL_UNDO}${id}`,
+      t('undo_water_doel_verwijderd', 'Doelprofiel verwijderd: {naam}').replace('{naam}', eigenDoel.naam || t('lbl_onbekend')),
+      () => {
+        setDoelprofielen((prev: any[]) => (Array.isArray(prev) ? prev : []).filter((p: any) => p.id !== id))
+        setDoelKey(prev => prev === 'c' + id ? '' : prev)
+      })
   }
 
   const zoutGram: Record<string, number> = {}

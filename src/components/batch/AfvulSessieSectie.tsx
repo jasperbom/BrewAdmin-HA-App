@@ -162,7 +162,7 @@ const Regel: React.FC<{
   <div>
     <button type="button" onClick={onToggle}
       className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors">
-      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
         status === 'done' ? 'bg-green-100 text-green-700 ring-1 ring-green-200'
           : status === 'optioneel' ? 'bg-gray-100 text-gray-400'
           : 'bg-orange-100 text-orange-600 ring-1 ring-orange-200'}`}>
@@ -175,7 +175,7 @@ const Regel: React.FC<{
       {detail != null && detail !== '' && (
         <span className="text-xs text-gray-400 text-right max-w-[50%] min-w-0 break-words">{detail}</span>
       )}
-      <span className={`text-gray-300 text-[10px] flex-shrink-0 transition-transform ${
+      <span className={`text-gray-300 text-xs flex-shrink-0 transition-transform ${
         open ? 'rotate-90' : ''}`}>▶</span>
     </button>
     {open && <div className="px-3 pb-3 pt-1 border-t border-gray-100 space-y-2">{children}</div>}
@@ -984,7 +984,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           <button key={s.id} type="button" onClick={() => p.setActieveSessieId?.(s.id)}
             title={actief ? t('haccp_sessie_actief') : t('haccp_sessie_kies')}
             className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-              actief ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+              actief ? 't-btn-text border-transparent' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
             style={actief ? {background: 'var(--t-accent)'} : undefined}>
             <span className="font-mono">{s.lotcode}</span>
             <span className="ml-1 opacity-80">

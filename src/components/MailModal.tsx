@@ -14,6 +14,8 @@ import { MailAttachment } from '../utils/api'
 import { buildMailHtml, MailBrewery } from '../utils/mailTemplate'
 import { MailKnop } from '../utils/levering'
 import { verzendMail, logoAlsInline, LOGO_CID, MailFout, MollieMailContext } from '../utils/mailVerzenden'
+import { WHATSAPP_CID, WHATSAPP_LOGO_PNG } from '../utils/whatsappLogo'
+import { mailUitnodiging } from '../utils/mailUitnodiging'
 import { t } from '../i18n'
 
 export type { MollieMailContext }
@@ -41,6 +43,10 @@ interface Props {
    *  bestelling"): in de HTML knoppen, in de platte tekst per knop
    *  `textLine` + de kale link eronder. */
   linkButtons?: MailKnop[] | null
+  /** Begint de uitnodiging onder de mail aangevinkt (standaard ja; een
+   *  betalingsherinnering geeft `false`). Alleen zichtbaar als er een link is
+   *  ingesteld (`brewery.mail_uitnodiging`, utils/mailUitnodiging.ts). */
+  uitnodiging?: boolean
   onClose: () => void
   /** Aangeroepen na succesvol verzenden, met het werkelijk gebruikte
    *  ontvanger-adres (zoals in de modal bewerkt) — zodat de aanroeper het
@@ -50,7 +56,7 @@ interface Props {
 
 export default function MailModal({
   title, initialTo, initialSubject, initialText, attachments,
-  brewery, logoDataUri, replyTo, smtpReady, mollie, regenerateAttachments, linkButtons, onClose, onSent,
+  brewery, logoDataUri, replyTo, smtpReady, mollie, regenerateAttachments, linkButtons, uitnodiging = true, onClose, onSent,
 }: Props) {
   const [to, setTo] = React.useState(initialTo || '')
   const [subject, setSubject] = React.useState(initialSubject || '')
@@ -59,6 +65,8 @@ export default function MailModal({
   const [sending, setSending] = React.useState(false)
   const [status, setStatus] = React.useState<{type:'ok'|'err', msg:string} | null>(null)
   const [addMollie, setAddMollie] = React.useState(true)
+  const [metUitnodiging, setMetUitnodiging] = React.useState(uitnodiging)
+  const uitnodigingInst = React.useMemo(() => mailUitnodiging(brewery), [brewery])
   // Een in deze modal al aangemaakte link: een tweede druk op "verzenden" na
   // een mislukte SMTP-poging gebruikt hem opnieuw i.p.v. een nieuwe te maken.
   const aangemaakteLink = React.useRef('')
@@ -79,14 +87,17 @@ export default function MailModal({
       logoCid: inlineLogo ? LOGO_CID : undefined,
       linkButtons: linkButtons || undefined,
       payButton: wantMollie ? {url: '#', label: t('mollie_pay_button')} : undefined,
+      uitnodiging: metUitnodiging ? uitnodigingInst : null,
+      whatsappCid: metUitnodiging && uitnodigingInst?.whatsapp ? WHATSAPP_CID : undefined,
     }),
-    [text, brewery, inlineLogo, wantMollie, linkButtons],
+    [text, brewery, inlineLogo, wantMollie, linkButtons, metUitnodiging, uitnodigingInst],
   )
   // Voor de iframe-preview gebruiken we een variant met data:-URI logo, omdat
   // `cid:`-verwijzingen in een browser-iframe niet werken.
   const previewHtml = React.useMemo(() => {
-    if (!logoDataUri || !inlineLogo) return htmlBody
-    return htmlBody.replace(
+    const metWhatsapp = htmlBody.replace(new RegExp(`cid:${WHATSAPP_CID}`, 'g'), WHATSAPP_LOGO_PNG)
+    if (!logoDataUri || !inlineLogo) return metWhatsapp
+    return metWhatsapp.replace(
       new RegExp(`cid:${LOGO_CID}`, 'g'),
       logoDataUri,
     )
@@ -103,6 +114,7 @@ export default function MailModal({
     try {
       await verzendMail({
         to, subject, text, attachments, linkButtons, regenerateAttachments,
+        uitnodiging: metUitnodiging,
         mollie: wantMollie && mollie ? {
           ...mollie,
           bestaandeLink: mollie.bestaandeLink || (aangemaakteLink.current ? {url: aangemaakteLink.current} : null),
@@ -170,6 +182,21 @@ export default function MailModal({
               <span className="block text-xs text-gray-500">
                 {mollieRedirectOk ? t('mollie_add_link_hint') : t('mollie_no_redirect')}
               </span>
+            </span>
+          </label>
+        )}
+
+        {uitnodigingInst && (
+          <label className="flex items-start gap-2 text-sm rounded px-3 py-2 border border-gray-200 bg-gray-50 cursor-pointer">
+            <input
+              type="checkbox"
+              className="t-checkbox mt-0.5"
+              checked={metUitnodiging}
+              onChange={e => setMetUitnodiging(e.target.checked)}
+            />
+            <span className="min-w-0">
+              <span className="font-medium text-gray-700">{t('mail_uitnodiging_meesturen')}</span>
+              <span className="block text-xs text-gray-500 break-words">{uitnodigingInst.tekst}</span>
             </span>
           </label>
         )}

@@ -266,7 +266,7 @@ const TraceTab: React.FC<any> = (p) => {
                   <div className="flex flex-wrap gap-2">
                     {res.lotcodes.map(c => (
                       <span key={c} className="font-mono text-base font-bold px-2 py-0.5 rounded bg-white shadow-sm"
-                        style={{color: 'var(--t-accent)'}}>{c}</span>
+                        style={{color: 'var(--t-accent-text, var(--t-accent))'}}>{c}</span>
                     ))}
                   </div>
                 ) : (

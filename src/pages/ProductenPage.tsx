@@ -390,7 +390,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     if (!conflicten.length) return null;
     const namen = conflicten.map(c => c.naam || t('lbl_naamloos')).join(', ');
     return (
-      <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-medium align-middle"
+      <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[11px] font-medium align-middle"
         title={t('tip_sku_dubbel').replace('{naam}', namen)}>
         {t('lbl_sku_dubbel')}
       </span>
@@ -1542,14 +1542,14 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
       {/* Eén kolom op mobiel: de velden bleven anders te smal om te bewerken */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div>
-          <label className="text-[11px] text-gray-500">{t('lbl_product_verpakking')}</label>
+          <label className="text-xs text-gray-500">{t('lbl_product_verpakking')}</label>
           <select value={artForm.verpakking_id||''} onChange={e => setArtForm((f: any) => ({...f, verpakking_id: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input bg-white">
             <option value="">-</option>
             {(verpakkingen||[]).map((v: any) => <option key={v.id} value={v.id}>{v.naam} ({v.inhoud_liter}L)</option>)}
           </select>
         </div>
         <div>
-          <label className="text-[11px] text-gray-500">{t('lbl_product_sku')}</label>
+          <label className="text-xs text-gray-500">{t('lbl_product_sku')}</label>
           <input type="text" value={artForm.artikelnummer||''} onChange={e => setArtForm((f: any) => ({...f, artikelnummer: e.target.value}))}
             className={`w-full border rounded px-2 py-1.5 sm:py-1 text-xs t-input ${artFormConflicten.length ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
           {/* Eén SKU hoort bij één artikel: hij wijst de orderregel,
@@ -1557,7 +1557,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           {artFormConflicten.length > 0 && (() => {
             const vrij = vrijeSku(artForm.artikelnummer, {soort: 'artikel', id: artForm.id, product_id: artForm.product_id ?? sel}, skuData);
             return (
-              <div className="mt-1 text-[11px] text-red-600">
+              <div className="mt-1 text-xs text-red-600">
                 {t('msg_sku_dubbel')
                   .replace('{sku}', String(artForm.artikelnummer || ''))
                   .replace('{naam}', artFormConflicten[0].naam || t('lbl_naamloos'))}
@@ -1572,12 +1572,12 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           })()}
         </div>
         <div>
-          <label className="text-[11px] text-gray-500">{t('lbl_product_ean')}</label>
+          <label className="text-xs text-gray-500">{t('lbl_product_ean')}</label>
           <input type="text" value={artForm.ean||''} onChange={e => setArtForm((f: any) => ({...f, ean: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
         </div>
         <div>
           <div className="flex items-center justify-between">
-            <label className="text-[11px] text-gray-500">{t('lbl_product_prijs')}</label>
+            <label className="text-xs text-gray-500">{t('lbl_product_prijs')}</label>
             <button type="button" onClick={() => {
               const btw = Number(artForm.btw_pct || 0);
               const prijs = Number(artForm.verkoopprijs || 0);
@@ -1587,7 +1587,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                 setArtForm((f: any) => ({...f, verkoopprijs: (prijs * (1 + btw / 100)).toFixed(2)}));
               }
               setPrijsInclBtw(!prijsInclBtw);
-            }} className="text-[10px] font-medium px-1 rounded" style={{color: 'var(--t-accent)'}}>
+            }} className="text-xs font-medium px-1 rounded" style={{color: 'var(--t-accent-text, var(--t-accent))'}}>
               {prijsInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
             </button>
           </div>
@@ -1595,7 +1595,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
         </div>
         <div>
           <div className="flex items-center justify-between">
-            <label className="text-[11px] text-gray-500">{t('lbl_product_b2b_prijs')}</label>
+            <label className="text-xs text-gray-500">{t('lbl_product_b2b_prijs')}</label>
             <button type="button" onClick={() => {
               const btw = Number(artForm.btw_pct || 0);
               const prijs = Number(artForm.b2b_prijs || 0);
@@ -1605,14 +1605,14 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                 setArtForm((f: any) => ({...f, b2b_prijs: (prijs * (1 + btw / 100)).toFixed(2)}));
               }
               setB2bPrijsInclBtw(!b2bPrijsInclBtw);
-            }} className="text-[10px] font-medium px-1 rounded" style={{color: 'var(--t-accent)'}}>
+            }} className="text-xs font-medium px-1 rounded" style={{color: 'var(--t-accent-text, var(--t-accent))'}}>
               {b2bPrijsInclBtw ? t('lbl_incl_btw') : t('lbl_excl_btw_toggle')}
             </button>
           </div>
           <input type="number" step="0.01" value={artForm.b2b_prijs||''} onChange={e => setArtForm((f: any) => ({...f, b2b_prijs: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
         </div>
         <div>
-          <label className="text-[11px] text-gray-500">{t('lbl_product_btw')}</label>
+          <label className="text-xs text-gray-500">{t('lbl_product_btw')}</label>
           {/* Keuzelijst i.p.v. vrij getal: op mobiel veel makkelijker te
               bedienen. Een afwijkend opgeslagen tarief blijft kiesbaar. */}
           <select value={artForm.btw_pct ?? ''} onChange={e => setArtForm((f: any) => ({...f, btw_pct: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input bg-white">
@@ -1625,14 +1625,14 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           </select>
         </div>
         <div>
-          <label className="text-[11px] text-gray-500">{t('lbl_gn_code')}</label>
+          <label className="text-xs text-gray-500">{t('lbl_gn_code')}</label>
           <select value={artForm.gn_code||''} onChange={e => setArtForm((f: any) => ({...f, gn_code: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input bg-white">
             <option value="">-</option>
             {(gnCodes||[]).map((gc: any) => <option key={gc.code} value={gc.code}>{gc.code} — {gc.naam}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-[11px] text-gray-500">{t('lbl_product_omschrijving')}</label>
+          <label className="text-xs text-gray-500">{t('lbl_product_omschrijving')}</label>
           <input type="text" value={artForm.omschrijving||''} onChange={e => setArtForm((f: any) => ({...f, omschrijving: e.target.value}))} className="w-full border border-gray-200 rounded px-2 py-1.5 sm:py-1 text-xs t-input" />
         </div>
         <div className="sm:col-span-3 border-t border-gray-200 pt-2 mt-1">
@@ -1646,7 +1646,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           />
         </div>
         <div className="sm:col-span-3">
-          <label className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none" title={t('tip_artikel_wc_push')}>
+          <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none" title={t('tip_artikel_wc_push')}>
             <input
               type="checkbox"
               className="t-checkbox"
@@ -1661,7 +1661,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           prijsvelden respecteren de incl/excl-BTW-toggles. */}
       {(() => {
         if (perLiterExclVerpakking <= 0) {
-          return <p className="mt-2 text-[11px] text-gray-500 italic">{t('msg_geen_kostprijs_bekend')}</p>;
+          return <p className="mt-2 text-xs text-gray-500 italic">{t('msg_geen_kostprijs_bekend')}</p>;
         }
         const vp = (verpakkingen||[]).find((v: any) => v.id === Number(artForm.verpakking_id));
         // Het bier × inhoud plus de eigen verpakking (nooit prijs-per-liter × inhoud).
@@ -1680,7 +1680,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           </span>
         );
         return (
-          <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px]">
+          <div className="mt-2 flex items-center gap-2 flex-wrap text-xs">
             <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
               {t('lbl_kostprijs_stuk')}: {fmt(k.kost)} ({t('product_kost_opbouw')
                 .replace('{inhoud}', fmtQty(k.inhoud, 2))
@@ -1769,14 +1769,14 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-sm font-semibold t-accent-text">{r.fmt(r.m.gemiddeld)}</span>
                   {trend !== null && Math.abs(trend) >= 1 && (
-                    <span className="text-[11px] text-gray-600"
+                    <span className="text-xs text-gray-600"
                       title={t('batch_trend_tip').replace('{vorige}', r.m.vorige != null ? r.fmt(r.m.vorige) : '').replace('{laatste}', r.m.laatste != null ? r.fmt(r.m.laatste) : '')}>
                       {trend > 0 ? '▲' : '▼'} {Math.abs(trend).toFixed(0)} %
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="text-[11px] text-gray-600">
+                  <div className="text-xs text-gray-600">
                     {r.label}
                     {r.m.aantal > 1 && r.m.spreiding > 0 && <span> · {r.fmt(r.m.min)}–{r.fmt(r.m.max)}</span>}
                   </div>
@@ -2299,7 +2299,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-orange-700">{t('verlies_vern_stap1_titel')}</p>
-                  <span className={`text-[10px] px-2 py-0.5 rounded ${VERNIETIGING_STATUS_COLOR.aangevraagd}`}>{t('verlies_vern_status_aangevraagd')}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded ${VERNIETIGING_STATUS_COLOR.aangevraagd}`}>{t('verlies_vern_status_aangevraagd')}</span>
                 </div>
                 <p className="text-xs text-orange-700">
                   {t('vrd_vern_uitleg')}
@@ -2329,7 +2329,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                         <li key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1 text-xs">
                           <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 truncate">
                             <Icon n="paperclip" /> <span className="truncate">{b.naam}</span>
-                            {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? t('verlies_vern_rol_verklaring') : t('verlies_vern_rol_bewijs')}</span>}
+                            {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[11px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? t('verlies_vern_rol_verklaring') : t('verlies_vern_rol_bewijs')}</span>}
                           </a>
                           <button onClick={() => doAfboekRemoveBijlage(i)} className="text-gray-400 hover:text-red-500 ml-2" title={t('btn_remove_bijlage')}>✕</button>
                         </li>
@@ -2485,7 +2485,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                     {(ab.bijlagen||[]).map((b: Bijlage, i: number) => (
                       <li key={i} className="text-xs">
                         <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline"><Icon n="paperclip" /> {b.naam}</a>
-                        {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? t('verlies_vern_rol_verklaring') : t('verlies_vern_rol_bewijs')}</span>}
+                        {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[11px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? t('verlies_vern_rol_verklaring') : t('verlies_vern_rol_bewijs')}</span>}
                       </li>
                     ))}
                   </ul>
@@ -2540,7 +2540,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                           <li key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1 text-xs">
                             <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 truncate">
                               <Icon n="paperclip" /> <span className="truncate">{b.naam}</span>
-                              <span className="ml-2 px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px] uppercase tracking-wide">{t('verlies_vern_rol_bewijs')}</span>
+                              <span className="ml-2 px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[11px] uppercase tracking-wide">{t('verlies_vern_rol_bewijs')}</span>
                             </a>
                             <button onClick={() => doVernietigBewijsRemove(i)} className="text-gray-400 hover:text-red-500 ml-2">✕</button>
                           </li>
@@ -2548,7 +2548,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
                       </ul>
                     )}
                   </div>
-                  <p className="text-[11px] text-green-700">{t('vrd_vern_stap3_info')}</p>
+                  <p className="text-xs text-green-700">{t('vrd_vern_stap3_info')}</p>
                 </div>
               )}
 

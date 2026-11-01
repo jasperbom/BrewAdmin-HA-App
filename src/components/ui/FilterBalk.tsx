@@ -157,7 +157,7 @@ function FilterBalk<T extends string>({
             <Icon n="sliders" />
             <span>{t('fb_filter')}</span>
             {actief > 0 && (
-              <span className="tbtn rounded-full text-[11px] leading-none font-bold min-w-[1.25rem] h-5 px-1.5 inline-flex items-center justify-center" aria-hidden="true">{actief}</span>
+              <span className="tbtn rounded-full text-xs leading-none font-bold min-w-[1.25rem] h-5 px-1.5 inline-flex items-center justify-center" aria-hidden="true">{actief}</span>
             )}
           </button>
         )}

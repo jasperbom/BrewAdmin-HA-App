@@ -201,7 +201,7 @@ const VernietigingSection: React.FC<{
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold text-orange-700">{t('verlies_vern_stap1_titel')}</p>
-              <span className={`text-[10px] px-2 py-0.5 rounded ${VERN_STATUS_COLOR.aangevraagd}`}>{t('verlies_vern_status_aangevraagd')}</span>
+              <span className={`text-xs px-2 py-0.5 rounded ${VERN_STATUS_COLOR.aangevraagd}`}>{t('verlies_vern_status_aangevraagd')}</span>
             </div>
             <p className="text-xs text-orange-700">{t('verlies_vern_uitleg')}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -230,7 +230,7 @@ const VernietigingSection: React.FC<{
                     <li key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1 text-xs">
                       <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 truncate">
                         <Icon n="paperclip" /> <span className="truncate">{b.naam}</span>
-                        <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] uppercase tracking-wide">{t('verlies_vern_rol_verklaring')}</span>
+                        <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[11px] uppercase tracking-wide">{t('verlies_vern_rol_verklaring')}</span>
                       </a>
                       <button onClick={() => doVerliesRemoveBijlage(i)} className="text-gray-400 hover:text-red-500 ml-2">✕</button>
                     </li>
@@ -273,11 +273,11 @@ const VernietigingSection: React.FC<{
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{bronLbl ? t(bronLbl) : r.bron}</span>
                             {vStatus && (
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] tracking-wide ${VERN_STATUS_COLOR[vStatus]}`}>{t(VERN_STATUS_LABEL_KEY[vStatus])}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-xs tracking-wide ${VERN_STATUS_COLOR[vStatus]}`}>{t(VERN_STATUS_LABEL_KEY[vStatus])}</span>
                             )}
                             {kanVoort && (
                               <button onClick={() => openVernReview(r)}
-                                className="text-[10px] px-1.5 py-0.5 rounded border border-orange-300 text-orange-600 hover:bg-orange-50">
+                                className="text-[11px] px-1.5 py-0.5 rounded border border-orange-300 text-orange-600 hover:bg-orange-50">
                                 {vStatus === 'aangevraagd' ? t('verlies_vern_btn_toestemming') : t('verlies_vern_btn_uitvoeren')}
                               </button>
                             )}
@@ -320,7 +320,7 @@ const VernietigingSection: React.FC<{
                     {(r.bijlagen || []).map((b: Bijlage, i: number) => (
                       <li key={i} className="text-xs">
                         <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline"><Icon n="paperclip" /> {b.naam}</a>
-                        {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? t('verlies_vern_rol_verklaring') : t('verlies_vern_rol_bewijs')}</span>}
+                        {b.rol && <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[11px] uppercase tracking-wide">{b.rol === 'douane_verklaring' ? t('verlies_vern_rol_verklaring') : t('verlies_vern_rol_bewijs')}</span>}
                       </li>
                     ))}
                   </ul>
@@ -375,7 +375,7 @@ const VernietigingSection: React.FC<{
                           <li key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1 text-xs">
                             <a href={`${ADDON_BASE}api/file/${b.bestand}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 truncate">
                               <Icon n="paperclip" /> <span className="truncate">{b.naam}</span>
-                              <span className="ml-2 px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px] uppercase tracking-wide">{t('verlies_vern_rol_bewijs')}</span>
+                              <span className="ml-2 px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[11px] uppercase tracking-wide">{t('verlies_vern_rol_bewijs')}</span>
                             </a>
                             <button onClick={() => doVernBewijsRemove(i)} className="text-gray-400 hover:text-red-500 ml-2">✕</button>
                           </li>
@@ -383,7 +383,7 @@ const VernietigingSection: React.FC<{
                       </ul>
                     )}
                   </div>
-                  <p className="text-[11px] text-green-700">{t('verlies_vern_stap3_info')}</p>
+                  <p className="text-xs text-green-700">{t('verlies_vern_stap3_info')}</p>
                 </div>
               )}
 

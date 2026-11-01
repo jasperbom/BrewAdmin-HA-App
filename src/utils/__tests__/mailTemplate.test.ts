@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { buildMailHtml, linkify, textToHtml } from '../mailTemplate'
+import { buildMailHtml, linkify, textToHtml, webDomein, mailStijlVoorThema } from '../mailTemplate'
+import { CRAFTERY_KLEUR } from '../huisstijl'
+import { contrast } from '../kleurContrast'
 
 describe('linkify', () => {
   it('maakt een kale https-link klikbaar', () => {
@@ -60,6 +62,58 @@ describe('buildMailHtml', () => {
     expect(html.indexOf('order-received')).toBeLessThan(html.indexOf('pay.mollie.com'))
   })
   it('zonder knoppen geen knopblok', () => {
-    expect(buildMailHtml('Hoi', {naam: 'Craftery'})).not.toContain('border-radius:6px')
+    expect(buildMailHtml('Hoi', {naam: 'Craftery'})).not.toContain('border-radius:999px')
+  })
+})
+
+describe('mailstijl volgt het thema', () => {
+  it('zonder thema Craftery de standaardstijl: wit, amber knop met wit, geen band', () => {
+    const html = buildMailHtml('Hoi', {naam: 'De Kade', website: 'https://dekade.nl'}, {payButton: {url: 'https://pay.mollie.com/x', label: 'Betaal'}})
+    expect(html).toContain('background:#d97706;color:#ffffff')
+    expect(html).toContain('border-top:4px solid #d97706')
+    expect(html).not.toContain('&nbsp;dekade.nl')
+    expect(html).not.toContain("'Space Grotesk'")
+    expect(html).not.toContain(CRAFTERY_KLEUR.inkt)
+  })
+  it('met het thema Craftery op de pagina de huisstijl', () => {
+    const vorig = (globalThis as any).document
+    ;(globalThis as any).document = { documentElement: { dataset: { thema: 'craftery' } } }
+    try {
+      expect(mailStijlVoorThema()).toBe('craftery')
+      expect(buildMailHtml('Hoi', {naam: 'Craftery'})).toContain("'Space Grotesk'")
+    } finally {
+      ;(globalThis as any).document = vorig
+    }
+    expect(mailStijlVoorThema()).toBe('standaard')
+  })
+})
+
+describe('buildMailHtml in de huisstijl van Craftery', () => {
+  const K = CRAFTERY_KLEUR
+  it('papier, een kaart met inktrand en amber knoppen met inkt erop', () => {
+    const html = buildMailHtml('Hoi', {naam: 'Craftery'}, {payButton: {url: 'https://pay.mollie.com/x', label: 'Betaal'}, stijl: 'craftery'})
+    expect(html).toContain(`background:${K.papier}`)
+    expect(html).toContain(`background:${K.kaart};border:2px solid ${K.inkt}`)
+    expect(html).toContain(`background:${K.amber};color:${K.inkt}`)
+    expect(html).toContain("'Space Grotesk'")
+  })
+  it('band bovenaan met het webadres, zonder website de naam (ge-escapet)', () => {
+    const met = buildMailHtml('Hoi', {naam: 'Craftery', website: 'https://www.craftery.nl/winkel/?a=1'}, {stijl: 'craftery'})
+    expect(met).toContain('&nbsp;craftery.nl')
+    expect(met).toContain('href="https://www.craftery.nl/winkel/?a=1"')
+    expect(buildMailHtml('Hoi', {naam: 'De <Kade>'}, {stijl: 'craftery'})).toContain('&nbsp;De &lt;Kade&gt;')
+  })
+  it('webDomein haalt protocol, www en pad weg', () => {
+    expect(webDomein('https://www.craftery.nl/winkel')).toBe('craftery.nl')
+    expect(webDomein('http://shop.example.com?x=1')).toBe('shop.example.com')
+  })
+  it('elke tekstkleur haalt 4,5:1 op zijn vlak', () => {
+    expect(contrast(K.inkt, K.amber)).toBeGreaterThanOrEqual(4.5)   // knoptekst
+    expect(contrast(K.papier, K.inkt)).toBeGreaterThanOrEqual(4.5)  // band, uitnodigingsknop
+    for (const vlak of [K.kaart, K.papier]) {
+      expect(contrast(K.amberDonker, vlak)).toBeGreaterThanOrEqual(4.5) // links
+      expect(contrast(K.tekst3, vlak)).toBeGreaterThanOrEqual(4.5)      // ondertekening
+      expect(contrast(K.inkt, vlak)).toBeGreaterThanOrEqual(4.5)        // lopende tekst
+    }
   })
 })

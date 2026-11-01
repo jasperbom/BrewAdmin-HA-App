@@ -118,7 +118,7 @@ const datumVan = (x: any): string => String(x?.datum || '')
  * mee laten tellen zou de kosten per brouw verwateren én het venster naar de
  * toekomst schuiven. Alleen de status zegt dat: bij het plannen staat
  * `liter_vergist` al vooraf ingevuld uit het recept (maakNieuweBatch, de knop
- * op de receptenpagina, bfMapBatch voor een Brewfather-'Planning'). Voor de
+ * op de receptenpagina). Voor de
  * rest — ook oude batches zonder status — maken vergiste liters of genoteerde
  * kosten er een echt brouwsel van.
  */

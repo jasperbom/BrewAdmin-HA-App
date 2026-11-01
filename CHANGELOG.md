@@ -4,6 +4,320 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.21] — 2026-11-01
+
+### Alles uit de Craftery-kopie in de gewone BrewAdmin
+
+De verbeteringen die in een aparte kopie voor Craftery zijn gebouwd (1.13.7 t/m
+1.13.20 hieronder) zitten nu in de gewone app. Je werkt je bestaande add-on bij
+en houdt je database; er is geen tweede add-on meer nodig. Wat voor iedereen
+anders is dan in die kopie:
+
+- **Craftery is een thema, niet de standaard.** De standaard blijft amber; kies
+  Craftery onder Instellingen → App → Navigatiekleur.
+- **Mails, facturen, pakbonnen en het batchdossier** krijgen de Craftery-opmaak
+  alleen als dat thema gekozen is. Anders blijft de vertrouwde opmaak, nu met
+  dezelfde opbouw: de "Wist je dat?"-uitnodiging staat rechts in de voet naast
+  je bedrijfsgegevens. Een eigen factuurlayout gaat altijd voor.
+- **Geen ingebouwd Craftery-logo:** zonder eigen logo toont de app het oude
+  standaardlogo. Upload je eigen logo onder Instellingen → App.
+- **Loginpagina (directe poort):** weer de neutrale standaardkleuren; de tekst
+  op de knop wordt nu wel vanzelf donker op een licht accent.
+- **Brewfather:** zoals in 1.13.20 (batches naar Brewfather). In de volgende
+  versie wordt dat per onderdeel instelbaar.
+
+## [1.13.20] — 2026-11-01
+
+### Brewfather: batches gaan alleen nog naar Brewfather
+
+Er wordt in BrewAdmin gebrouwen, dus BrewAdmin is leidend voor batches.
+
+- **Terugschrijven.** Een gekoppelde batch gaat vanzelf naar Brewfather: de
+  status (Gepland → Planning … Afgevuld → Completed) en de meetwaarden die hier
+  ingevuld zijn (OG, FG, pre-boil-SG, kookvolume begin en eind, liters vergist,
+  afgevulde liters, maisch-pH, pH bier). Een paar seconden na een wijziging, en
+  alleen als er iets veranderde. Een leeg veld wist in Brewfather niets. Een
+  gesloten batch gaat niet meer (anders zou een gearchiveerde batch in
+  Brewfather terug op Completed springen). `utils/bfTerugschrijven.ts`
+- **Niets meer ophalen.** Bij het openen van de app wordt geen batch, status of
+  meting meer uit Brewfather gehaald. Daarmee verdwijnen ook de melding
+  "Brewfather zegt iets anders" en de statusovername uit 1.13.19. Recepten en
+  ingrediënten komen wel uit Brewfather, zoals altijd.
+- **Koppelen blijft nodig:** Brewfathers API kan geen batch aanmaken. Maak de
+  batch één keer in Brewfather aan vanuit het recept en koppel hem hier (⋯ op de
+  batch, of *Nieuw in Brewfather* op Batches › Lopend, dat de bijpassende batch
+  voorstelt). Meteen daarna gaat de batch naar Brewfather.
+- **Problemen zichtbaar:** lukte het niet, dan zegt de batch wat Brewfather
+  antwoordde; de app probeert het na een kwartier opnieuw. Kent Brewfather de
+  batch niet meer, dan staat er een melding met *Koppel aan Brewfather* en
+  *Koppeling verbreken*.
+- **Server:** de Brewfather-doorgang laat nu ook de status en deze meetwaarden
+  van één batch door, en verder niets (geen `null`, geen andere velden).
+- **De sleutel heeft nu ook "batches schrijven" nodig** (Brewfather → Instellingen
+  → API). De instellingen zeggen welke rechten.
+- Weg: `utils/bfStatus.ts`, `utils/bfBatchSync.ts`, `bfMapBatch`, `bfMapBis` en
+  `BF_TO_APP` (de oude ophaalrichting).
+
+## [1.13.19] — 2026-11-01
+
+### Brewfather: weer koppelen, niet meer stil overschrijven
+
+Uit het onderzoek naar Brewfather (de vier punten die eerst moesten).
+
+- **Batches weer koppelen.** Sinds het oude importscherm in 1.12.42 verdween,
+  kreeg geen nieuwe batch meer een Brewfather-koppeling, en dus nooit OG, FG of
+  status uit Brewfather. Nu op de batch: ⋯ → *Koppel aan Brewfather*, met een
+  voorstel op recept en brouwdag. Op Batches › Lopend staat *Nieuw in
+  Brewfather*: lopende Brewfather-batches zonder batch hier. Hoort er een bij
+  een batch die al bestaat, dan biedt de rij koppelen aan; anders opent
+  *Plannen* "Wat brouw je?" met recept en brouwdag ingevuld, en de nieuwe batch
+  krijgt de koppeling (`utils/bfKoppeling.ts`).
+- **Niet meer stil overschrijven.** De sync bij het openen zette OG, FG, liters,
+  rendementen en pH elke keer terug op de Brewfather-waarde, ook als je ze hier
+  had verbeterd. Nu: een leeg veld wordt gevuld, een veld dat sinds de vorige
+  sync niet is aangepast volgt Brewfather, een hier aangepast veld blijft staan.
+  Zeggen beide kanten iets nieuws, dan toont de batch "Brewfather zegt iets
+  anders" met per veld *Neem Brewfather over* of *Houd deze*. Na het afvullen
+  vult de sync alleen nog lege velden; een vastgezette ABV blijft altijd staan.
+  Elke overname is een auditregel (`utils/bfBatchSync.ts`).
+- **Verwijderd in Brewfather.** Een gekoppelde batch die niet meer in
+  Brewfather staat (alleen als de hele lijst goed binnenkwam, nu ook
+  gearchiveerde batches) krijgt een melding met *Koppeling met Brewfather
+  verbreken*.
+- **Kleur in EBC.** Brewfather geeft kleur in SRM; de app nam dat getal over als
+  EBC, dus bier uit Brewfather stond ongeveer half zo donker. Nu omgerekend
+  (EBC = SRM × 1,97). Recepten die al binnen zijn worden goed bij de volgende
+  receptsync (Recepten → Sync). Een EBC die al op een product of etiket is
+  vastgelegd verandert niet vanzelf.
+- **Brewfather-doorgang dichter.** Schrijven naar Brewfather kan alleen nog voor
+  de voorraad van één ingrediënt (`_bf_patch_toegestaan`); al het andere krijgt
+  403 en een auditregel. Een fout van Brewfather komt met Brewfathers eigen
+  melding en de wachttijd (`Retry-After`) bij de app aan in plaats van een lege
+  `{}`; een mislukte voorraadpagina breekt de ingrediëntensync af in plaats van
+  half te importeren. De instellingen noemen welke rechten de sleutel nodig
+  heeft.
+- Tests: `bfBatchSync.test.ts`, `bfKoppeling.test.ts`, `bfFout.test.ts`, de
+  kleur in `bierKleur.test.ts`/`api-bfRecepten.test.ts`, en `TestBrewfatherDoorgang`
+  in pytest (met een nep-Brewfather).
+
+## [1.13.18] — 2026-10-31
+
+### Administratie-overzicht en kassa (UI-plan fase 5.2 en 5.3)
+
+- **Administratie-overzicht:** onder de omzet en de inkoop van deze maand staat
+  nu het bedrag van vorige maand ter vergelijking (dezelfde filters als
+  Facturen, ook over de jaargrens; getest). De drie handelingen (inkoopfactuur,
+  bankafschrift, BTW-aangifte) staan als gewone knoppen rechts boven in plaats
+  van drie brede knoppen onderaan.
+- **Kassa:** op een tablet en een bureau zijn de tikvlakken van de tegels groter
+  en de prijs groter (in mono). De bon blijft rechts staan en scrolt zelf als
+  hij lang wordt.
+- **Tabs:** het telbolletje (zoals bij Bestellingen) staat in de Craftery-tabs
+  naast de tekst in plaats van eroverheen.
+- `docs/UI-PLAN.md` bijgewerkt: alle vijf fases gebouwd, met wat er anders liep.
+
+## [1.13.17] — 2026-10-31
+
+### De huisstijl doorgetrokken (UI-plan fase 4 en 5.1)
+
+- **Tabs zoals op de site:** de paginatabs op het bureau zijn één blok met een
+  inktrand, in mono, met de actieve tab inktzwart. Op de telefoon is de
+  actieve chip ook inktzwart.
+- **Balk:** de actieve werkruimte heeft een amber streep aan de rand.
+- **Kaarten:** in kaartkleur in plaats van koud wit. Alleen een tank die nu
+  aandacht vraagt (afvullen over tijd, een temperatuurmelding) krijgt de
+  inktrand met harde schaduw van de site, zodat je hem tussen de andere ziet.
+- **Tankkaart zonder meting:** één regel "nog geen meting" met de knop *Meten*
+  (opent het meetvenster voor die batch) in plaats van drie lege kolommen met
+  streepjes.
+- **Factuur, pakbon, picklijst en herinnering:** inkt in plaats van grijs, een
+  inktlijn onder de kop, papieren tabelkoppen, bedragen in mono en het
+  betaalblok als kaart met inktrand. Een eigen factuurlayout gaat voor.
+- **Loginpagina van de directe poort:** standaard amber op inkt, en de knoptekst
+  is donker op een licht accent (wit op amber was 2:1).
+
+## [1.13.16] — 2026-10-31
+
+### Cijfers, uitgeschakelde knoppen en focus (UI-plan fase 2.2, 2.3, 3.3, 3.4)
+
+- **Kerncijfers in mono:** bedragen en metingen die je in één oogopslag leest
+  (de tegels van het Administratie-overzicht, prijzen op de kassategels, de
+  bon, de meetstrip op de tankkaart, het totaal onder Facturen) krijgen de
+  klasse `cijfer`: cijfers even breed, en bij Craftery IBM Plex Mono, zoals op
+  de site.
+- **Uitgeschakelde knop:** grijs in plaats van een bleke themakleur (een bleke
+  amber knop leek "bijna aan"). `Btn` kan de reden eronder tonen (`reden`);
+  "Meting toevoegen" zegt nu "Vul eerst de SG in".
+- **Focus:** de focusring in de themakleur gebruikt overal de 3:1-tint; bij
+  Craftery-amber was hij 2:1 en dus nauwelijks te zien. Knoppen en links zonder
+  eigen ring krijgen een omlijning in die kleur, en een invoerveld een rand.
+- **Typeschaal** vastgelegd in CLAUDE.md: paginatitel, sectiekop, tekst, meta.
+- Beweging (3.2) bleek al geregeld: `index.css` zet bij "minder beweging" alle
+  knipperende en draaiende animaties uit.
+
+## [1.13.15] — 2026-10-31
+
+### Geen browser-pop-ups meer (UI-plan fase 3.1)
+
+Alle 61 `alert()`-, `confirm()`- en `prompt()`-vensters zijn vervangen door de
+eigen patronen van de app. Een browser-pop-up blokkeert op een telefoon het
+hele scherm en past niet bij de app.
+
+- **Meldingen** staan nu in de pagina of in het open venster, bij de knop die
+  ze veroorzaakte (een rode regel of `PaginaMelding`): het bestelformulier,
+  Statiegeld, Ingrediënten (correctie, ontvangst, onderdelen, verpakkingen) en
+  alle kaarten in Instellingen.
+- **Verwijderen** (ingrediënt, verpakking, onderdeel, waterprofiel,
+  schoonmaaktaak, accijnstarief, alternatieve rekening, logo, eigen
+  factuurlayout, ingrediënttype, kostensoort, GN-code, takengroep, mutatielog)
+  gebeurt na vijf seconden met *Ongedaan maken*. Wat je weghaalt verdwijnt
+  meteen uit beeld. De auditregel wordt pas geschreven als het echt gebeurt.
+- **Onomkeerbaar vraagt toestemming in een venster:** een backup terugzetten
+  (een kapot bestand meldt zijn fout in hetzelfde venster), de eenmalige
+  opruiming van lege inkoopfacturen bij het opstarten, en *Alle data wissen*:
+  daar typ je RESET in een veld naast de knop in plaats van in een
+  browser-pop-up.
+- **Printvenster geblokkeerd** zonder eigen plek op de pagina (batchdossier,
+  herinnering): een melding bovenin de app (`toonMelding`).
+- 21 nieuwe teksten in de vijf talen; de uitleg bij *Log wissen* noemt nu de
+  vijf seconden om het ongedaan te maken.
+
+## [1.13.14] — 2026-10-31
+
+### Het Craftery-thema overal leesbaar (UI-plan fase 1)
+
+- **Warme grijzen:** in het Craftery-thema hebben alle grijzen een bruine
+  ondertoon, zoals op de site, en lichte grijze tekst (`text-gray-400`, 422
+  plekken) haalt nu 4,5:1 op papier (was 2,2:1). Technisch: Tailwind-grijs loopt
+  via CSS-variabelen; de andere thema's houden exact het oude grijs.
+- **Waarschuwing ≠ merkkleur:** oranje ("let op", "verpakken te laat",
+  "etiket nog niet vastgelegd") is in het Craftery-thema roest, zodat het niet
+  meer op de amber knoppen lijkt. Ook via variabelen; de andere thema's houden
+  hun oranje.
+- **Eén statuspil:** `StatusPil` met één kleurentabel (`PIL_KLEUR`) vervangt de
+  losse tabellen op Te picken, Voorraad en komt eraan, de productlijst en de
+  productkop.
+- **Batchnaam in Nu actief:** "Werfhop IPA #2610" in plaats van "Naamloos"
+  (`batchTitel`, zoals overal).
+- **Tank zonder bierkleur:** strokleurig in plaats van blauw (Vergisten) of
+  amber (Conditioneren).
+- **Getest:** contrast van de warme grijzen en het roest, tintverschil met amber,
+  en dat de andere thema's het grijs en oranje van Tailwind houden.
+
+## [1.13.13] — 2026-10-31
+
+### Leesbaarheid: de accentkleur als tekst en geen tekst onder 12 px
+
+Fase 1.1 en 2.1 van `docs/UI-PLAN.md`.
+
+- **Accent als tekst:** op 28 plekken stond de accentkleur rechtstreeks als
+  tekstkleur (de streeftemperatuur en "100% vergist" op de batchpagina, bedragen
+  op Statiegeld, links). Bij een licht accent zoals Craftery-amber was dat 2:1.
+  Ze gebruiken nu `--t-accent-text`: dezelfde tint, donkerder gemaakt tot 4,5:1.
+  Een icoon in de accentkleur bij hover (`.t-icon-hover`) gebruikt de 3:1-tint.
+- **Kleine tekst:** 9 en 10 px zijn weg. Gewone tekst is minstens 12 px
+  (147 plekken), een badge met eigen achtergrond minstens 11 px.
+
+## [1.13.12] — 2026-10-31
+
+### "Wist je dat?" in de voet van je mails, met het WhatsApp-logo
+
+De uitnodiging onder je mails is een klein blokje geworden, rechts in de voet
+naast je bedrijfsgegevens (op een telefoon eronder), in de vorm van een
+"Wist je dat?".
+
+- **Kop:** "// Wist je dat?" in de koppenletter, met de `//` van de site.
+  Instelbaar onder Instellingen → Bedrijf → *Uitnodiging onder je mails* (nieuw
+  veld *Kop*); leeg = "Wist je dat?".
+- **WhatsApp:** wijst de link naar WhatsApp (`chat.whatsapp.com`, `wa.me`, een
+  kanaal), dan staat het WhatsApp-logo naast de kop en is de knop
+  WhatsApp-groen met donkere tekst. Het logo gaat als plaatje in de mail mee
+  (zoals je eigen logo) en alleen bij een WhatsApp-link. Een andere link houdt
+  een zwarte knop zonder logo.
+- **Kortere standaardteksten:** "Nieuwe bieren verschijnen altijd eerst in onze
+  WhatsApp-groep." met de knop "Doe mee op WhatsApp" (bij een andere link de
+  algemene variant). Heb je zelf een tekst ingevuld, dan blijft die staan; maak
+  het veld leeg voor de nieuwe.
+- **Platte tekst:** de kop, de zin en de kale link, zoals voorheen onderaan.
+- **Outlook:** de twee kolommen staan daar in een tabel, zodat ze ook daar
+  naast elkaar komen.
+
+## [1.13.11] — 2026-10-31
+
+### Plan: de UI verder verbeteren
+
+`docs/UI-PLAN.md`: een plan in vijf fases om de UI te verbeteren in de
+huisstijl van Craftery (opgesteld met de skill *ui-ux-pro-max*), met per punt
+wat er gemeten is — amber als tekst, te lichte grijze tekst, merkkleur en
+waarschuwing door elkaar, te kleine tekst, de oude pop-ups — en hoe groot het
+is. Aan de app zelf verandert niets.
+
+## [1.13.10] — 2026-10-31
+
+### De huisstijl van Craftery: app en mails
+
+De app en de mails kunnen het nieuwe ontwerp van de Craftery-webshop volgen
+(thema 6.x): papier, inkt en amber. (Ontwikkeld in een aparte kopie en in
+1.13.21 overgenomen; zie daar wat er voor de publieke versie anders is.)
+
+- **Thema "Craftery"** (Instellingen → App → Navigatiekleur): een inktzwarte balk, een papieren
+  achtergrond, amber knoppen als pil met inkt erop (wit is op amber
+  onleesbaar), amber selectie en accenten.
+- **Lettertypes van de site:** Space Grotesk voor alle tekst, Jost voor de grote
+  koppen en IBM Plex Mono voor codes en nummers. Dezelfde bestanden als de
+  webshop, ingebouwd in de app (ongeveer 70 kB): er gaat geen verbinding naar
+  Google of naar de site. Alleen bij het Craftery-thema.
+- **Mails (bij het thema Craftery):** elke mail aan een klant (bestelbevestiging, verzending, factuur,
+  pakbon, herinnering …) heeft een inktzwarte band met het webadres, een
+  kaart met een inktrand op papier, amber knoppen als pil, de uitnodiging met
+  een inktzwarte knop en de ondertekening in mono. Een mailprogramma kent de
+  lettertypes van de site niet: daar wordt het Helvetica/Arial, met Futura voor
+  de naam op een Apple-toestel.
+- **Getest:** de standaard is in app en server dezelfde, elke tekstkleur in de
+  mail haalt 4,5:1 op zijn vlak.
+
+## [1.13.9] — 2026-10-31
+
+### Thema's: eigen tekstkleur op de knop
+
+Een kleurenthema kan nu zeggen welke tekstkleur er óp de knop hoort
+(`btnText` in `NAV_THEMES`, CSS `--t-btn-text`) en welke kleur de effen
+sectiekop heeft (`hdr`, `--t-hdr`). Nodig voor een thema met een licht accent
+zoals amber: wit is daarop onleesbaar. Zonder die velden blijft alles zoals het
+was (wit op de knop, de kop in `btnA`).
+
+- **Ook buiten de knop:** het telbolletje op een kassategel, de actieve pil bij
+  de afvulsessies, de huidige stap in de batch-flow, de badge in de
+  bierinformatie en het schema van de AGP-stroom gebruiken nu dezelfde kleur
+  (`.t-btn-text`) in plaats van vast wit.
+- **Eigen CSS per thema:** App.tsx zet `data-thema` op `<html>`, zodat een thema
+  een eigen lettertype of vorm kan meebrengen onder `html[data-thema="…"]`. Het
+  thema wordt nu vóór de eerste weergave gezet (`useLayoutEffect`).
+- **Getest:** de tekst op de knop haalt in elk thema 4,5:1 op de knop, de
+  hover- en de actieve stand en het accent; wit op de effen kop ook.
+
+## [1.13.7] — 2026-10-31
+
+### Uitnodiging onder je mails
+
+Onder elke mail aan een klant kan nu een korte uitnodiging met een knop staan,
+bijvoorbeeld "Wil je als eerste weten wanneer er nieuwe bieren zijn? Word lid van
+onze updategroep." met een knop naar je WhatsApp-groep of nieuwsbrief.
+Instellen onder Instellingen → Bedrijf → *Uitnodiging onder je mails*: de link,
+de tekst en de tekst op de knop. Zonder link gaat er niets mee.
+
+- **Waar:** bestelbevestiging, verzending, afspraak gemist, annulering, pakbon,
+  factuur en een losse mail aan een klant, met de hand én automatisch
+  verstuurd. In de HTML een licht blok met een omlijnde knop onder de tekst (en
+  onder de betaalknop), in de platte tekst de zin met de kale link.
+- **Niet bij een betalingsherinnering of aanmaning:** om geld vragen en
+  uitnodigen voor de bierengroep gaan niet samen. In het mailvenster staat een
+  vinkje *Uitnodiging onder de mail*; daar kun je hem per mail weglaten of bij
+  een herinnering toch meesturen. De preview laat zien wat de klant krijgt.
+- **De link staat alleen in je eigen administratie**
+  (`brewery_details.mail_uitnodiging`), niet in de code. Alleen een http(s)-link
+  telt; zonder https:// komt dat er vanzelf voor.
+
 ## [1.13.6] — 2026-10-28
 
 ### Airco voor de tanks

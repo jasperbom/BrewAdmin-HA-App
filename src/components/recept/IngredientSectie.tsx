@@ -183,7 +183,7 @@ const IngredientRegel: React.FC<IngredientRegelProps> = ({ item, cat, idx, readO
       <span className="text-gray-400">{String(item.gebruik || '').toLowerCase() === 'dry hop' ? t('lbl_dagen') : t('lbl_minuten')}</span>
       {Array.isArray(item._lokaal) && item._lokaal.length > 0 && (
         <button type="button" onClick={() => onWisLokaal('hop', idx)}
-          className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 hover:bg-blue-100"
+          className="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 hover:bg-blue-100"
           title={t('recipe_lokaal_title')}>{t('recipe_lokaal')}</button>
       )}
     </div>

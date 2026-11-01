@@ -210,7 +210,7 @@ function BatchesAgenda({
             <div className="shrink-0 w-36 px-3 py-2 text-xs font-semibold text-gray-500 border-r border-gray-200">{t('lbl_tank')}</div>
             <div className="relative flex-1 h-8 overflow-hidden">
               {markers.map(m => (
-                <div key={m.datum} className="absolute top-0 h-full flex items-center text-[11px] font-medium text-gray-500 pl-1" style={{ left: `${m.links}%` }}>
+                <div key={m.datum} className="absolute top-0 h-full flex items-center text-xs font-medium text-gray-500 pl-1" style={{ left: `${m.links}%` }}>
                   <span className="border-l border-gray-300 pl-1 capitalize whitespace-nowrap">
                     {new Date(`${m.datum}T12:00:00`).toLocaleDateString(lang, { month: 'short', year: '2-digit' })}
                   </span>
@@ -228,7 +228,7 @@ function BatchesAgenda({
               <div key={r.tankId || 'zonder'} className={`flex border-b border-gray-100 last:border-b-0 ${isDoel ? 't-panel' : ''} ${r.zonderTank ? 'bg-gray-50/60' : ''}`}>
                 <div className="shrink-0 w-36 px-3 py-1.5 border-r border-gray-200 flex flex-col justify-center min-w-0">
                   <span className={`text-sm truncate ${r.zonderTank ? 'text-gray-500 italic' : 'text-gray-800 font-medium'}`}>{rijNaam(r)}</span>
-                  {!r.bestaat && <span className="text-[11px] text-orange-700 truncate">{t('batches_tank_bestaat_niet')}</span>}
+                  {!r.bestaat && <span className="text-xs text-orange-700 truncate">{t('batches_tank_bestaat_niet')}</span>}
                 </div>
                 {/* De baan knipt alles af wat buiten de tijdlijn valt: een batch die
                     al lang in de tank zit, schuift zo nooit over het tanklabel heen. */}
@@ -246,7 +246,7 @@ function BatchesAgenda({
                     if (links < 0 || links > 100) return null
                     return (
                       <div className="absolute top-0 h-full pointer-events-none" style={{ left: `${links}%`, width: '2px', background: '#d97706' }}>
-                        <span className="absolute top-0 left-1 text-[10px] font-semibold t-accent-text whitespace-nowrap bg-white/90 px-1 rounded shadow-sm">{fmtD(dropPreview.datum)}</span>
+                        <span className="absolute top-0 left-1 text-[11px] font-semibold t-accent-text whitespace-nowrap bg-white/90 px-1 rounded shadow-sm">{fmtD(dropPreview.datum)}</span>
                       </div>
                     )
                   })()}
@@ -274,7 +274,7 @@ function BatchesAgenda({
                         onDragEnd={stopSlepen}
                         onClick={() => onOpen(it.batch)}
                         title={uitleg} aria-label={uitleg}
-                        className={`absolute flex items-center gap-1 px-1.5 text-[11px] font-medium text-left overflow-hidden whitespace-nowrap transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] ${pos.afgekaptLinks ? 'rounded-r' : 'rounded'} ${kanSlepen ? 'cursor-grab' : 'cursor-pointer'} ${dragInfo?.id === it.batch.id ? 'opacity-40' : ''}`}
+                        className={`absolute flex items-center gap-1 px-1.5 text-xs font-medium text-left overflow-hidden whitespace-nowrap transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] ${pos.afgekaptLinks ? 'rounded-r' : 'rounded'} ${kanSlepen ? 'cursor-grab' : 'cursor-pointer'} ${dragInfo?.id === it.batch.id ? 'opacity-40' : ''}`}
                         style={{
                           left: `${pos.links}%`, width: `${pos.breedte}%`,
                           top: `${RIJ_PAD / 2 + it.baan * BAAN_PX}px`, height: `${BAAN_PX - 6}px`,

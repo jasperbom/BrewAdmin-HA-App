@@ -149,7 +149,7 @@ export default function InkoopInbox({ items, setItems, actief, onVerwerk, vernie
           <div className="text-xs text-gray-400 mt-0.5">
             {t('inbox_ontvangen_op').replace('{datum}', fmtD(i.mail_datum || i.ontvangen))}
             {i.status !== 'nieuw' && (
-              <span className={`ml-2 px-1.5 py-0.5 rounded-full text-[11px] font-medium ${i.status === 'verwerkt' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+              <span className={`ml-2 px-1.5 py-0.5 rounded-full text-xs font-medium ${i.status === 'verwerkt' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
                 {t(i.status === 'verwerkt' ? 'inbox_status_verwerkt' : 'inbox_status_genegeerd')}
               </span>
             )}

@@ -413,6 +413,9 @@ export interface OverzichtCijfers {
   omzetCent: number
   /** Netto inkoop (excl. BTW) van deze maand. */
   inkoopCent: number
+  /** Ter vergelijking: netto omzet en inkoop van de hele vorige maand (zelfde filters). */
+  omzetVorigeCent: number
+  inkoopVorigeCent: number
   /** Bruto openstaand bij klanten (status Open op Facturen › Verkoop). */
   debiteurenCent: number
   debiteurenN: number
@@ -423,15 +426,20 @@ export interface OverzichtCijfers {
 
 export function overzichtCijfers(bron: OverzichtCijfersBron): OverzichtCijfers {
   const maand = periodeBereik('deze_maand', bron.vandaag)
+  const vorige = periodeBereik('vorige_maand', bron.vandaag)
   const vCtx = { klanten: bron.klanten || [], breweryDetails: bron.breweryDetails ?? null, vandaagIso: bron.vandaagIso }
   const iCtx = { vandaagIso: bron.vandaagIso }
   const omzet = verkoopTotalen(filterVerkoopFacturen(bron.verkoopFacturen, { status: 'alles', bereik: maand }, vCtx))
   const inkoop = inkoopTotalen(filterInkoopFacturen(bron.inkoopFacturen, { status: 'alles', bereik: maand }, iCtx))
+  const omzetVorige = verkoopTotalen(filterVerkoopFacturen(bron.verkoopFacturen, { status: 'alles', bereik: vorige }, vCtx))
+  const inkoopVorige = inkoopTotalen(filterInkoopFacturen(bron.inkoopFacturen, { status: 'alles', bereik: vorige }, iCtx))
   const deb = verkoopTotalen(filterVerkoopFacturen(bron.verkoopFacturen, { status: 'open' }, vCtx))
   const cred = inkoopTotalen(filterInkoopFacturen(bron.inkoopFacturen, { status: 'open' }, iCtx))
   return {
     omzetCent: omzet.netto_cent,
     inkoopCent: inkoop.netto_cent,
+    omzetVorigeCent: omzetVorige.netto_cent,
+    inkoopVorigeCent: inkoopVorige.netto_cent,
     debiteurenCent: deb.bruto_cent,
     debiteurenN: deb.aantal,
     crediteurenCent: cred.bruto_cent,

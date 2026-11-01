@@ -27,17 +27,19 @@ let _tankUidSeq = 0
 // voor bestaande importeurs.
 export { ebcToColor }
 
+// Bier zonder bekende kleur (geen EBC bij product, batch of recept): een
+// neutrale strokleur — "er zit bier in, de kleur weten we niet". Vroeger blauw
+// bij Vergisten en amber bij Conditioneren; blauw las als water of koeling en
+// amber als de themakleur. De fase staat al in de pil op de kaart.
+const kleurZonderEbc = (status?: string) => status === 'Vergisten' || status === 'Conditioneren'
+  ? { fill: '#e4d8bf', fillDark: '#c9b993', highlight: '#f1e9d8' }
+  : { fill: '#d1d5db', fillDark: '#9ca3af', highlight: '#e5e7eb' }
+
 // Visuele conische fermentor (SVG)
 export const TankVisual: React.FC<TankVisualProps> = ({ fillPct, status, ebc, hoogte }) => {
   const [uid] = useState(() => `t${++_tankUidSeq}`)
   const pct = Math.min(100, Math.max(0, fillPct || 0))
-  const colors = ebc && ebc > 0
-    ? ebcToColor(ebc)
-    : status === 'Vergisten'
-      ? { fill: '#60a5fa', fillDark: '#3b82f6', highlight: '#93c5fd' }
-      : status === 'Conditioneren'
-        ? { fill: '#fbbf24', fillDark: '#f59e0b', highlight: '#fcd34d' }
-        : { fill: '#d1d5db', fillDark: '#9ca3af', highlight: '#e5e7eb' }
+  const colors = ebc && ebc > 0 ? ebcToColor(ebc) : kleurZonderEbc(status)
 
   /* Tank geometrie (viewBox 0 0 56 120)
      - Manway/dome:     y 2–10
@@ -129,11 +131,7 @@ export const TankVisual: React.FC<TankVisualProps> = ({ fillPct, status, ebc, ho
 export const BrightTankVisual: React.FC<TankVisualProps> = ({ fillPct, status, ebc, hoogte }) => {
   const [uid] = useState(() => `bt${++_tankUidSeq}`)
   const pct = Math.min(100, Math.max(0, fillPct || 0))
-  const colors = ebc && ebc > 0
-    ? ebcToColor(ebc)
-    : status === 'Conditioneren'
-      ? { fill: '#fbbf24', fillDark: '#f59e0b', highlight: '#fcd34d' }
-      : { fill: '#d1d5db', fillDark: '#9ca3af', highlight: '#e5e7eb' }
+  const colors = ebc && ebc > 0 ? ebcToColor(ebc) : kleurZonderEbc(status)
 
   /* Bright tank geometrie (viewBox 0 0 56 120)
      - Bovenkoepel:     y 14–28 (halve ellips)

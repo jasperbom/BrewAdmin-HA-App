@@ -35,6 +35,8 @@ interface TankKaartProps {
   onOpen: (m: TankModel) => void
   /** De ene knop: met › opent hij de batch op de plek van de stap, zonder › voert hij uit (Meting). */
   onStap: (m: TankModel) => void
+  /** Een meting voor deze batch (het meetvenster van de brouwzaal); alleen getoond zolang er nog geen meting is. */
+  onMeten?: (m: TankModel) => void
 }
 
 // Kleur per bewakingsstatus — semantische statuskleuren (CLAUDE.md), niet
@@ -50,7 +52,7 @@ export const BEWAKING_PILL: Record<string, string> = {
 }
 
 const BewakingPill: React.FC<{ b: BatchOordeel }> = ({ b }) => (
-  <span className={`inline-block text-[11px] font-semibold px-1.5 py-0.5 rounded ${BEWAKING_PILL[b.status]}`}
+  <span className={`inline-block text-xs font-semibold px-1.5 py-0.5 rounded ${BEWAKING_PILL[b.status]}`}
     title={b.doel != null
       ? t(b.doelBron === 'setpoint' ? 'tank_bew_doel_setpoint' : 'tank_bew_doel').replace('{doel}', b.doel.toFixed(1))
       : ''}>
@@ -76,8 +78,8 @@ const EtiketChip: React.FC<{ e: BatchEtiket; cls?: string }> = ({ e, cls = '' })
 
 const Metriek: React.FC<{ label: string; waarde: string; cls?: string }> = ({ label, waarde, cls = '' }) => (
   <div className="min-w-0">
-    <div className="text-[11px] font-medium text-gray-500">{label}</div>
-    <div className={`text-2xl font-semibold tabular-nums leading-tight ${waarde ? 'text-gray-900' : 'text-gray-300'} ${cls}`}>{waarde || '—'}</div>
+    <div className="text-xs font-medium text-gray-500">{label}</div>
+    <div className={`text-2xl font-semibold cijfer leading-tight ${waarde ? 'text-gray-900' : 'text-gray-300'} ${cls}`}>{waarde || '—'}</div>
   </div>
 )
 
@@ -98,15 +100,22 @@ const GistBalk: React.FC<{ info: TankKaartInfo; cls?: string }> = ({ info, cls =
  * en wanneer er afgevuld wordt, de etiketchip als het etiket niet klopt, en
  * één knop: de volgende stap. De hele kaart opent de batch.
  */
-export const TankKaart: React.FC<TankKaartProps> = ({ m, vandaag, onOpen, onStap }) => {
+export const TankKaart: React.FC<TankKaartProps> = ({ m, vandaag, onOpen, onStap, onMeten }) => {
   const { tank, batch, info, stap, etiket } = m
   const nr = batchNummer(batch)
   const sub = [m.recept ? `${t('brouwzaal_recept')} ${m.recept}` : '', nr ? `#${nr}` : '', litersTekst(Number(batch.liter_vergist))]
     .filter(Boolean).join(' · ')
   const gisting = gistingTekst(info)
   const afvullen = afvullenTekst(info)
+  // Nog niets gemeten: één regel met de knop Meten in plaats van drie lege
+  // kolommen met streepjes (UI-plan 5.1).
+  const geenMeting = !info.sg && !info.temp && !info.ph
+  // Vraagt deze tank nu aandacht (afvullen over tijd, een temperatuurmelding)?
+  // Een thema kan hem dan markeren (Craftery: een inktrand, craftery.css).
+  const aandacht = !!info.afvullenOverTijd || !!m.bewaking
   return (
-    <div className="relative bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
+    <div data-aandacht={aandacht || undefined}
+      className="tank-kaart relative bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
       <div className="flex items-start gap-4">
         <TankVisualForSoort soort={tank.soort} fillPct={info.vulPct} status={batch.status} ebc={m.ebc ?? undefined} />
         <div className="flex-1 min-w-0">
@@ -121,15 +130,29 @@ export const TankKaart: React.FC<TankKaartProps> = ({ m, vandaag, onOpen, onStap
           </button>
           {sub && <div className="text-xs text-gray-500 mt-0.5 break-words">{sub}</div>}
           {m.bewaking && <div className="mt-1"><BewakingPill b={m.bewaking} /></div>}
-          <div className="grid grid-cols-3 gap-2 mt-3">
-            <Metriek label={t('flow_meting_sg')} waarde={info.sg ? fmtSg(info.sg.waarde, '') : ''} />
-            <Metriek label="°C" waarde={info.temp ? getal(info.temp.waarde, 1) : ''} cls={info.temp?.bron === 'sensor' ? 'text-blue-700' : ''} />
-            <Metriek label="pH" waarde={info.ph ? getal(info.ph.waarde, 2) : ''} />
-          </div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            {gemetenTekst(info.gemeten, vandaag)}
-            {info.temp?.bron === 'sensor' && <span> · {t('brouwzaal_temp_sensor')}</span>}
-          </div>
+          {geenMeting ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm text-gray-500">{gemetenTekst(info.gemeten, vandaag)}</span>
+              {onMeten && (
+                <button type="button" onClick={e => { e.stopPropagation(); onMeten(m) }}
+                  className="relative z-[1] inline-flex items-center px-3 min-h-[36px] rounded-lg border text-sm font-medium bg-white hover:bg-gray-50 text-gray-800 border-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+                  {t('nav_meten')}
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-2 mt-3">
+                <Metriek label={t('flow_meting_sg')} waarde={info.sg ? fmtSg(info.sg.waarde, '') : ''} />
+                <Metriek label="°C" waarde={info.temp ? getal(info.temp.waarde, 1) : ''} cls={info.temp?.bron === 'sensor' ? 'text-blue-700' : ''} />
+                <Metriek label="pH" waarde={info.ph ? getal(info.ph.waarde, 2) : ''} />
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {gemetenTekst(info.gemeten, vandaag)}
+                {info.temp?.bron === 'sensor' && <span> · {t('brouwzaal_temp_sensor')}</span>}
+              </div>
+            </>
+          )}
         </div>
       </div>
       {(gisting || afvullen) && (
@@ -181,7 +204,7 @@ export const TankRij: React.FC<TankKaartProps> = ({ m, onOpen, onStap }) => {
         )}
         {(etiket.status.kleur !== 'groen' || m.bewaking) && (
           <div className="flex flex-wrap items-center gap-1.5 mt-1">
-            {etiket.status.kleur !== 'groen' && <EtiketChip e={etiket} cls="text-[11px]" />}
+            {etiket.status.kleur !== 'groen' && <EtiketChip e={etiket} cls="text-xs" />}
             {m.bewaking && <BewakingPill b={m.bewaking} />}
           </div>
         )}

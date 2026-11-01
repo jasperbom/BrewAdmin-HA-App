@@ -16,7 +16,7 @@ const CHIP_CLS: Record<ChipSoort, string> = {
 
 /** Een kleine chip naast een naam ("huidig", "vastgepind", "niet meer in Brewfather"). */
 export const ReceptChip: React.FC<{ soort: ChipSoort; children: React.ReactNode; cls?: string }> = ({ soort, children, cls = '' }) => (
-  <span className={`inline-flex items-center px-1.5 py-px rounded-full border text-[11px] font-medium leading-4 whitespace-nowrap ${CHIP_CLS[soort]} ${cls}`}>
+  <span className={`inline-flex items-center px-1.5 py-px rounded-full border text-xs font-medium leading-4 whitespace-nowrap ${CHIP_CLS[soort]} ${cls}`}>
     {children}
   </span>
 )

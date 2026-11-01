@@ -36,7 +36,7 @@ interface FaseKopProps {
 const Bol: React.FC<{ i: number; huidig: number; open: boolean; klein?: boolean }> = ({ i, huidig, open, klein }) => {
   const klaar = i < huidig
   const nu = i === huidig
-  const maat = klein ? 'w-6 h-6 text-[11px]' : 'w-8 h-8 text-xs'
+  const maat = klein ? 'w-6 h-6 text-xs' : 'w-8 h-8 text-xs'
   return (
     <span aria-hidden="true"
       className={`${maat} rounded-full flex items-center justify-center font-bold border-2 flex-shrink-0 transition-shadow ${open ? 'ring-2 ring-offset-2' : ''}`}
@@ -99,7 +99,7 @@ const FaseKop: React.FC<FaseKopProps> = ({ fases, huidig, open, onToggle, onKies
                 title={`${f.label} · ${standTekst(i, huidig)}`}
                 className="relative z-[1] flex flex-col items-center gap-1 px-1 max-w-full group rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
                 <span className="rounded-full bg-white"><Bol i={i} huidig={huidig} open={isOpen} /></span>
-                <span className={`text-[11px] leading-tight text-center break-words max-w-full group-hover:underline ${i === huidig ? 'font-semibold t-accent-text' : 'text-gray-600'}`}>
+                <span className={`text-xs leading-tight text-center break-words max-w-full group-hover:underline ${i === huidig ? 'font-semibold t-accent-text' : 'text-gray-600'}`}>
                   {f.label}
                 </span>
               </button>

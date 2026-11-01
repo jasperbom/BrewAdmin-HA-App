@@ -14,7 +14,7 @@ Comprehensive guide for AI assistants working on this codebase.
 - Excise duty calculation and declaration tracking
 - Accounting with Claude AI-powered invoice scanning
 - WooCommerce order picking and stock sync
-- 5-language support (NL, EN, DE, FR, ES) with 7 UI themes
+- 5-language support (NL, EN, DE, FR, ES) with 8 UI themes (incl. Craftery)
 
 The app is "fully built with Claude AI" (noted in README). UI text and many code comments are in Dutch.
 
@@ -365,7 +365,13 @@ BrewAdmin-HA-App/
 │   │   │                   # `wc_bestel_url`; anders géén knop (geen gok)
 │   │   ├── bierKleur.ts    # EBC → bierkleur (één tabel voor tank-SVG, productlijst, kassa,
 │   │   │                   # orderregels, tankkaarten): `productEbc`/`batchEbc` (eigen veld →
-│   │   │                   # product → recept), `tekstKleurOp`. Component: ui/BierKleur.tsx
+│   │   │                   # product → recept), `tekstKleurOp`, `ebcUitSrm` (Brewfather geeft SRM).
+│   │   │                   # Component: ui/BierKleur.tsx
+│   │   ├── bfTerugschrijven.ts # Batches naar Brewfather (BrewAdmin leidend): status + meetwaarden,
+│   │   │                   # alleen bij een nieuw bericht (`bf_gepusht`), `bf_fout`, `bf_verweesd`
+│   │   ├── bfKoppeling.ts  # Een batch aan een Brewfather-batch koppelen: kandidaten met voorstel,
+│   │   │                   # "Nieuw in Brewfather", bestaande batch voorstellen, recept erbij
+│   │   ├── bfFout.ts       # Brewfather-fout (status, eigen tekst, Retry-After) → i18n-melding
 │   │   ├── beslissingen.ts # Administratie-dashboard: één rij per ding dat je afhandelt (elke vervallen
 │   │   │                   # verkoop-/achterstallige inkoopfactuur, elke open BTW-periode, elke open
 │   │   │                   # accijnsmaand, elke rekening waarvan het laatste afschrift niet aansluit;
@@ -489,6 +495,15 @@ BrewAdmin-HA-App/
 │   │   │                   # bevestiging alleen voor bestellingen van na `auto_sinds`), `naMailVerstuurd`
 │   │   ├── mailVerzenden.ts # Eén mail de deur uit (`verzendMail`: Mollie-link, HTML met logo en knoppen,
 │   │   │                   # platte tekst, bijlagen, `MailFout`) — gedeeld door MailModal en de automaat
+│   │   ├── mailUitnodiging.ts # De uitnodiging in de voet van elke klantmail (WhatsApp-groep, nieuwsbrief) als
+│   │   │                   # "Wist je dat?" met een knop: `brewery_details.mail_uitnodiging` = `{kop, tekst, knop,
+│   │   │                   # url}`, leeg = i18n-standaard (een WhatsApp-link — `isWhatsAppLink`, op de hostnaam —
+│   │   │                   # heeft eigen standaardteksten, `uitnodigingStandaard`), zonder geldige http(s)-link
+│   │   │                   # niets. De link staat alleen in de administratie, nooit in de code. Een
+│   │   │                   # betalingsherinnering krijgt hem niet (`uitnodiging: false`); in MailModal per mail
+│   │   │                   # uit te vinken. HTML: rechts in de voet naast de bedrijfsgegevens (op een telefoon
+│   │   │                   # eronder), bij WhatsApp met het logo (`whatsappLogo.ts`, inline `cid:whatsapp-logo`,
+│   │   │                   # alleen dan meegestuurd) en een groene knop met inkt
 │   │   ├── mollieLink.ts   # Eén Mollie-betaallink per verkoopfactuur (`mollie_link`), hergebruikt door elke volgende mail
 │   │   ├── ubl.ts          # E-factuur in UBL 2.1 / PEPPOL BIS Billing 3.0: cent-exact, multi-tarief TaxSubtotals, kortingen als AllowanceCharge, creditnota als CreditNote-document
 │   │   ├── csv.ts          # CSV-export: `csvCel`/`csvRij`/`csvTekst` zijn formule-veilig (apostrof vóór = + - @ tab/CR,
@@ -599,6 +614,9 @@ werkruimtes, het **tweede menu** de pagina's van de gekozen werkruimte.
   alleen in standalone-modus op `env()`), `--kb-inset`; toetsenbord open =
   `body.kb-open` (`components/ui/toetsenbord.ts`). Elke vaste actiebalk
   rekent met `var(--onderbalk)`; `.schil-inhoud` houdt de ruimte onderaan.
+- **Grijs en oranje per thema:** Tailwind `gray`/`orange` lopen via `--grijs-*`/`--oranje-*` (RGB-drietallen,
+  standaard exact Tailwind in `index.css`); een thema kan ze vervangen (Craftery: warme grijzen, 400/500 op
+  4,5:1, en roest i.p.v. oranje). `crafteryHuisstijl.test.ts` bewaakt contrast en standaard
 - **Themacontrast:** `--t-accent-text`/`--t-accent-edge` uit
   `utils/kleurContrast.ts` — gebruik die (via `.t-accent-text`) voor het
   accent als tekst of rand, nooit `--t-accent` rechtstreeks op wit.
@@ -794,6 +812,11 @@ op het oude gedrag), `receptGebruik.ts`/`receptLijst.ts`, `verkoopOverzicht.ts`
 `batchesLijst.ts`/`batchAgenda.ts`, `productPagina.ts`, `bestelling.ts`,
 `kassaCatalogus.ts` en de routes (`route.ts`: aliassen, recordId, historie).
 Testdata van de demo-brouwerij uit het opzet: `__tests__/demoBrouwerij.ts`.
+De Brewfather-koppeling: `bfTerugschrijven.test.ts` (het bericht: status, afronding,
+lege en onzinnige velden gaan niet mee; alleen gekoppelde, niet-verweesde, niet-gesloten
+batches met een nieuw bericht; wachten na een mislukte poging; 404 = verweesd),
+`bfKoppeling.test.ts` (voorstel op recept en brouwdag, al gekoppeld, opnieuw koppelen,
+Nieuw in Brewfather, bestaande batch) en `bfFout.test.ts`.
 
 `server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
 key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
@@ -826,6 +849,7 @@ alleen lezen, uitval halverwege, plafond op onverwerkte facturen en op de mailgr
 gebruikersnaam, mapnamen met haken/accenten als modified UTF-7, opnieuw doorlopen en het
 loslaten van de waterlijn bij een teruggezette lijst), verbindingsfouten → codes, de rollen,
 de secret-bestemming en de backup-versleuteling van `imap_creds`.
+`TestBrewfatherDoorgang` bewaakt de Brewfather-proxy tegen een nep-Brewfather: alleen voorraad en batchstatus + meetwaarden schrijven (velden gelijk aan `bfTerugschrijven.ts`, nooit `null`), NaN geweigerd, alleen-lezen geweigerd, foutmelding en `Retry-After` doorgegeven, onbereikbaar = 502.
 `TestBankAfschriften` bewaakt de bewaarde bankafschriften: `bank_transacties`
 en `bank_afschriften` alleen als lijst (422), `productie` krijgt 403 (ook in
 een commit), `boekhouding` mag schrijven, delta toevoegen/verwijderen werkt.
@@ -946,12 +970,19 @@ Houd de UI consistent door altijd dezelfde patronen te gebruiken:
 | Sectie-header (statisch of klikbaar) | Gebruik `<SectionHeader>` uit `src/components/ui/SectionHeader.tsx` — geen inline `t-hdr` meer |
 | Zoek/filter-invoer | Gebruik `<SearchInput>` uit `src/components/ui/SearchInput.tsx` |
 | Rij-acties in een lijst/tabel | Gebruik `<RowActions primair={…} acties={[…]}>` uit `src/components/ui/RowActions.tsx` |
+| Statuspil (groen/oranje/rood/grijs/blauw/paars uit een util) | `<StatusPil kleur>` of `PIL_KLEUR[kleur]` uit `src/components/ui/StatusPil.tsx` — nooit een eigen `CHIP`-tabel per component |
 | Bierkleur (wélk bier) | `<BierKleur ebc={…} s="sm|md|lg">` uit `src/components/ui/BierKleur.tsx`; EBC via `productEbc`/`batchEbc` — nooit een eigen stip |
-| Accent-kleur inline tekst/link | `t-accent-text` (of `style={{color: 'var(--t-accent)'}}`) — nooit `text-amber-*` hardcoden |
+| Accent-kleur inline tekst/link | `t-accent-text` (of `style={{color: 'var(--t-accent-text, var(--t-accent))'}}`) — nooit `text-amber-*` hardcoden en nooit `var(--t-accent)` als tekstkleur: bij een licht accent (Craftery-amber) is dat 2:1. `--t-accent-text` is dezelfde tint, donkerder gemaakt tot 4,5:1 |
+| Kleine tekst | Ondergrens `text-xs` (12 px). `text-[11px]` alleen in een badge met eigen achtergrond (`bg-*` + `rounded`); nooit 9 of 10 px |
+| Typeschaal (vier stappen) | Paginatitel `h1` 24 px bold (`text-2xl font-bold`; bij Craftery Jost); sectiekop 15 px semibold (`text-[15px] font-semibold` of `SectionHeader`); tekst `text-sm`/`text-base`; meta `text-xs`. Geen tussenmaten bedenken per pagina |
+| Kerncijfer (bedrag, meting, teller) | `cijfer` (tabulaire cijfers; bij Craftery IBM Plex Mono) — StatCard, kassa, bon, tankkaart, factuurtotaal |
+| Uitgeschakelde knop | `Btn disabled reden={…}`: grijs (geen bleke themakleur) en de reden zichtbaar eronder; een losse `.tbtn:disabled` is ook grijs |
+| Focus | Geen eigen ringkleur: `focus-visible:ring-[var(--t-accent)]` wordt vanzelf de 3:1-tint (`--t-accent-edge`), elementen zonder ring krijgen een omlijning in die kleur |
 | Sectie-label binnen een card | `text-sm font-semibold text-gray-800` — géén `uppercase tracking-wide` |
 | Veldlabel in een formulier | `text-sm font-medium text-gray-700` (zit al in `Inp`/`Sel`) |
 | Fallback tekst (onbekende naam) | Altijd via i18n: `t('lbl_onbekend')` of `t('lbl_naamloos')` |
 | Destructieve of statuswijzigende actie | Geen `confirm()`: `const undo = useUndo(); undo.plan(id, label, uitvoeren)` (`UndoBar.tsx`, vijf seconden terugweg) of `<BevestigKnop vraag=…>` (bevestiging ín de knop) |
+| Melding zonder eigen plek op de pagina (hulpfunctie, printvenster) | `toonMelding(tekst)` uit `src/components/ui/AppMelding.tsx` (balk bovenin, verdwijnt na 8 s) — nooit `alert()`, `confirm()` of `prompt()`; toestemming vóór iets onomkeerbaars (backup terugzetten, data wissen) = een `Modal` met een `danger`-knop of een invoerveld dat de knop vrijgeeft |
 | Lege lijst / mislukte lading | `<LegeStaat titel tekst icoon>` met de knop als kind; `<FoutKaart onOpnieuw>` — nooit een lege tabel die "geen …" zegt terwijl het bereik weg is |
 | Tapdoel op een telefoon | `min-h-tap` (44 px) / `min-h-tapLg` (48 px), `sm:min-h-0` op een bureau — zit al in `Btn`/`Inp`/`Sel`/`SearchInput` |
 | Tekstgrootte van een invoerveld | `text-sm`/`text-xs` (zit al in `Inp`/`Sel`); `index.css` maakt daar in de telefoonlayout en op iOS/iPadOS 16px van — kleiner laat iOS bij het aantikken inzoomen en ingezoomd (zijwaarts schuifbaar) achter. Geen `text-[13px]` e.d. op een `input`/`select`/`textarea`: daar geldt die regel niet |
@@ -1037,7 +1068,7 @@ Rapporten › Journaal) en voor elke lijst die daar bijkomt:
 ## Color Conventions
 
 ### Theme-Aware Colors (gebruik altijd voor algemene UI)
-De app ondersteunt 7 kleurenthema's (amber, green, blue, slate, red, purple, sand). Gebruik **altijd** CSS-klassen die op de theemavariabelen steunen voor interactieve elementen:
+De app ondersteunt 8 kleurenthema's (amber, green, blue, slate, red, purple, sand, craftery). Gebruik **altijd** CSS-klassen die op de theemavariabelen steunen voor interactieve elementen:
 
 - `.tbtn` — Primaire actieknop (achtergrond = `--t-btn`, hover = `--t-btn-h`)
 - `.t-tab` — Actieve tabbladmarkering
@@ -1047,10 +1078,42 @@ De app ondersteunt 7 kleurenthema's (amber, green, blue, slate, red, purple, san
 - `.t-hdr` / `.t-hdr-solid` — Gradient / effen paginaheader
 - `.t-back` — Secundaire knop in themakleur (pale achtergrond)
 - `.t-checkbox` / `.t-toggle` — Formuliercontroles in themakleur
+- `.t-btn-text` — Tekst óp een vlak in de accentkleur (telbolletje, actieve pil). Nooit `text-white` op
+  `var(--t-accent)`: een thema met een licht accent (amber) zet daar `btnText` (inkt) in `NAV_THEMES`
+- `html[data-thema="<naam>"]` — CSS die alleen bij één thema hoort (eigen lettertype, vormen); App.tsx zet het attribuut
 
 > Gebruik **nooit** hardcoded Tailwind kleurklassen (zoals `bg-amber-600`) voor knoppen of interactieve elementen die bij het thema horen.
 
 ---
+
+### Thema Craftery
+
+Eén van de thema's (Instellingen → App), naar het **nieuwe ontwerp** van de
+Craftery-webshop (WordPress-thema "Craftery" 6.x, `assets/css/v6.css`): papier
+`#F3EEE4`, kaart `#FFFCF3`, inkt `#151311`, amber `#EBA640` (als tekst
+`#8A5A12`). De standaard blijft amber (`THEMA_STANDAARD` = `_THEMA_STANDAARD`,
+pytest bewaakt dat ze gelijk zijn). Waar het staat:
+
+- **Kleuren in de app:** `NAV_THEMES.craftery` (constants.ts) + `_NAV_THEMAS['craftery']`
+  (server.py). Amber is licht: inkt óp de knop (`btnText`) en een inktzwarte
+  sectiekop (`hdr`)
+- **Grijs en waarschuwing:** warme grijzen (bruine ondertoon, `text-gray-400` haalt 4,5:1 op papier) en roest
+  i.p.v. oranje, zodat "let op" niet op de amber knoppen lijkt (`--grijs-*`/`--oranje-*` in `craftery.css`)
+- **Lettertypes en vormen:** `src/craftery.css`, alleen onder
+  `html[data-thema="craftery"]`: Space Grotesk (alles), Jost (`h1`), IBM Plex Mono
+  (`font-mono`), knoppen als pil. De woff2-bestanden staan in `src/assets/craftery/`
+  (SIL OFL, `LICENTIE.txt`) en gaan als data-URL in de build — geen verbinding naar buiten
+- **Vormen (craftery.css):** paginatabs als één blok met inktrand in mono (`.pagina-tabs`, actieve tab
+  `data-aan`), de actieve telefoonchip en werkruimte (`.pagina-chips`, `.rail-knop`), kaarten in kaartkleur,
+  en een inktrand met harde schaduw alleen voor een tank die aandacht vraagt (`.tank-kaart[data-aandacht]`)
+- **Mails en documenten volgen het thema** (`huisstijlIsCraftery` in `utils/huisstijl.ts`, leest
+  `html[data-thema]`): bij Craftery de laag `CRAFTERY_DOC_CSS` over `FACTUUR_CSS_DEFAULT`/`DOC_CSS`
+  (`metHuisstijl`; een eigen factuurlayout gaat voor) en de mailstijl `craftery`
+  (`MAIL_STIJLEN` in `utils/mailTemplate.ts`: inktband met het webadres, kaart met inktrand,
+  amber pilknoppen met inkt, ondertekening in mono). Anders de standaardstijl met dezelfde opbouw
+  (ook de "Wist je dat?"-uitnodiging rechts in de voet)
+- **Loginpagina (directe poort):** standaard `_LOGIN_ACCENT_STANDAARD`/`_LOGIN_ACHTERGROND_STANDAARD`;
+  de knoptekst volgt het accent (`_tekst_op_kleur`: inkt op een licht accent zoals amber)
 
 ### WooCommerce Acties (gebruik `.wc-btn`)
 Alle knoppen die direct een WooCommerce API-actie uitvoeren (push stock, pull sales, importeer bestellingen, sla WC-instellingen op) gebruiken `.wc-btn`:
@@ -1348,7 +1411,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 |-----|------|--------|
 | `ingredienten` | array | Ingrediënten. `allergenen` (ontbrekend = niet beoordeeld, `[]` = geen) met `allergenen_bron` (`regel`/`claude`/`handmatig`), `allergenen_toelichting` en `allergenen_model` (bij `claude`) — gezet door *Allergenen opzoeken* of de matrix (`handmatigBeoordeeld`) |
 | `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
-| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie) |
+| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). Brewfather (alleen terugschrijven): `brewfather_id`/`brewfather_batch_nummer`, `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht), `bf_fout` (`{op, melding}` van de laatste mislukte poging), `bf_verweesd` (datum waarop Brewfather de batch niet meer kende) — `utils/bfTerugschrijven.ts`. `bf_stand`/`bf_verschil` van 1.13.19 worden niet meer gebruikt |
 | `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
 | `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull en `voorraad_gepusht`/`voorraad_gepusht_op` = de voorraad bij de laatste push — ook op `merch_artikelen` en de oude `artikelen`) |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
@@ -1420,7 +1483,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `accijns_instellingen` | object | Accijnstarieven |
 | `btw_instellingen` | object | BTW-aangifte-instellingen: `periode` + `standaard_btw` (voorgesteld tarief bij nieuwe artikelen/verkoopregels, default 21% via `standaardBtwPct` in `utils/btw.ts`) |
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
-| `brewery_details` | object | Brouwerijnaam, adres, land (ISO-2), BTW-nr., KvK, PEPPOL-ID/-schema (e-factuur), website (klikbaar logo in mail), `factuur_velden` (zichtbaarheid) en `factuur_template` (`{html, css}` — eigen factuurlayout, leeg = de ingebouwde standaard uit `utils/factuurTemplate.ts`) |
+| `brewery_details` | object | Brouwerijnaam, adres, land (ISO-2), BTW-nr., KvK, PEPPOL-ID/-schema (e-factuur), website (klikbaar logo in mail), `mail_uitnodiging` (`{kop, tekst, knop, url}` — "Wist je dat?" met knop in de voet van elke klantmail, `utils/mailUitnodiging.ts`), `factuur_velden` (zichtbaarheid) en `factuur_template` (`{html, css}` — eigen factuurlayout, leeg = de ingebouwde standaard uit `utils/factuurTemplate.ts`) |
 | `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`, `afhaal_gemist`, `annulering`) met `subject`/`body`; leeg = i18n-default. `auto: true` = automatisch versturen bij de handeling van die mail, `auto_sinds` = wanneer dat aan ging (`zetMailAuto`/`autoMailReden` in `utils/orderMail.ts`; de "al betaald"-factuurmail volgt `factuur`). `annulering` kent `{creditregel}` (de factuur en de creditnota, leeg zonder factuur). `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}`, `afhaal_gemist` de mail voor een afhaalklant die niet kwam (`{afhaalmoment}` + `{afhaalregel}` met dezelfde link om een nieuw moment te kiezen; knop verschijnt via `afhaalmomentVerstreken`) — zie `utils/levering.ts` |
 | `gebruikers_rollen` | object | Rollen per HA-ingress-gebruiker (ERP 4.2): `{gebruikers: {naam: rol}, standaard_rol}` met rollen `beheer`/`boekhouding`/`productie`/`alleen_lezen` — server-side afgedwongen, alleen door `beheer` te wijzigen, lockout-guard |
 | `login_instellingen` | object | Styling van de loginpagina op de directe-toegangspoort: titel/ondertitel/knoptekst, accent-/achtergrondkleur (hex), achtergrondafbeelding (data-url), `logo_tonen`. Server rendert met strikte validatie (`_login_pagina`) — pre-auth, dus nooit ongefilterd |
@@ -1433,7 +1496,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `app_logo_icoon` | object | Automatisch gegenereerd 180×180-PNG-icoon uit het logo (`{van, icoon}`) t.b.v. `GET /api/app_icoon` (iOS-home-screen); afgeleide data — beheer-only, bewust níét in de Excel-backup (regenereert vanzelf) |
 | `factuur_logo` | string\|null | Base64 factuurlogo |
 | `app_name` | string | Naam van de brouwerij-app |
-| `nav_theme` | string | UI-thema (`amber`/`green`/`blue`/`slate`/`red`/`purple`) |
+| `nav_theme` | string | UI-thema (`amber`/`green`/`blue`/`slate`/`red`/`purple`/`sand`/`craftery`; leeg of onbekend = `THEMA_STANDAARD` = `amber`) |
 | `brewfather_creds` *(secure)* | object | Brewfather API-credentials (nooit in backup) |
 | `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) `prijzenInclBtw` (voert de winkel prijzen incl. BTW in? default ja — bepaalt de omrekening bij een productpush) en `themaVelden` (Craftery-`_cf_`-velden beheren, default aan), `voorraadAutoPush` (voorraad vanzelf naar de winkel na een handmatige bestelling, kassaverkoop of annulering; default aan, `utils/wcVoorraad.ts`), `bestelUrl` (eigen sjabloon voor de bestelpagina van de klant met `{winkel}`/`{id}`/`{sleutel}`; leeg = de bij de import per order bepaalde `wc_bestel_url` — knop in de bestelbevestiging via `bestelLink` in `utils/levering.ts`) — nooit in backup |
 | `claude_creds` *(secure)* | object | Anthropic API-key (nooit in backup) |
@@ -1576,7 +1639,8 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 | POST | `/api/login` | Alleen directe poort (8098): HA-login via Supervisor-auth → sessiecookie |
 | POST | `/api/logout` | Alleen directe poort: beëindig de sessie |
 | GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; gebruik `/api/health`)* |
-| POST | `/api/brewfather/*` | Proxy to Brewfather API |
+| GET | `/api/brewfather/*` | Proxy to Brewfather API (fout = Brewfathers eigen melding + `Retry-After`) |
+| POST | `/api/brewfather/patch/*` | PATCH naar Brewfather, alleen de voorraad van één ingrediënt en de status + meetwaarden van één batch (`_bf_patch_toegestaan`); de rest 403 |
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API (GET via de prefix, PUT via `put/`) |
 | POST | `/api/woocommerce/create/*` | Aanmaken in WooCommerce (product, categorie, tag). Bewust **zonder** herkansing bij een timeout: een POST is niet idempotent |
 | POST | `/api/claude` | Proxy to Anthropic Claude API |
@@ -1667,18 +1731,41 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 ### Brewfather API
 
 - REST API, authenticated via Basic auth (user ID + API key)
-- Used for: recipe list, batch list, batch status sync
-- Credentials stored in `instellingen` data key (`bfUserId`, `bfApiKey`)
-- Auto-sync: draait **één keer per mount** van `App.tsx` (`bfAutoSynced`-ref), niet
-  op een interval; een nieuwe sync vergt een herlaad of de handmatige knop.
-  Let op: de sync overschrijft `vergistingsprofiel`/`maischprofiel`/OG/FG
-  onvoorwaardelijk — zie `docs/ERP-VERBETERPLAN-2.md` W6 (fase 7.4)
-- De status gaat alleen vooruit langs de regels van de batch-flow
-  (`bfStatusOvergang` in `utils/bfStatus.ts`): tankclaim bij Vergisten, CCP 1
-  vóór Afgevuld, tank op Vuil bij vertrek, statusregel + audit. Wat daar
-  zou blokkeren of een bevestiging vraagt wordt níét overgenomen
-- Automatische schrijfacties bij het openen (deze sync, de klantkoppeling,
-  de 'ingelogd'-auditregel) wachten op `whoami` en slaan een key over die de
+- Used for: recepten en ingrediënten ophalen, ingrediëntvoorraad pushen, batches terugschrijven
+- Credentials in de secure key `brewfather_creds` (`userId`, `apiKey`, `enabled`, `lastSync`)
+- **Richting (1.13.20): BrewAdmin is leidend voor batches.** Er wordt in BrewAdmin
+  gebrouwen; recepten en ingrediënten komen uit Brewfather (Recepten/Ingrediënten →
+  Sync), batches gaan alleen náár Brewfather. Er wordt nooit een batchwaarde of
+  -status uit Brewfather opgehaald
+- **Terugschrijven** (`utils/bfTerugschrijven.ts`, effect in App.tsx): elke gekoppelde
+  batch krijgt `PATCH batches/:id` met de status (`APP_NAAR_BF_STATUS`: Afgevuld/
+  Verpakt = Completed; een gesloten batch gaat niet meer) en de meetwaarden met een
+  geldige waarde (`BF_MEETVELDEN`: OG, FG, pre-boil-SG, kookvolume begin/eind, liters
+  vergist, afgevulde liters, maisch-pH, pH bier). Een leeg veld gaat nooit mee (wist
+  niets). Alleen als het bericht anders is dan `bf_gepusht.sleutel`, vier seconden na
+  een wijziging, één voor één; een mislukte poging (`bf_fout`, melding op de batch)
+  wacht een kwartier; 404 = `bf_verweesd` (melding: opnieuw koppelen of verbreken).
+  Brewfather negeert onbekende velden zonder melding — de veldnamen komen uit de
+  API-documentatie. Alleen voor een rol die `batches` mag schrijven
+- **Koppelen** (`utils/bfKoppeling.ts`): de API maakt geen batches, dus de batch maak je
+  één keer in Brewfather (vanuit het recept) en koppel je hier. Batch → ⋯ → *Koppel aan
+  Brewfather* (`BfKoppelVenster`, voorstel op recept + brouwdag); Batches › Lopend →
+  *Nieuw in Brewfather* (`BfNieuwKaart`, de lijst één keer per sessie opgehaald met
+  `bfGetBatches`): koppelen aan de batch die er al is (`bfVoorstelBatch`) of plannen via
+  "Wat brouw je?" met `verzoek.brewfather`. Koppelen (`bfKoppelWijziging`) zet alleen de
+  koppeling; meteen daarna gaat de batch naar Brewfather
+- **Proxy** (`_bf_proxy_get`/`_bf_proxy_patch` in server.py): GET gaat door, schrijven
+  alleen wat `_bf_patch_toegestaan` toelaat — de voorraad van één ingrediënt
+  (`inventory`/`inventory_adjust` als getal) en de status + `_BF_BATCH_VELDEN` van één
+  batch (spiegel van `BF_MEETVELDEN`/`BF_STATUSSEN`, pytest bewaakt het; nooit `null`).
+  De rest 403 + audit `brewfather_geweigerd`. Sinds API 3.1.0 kan een sleutel met
+  schrijfrechten ook recepten wijzigen (ERP S4): een nieuwe schrijfactie hoort eerst in
+  die lijst. Een fout komt als `{error: 'brewfather', status, message}` met
+  `Retry-After`; `utils/bfFout.ts` maakt er een melding van
+- **Kleur:** Brewfather geeft SRM (`Recipe.color`); de app rekent in EBC — `ebcUitSrm`
+  in `utils/bierKleur.ts` (×1,97) in `bfMapRecipe`
+- Automatische schrijfacties (het terugschrijven, de klantkoppeling, de
+  'ingelogd'-auditregel) wachten op `whoami` en slaan een key over die de
   rol niet mag schrijven (`rolMagKey` in `utils/rollen.ts`, spiegel van
   `_rol_mag_key`); `lastSync` in de creds schrijft alleen beheer
 

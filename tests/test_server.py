@@ -1850,7 +1850,7 @@ class TestDirectLogin:
             assert 'Welkom!' in pagina and 'Ga verder' in pagina
             assert '#336699' in pagina
             # Ongeldige achtergrondkleur → default; externe URL nooit in de CSS
-            assert '#1c1917' in pagina and 'javascript:evil' not in pagina
+            assert srv._LOGIN_ACHTERGROND_STANDAARD in pagina and 'javascript:evil' not in pagina
             assert 'kwaadaardig' not in pagina
             # Geldig app-logo (data-url) wordt getoond
             assert f'<img src="{logo}"' in pagina
@@ -4228,7 +4228,9 @@ class TestThemaInjectie:
         assert gz.getheader('Content-Encoding') == 'gzip'
         assert gzip.decompress(body_gz) == body_groen
 
-    def test_onbekend_of_ongeldig_thema_valt_terug_op_amber(self, static):
+    def test_onbekend_of_ongeldig_thema_valt_terug_op_de_standaard(self, static):
+        # De standaard is amber (App.tsx: THEMA_STANDAARD).
+        assert srv._THEMA_STANDAARD == 'amber'
         host, poort = static
         srv._write_json('nav_theme', 'neon')
         _, body = self._get(host, poort)
@@ -4236,6 +4238,12 @@ class TestThemaInjectie:
         assert srv._thema_naam(['sand']) == 'amber'
         assert srv._thema_naam(None) == 'amber'
         assert srv._thema_naam('sand') == 'sand'
+        assert srv._thema_naam('amber') == 'amber'
+
+    def test_typescript_gebruikt_dezelfde_standaard(self):
+        bron = (Path(__file__).resolve().parent.parent
+                / 'src' / 'utils' / 'constants.ts').read_text(encoding='utf-8')
+        assert f"export const THEMA_STANDAARD = '{srv._THEMA_STANDAARD}'" in bron
 
     def test_build_zonder_plaatshouders_blijft_ongewijzigd(self):
         html = b'<html><body>zonder plaatshouders</body></html>'
@@ -6086,3 +6094,184 @@ class TestInkoopInboxEchteImap(_InboxBasis):
             assert srv._inbox_tick(force=True)['fout'] == {'code': 'verbinding', 'oorzaak': 'geweigerd'}
         finally:
             self._clean()
+
+
+class TestLoginHuisstijl:
+    def test_standaard_en_leesbare_knoptekst(self):
+        assert srv._LOGIN_ACCENT_STANDAARD == '#b45309'
+        assert srv._LOGIN_ACHTERGROND_STANDAARD == '#1c1917'
+        # Inkt op amber (wit zou 2:1 zijn), wit op een donker accent.
+        assert srv._tekst_op_kleur('#eba640') == '#151311'
+        assert srv._tekst_op_kleur('#b45309') == '#ffffff'
+        assert srv._tekst_op_kleur('#336699') == '#ffffff'
+        assert srv._tekst_op_kleur('kapot') == '#ffffff'
+
+    def test_pagina_gebruikt_de_knoptekstkleur(self, monkeypatch):
+        monkeypatch.setattr(srv, '_read_json', lambda key, default=None: {} if key == 'login_instellingen' else default)
+        pagina = srv._login_pagina().decode('utf-8')
+        assert 'background:#b45309;color:#ffffff' in pagina
+        # Een licht accent (Craftery-amber) krijgt inkt op de knop.
+        monkeypatch.setattr(srv, '_read_json', lambda key, default=None: {'accent': '#eba640'} if key == 'login_instellingen' else default)
+        assert 'background:#eba640;color:#151311' in srv._login_pagina().decode('utf-8')
+        assert '__KNOPTEKST__' not in pagina
+
+
+
+# ── Brewfather-doorgang ──────────────────────────────────────────────────────
+
+class _NepBrewfather(http.server.BaseHTTPRequestHandler):
+    """Een mini-Brewfather: legt elk verzoek vast en antwoordt volgens
+    `antwoord` (status, body, extra koppen)."""
+    verzoeken: list = []
+    antwoord = (200, b'{}', {})
+
+    def _behandel(self):
+        lengte = int(self.headers.get('Content-Length') or 0)
+        body = self.rfile.read(lengte) if lengte else b''
+        type(self).verzoeken.append((self.command, self.path, body))
+        status, data, koppen = type(self).antwoord
+        self.send_response(status)
+        for k, v in koppen.items():
+            self.send_header(k, v)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    do_GET = do_PATCH = _behandel
+
+    def log_message(self, *_):
+        pass
+
+
+class TestBrewfatherDoorgang:
+    """De PATCH-doorgang liet elk subpad door voor elke schrijvende rol, en
+    elke fout van Brewfather werd een lege `{}` zonder Retry-After (ERP S4)."""
+
+    @pytest.fixture()
+    def nep(self, app, monkeypatch):
+        httpd = http.server.HTTPServer(('127.0.0.1', 0), _NepBrewfather)
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+        _NepBrewfather.verzoeken = []
+        _NepBrewfather.antwoord = (200, b'{"ok": true}', {})
+        monkeypatch.setattr(srv, 'BF_API_BASE', f'http://127.0.0.1:{httpd.server_address[1]}/v2')
+        monkeypatch.setattr(srv, '_load_bf_creds', lambda: ('uid', 'sleutel'))
+        yield _NepBrewfather
+        httpd.shutdown()
+
+    # pure helpers
+    def test_alleen_voorraad_van_een_ingredient(self):
+        ok = srv._bf_patch_toegestaan
+        assert ok('inventory/hops/abc123', {'inventory': 12.5})
+        assert ok('inventory/fermentables/A-b_9', {'inventory_adjust': -4})
+        assert ok('inventory/miscs/x', {'inventory': 0})
+        assert ok('inventory/yeasts/x', {'inventory': 2, 'inventory_adjust': 1})
+        assert not ok('recipes/abc', {'inventory': 1})
+        assert not ok('inventory/hops', {'inventory': 1})
+        assert not ok('inventory/hops/abc?x=1', {'inventory': 1})
+        assert not ok('inventory/hops/../batches/abc', {'inventory': 1})
+        assert not ok('inventory/water/abc', {'inventory': 1})
+        assert not ok('inventory/hops/abc', {'inventory': 1, 'name': 'x'})
+        assert not ok('inventory/hops/abc', {})
+        assert not ok('inventory/hops/abc', [])
+        assert not ok('inventory/hops/abc', {'inventory': '12'})
+        assert not ok('inventory/hops/abc', {'inventory': True})
+        assert not ok('inventory/hops/abc', {'inventory': None})
+
+    def test_batch_alleen_status_en_meetwaarden(self):
+        ok = srv._bf_patch_toegestaan
+        assert ok('batches/abc', {'status': 'Fermenting'})
+        assert ok('batches/abc', {'status': 'Completed', 'measuredOg': 1.05, 'measuredFg': 1.01,
+                                  'measuredBatchSize': 400, 'measuredBottlingSize': 360.5, 'measuredMashPh': 5.4})
+        assert not ok('batches/abc', {'status': 'Klaar'})
+        assert not ok('batches/abc', {'measuredOg': None})        # null wist in Brewfather
+        assert not ok('batches/abc', {'measuredOg': '1.05'})
+        assert not ok('batches/abc', {'notes': 'x'})
+        assert not ok('batches/abc', {'recipe': {'name': 'x'}})
+        assert not ok('batches/abc/readings', {'status': 'Fermenting'})
+        assert not ok('batches', {'status': 'Fermenting'})
+        assert not ok('batches/abc', {})
+
+    def test_typescript_kent_dezelfde_batchvelden(self):
+        ts = (Path(__file__).resolve().parent.parent / 'src' / 'utils' / 'bfTerugschrijven.ts').read_text()
+        velden = re.findall(r"\{ bf: '([A-Za-z]+)'", ts)
+        assert tuple(velden) == srv._BF_BATCH_VELDEN
+        statussen = re.search(r"BF_STATUSSEN: readonly string\[\] = \[([^\]]+)\]", ts).group(1)
+        assert tuple(re.findall(r"'([A-Za-z]+)'", statussen)) == srv._BF_BATCH_STATUSSEN
+
+    def test_retry_after_alleen_redelijke_seconden(self):
+        assert srv._bf_retry_after('30') == '30'
+        assert srv._bf_retry_after(' 0 ') == '0'
+        assert srv._bf_retry_after('3601') is None
+        assert srv._bf_retry_after('Wed, 21 Oct 2026 07:28:00 GMT') is None
+        assert srv._bf_retry_after(None) is None
+        assert srv._bf_retry_after('-5') is None
+
+    def test_foutmelding_ingekort_en_schoon(self):
+        d = json.loads(srv._bf_foutmelding(429, b'{"message": "Too many\\nrequests"}'))
+        assert d == {'error': 'brewfather', 'status': 429, 'message': 'Too many requests'}
+        d = json.loads(srv._bf_foutmelding(401, b'Unauthorized'))
+        assert d['message'] == 'Unauthorized'
+        assert json.loads(srv._bf_foutmelding(502, b'<html><body>Bad gateway</body></html>'))['message'] == ''
+        assert len(json.loads(srv._bf_foutmelding(400, b'x' * 5000))['message']) == srv._BF_FOUT_MAX
+        assert json.loads(srv._bf_foutmelding(500, b''))['message'] == ''
+
+    # via de server
+    def test_patch_buiten_de_lijst_gaat_niet_naar_brewfather(self, app, nep):
+        for pad, body in (('batches/abc', {'notes': 'x'}),
+                          ('recipes/abc', {'name': 'x'}),
+                          ('inventory/hops/abc', {'inventory': 1, 'notes': 'x'})):
+            status, antwoord, _ = req(app, 'POST', f'/api/brewfather/patch/{pad}', body=body)
+            assert status == 403
+            assert antwoord == {'error': 'brewfather_niet_toegestaan'}
+        assert nep.verzoeken == []
+
+    def test_patch_voorraad_gaat_door(self, app, nep):
+        status, antwoord, _ = req(app, 'POST', '/api/brewfather/patch/inventory/hops/abc',
+                                  body={'inventory': 7})
+        assert status == 200 and antwoord == {'ok': True}
+        assert nep.verzoeken == [('PATCH', '/v2/inventory/hops/abc', b'{"inventory": 7}')]
+
+    def test_patch_batch_gaat_door(self, app, nep):
+        status, _, _ = req(app, 'POST', '/api/brewfather/patch/batches/b12',
+                           body={'status': 'Fermenting', 'measuredOg': 1.05})
+        assert status == 200
+        methode, pad, body = nep.verzoeken[-1]
+        assert (methode, pad) == ('PATCH', '/v2/batches/b12')
+        assert json.loads(body) == {'status': 'Fermenting', 'measuredOg': 1.05}
+
+    def test_patch_weigert_nan(self, app, nep):
+        status, _, _ = req(app, 'POST', '/api/brewfather/patch/inventory/hops/abc',
+                           body=b'{"inventory": NaN}')
+        assert status == 400
+        assert nep.verzoeken == []
+
+    def test_alleen_lezen_mag_niet_patchen(self, app, nep):
+        conf = {'gebruikers': {'admin': 'beheer', 'lezer': 'alleen_lezen'}, 'standaard_rol': 'beheer'}
+        admin = {'X-Remote-User-Name': 'admin'}
+        assert req(app, 'POST', '/api/data/gebruikers_rollen', body=conf, headers=admin)[0] == 200
+        try:
+            status, _, _ = req(app, 'POST', '/api/brewfather/patch/inventory/hops/abc',
+                               body={'inventory': 7}, headers={'X-Remote-User-Name': 'lezer'})
+            assert status == 403
+            assert nep.verzoeken == []
+        finally:
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={}, headers=admin)[0] == 200
+
+    def test_fout_en_retry_after_komen_door(self, app, nep):
+        nep.antwoord = (429, b'{"message": "Rate limit exceeded"}', {'Retry-After': '42'})
+        status, antwoord, koppen = req(app, 'GET', '/api/brewfather/batches?limit=1')
+        assert status == 429
+        assert antwoord == {'error': 'brewfather', 'status': 429, 'message': 'Rate limit exceeded'}
+        assert koppen.get('Retry-After') == '42'
+
+    def test_onbereikbaar_is_502(self, app, monkeypatch):
+        with socket.socket() as s:
+            s.bind(('127.0.0.1', 0))
+            dicht = s.getsockname()[1]
+        monkeypatch.setattr(srv, 'BF_API_BASE', f'http://127.0.0.1:{dicht}/v2')
+        monkeypatch.setattr(srv, '_load_bf_creds', lambda: ('uid', 'sleutel'))
+        status, antwoord, koppen = req(app, 'GET', '/api/brewfather/batches?limit=1')
+        assert status == 502
+        assert antwoord == {'error': 'brewfather_onbereikbaar'}
+        assert 'Retry-After' not in koppen

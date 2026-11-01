@@ -138,7 +138,7 @@ export default function WebsiteTelemetrie({ inst: ruw, setInst, wcIngesteld, fmt
                   className="w-4 h-4 mt-0.5 rounded border-gray-300 t-checkbox flex-shrink-0" />
                 <span className="flex flex-col min-w-0">
                   <span className="text-sm font-medium text-gray-700">{t(`website_ond_${k}`)}</span>
-                  {PLAATSHOUDER[k] && <code className="text-[11px] text-gray-400 break-all">{`{brouwerij:${PLAATSHOUDER[k]}}`}</code>}
+                  {PLAATSHOUDER[k] && <code className="text-xs text-gray-400 break-all">{`{brouwerij:${PLAATSHOUDER[k]}}`}</code>}
                 </span>
               </label>
             ))}

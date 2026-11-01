@@ -163,7 +163,7 @@ const Tabel: React.FC<TabelProps> = ({titel, regels, kolomBatch, bronnen, open, 
               {r.ingeklapt ? (
                 <button type="button" onClick={() => setOpen(r.veld)} aria-expanded={!ingeklapt}
                   className="inline-flex items-center gap-1.5 text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] rounded">
-                  <span aria-hidden="true" className={`text-gray-400 text-[10px] transition-transform ${ingeklapt ? '' : 'rotate-90'}`}>▶</span>
+                  <span aria-hidden="true" className={`text-gray-400 text-xs transition-transform ${ingeklapt ? '' : 'rotate-90'}`}>▶</span>
                   {r.label}
                 </button>
               ) : r.label}

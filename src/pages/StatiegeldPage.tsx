@@ -47,6 +47,9 @@ const StatiegeldPage: React.FC<Props> = ({
   const [aangiftePeriode, setAangiftePeriode] = useState<'kwartaal' | 'maand'>('kwartaal')
   const [retourFor, setRetourFor] = useState<any | null>(null)
   const [retourQty, setRetourQty] = useState<Record<number, string>>({})
+  // Waarom de creditnota niet gemaakt werd: in de retourmodal, naast de knop,
+  // in plaats van een alert().
+  const [retourFout, setRetourFout] = useState('')
 
   // Alle factuurregels met statiegeld_soort, vlak gemaakt
   const stRegels = useMemo(() => {
@@ -112,15 +115,17 @@ const StatiegeldPage: React.FC<Props> = ({
     const init: Record<number, string> = {}
     Object.values(klant.perVerpakking).forEach((p: any) => { init[p.verpakking_id] = '' })
     setRetourQty(init)
+    setRetourFout('')
     setRetourFor(klant)
   }
 
   const saveRetour = async () => {
     if (!retourFor) return
+    setRetourFout('')
     const items = Object.entries(retourQty)
       .map(([vpId, qStr]) => ({ vpId: Number(vpId), aantal: Number(qStr || 0) }))
       .filter(it => it.aantal > 0)
-    if (items.length === 0) { alert(t('statiegeld_err_geen_aantal')); return }
+    if (items.length === 0) { setRetourFout(t('statiegeld_err_geen_aantal')); return }
 
     // Originele factuurdata zoeken voor klantgegevens
     const refFact = (verkoopFacturen || []).find((f: any) =>
@@ -154,7 +159,7 @@ const StatiegeldPage: React.FC<Props> = ({
     // ERP-plan 0.2); de client nummert nooit zelf.
     let nummer: string
     try { nummer = await volgendFactuurNummer('creditnota') }
-    catch (e) { alert(t('err_factuurnummer_ophalen')); return }
+    catch (e) { setRetourFout(t('err_factuurnummer_ophalen')); return }
 
     const nieuw: any = {
       id: newId(verkoopFacturen || []),
@@ -309,7 +314,7 @@ const StatiegeldPage: React.FC<Props> = ({
                       <tr key={p.key} className="border-t">
                         <td className="px-3 py-2 font-medium text-gray-800">{p.label}</td>
                         <td className="px-3 py-2 text-right text-gray-700">{p.stuks}</td>
-                        <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--t-accent)' }}>€ {fmt(p.bedrag)}</td>
+                        <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--t-accent-text, var(--t-accent))' }}>€ {fmt(p.bedrag)}</td>
                         <td className="px-3 py-2">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${cls}`}>
                             {t(`statiegeld_status_${p.status}`)}
@@ -360,7 +365,7 @@ const StatiegeldPage: React.FC<Props> = ({
                         ))}
                       </td>
                       <td className="px-3 py-2 text-right text-gray-700">{k.totaalAantal}</td>
-                      <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--t-accent)' }}>€ {fmt(k.totaalBedrag)}</td>
+                      <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--t-accent-text, var(--t-accent))' }}>€ {fmt(k.totaalBedrag)}</td>
                       <td className="px-3 py-2 text-right">
                         <Btn s="sm" onClick={() => openRetour(k)}>{t('statiegeld_retour_btn')}</Btn>
                       </td>
@@ -436,6 +441,7 @@ const StatiegeldPage: React.FC<Props> = ({
                 </div>
               </div>
             ))}
+            {retourFout && <p role="alert" className="text-sm text-red-600 mt-1">{retourFout}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <Btn v="secondary" onClick={() => setRetourFor(null)}>{t('btn_cancel')}</Btn>
               <Btn onClick={saveRetour}>{t('statiegeld_creditnota_aanmaken')}</Btn>

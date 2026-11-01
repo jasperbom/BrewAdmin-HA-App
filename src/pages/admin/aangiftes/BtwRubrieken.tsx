@@ -62,7 +62,7 @@ const BtwRubrieken: React.FC<BtwRubriekenProps> = ({ c, teBetalenCent, alle, set
         {/* Onder 1024 px (het smalle detailpaneel) geen eigen kolom voor de
             grondslag: die staat dan als tweede regel onder het label, zodat
             "Voorbelasting" niet midden in het woord breekt. */}
-        <div className="grid grid-cols-[2rem_minmax(0,1fr)_auto] lg:grid-cols-[2rem_minmax(0,1fr)_auto_auto] gap-x-2 text-[11px] text-gray-500 pb-1 border-b border-gray-100">
+        <div className="grid grid-cols-[2rem_minmax(0,1fr)_auto] lg:grid-cols-[2rem_minmax(0,1fr)_auto_auto] gap-x-2 text-xs text-gray-500 pb-1 border-b border-gray-100">
           <span>{t('agf_rub_kolom')}</span><span />
           <span className="hidden lg:block text-right w-20">{t('agf_rub_kolom_grondslag')}</span>
           <span className="text-right w-20">{t('lbl_btw')}</span>

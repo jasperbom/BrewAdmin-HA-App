@@ -71,6 +71,12 @@ export interface NieuweBatchVerzoek {
   tank?: string | null
   /** Brouwdatum (JJJJ-MM-DD); standaard vandaag. */
   datum?: string | null
+  /**
+   * "Nieuw in Brewfather" op Batches › Lopend: de Brewfather-batch (zoals de
+   * API hem geeft). Na het plannen krijgt de nieuwe batch de koppeling
+   * (`bfKoppelWijziging` in utils/bfKoppeling.ts).
+   */
+  brewfather?: { _id: string, batchNo?: unknown, [veld: string]: unknown } | null
 }
 
 /** Wat er gekozen is om te brouwen. */

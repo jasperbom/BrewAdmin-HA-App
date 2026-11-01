@@ -17,6 +17,8 @@ import {
   klantRegels,
 } from '../utils/factuurTemplate'
 import { betalingstermijnVoor, vervaldatumTekst, isoDag } from '../utils/facturen'
+import { toonMelding } from './ui/AppMelding'
+import { metHuisstijl } from '../utils/huisstijl'
 
 // Basisopmaak van elk document dat deze app uitprint. Gedeeld met het
 // batchdossier (`BatchRapportExport.tsx`), zodat een pakbon, een factuur en een
@@ -101,12 +103,12 @@ const fmtDate = fmtDatumDoc
 
 // Opent het printvenster. Geblokkeerd (pop-ups uit): wie een melding op de
 // pagina kan tonen geeft `onGeblokkeerd` mee en krijgt de tekst terug; zonder
-// die callback blijft het de oude alert (batchdossier, boekhouding, kassa).
-export function openPrint(html: string, filename: string, css: string = DOC_CSS, onGeblokkeerd?: (melding: string) => void): boolean {
+// die callback komt de melding bovenin de app (`toonMelding`, geen alert()).
+export function openPrint(html: string, filename: string, css: string = metHuisstijl(DOC_CSS), onGeblokkeerd?: (melding: string) => void): boolean {
   const w = window.open('', '_blank', 'width=900,height=700')
   if (!w) {
     if (onGeblokkeerd) onGeblokkeerd(t('err_popup_blocked'))
-    else alert(t('err_popup_blocked'))
+    else toonMelding(t('err_popup_blocked'))
     return false
   }
   w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(filename)}</title><style>${css}</style></head><body>${html}</body></html>`)
@@ -374,7 +376,7 @@ export function printPakbon(
   extra: PrintExtra = {}
 ): void {
   const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo, extra.sessies)
-  openPrint(r.bodyHtml, r.filename, DOC_CSS, extra.onGeblokkeerd)
+  openPrint(r.bodyHtml, r.filename, metHuisstijl(DOC_CSS), extra.onGeblokkeerd)
 }
 
 // Geeft volledige standalone HTML (incl. <html>/<head>/<style>) terug — voor
@@ -390,7 +392,7 @@ export function buildPakbonHTML(
   extra: Pick<PrintExtra, 'sessies'> = {}
 ): {html: string, filename: string} {
   const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo, extra.sessies)
-  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${DOC_CSS}</style></head><body>${r.bodyHtml}</body></html>`
+  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${metHuisstijl(DOC_CSS)}</style></head><body>${r.bodyHtml}</body></html>`
   return {html, filename: r.filename}
 }
 
@@ -526,7 +528,7 @@ export function printPicklijst(
   extra: Pick<PrintExtra, 'onGeblokkeerd'> & {pakbonnen?: PicklijstPakbonnen} = {}
 ): boolean {
   const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo, extra.pakbonnen)
-  return openPrint(r.bodyHtml, r.filename, DOC_CSS, extra.onGeblokkeerd)
+  return openPrint(r.bodyHtml, r.filename, metHuisstijl(DOC_CSS), extra.onGeblokkeerd)
 }
 
 // Volledige standalone HTML (voor tests en een eventuele mail-PDF).
@@ -538,7 +540,7 @@ export function buildPicklijstHTML(
   pakbonnen?: PicklijstPakbonnen
 ): {html: string, filename: string} {
   const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo, pakbonnen)
-  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${DOC_CSS}</style></head><body>${r.bodyHtml}</body></html>`
+  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${metHuisstijl(DOC_CSS)}</style></head><body>${r.bodyHtml}</body></html>`
   return {html, filename: r.filename}
 }
 
@@ -569,9 +571,10 @@ function buildFactuurBody(
 }
 
 // CSS van het factuurdocument: de eigen stijl als die is ingesteld, anders de
-// standaard. Pakbon en herinnering blijven de gedeelde CSS bovenaan gebruiken.
+// standaard (met de Craftery-laag bij dat thema). Pakbon en herinnering
+// blijven de gedeelde CSS bovenaan gebruiken.
 function factuurCss(brewery: any): string {
-  return eigenFactuurTemplate(brewery).css || FACTUUR_CSS_DEFAULT
+  return eigenFactuurTemplate(brewery).css || metHuisstijl(FACTUUR_CSS_DEFAULT)
 }
 
 // Geeft volledige standalone HTML terug (voor ZIP-export)
@@ -723,7 +726,7 @@ export function buildHerinneringHTML(
 ): string {
   const r = buildHerinneringBody(factuur, brewery, appName, factuurLogo, niveau, payInfo)
   if (!r) return ''
-  return `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${DOC_CSS}</style></head><body>${r.bodyHtml}</body></html>`
+  return `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${metHuisstijl(DOC_CSS)}</style></head><body>${r.bodyHtml}</body></html>`
 }
 
 // Opent printvenster met de herinnering/aanmaning.

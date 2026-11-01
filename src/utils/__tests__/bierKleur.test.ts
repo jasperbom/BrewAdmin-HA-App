@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ebcToColor, bierKleurHex, productEbc, batchEbc, tekstKleurOp, ebcVan } from '../bierKleur'
+import { ebcToColor, bierKleurHex, productEbc, batchEbc, tekstKleurOp, ebcVan, ebcUitSrm, SRM_NAAR_EBC } from '../bierKleur'
 
 describe('ebcToColor', () => {
   it('zet EBC om naar de SRM-kleurtabel', () => {
@@ -64,5 +64,22 @@ describe('tekstKleurOp', () => {
     expect(tekstKleurOp('#FFBF42')).toBe('#1f2937')
     expect(tekstKleurOp('#2A0F5E')).toBe('#ffffff')
     expect(tekstKleurOp('#9B3200')).toBe('#ffffff')
+  })
+})
+
+describe('ebcUitSrm (Brewfather geeft SRM)', () => {
+  it('rekent met Brewfathers factor 1,97 en rondt op één decimaal', () => {
+    expect(SRM_NAAR_EBC).toBe(1.97)
+    expect(ebcUitSrm(5)).toBe(9.9)
+    expect(ebcUitSrm(3.5)).toBe(6.9)
+    expect(ebcUitSrm('20')).toBe(39.4)
+    expect(ebcUitSrm(0)).toBe(0)
+  })
+  it('leeg of ongeldig blijft leeg', () => {
+    expect(ebcUitSrm('')).toBe('')
+    expect(ebcUitSrm(null)).toBe('')
+    expect(ebcUitSrm(undefined)).toBe('')
+    expect(ebcUitSrm('abc')).toBe('')
+    expect(ebcUitSrm(-1)).toBe('')
   })
 })
