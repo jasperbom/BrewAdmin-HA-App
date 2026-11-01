@@ -48,21 +48,21 @@ const KassaTegels: React.FC<KassaTegelsProps> = ({ tegels, opBon, prijs, onKies,
             return (
               <div key={k.key} className="flex flex-col min-w-0">
                 <button type="button" onClick={() => onKies(k)} disabled={!kan}
-                  className={`relative w-full min-h-tapLg rounded-lg border px-2.5 py-1.5 text-left flex flex-col justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] ${kan
+                  className={`relative w-full min-h-tapLg md:min-h-[60px] rounded-lg border px-2.5 md:px-3 py-1.5 md:py-2 text-left flex flex-col justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] ${kan
                     ? 'border-gray-200 bg-white hover:bg-gray-50 active:bg-gray-100'
                     : 'border-gray-100 bg-gray-50 cursor-not-allowed'}`}>
                   <span className="w-full flex items-baseline gap-2">
-                    <span className={`flex-1 min-w-0 text-sm leading-tight truncate ${kan ? 'text-gray-800' : 'text-gray-500'}`}>{k.label}</span>
-                    <span className={`flex-shrink-0 text-sm font-semibold whitespace-nowrap ${kan ? 't-accent-text' : 'text-gray-400'}`}>
+                    <span className={`flex-1 min-w-0 text-sm md:text-[15px] leading-tight truncate ${kan ? 'text-gray-800' : 'text-gray-500'}`}>{k.label}</span>
+                    <span className={`flex-shrink-0 text-sm md:text-base font-semibold whitespace-nowrap cijfer ${kan ? 't-accent-text' : 'text-gray-400'}`}>
                       {p.bedrag != null ? fmt(p.bedrag) : '—'}
                     </span>
                   </span>
                   <span className="w-full flex items-center gap-2 mt-0.5">
                     <span className={`flex-1 min-w-0 text-xs leading-tight truncate ${voorraadKleur}`}>{voorraad}</span>
-                    {p.b2b && <span className="flex-shrink-0 text-[10px] font-semibold bg-blue-100 text-blue-700 px-1 rounded leading-4">B2B</span>}
+                    {p.b2b && <span className="flex-shrink-0 text-[11px] font-semibold bg-blue-100 text-blue-700 px-1 rounded leading-4">B2B</span>}
                   </span>
                   {n > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 text-white text-xs rounded-full min-w-5 h-5 px-1 flex items-center justify-center font-bold shadow"
+                    <span className="absolute -top-1.5 -right-1.5 t-btn-text text-xs rounded-full min-w-5 h-5 px-1 flex items-center justify-center font-bold shadow"
                       style={{ backgroundColor: 'var(--t-accent)' }}>{n}</span>
                   )}
                 </button>

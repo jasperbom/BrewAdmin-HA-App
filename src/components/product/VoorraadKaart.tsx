@@ -104,7 +104,7 @@ const Afboekingen: React.FC<{ lijst: any[]; onVernietiging: (afb: any) => void }
             {t(AFBOEKING_REDENEN.find(r => r.v === ab.reden)?.lKey || ab.reden)}
           </span>
           {status && (
-            <span className={`px-1.5 py-0.5 rounded text-[10px] ${VERNIETIGING_STATUS_COLOR[status]}`} title={t('tooltip_status_per_douane')}>
+            <span className={`px-1.5 py-0.5 rounded text-xs ${VERNIETIGING_STATUS_COLOR[status]}`} title={t('tooltip_status_per_douane')}>
               {t(VERNIETIGING_STATUS_LABEL[status])}
             </span>
           )}

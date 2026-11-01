@@ -94,10 +94,10 @@ const RegelLijst: React.FC<RegelLijstProps> = ({
     <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full">
       <span className={`truncate ${r.naam.trim() ? 'text-gray-900' : 'text-gray-400 italic'}`}>{r.naam.trim() || t('inkoop_nieuwe_regel')}</span>
       {(r.soort === 'ingredient' || r.soort === 'verpakking') && !r.koppelId && r.naam.trim() && (
-        <span className="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">{t('inkoop_nieuw')}</span>
+        <span className="flex-shrink-0 text-[11px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">{t('inkoop_nieuw')}</span>
       )}
       {fotosVan(r._id) > 0 && (
-        <span className="flex-shrink-0 inline-flex items-center gap-0.5 text-[11px] text-gray-500" title={t('etiket_fotos_n').replace('{n}', String(fotosVan(r._id)))}>
+        <span className="flex-shrink-0 inline-flex items-center gap-0.5 text-xs text-gray-500" title={t('etiket_fotos_n').replace('{n}', String(fotosVan(r._id)))}>
           <Icon n="camera" />{fotosVan(r._id) > 1 ? fotosVan(r._id) : ''}
         </span>
       )}

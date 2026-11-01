@@ -77,6 +77,9 @@ function AdministratieDashboard({
   }, [verkoopFacturen, inkoopFacturen, klanten, breweryDetails, vandaag])
 
   const nFacturen = (n: number): string => t('besl_stat_n_facturen').replace('{n}', String(n))
+  // Ter vergelijking onder omzet en inkoop: de hele vorige maand.
+  const vorigeMaand = (cent: number, sub: string): string =>
+    `${sub} · ${t('besl_stat_vorige_maand').replace('{bedrag}', fmt(centNaarEuro(cent)))}`
 
   // Omzet en inkoop "deze maand": Facturen met status Alles en de gedeelde
   // periode op deze maand (die geldt daarna ook voor Bank en Rapporten).
@@ -87,6 +90,15 @@ function AdministratieDashboard({
 
   return (
     <div>
+      {/* ── De drie handelingen als gewone knoppen rechts boven ───────────── */}
+      {/* De knoppen doen wat ze zeggen: het inkoopwerkblad openen, de
+          BTW-aangifte tonen, de bestandskiezer voor een afschrift openen. */}
+      <div className="flex flex-wrap justify-end gap-2 mb-3">
+        <Btn s="sm" v="secondary" onClick={() => gaNaarDoel({ pagina: 'facturen', tab: 'inkoop', actie: 'nieuw' })}>{t('dash_nieuwe_inkoopfactuur')}</Btn>
+        <Btn s="sm" v="secondary" onClick={() => gaNaarDoel({ pagina: 'bank', actie: 'importeren' })}>{t('dash_bank_importeren')}</Btn>
+        <Btn s="sm" v="secondary" onClick={() => gaNaarDoel({ pagina: 'aangiftes', tab: 'btw' })}>{t('tab_btw_aangifte')}</Btn>
+      </div>
+
       {/* ── Beslissingen: alleen wat een besluit vraagt, actie ernaast ────── */}
       {rijen.length > 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-3">
@@ -105,7 +117,7 @@ function AdministratieDashboard({
                 </div>
                 <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
                   {b.bedragCent !== undefined && (
-                    <span className="text-sm font-medium text-gray-700 tabular-nums">{fmt(centNaarEuro(b.bedragCent))}</span>
+                    <span className="text-sm font-medium text-gray-700 cijfer">{fmt(centNaarEuro(b.bedragCent))}</span>
                   )}
                   <Btn s="sm" onClick={() => gaNaarDoel(b.doel)}>{t(b.actieSleutel)}</Btn>
                 </div>
@@ -127,9 +139,9 @@ function AdministratieDashboard({
       <div className="mb-6">
         <h3 className="text-sm font-semibold text-gray-800 mb-2">{t('besl_maand_titel')}</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label={t('besl_stat_omzet')} value={fmt(centNaarEuro(cijfers.omzetCent))} sub={t('besl_stat_omzet_sub')}
+          <StatCard label={t('besl_stat_omzet')} value={fmt(centNaarEuro(cijfers.omzetCent))} sub={vorigeMaand(cijfers.omzetVorigeCent, t('besl_stat_omzet_sub'))}
             onClick={() => naarMaand('verkoop')} />
-          <StatCard label={t('besl_stat_inkoop')} value={fmt(centNaarEuro(cijfers.inkoopCent))} sub={t('besl_stat_inkoop_sub')}
+          <StatCard label={t('besl_stat_inkoop')} value={fmt(centNaarEuro(cijfers.inkoopCent))} sub={vorigeMaand(cijfers.inkoopVorigeCent, t('besl_stat_inkoop_sub'))}
             onClick={() => naarMaand('inkoop')} />
           {/* Openstaand = statusfilter "open" (alle periodes): dezelfde
               selectie als het getal op de kaart. */}
@@ -140,14 +152,6 @@ function AdministratieDashboard({
         </div>
       </div>
 
-      {/* ── Secundaire acties ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {/* De knoppen doen wat ze zeggen: het inkoopwerkblad openen, de
-            BTW-aangifte tonen, de bestandskiezer voor een afschrift openen. */}
-        <Btn v="secondary" onClick={() => gaNaarDoel({ pagina: 'facturen', tab: 'inkoop', actie: 'nieuw' })}>{t('dash_nieuwe_inkoopfactuur')}</Btn>
-        <Btn v="secondary" onClick={() => gaNaarDoel({ pagina: 'bank', actie: 'importeren' })}>{t('dash_bank_importeren')}</Btn>
-        <Btn v="secondary" onClick={() => gaNaarDoel({ pagina: 'aangiftes', tab: 'btw' })}>{t('tab_btw_aangifte')}</Btn>
-      </div>
     </div>
   )
 }

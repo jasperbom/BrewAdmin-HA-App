@@ -323,7 +323,8 @@ function ProductieDashboard({
             ) : (
               <div className="grid gap-4 lg:grid-cols-2 items-start">
                 {tankModellen.map(m => (
-                  <TankKaart key={m.tank.id} m={m} vandaag={vandaag} onOpen={x => openBatch(x.batch.id)} onStap={x => voerStapUit(x.batch, x.stap)} />
+                  <TankKaart key={m.tank.id} m={m} vandaag={vandaag} onOpen={x => openBatch(x.batch.id)} onStap={x => voerStapUit(x.batch, x.stap)}
+                    onMeten={x => { setMetingBatchId(String(x.batch.id)); setMetingForm(LEGE_METING); setMetingOpen(true) }} />
                 ))}
                 {legeTanks.map(m => (
                   <LegeTank key={m.tank.id} m={m} reiniging={reiniging} onOpenBatch={openBatch}
@@ -387,7 +388,7 @@ function ProductieDashboard({
                   const s = typeof tv === 'number' && !isNaN(tv) ? tv : null
                   return s != null ? (
                     <button type="button" onClick={() => setMetingForm((f) => ({ ...f, temp: s.toFixed(1) }))}
-                      className="mt-1 text-xs hover:underline py-1" style={{ color: 'var(--t-accent)' }} title={t('carb_use_sensor_tooltip')}>
+                      className="mt-1 text-xs hover:underline py-1" style={{ color: 'var(--t-accent-text, var(--t-accent))' }} title={t('carb_use_sensor_tooltip')}>
                       HA: {s.toFixed(1)}°C
                     </button>
                   ) : null

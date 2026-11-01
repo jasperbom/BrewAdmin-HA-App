@@ -10,6 +10,7 @@ import { brekenBijPunt, getoondeKomtEraan, komtEraanDelen, productChips, voorraa
 import type { ChipTekst } from '../../utils/verkoopDashboard'
 import type { VerkoopOverzichtRegel, VerkoopVerpakking } from '../../utils/verkoopOverzicht'
 import type { GaNaar } from '../../utils/route'
+import { PIL_KLEUR } from '../ui/StatusPil'
 
 interface VoorraadKomtEraanProps {
   /** `verkoopOverzicht(ctx)`: actieve producten, van urgent naar rustig. */
@@ -22,12 +23,8 @@ interface VoorraadKomtEraanProps {
   gaNaar: GaNaar
 }
 
-const CHIP: Record<ChipTekst['kleur'], string> = {
-  groen: 'bg-green-100 text-green-800',
-  oranje: 'bg-orange-100 text-orange-800',
-  rood: 'bg-red-100 text-red-700',
-  grijs: 'bg-gray-100 text-gray-600',
-}
+// Eén tabel voor alle statuspillen (components/ui/StatusPil.tsx).
+const CHIP = PIL_KLEUR
 
 /**
  * "Voorraad en komt eraan": per actief product wat er vrij ligt en in de AGP,

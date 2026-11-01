@@ -401,11 +401,11 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
           : updField(v.veld as any, e.target.value)}
         className="w-full border border-gray-200 rounded px-2 py-1 t-input" placeholder={v.ph} />
       {v.doel != null && !isNaN(Number(v.doel)) ? (
-        <div className="text-[10px] text-gray-400 mt-0.5">
+        <div className="text-xs text-gray-400 mt-0.5">
           {t('brouwdag_doel')}: {v.doelDecimals != null ? Number(v.doel).toFixed(v.doelDecimals) : String(v.doel)}{v.doelUnit || ''}
         </div>
       ) : v.hint ? (
-        <div className="text-[10px] text-gray-400 mt-0.5">{t('brouwdag_typisch')}: {v.hint}</div>
+        <div className="text-xs text-gray-400 mt-0.5">{t('brouwdag_typisch')}: {v.hint}</div>
       ) : null}
     </div>
   )
@@ -664,7 +664,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
     if (!setKoelLogs) return null
     return (
       <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2">
-        <div className="text-[11px] font-semibold text-gray-400 mb-1.5">{t('koel_log_titel')}</div>
+        <div className="text-xs font-semibold text-gray-400 mb-1.5">{t('koel_log_titel')}</div>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
           <input type="number" step="0.1" value={koelForm.start_temp}
             onChange={e => setKoelForm({ ...koelForm, start_temp: e.target.value })}
@@ -832,7 +832,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                             {t('brouwdag_doel')}: <span className="font-medium text-gray-700">{doelIBU.toFixed(1)}</span>
                           </div>
                         )}
-                        <div className="text-2xl font-bold" style={{color: 'var(--t-accent)'}}>
+                        <div className="text-2xl font-bold" style={{color: 'var(--t-accent-text, var(--t-accent))'}}>
                           {ibu > 0 ? ibu.toFixed(1) : '—'}
                         </div>
                         {verschil != null && Math.abs(verschil) >= 0.5 && (
@@ -937,7 +937,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                                     ))}
                                   </select>
                                   {lotTekort && (
-                                    <div className="text-[10px] t-accent-text mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                    <div className="text-xs t-accent-text mt-0.5 flex items-center gap-1.5 flex-wrap">
                                       <span>{t('hop_schema_lot_tekort')
                                         .replace('{beschikbaar}', String(r3(Math.max(0, lotBesch as number))))
                                         .replace('{nodig}', String(r3(nodigQty)))
@@ -977,15 +977,15 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                                     : eff.bron === 'ingredient' ? 'bg-blue-50' : ''
                                 }`} />
                               {eff.bron === 'lot' && (
-                                <div className="text-[10px] text-emerald-600 mt-0.5">{t('hop_schema_bron_lot')}</div>
+                                <div className="text-xs text-emerald-600 mt-0.5">{t('hop_schema_bron_lot')}</div>
                               )}
                               {eff.bron === 'lot_verouderd' && (
-                                <div className="text-[10px] t-accent-text mt-0.5">
+                                <div className="text-xs t-accent-text mt-0.5">
                                   {t('hop_schema_bron_lot_verouderd').replace('{behoud}', String(Math.round(eff.behoudPct || 0)))}
                                 </div>
                               )}
                               {eff.bron === 'ingredient' && !h.alpha_pct && (
-                                <div className="text-[10px] text-blue-600 mt-0.5">{t('hop_schema_bron_ing')}</div>
+                                <div className="text-xs text-blue-600 mt-0.5">{t('hop_schema_bron_ing')}</div>
                               )}
                             </td>
                             <td className="px-3 py-1.5 text-right">
@@ -1187,7 +1187,7 @@ const CalcCard: React.FC<{label: string, value: string | null, hint?: string, ta
   <div className="bg-gray-50 rounded p-2">
     <div className="text-gray-500 text-xs">{label}</div>
     <div className="font-semibold text-gray-800 text-base">{value || '—'}</div>
-    {target && <div className="text-[10px] text-gray-400 mt-0.5">{t('brouwdag_doel')}: {target}</div>}
+    {target && <div className="text-xs text-gray-400 mt-0.5">{t('brouwdag_doel')}: {target}</div>}
     {hint && <div className="text-gray-400 text-xs italic">{hint}</div>}
   </div>
 )

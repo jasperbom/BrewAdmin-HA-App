@@ -1110,10 +1110,10 @@ function InkoopFactuurModal({
             <div className={metVolgende ? 'flex items-baseline justify-between gap-3' : 'min-w-0'}>
               <div className="min-w-0">
                 <div className="text-xs text-gray-500">{verlegd ? t('inkoop_totaal') : t('lbl_totaal_incl_btw')}</div>
-                {controleKort && metVolgende && <div className={`text-[11px] ${controle.status === 'klopt' ? 'text-green-700' : 'text-orange-700'}`}>{controleKort}</div>}
+                {controleKort && metVolgende && <div className={`text-xs ${controle.status === 'klopt' ? 'text-green-700' : 'text-orange-700'}`}>{controleKort}</div>}
               </div>
               <div className="text-base font-bold text-gray-900 tabular-nums">{fmt(eff.bruto)}</div>
-              {controleKort && !metVolgende && <div className={`text-[11px] ${controle.status === 'klopt' ? 'text-green-700' : 'text-orange-700'}`}>{controleKort}</div>}
+              {controleKort && !metVolgende && <div className={`text-xs ${controle.status === 'klopt' ? 'text-green-700' : 'text-orange-700'}`}>{controleKort}</div>}
             </div>
             <div className="flex-1 flex justify-end gap-2">{knoppen}</div>
           </div>

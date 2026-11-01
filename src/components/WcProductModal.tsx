@@ -75,7 +75,7 @@ const TABS: {v: Tab, l: string}[] = [
 ]
 
 const inputCls = 'w-full border border-gray-200 rounded px-2 py-1.5 text-xs t-input'
-const labelCls = 'text-[11px] text-gray-500'
+const labelCls = 'text-xs text-gray-500'
 
 const Veld: React.FC<{label: string, tip?: string, breed?: boolean, children: React.ReactNode}> =
   ({label, tip, breed, children}) => (
@@ -244,7 +244,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
         )}
         {wcProduct?.permalink && (
           <a href={wcProduct.permalink} target="_blank" rel="noreferrer"
-            className="underline" style={{color: 'var(--t-accent)'}}>{t('wc_btn_open_winkel')}</a>
+            className="underline" style={{color: 'var(--t-accent-text, var(--t-accent))'}}>{t('wc_btn_open_winkel')}</a>
         )}
         {v.gesynct && <span className="text-gray-400">{t('wc_lbl_laatste_push')}: {new Date(v.gesynct).toLocaleString()}</span>}
       </div>
@@ -286,12 +286,12 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
             <input type="number" className={inputCls} value={v.menu_volgorde ?? ''} onChange={e => zet({menu_volgorde: e.target.value})} />
           </Veld>
           <div className="flex flex-col justify-end gap-1.5 pb-1">
-            <label className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none">
+            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
               <input type="checkbox" className="t-checkbox" checked={!!v.uitgelicht}
                 onChange={e => zet({uitgelicht: e.target.checked})} />
               <span>{t('wc_veld_uitgelicht')}</span>
             </label>
-            <label className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none"
+            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none"
               title={t('wc_tip_apart_verkopen')}>
               <input type="checkbox" className="t-checkbox" checked={!!v.apart_verkopen}
                 onChange={e => zet({apart_verkopen: e.target.checked})} />
@@ -309,7 +309,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
             <textarea rows={8} className={`${inputCls} font-mono`} placeholder={omschrijvingFallback}
               value={v.omschrijving ?? ''} onChange={e => zet({omschrijving: e.target.value})} />
           </Veld>
-          <p className="sm:col-span-2 text-[11px] text-gray-400">{t('wc_hint_html')}</p>
+          <p className="sm:col-span-2 text-xs text-gray-400">{t('wc_hint_html')}</p>
         </>)}
 
         {tab === 'prijs' && (<>
@@ -343,7 +343,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
           <Veld label={t('wc_veld_lage_voorraad')} tip={t('wc_tip_lage_voorraad')}>
             <input type="number" className={inputCls} value={v.lage_voorraad ?? ''} onChange={e => zet({lage_voorraad: e.target.value})} />
           </Veld>
-          <p className="sm:col-span-2 text-[11px] text-gray-400">
+          <p className="sm:col-span-2 text-xs text-gray-400">
             {(prijzenInclBtw ? t('wc_hint_prijs_incl') : t('wc_hint_prijs_excl'))}
             {wcPrijs !== null && ` · ${t('wc_lbl_prijs_in_winkel')}: ${wcPrijs.toFixed(2)}`}
           </p>
@@ -365,14 +365,14 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
           <Veld label={t('wc_veld_hoogte')}>
             <input type="number" step="0.1" className={inputCls} value={v.hoogte ?? ''} onChange={e => zet({hoogte: e.target.value})} />
           </Veld>
-          <p className="sm:col-span-2 text-[11px] text-gray-400">{t('wc_hint_afmetingen')}</p>
+          <p className="sm:col-span-2 text-xs text-gray-400">{t('wc_hint_afmetingen')}</p>
         </>)}
 
         {tab === 'indeling' && (<>
           <div className="sm:col-span-2">
             <label className={labelCls}>{t('wc_veld_categorieen')}</label>
             <div className="mt-1 max-h-52 overflow-y-auto border border-gray-200 rounded p-2 space-y-0.5">
-              {cats.length === 0 && <div className="text-[11px] text-gray-400">{t('wc_lbl_geen_categorieen')}</div>}
+              {cats.length === 0 && <div className="text-xs text-gray-400">{t('wc_lbl_geen_categorieen')}</div>}
               {ordenCategorieen(cats).map(({cat, diepte}) => (
                 <label key={cat.id} className="flex items-center gap-2 text-xs cursor-pointer select-none"
                   style={{paddingLeft: `${diepte * 14}px`}}>
@@ -402,7 +402,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
         {tab === 'afbeeldingen' && (<>
           <div className="sm:col-span-2 space-y-2">
             {(v.afbeeldingen || []).length === 0 && (
-              <div className="text-[11px] text-gray-400">{t('wc_lbl_geen_afbeeldingen')}</div>
+              <div className="text-xs text-gray-400">{t('wc_lbl_geen_afbeeldingen')}</div>
             )}
             {(v.afbeeldingen || []).map((a, i) => {
               // Geen inline <img>: de CSP (server.py `_CSP`, img-src) laat
@@ -410,15 +410,15 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
               const href = veiligeAfbeeldingUrl(a.src)
               return (
               <div key={`${a.id || a.src}-${i}`} className="flex items-center gap-2 border border-gray-200 rounded p-2">
-                <div className="w-12 h-12 shrink-0 rounded bg-gray-100 flex flex-col items-center justify-center text-[10px] text-gray-400">
+                <div className="w-12 h-12 shrink-0 rounded bg-gray-100 flex flex-col items-center justify-center text-[11px] text-gray-400">
                   <Icon n="image" cls="text-lg" />
                   {!a.src && a.id ? <span>#{a.id}</span> : null}
                 </div>
                 <div className="flex-1 min-w-0">
                   {href
                     ? <a href={href} target="_blank" rel="noopener noreferrer" title={t('wc_afbeelding_openen')}
-                        className="block text-[11px] t-accent-text hover:underline truncate">{a.naam || a.src}</a>
-                    : <div className="text-[11px] text-gray-500 truncate">{a.naam || a.src || `#${a.id}`}</div>}
+                        className="block text-xs t-accent-text hover:underline truncate">{a.naam || a.src}</a>
+                    : <div className="text-xs text-gray-500 truncate">{a.naam || a.src || `#${a.id}`}</div>}
                   <input type="text" className={inputCls} placeholder={t('wc_ph_alt')}
                     value={a.alt || ''} onChange={e => {
                       const lijst = [...(v.afbeeldingen || [])]
@@ -444,7 +444,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
                 {t('wc_btn_afbeelding_toevoegen')}
               </Btn>
             </div>
-            <p className="text-[11px] text-gray-400">{t('wc_hint_afbeeldingen')}</p>
+            <p className="text-xs text-gray-400">{t('wc_hint_afbeeldingen')}</p>
           </div>
         </>)}
         {tab === 'thema' && (
@@ -457,10 +457,10 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
                 <span className="text-xs font-semibold text-gray-500">
                   {t('bier_gaat_mee')}
                 </span>
-                <span className="text-[11px] text-gray-400">{t('bier_gaat_mee_hint')}</span>
+                <span className="text-xs text-gray-400">{t('bier_gaat_mee_hint')}</span>
               </div>
               {Object.keys(bierInfo || {}).length === 0
-                ? <p className="text-[11px] text-gray-400 italic">{t('bier_gaat_mee_leeg')}</p>
+                ? <p className="text-xs text-gray-400 italic">{t('bier_gaat_mee_leeg')}</p>
                 : <BierInfoWeergave info={bierInfo} compact />}
             </div>
 
@@ -476,7 +476,7 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
       {/* Verschillen met de winkel */}
       {gekoppeld && (
         <div className="mt-4 border-t border-gray-200 pt-3">
-          <div className="text-[11px] font-semibold text-gray-500 mb-1">
+          <div className="text-xs font-semibold text-gray-500 mb-1">
             {t('wc_lbl_verschillen')} ({verschillen.length})
           </div>
           {verschillen.length === 0

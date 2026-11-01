@@ -240,7 +240,7 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
                       {/* Waar de beoordeling vandaan komt: een vaste regel of
                           een voorstel van Claude, door iemand overgenomen. */}
                       {Array.isArray(i.allergenen) && (i.allergenen_bron==='claude' || i.allergenen_bron==='regel') && i.allergenen_toelichting && (
-                        <div className="text-[11px] text-gray-500 truncate" title={i.allergenen_toelichting}>
+                        <div className="text-xs text-gray-500 truncate" title={i.allergenen_toelichting}>
                           {t(i.allergenen_bron==='claude' ? 'allergeen_bron_claude' : 'allergeen_bron_regel')}: {i.allergenen_toelichting}
                         </div>
                       )}

@@ -21,7 +21,7 @@ const getal = (v: string): number => {
 }
 
 const Bron: React.FC<{ aan: boolean }> = ({ aan }) => aan
-  ? <span className="text-[11px] font-medium text-green-700 whitespace-nowrap">● {t('inkoop_bron_etiket')}</span>
+  ? <span className="text-xs font-medium text-green-700 whitespace-nowrap">● {t('inkoop_bron_etiket')}</span>
   : null
 
 /**

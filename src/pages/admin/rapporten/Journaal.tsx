@@ -30,7 +30,7 @@ const DAGBOEK_KLEUR: Record<string, string> = {
   accijns: 'bg-purple-100 text-purple-800', btw: 'bg-orange-100 text-orange-800',
   memoriaal: 'bg-gray-100 text-gray-700', kapitaal: 'bg-purple-100 text-purple-800',
 }
-const PIL = 'inline-block rounded-full text-[11px] font-semibold px-2 py-0.5 whitespace-nowrap'
+const PIL = 'inline-block rounded-full text-xs font-semibold px-2 py-0.5 whitespace-nowrap'
 
 /** Waar een regel naartoe leidt: de factuur of de aangifte erachter. */
 const doelVan = (r: JournaalWeergaveRegel): AttentieDoel | null => {

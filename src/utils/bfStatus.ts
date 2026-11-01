@@ -1,4 +1,5 @@
-// Brewfather-status overnemen bij de automatische sync (App.tsx).
+// Brewfather-status overnemen bij de automatische sync (App.tsx), als de
+// status van batches op *lezen* staat (utils/bfRichting.ts).
 //
 // Brewfather kan verder zijn dan de app (de brouwer zette de batch daar al op
 // Fermenting of Completed). De sync nam die status vroeger rechtstreeks over,
@@ -17,6 +18,21 @@ import type { TankStatusMap, TankReinigingLog } from '../types'
 import { STATUSSEN } from './constants'
 import { tankClaimCheck, markTankVuilBijVertrek } from './calculations'
 import { magAfvullen, isLegacyBatch } from './haccp'
+
+/**
+ * Brewfather-status → app-status, als de status van batches op *lezen* staat
+ * (utils/bfRichting.ts). Completed en Archived betekenen in Brewfather "klaar".
+ */
+export const BF_NAAR_APP_STATUS: Readonly<Record<string, string>> = {
+  Planning: 'Gepland',
+  Brewing: 'Brouwen',
+  Fermenting: 'Vergisten',
+  Conditioning: 'Conditioneren',
+  Carbonating: 'Conditioneren',
+  Packaging: 'Afgevuld',
+  Completed: 'Gesloten',
+  Archived: 'Gesloten',
+}
 
 export type BfStatusWeigering = 'tank_bezet' | 'tank_niet_ontsmet' | 'geen_vrijgave'
 

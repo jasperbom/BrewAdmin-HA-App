@@ -10,6 +10,10 @@ import Modal from '../ui/Modal'
 import Inp from '../ui/Inp'
 import SectionHeader from '../ui/SectionHeader'
 import SearchInput from '../ui/SearchInput'
+import { useUndo } from '../ui/UndoBar'
+
+// Id-voorvoegsel van de terugweg bij het verwijderen van een schoonmaaktaak.
+const TAAK_UNDO = 'schoonmaak-taak-weg-'
 
 // Reiniging & desinfectie (HACCP-handboek hoofdstuk 6): het schoonmaakschema,
 // het uitvoeringslogboek en de tankreinigingshistorie stonden als twee losse
@@ -71,6 +75,9 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
                           tanks, auditLog, setAuditLog, modal, setModal, edit, setEdit}: any) {
   const {useState} = React
   const [fDatum, setFDatum] = useState('')
+  const undo = useUndo()
+  // Een taak die op de terugweg staat is al uit beeld, maar nog niet weg.
+  const zichtbareTaken = (schoonmaakTaken || []).filter((tk: any) => undo.actie?.id !== `${TAAK_UNDO}${tk.id}`)
 
   const laatsteLog = (taakId: number) => (schoonmaakLog || [])
     .filter((l: any) => l.taak_id === taakId)
@@ -98,10 +105,15 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
     setModal(null); setEdit(null)
   }
 
+  // Meteen uit beeld, vijf seconden terugweg (UndoBar) in plaats van een
+  // confirm(); daarna echt weg.
   const delTaak = (tk: any) => {
-    if(!confirm(t('haccp_schoonmaak_taak_verwijderen').replace('{naam}', tk.naam || ''))) return
-    setSchoonmaakTaken((prev: any[]) => prev.filter((x: any) => x.id !== tk.id))
-    logAudit(auditLog, setAuditLog, {entiteit: 'SchoonmaakTaak', entiteit_id: tk.id, actie: 'verwijderd', omschrijving: tk.naam})
+    undo.plan(`${TAAK_UNDO}${tk.id}`,
+      t('undo_schoonmaak_taak_verwijderd', 'Schoonmaaktaak verwijderd: {naam}').replace('{naam}', tk.naam || t('lbl_naamloos')),
+      () => {
+        setSchoonmaakTaken((prev: any[]) => prev.filter((x: any) => x.id !== tk.id))
+        logAudit(auditLog, setAuditLog, {entiteit: 'SchoonmaakTaak', entiteit_id: tk.id, actie: 'verwijderd', omschrijving: tk.naam})
+      })
   }
 
   const filteredLog = (schoonmaakLog || [])
@@ -114,9 +126,9 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
         <div className="flex justify-end mb-2">
           <Btn s="sm" onClick={() => {setEdit({naam: '', frequentie: 'wekelijks', locatie: '', verantwoordelijke: ''}); setModal('taak')}}>{t('haccp_schoonmaak_taak_nieuw')}</Btn>
         </div>
-        {!(schoonmaakTaken || []).length && <p className="text-sm text-gray-500 italic">{t('haccp_schoonmaak_geen_taken')}</p>}
+        {!zichtbareTaken.length && <p className="text-sm text-gray-500 italic">{t('haccp_schoonmaak_geen_taken')}</p>}
         <div className="space-y-2">
-          {(schoonmaakTaken || []).map((tk: any) => {
+          {zichtbareTaken.map((tk: any) => {
             const last = laatsteLog(tk.id)
             const acht = isSchoonmaakTaakAchterstallig(tk, schoonmaakLog)
             return (
@@ -142,7 +154,7 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
 
       {sub === 'log' && <>
         <div className="flex items-center gap-2 mb-2">
-          <Btn s="sm" onClick={() => {setEdit({taak_id: (schoonmaakTaken || [])[0]?.id || 0, datum: tod(), uitgevoerd_door: '', middel: '', opmerking: '', cip: false}); setModal('log')}}>{t('haccp_schoonmaak_log_nieuw')}</Btn>
+          <Btn s="sm" onClick={() => {setEdit({taak_id: zichtbareTaken[0]?.id || 0, datum: tod(), uitgevoerd_door: '', middel: '', opmerking: '', cip: false}); setModal('log')}}>{t('haccp_schoonmaak_log_nieuw')}</Btn>
           <input type="date" value={fDatum} onChange={e => setFDatum(e.target.value)} className="t-input text-xs px-2 py-1 rounded border" />
         </div>
         {!filteredLog.length && <p className="text-sm text-gray-500 italic">{t('haccp_schoonmaak_geen_log')}</p>}
@@ -195,7 +207,7 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">{t('haccp_schoonmaak_taak')}</label>
               <select value={edit.taak_id || ''} onChange={e => setEdit({...edit, taak_id: Number(e.target.value)})} className="t-input w-full text-sm px-3 py-1.5 rounded-lg border">
-                {(schoonmaakTaken || []).map((tk: any) => <option key={tk.id} value={tk.id}>{tk.naam}</option>)}
+                {zichtbareTaken.map((tk: any) => <option key={tk.id} value={tk.id}>{tk.naam}</option>)}
               </select>
             </div>
             <Inp label={t('haccp_schoonmaak_datum')} type="date" value={edit.datum || tod()} onChange={v => setEdit({...edit, datum: v})} />

@@ -126,8 +126,8 @@ const PspModal: React.FC<PspModalProps> = ({
                 {pspFactuurDatum(f) || '—'}
               </span>
               <span className="flex-1 min-w-0 truncate text-gray-800">{f.factuurnummer ? `${f.factuurnummer} · ` : ''}{klantNaamVoor(f) || t('lbl_onbekend')}</span>
-              {f.status === 'betaald' && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 whitespace-nowrap">{t('factuur_paid')}</span>}
-              {f.status === 'credit' && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-700 whitespace-nowrap">{t('fb_status_credit')}</span>}
+              {f.status === 'betaald' && <span className="px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 whitespace-nowrap">{t('factuur_paid')}</span>}
+              {f.status === 'credit' && <span className="px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-700 whitespace-nowrap">{t('fb_status_credit')}</span>}
               <span className="font-medium text-gray-700 whitespace-nowrap tabular-nums">{fmt(brutoCent(f) / 100)}</span>
             </label>
           ))}

@@ -1,6 +1,7 @@
 import React from 'react'
 import { t, getLang } from '../../i18n'
 import { newId } from '../../utils/api'
+import { bfKoppelWijziging, bfBatchNaam } from '../../utils/bfKoppeling'
 import { fmtWeekdagDatum, tod } from '../../utils/format'
 import { logAudit } from '../../utils/audit'
 import { nextBatchNummer } from '../../utils/calculations'
@@ -228,12 +229,22 @@ const NieuweBatchBlad: React.FC<NieuweBatchBladProps> = (p) => {
       { id: newId(bat || []), batchNummer: nextBatchNummer(bat || []), nu: new Date().toISOString(), vandaag: tod(), productId: newId(producten || []) },
     )
     if (r.ok === false) { setFout(foutTekst(r.fout)); return }
-    const { batch, nieuwProduct, product, automatisch, naamZonder } = r.plan
+    const { nieuwProduct, product, automatisch, naamZonder } = r.plan
+    // Vanuit "Nieuw in Brewfather": de nieuwe batch hangt meteen aan die
+    // Brewfather-batch; daarna haalt de app op of schrijft hij terug, zoals
+    // ingesteld (utils/bfKoppeling.ts, utils/bfRichting.ts, App.tsx).
+    const bfB = verzoek.brewfather
+    const batch: any = bfB ? { ...r.plan.batch, ...bfKoppelWijziging(bfB) } : r.plan.batch
     ingepland.current = true
     if (nieuwProduct) koppeling.voegProductToe(nieuwProduct)
     setBat((prev: any[]) => [...(prev || []), batch])
     setLog((prev: any[]) => [...(prev || []), { id: newId(prev || []), datum: tod(), type: 'aangemaakt', batch_id: batch.id, referentie: batch.naam }])
     logAudit(auditLog, setAuditLog, { entiteit: 'Batch', entiteit_id: batch.id, actie: 'aangemaakt', omschrijving: batch.naam })
+    if (bfB) {
+      const nr = bfB.batchNo != null ? ` #${bfB.batchNo}` : ''
+      logAudit(auditLog, setAuditLog, { entiteit: 'Batch', entiteit_id: batch.id, actie: 'gewijzigd',
+        omschrijving: t('audit_brewfather_gekoppeld').replace('{naam}', `${bfBatchNaam(bfB)}${nr}`) })
+    }
     // De regels tegen de verse lijst: hun id's lopen door vanaf het hoogste.
     if (recept) setBi((prev: any[]) => nieuweBatchRegels(recept, r.plan, prev, ing))
     if (automatisch && product) koppeling.meldAutomatischeKoppeling(batch.id, product, naamZonder)
@@ -274,6 +285,12 @@ const NieuweBatchBlad: React.FC<NieuweBatchBladProps> = (p) => {
       doelen={doelen} ingredienten={ingredienten} vooruitblik={vooruitblik} vooruitProduct={vooruitProduct}
       onEtiketBijwerken={p.onEtiketBijwerken} />
   )
+  // Vanuit "Nieuw in Brewfather": zeggen waaraan de batch gekoppeld wordt.
+  const bfRegel = verzoek.brewfather ? (
+    <p className="text-sm text-gray-700 break-words">
+      {t('nb_bf_koppeling').replace('{naam}', `${bfBatchNaam(verzoek.brewfather)}${verzoek.brewfather.batchNo != null ? ` #${verzoek.brewfather.batchNo}` : ''}`)}
+    </p>
+  ) : null
   // Waarom Inplannen niet doorging: bij de knop, dus altijd in beeld.
   const foutEl = fout ? (
     <p role="alert" className="text-sm text-orange-800 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 break-words">{fout}</p>
@@ -292,7 +309,7 @@ const NieuweBatchBlad: React.FC<NieuweBatchBladProps> = (p) => {
     ) : (
       <Onderblad key="stap2" zelfstandig sluitKruis kruisRechts terug={() => setStap(1)} titel={t('nb_plan')}
         sub={`#${batchNummer}`} onAnnuleer={onSluit}
-        voet={<div className="space-y-2">{foutEl}<Btn s="lg" cls="w-full" onClick={inplannen}>{t('nb_inplannen')}</Btn></div>}>
+        voet={<div className="space-y-2">{bfRegel}{foutEl}<Btn s="lg" cls="w-full" onClick={inplannen}>{t('nb_inplannen')}</Btn></div>}>
         {planEl}
       </Onderblad>
     )
@@ -314,7 +331,7 @@ const NieuweBatchBlad: React.FC<NieuweBatchBladProps> = (p) => {
           </div>
         </div>
         <div className="flex items-center gap-3 px-5 py-3 border-t border-gray-100">
-          <div className="flex-1 min-w-0">{foutEl}</div>
+          <div className="flex-1 min-w-0 space-y-1">{bfRegel}{foutEl}</div>
           <Btn v="secondary" onClick={onSluit}>{t('btn_cancel')}</Btn>
           <Btn onClick={inplannen} disabled={!gekozen}>{t('nb_inplannen')}</Btn>
         </div>

@@ -3,7 +3,7 @@
 // ligt in de voorraad als 'Suiker' — die twee moeten elkaar vinden.
 import { describe, it, expect } from 'vitest'
 import { bfFermType, canoniekIngType, verwanteIngTypes, ingTypeMatcht, ingredientenVoorType } from '../ingTypes'
-import { bfMapRecipe, bfMapBis } from '../api'
+import { bfMapRecipe } from '../api'
 import { scaleRecipeNeeds, aggregateBatchNeeds } from '../calculations'
 
 describe('bfFermType', () => {
@@ -93,14 +93,6 @@ describe('Brewfather-import behoudt het suikertype', () => {
   it('recept: de suikerregel in de moutlijst blijft Suiker', () => {
     const r = bfMapRecipe(BF_RECEPT)
     expect(r.mout.map((m: any) => m.ingredient_type)).toEqual(['Mout', 'Suiker'])
-  })
-  it('batchregels: idem, met behoud van het extract%', () => {
-    const rows = bfMapBis({recipe: BF_RECEPT}, 7, 1)
-    expect(rows.map((x: any) => [x.ingredient_naam, x.ingredient_type])).toEqual([
-      ['Pilsmout', 'Mout'],
-      ['Kandijsuiker donker', 'Suiker'],
-    ])
-    expect(rows[1].extract_pct).toBe(100)
   })
 })
 

@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { bfGetRecipes, bfGetRecipesWithVersions } from '../api'
 
-const raw = (i: number) => ({ _id: `r${String(i).padStart(3, '0')}`, name: `Recept ${i}`, searchTags: [] })
+const raw = (i: number) => ({ _id: `r${String(i).padStart(3, '0')}`, name: `Recept ${i}`, searchTags: [], color: 5 })
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
@@ -39,22 +39,24 @@ describe('bfGetRecipes', () => {
     const lijst = await bfGetRecipes()
     expect(lijst).toHaveLength(120)
     expect(lijst[119]).toMatchObject({ id: 'r119', naam: 'Recept 119', is_huidige: true })
+    // Brewfather geeft SRM; de app bewaart EBC (5 SRM = 9,9 EBC).
+    expect(lijst[0]).toMatchObject({ kleur: 9.9, kleur_eenheid: 'ebc' })
     expect(bf.verzoeken).toHaveLength(3)
   })
 
   it('een fout op de eerste pagina is een fout, geen lege lijst', async () => {
     vi.stubGlobal('fetch', nepBrewfather(120, { pagina: 0, status: 401 }).fetch)
-    await expect(bfGetRecipes()).rejects.toThrow('Brewfather 401')
+    await expect(bfGetRecipes()).rejects.toMatchObject({ fout: { status: 401, oorzaak: 'auth', detail: 'nee' } })
   })
 
   it('een fout op een latere pagina is een fout, geen halve lijst', async () => {
     vi.stubGlobal('fetch', nepBrewfather(120, { pagina: 1, status: 500 }).fetch)
-    await expect(bfGetRecipes()).rejects.toThrow('Brewfather 500')
+    await expect(bfGetRecipes()).rejects.toMatchObject({ fout: { status: 500 } })
   })
 
   it('bfGetRecipesWithVersions geeft de fout door (de sync verandert dan niets)', async () => {
     vi.stubGlobal('fetch', nepBrewfather(60, { pagina: 1, status: 503 }).fetch)
-    await expect(bfGetRecipesWithVersions()).rejects.toThrow('Brewfather 503')
+    await expect(bfGetRecipesWithVersions()).rejects.toMatchObject({ fout: { status: 503 } })
   })
 
   it('zonder versie-endpoint komen de hoofdrecepten gewoon binnen', async () => {

@@ -54,10 +54,10 @@ const Rail: React.FC<RailProps> = ({
               type="button"
               onClick={() => onKies(it.id)}
               aria-current={aan ? 'page' : undefined}
-              className={`w-full min-h-[64px] rounded-xl flex flex-col items-center justify-center gap-1 px-1 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${aan ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}
+              className={`rail-knop relative w-full min-h-[64px] rounded-xl flex flex-col items-center justify-center gap-1 px-1 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${aan ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}
             >
               <Icon n={it.icoon} cls="text-[22px]" />
-              <span className={`text-[11px] leading-tight ${aan ? 'font-bold' : 'font-semibold'}`}>{it.label}</span>
+              <span className={`text-xs leading-tight ${aan ? 'font-bold' : 'font-semibold'}`}>{it.label}</span>
             </button>
             <AttentieBadge
               titel={it.label}
@@ -78,10 +78,10 @@ const Rail: React.FC<RailProps> = ({
         type="button"
         onClick={onInstellingen}
         aria-current={pagina === 'instellingen' ? 'page' : undefined}
-        className={`w-full min-h-[64px] rounded-xl flex flex-col items-center justify-center gap-1 px-1 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${pagina === 'instellingen' ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}
+        className={`rail-knop relative w-full min-h-[64px] rounded-xl flex flex-col items-center justify-center gap-1 px-1 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${pagina === 'instellingen' ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}
       >
         <Icon n="gear" cls="text-[22px]" />
-        <span className={`text-[11px] leading-tight ${pagina === 'instellingen' ? 'font-bold' : 'font-semibold'}`}>{t('nav_instellingen')}</span>
+        <span className={`text-xs leading-tight ${pagina === 'instellingen' ? 'font-bold' : 'font-semibold'}`}>{t('nav_instellingen')}</span>
       </button>
     </div>
   </aside>

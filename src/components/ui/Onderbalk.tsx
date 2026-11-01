@@ -42,7 +42,7 @@ const Onderbalk: React.FC<OnderbalkProps> = ({ items, actief, pagina, onKies, on
       style={aan ? { color: 'var(--t-accent-text, var(--t-accent))' } : undefined}
     >
       <Icon n={icoon} cls="text-[22px]" />
-      <span className="text-[11px] leading-tight truncate max-w-full">{label}</span>
+      <span className="text-xs leading-tight truncate max-w-full">{label}</span>
     </button>
   )
   const links = items.slice(0, Math.ceil(items.length / 2))
@@ -59,7 +59,7 @@ const Onderbalk: React.FC<OnderbalkProps> = ({ items, actief, pagina, onKies, on
           aria-label={`${t('attentie_titel')} — ${it.label}: ${t('attentie_aantal').replace('{n}', String(it.aantal))}`}
           className="absolute top-0 right-1/2 translate-x-[26px] w-9 h-9 flex items-start justify-end focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] rounded-full"
         >
-          <span className="mt-1 bg-orange-700 text-white text-[10px] rounded-full px-1 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center leading-none font-bold ring-2 ring-white">{it.aantal}</span>
+          <span className="mt-1 bg-orange-700 text-white text-[11px] rounded-full px-1 min-w-[1.1rem] h-[1.1rem] flex items-center justify-center leading-none font-bold ring-2 ring-white">{it.aantal}</span>
         </button>
       )}
     </div>
@@ -82,7 +82,7 @@ const Onderbalk: React.FC<OnderbalkProps> = ({ items, actief, pagina, onKies, on
           >
             <Icon n="thermometer" cls="text-[26px]" />
           </button>
-          <span className="text-[11px] leading-tight font-semibold mt-0.5" style={{ color: 'var(--t-accent-text, var(--t-accent))' }}>{actieLabel}</span>
+          <span className="text-xs leading-tight font-semibold mt-0.5" style={{ color: 'var(--t-accent-text, var(--t-accent))' }}>{actieLabel}</span>
         </div>
         {rechts.map(werkruimteVakje)}
         <div className="relative flex-1 min-w-0 flex">

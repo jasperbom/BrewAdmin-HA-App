@@ -69,13 +69,13 @@ const KassaKlant: React.FC<KassaKlantProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-gray-800 break-words min-w-0">{klant.naam}</span>
             {klant.klantnummer && <span className="text-xs text-gray-400">#{klant.klantnummer}</span>}
-            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${zakelijk ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${zakelijk ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
               {zakelijk ? t('lbl_zakelijk') : t('lbl_prive')}
             </span>
             {(standaardKortingPct > 0 || klantKortingBon != null) && (
               // Tik = de klantkorting voor alleen deze bon aanpassen.
               <button type="button" onClick={onKlantKorting} title={t('pos_klantkorting_aanpassen')}
-                className={`text-[10px] font-semibold px-1.5 rounded bg-green-100 text-green-700 hover:bg-green-200 ${blad ? 'min-h-tap' : 'py-0.5'}`}>
+                className={`text-[11px] font-semibold px-1.5 rounded bg-green-100 text-green-700 hover:bg-green-200 ${blad ? 'min-h-tap' : 'py-0.5'}`}>
                 {t('lbl_korting_pct').replace('{pct}', String(kortingPct))}
                 {klantKortingBon != null && (
                   <span className="font-normal"> · {t('pos_klantkorting_standaard').replace('{pct}', String(standaardKortingPct))}</span>
@@ -84,7 +84,7 @@ const KassaKlant: React.FC<KassaKlantProps> = ({
               </button>
             )}
             {st && st.openstaand > 0 && (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+              <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
                 {t('pos_openstaand')}: {fmt(st.openstaand)}
               </span>
             )}

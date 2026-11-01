@@ -63,7 +63,7 @@ const BierInfoForm: React.FC<BierInfoFormProps> = ({
 
   return (
     <div className="space-y-3">
-      {uitleg && <p className="text-[11px] text-gray-500">{t(uitleg)}</p>}
+      {uitleg && <p className="text-xs text-gray-500">{t(uitleg)}</p>}
 
       {groepen.map(groep => (
         <div key={groep}>
@@ -76,7 +76,7 @@ const BierInfoForm: React.FC<BierInfoFormProps> = ({
               if (f.soort === 'ja_nee') {
                 return (
                   <label key={f.veld} title={f.tip ? t(f.tip) : undefined}
-                    className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer select-none sm:pt-4">
+                    className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none sm:pt-4">
                     <input type="checkbox" className="t-checkbox" checked={w === true}
                       onChange={e => zet(f.veld, e.target.checked)} />
                     <span>{t(f.label)}</span>
@@ -86,7 +86,7 @@ const BierInfoForm: React.FC<BierInfoFormProps> = ({
 
               return (
                 <div key={f.veld} className={breed ? 'sm:col-span-2' : ''}>
-                  <label className="text-[11px] text-gray-500" title={f.tip ? t(f.tip) : undefined}>
+                  <label className="text-xs text-gray-500" title={f.tip ? t(f.tip) : undefined}>
                     {t(f.label)}
                   </label>
                   {f.soort === 'lang' ? (
@@ -128,9 +128,9 @@ const BierInfoForm: React.FC<BierInfoFormProps> = ({
                   {/* Eén regel uitleg per veld: de eigen tip als die er is,
                       anders de melding dat de app het veld zelf invult. */}
                   {f.tip
-                    ? <p className="text-[10px] text-gray-400 mt-0.5">{t(f.tip)}</p>
+                    ? <p className="text-xs text-gray-400 mt-0.5">{t(f.tip)}</p>
                     : (placeholders[f.veld] && String(w).trim() === '' &&
-                        <p className="text-[10px] text-gray-400 mt-0.5">{t('bier_leeg_is_afgeleid')}</p>)}
+                        <p className="text-xs text-gray-400 mt-0.5">{t('bier_leeg_is_afgeleid')}</p>)}
                 </div>
               )
             })}

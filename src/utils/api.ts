@@ -5,6 +5,8 @@ import { bouwMergeBasis, voegSamen, MergeBasis } from './merge'
 import { COMMIT_MAX_BYTES, COMMIT_MAX_KEYS, CommitResultaat, commitVervolg, utf8Lengte, verdeelCommit } from './commit'
 import { parseWcFout } from './wcFout'
 import { bfFermType } from './ingTypes'
+import { bfFoutUitAntwoord, bfFoutTekst, BfFoutError, BfFout } from './bfFout'
+import { ebcUitSrm } from './bierKleur'
 
 // KRITIEK: relatieve paden voor HA Ingress compatibiliteit.
 // Fallback '/' voor niet-browser-omgevingen (Vitest, fase 3.1): daar worden
@@ -1389,7 +1391,9 @@ export const bfMapRecipe = (r: any, opts: {
   hop:    (r.hops||[]).map((h: any) =>        ({naam:h.name||'', hoeveelheid:Number(h.amount||0), eenheid:'g',    gebruik: mapHopGebruik(h.use), tijd:bfNumSafe(h.time), tijdEenheid:h.timeUnit||'min', alpha_pct: h.alpha != null ? Number(h.alpha) : '', temp_c: h.temp != null ? Number(h.temp) : ''})),
   gist:   (r.yeasts||[]).map((y: any) =>      ({naam:y.name||'', hoeveelheid:Number(y.amount||1), eenheid:y.unit||'pkg'})),
   overig: (r.miscs||[]).map((m: any) =>       ({naam:m.name||'', hoeveelheid:Number(m.amount||0), eenheid:m.unit||'g', gebruik:m.use||''})),
-  kleur:       bfNumSafe(r.color),
+  // Brewfather geeft SRM, de app rekent in EBC (utils/bierKleur.ts).
+  kleur:       ebcUitSrm(bfNumSafe(r.color)),
+  kleur_eenheid: 'ebc',
   kooktijd:    bfNumSafe(r.boilTime),
   kook_volume: bfNumSafe(r.boilSize),
   vergistingsprofiel: (r.fermentation?.steps||[]).map((s: any) => ({
@@ -1412,6 +1416,13 @@ export const bfMapRecipe = (r: any, opts: {
   versie_datum: opts.versie_datum,
 })
 
+/** Een mislukt antwoord van de proxy als fout met een leesbare melding
+ * (Brewfathers eigen tekst en de wachttijd bij een 429, utils/bfFout.ts). */
+const bfFoutVan = async (r: Response): Promise<BfFoutError> => {
+  const fout = await bfFoutUitAntwoord(r)
+  return new BfFoutError(fout, bfFoutTekst(fout, t))
+}
+
 export const bfGetRecipes = async (): Promise<any[]> => {
   const all: any[] = []
   let startAfter: string | null = null
@@ -1423,7 +1434,7 @@ export const bfGetRecipes = async (): Promise<any[]> => {
     // eigen velden en koppelingen) en wat nog verwezen werd ten onrechte
     // gemarkeerd als `niet_in_brewfather`. Nu breekt de sync af en blijft de
     // lijst zoals hij was (utils/receptSync.ts).
-    if (!r.ok) throw new Error(`Brewfather ${r.status}`)
+    if (!r.ok) throw await bfFoutVan(r)
     const d = await r.json()
     all.push(...d)
     if (d.length < 50) break
@@ -1503,21 +1514,57 @@ export const bfGetRecipesWithVersions = async (): Promise<{
   }
 }
 
-export const bfGetBatches = async (): Promise<any[]> => {
-  const statuses = ['Planning','Brewing','Fermenting','Conditioning','Completed']
+/**
+ * De Brewfather-batches. Om aan te koppelen (utils/bfKoppeling.ts) zijn de
+ * lopende met hun recept genoeg, en de afgeronde (Completed) zonder `complete`
+ * — alleen id, nummer, naam, recept en brouwdag. Met `waarden` (de sync die
+ * status of meetwaarden ophaalt, utils/bfBatchSync.ts) ook Completed compleet
+ * en Archived zonder: alleen dan mag een gekoppelde batch die er niet tussen
+ * zit als verwijderd gelden (`bfVerweesdeBatches`).
+ * `volledig` = elke pagina kwam goed binnen; `fout` = de eerste mislukte, als melding.
+ */
+export const bfGetBatches = async (opts: {waarden?: boolean} = {}): Promise<{batches: any[], volledig: boolean, fout?: string}> => {
+  const statuses: Array<[string, boolean]> = opts.waarden
+    ? [['Planning', true], ['Brewing', true], ['Fermenting', true], ['Conditioning', true], ['Completed', true], ['Archived', false]]
+    : [['Planning', true], ['Brewing', true], ['Fermenting', true], ['Conditioning', true], ['Completed', false]]
   const all: any[] = []
-  for (const s of statuses) {
+  let volledig = true
+  let fout: string | undefined
+  for (const [s, compleet] of statuses) {
     let startAfter: string | null = null
     for (;;) {
-      const r = await bfFetch(`batches?status=${s}&complete=true&limit=50${startAfter?'&start_after='+startAfter:''}`)
-      if (!r.ok) break
+      const r = await bfFetch(`batches?status=${s}${compleet ? '&complete=true' : ''}&limit=50${startAfter?'&start_after='+startAfter:''}`)
+      if (!r.ok) {
+        volledig = false
+        if (!fout) fout = (await bfFoutVan(r)).message
+        break
+      }
       const d = await r.json()
+      if (!Array.isArray(d)) { volledig = false; break }
       all.push(...d)
       if (d.length < 50) break
       startAfter = d[d.length-1]._id
     }
   }
-  return all
+  return { batches: all, volledig, fout }
+}
+
+/**
+ * Eén batch naar Brewfather schrijven (status + meetwaarden, utils/
+ * bfTerugschrijven.ts). De proxy laat alleen die velden door
+ * (`_bf_patch_toegestaan`). `status` 404 = de batch bestaat niet meer.
+ */
+export const bfPatchBatch = async (bfId: string, bericht: Record<string, string | number>): Promise<{ok: boolean, status: number, melding?: string, fout?: BfFout}> => {
+  try {
+    const r = await _fetchWithRetry(`${ADDON_BASE}api/brewfather/patch/batches/${encodeURIComponent(bfId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bericht),
+    }, 0)
+    if (r.ok) return {ok: true, status: r.status}
+    const fout = await bfFoutUitAntwoord(r)
+    return {ok: false, status: r.status, melding: bfFoutTekst(fout, t), fout}
+  } catch (e: any) { return {ok: false, status: 0, melding: e?.message || String(e)} }
 }
 
 // Brewfather ingrediënt inventory import
@@ -1527,7 +1574,9 @@ export const bfGetIngredients = async (): Promise<{fermentables: any[], hops: an
     let startAfter: string | null = null
     for (;;) {
       const r = await bfFetch(`inventory/${endpoint}?complete=true&limit=50${startAfter ? '&start_after=' + startAfter : ''}`)
-      if (!r.ok) break
+      // Een mislukte pagina is geen korte lijst: liever een melding dan een
+      // import die stil de helft mist.
+      if (!r.ok) throw await bfFoutVan(r)
       const d = await r.json()
       all.push(...d)
       if (d.length < 50) break
@@ -1553,99 +1602,18 @@ export const extractBfProps = (item: any): Record<string, any> => {
   return props
 }
 
-// Push voorraad naar Brewfather via PATCH proxy
-export const bfPushInventory = async (cat: string, bfId: string, amount: number): Promise<boolean> => {
+// Push voorraad naar Brewfather via PATCH proxy. De proxy laat alleen de
+// voorraad van één ingrediënt door (`_bf_patch_toegestaan` in server.py).
+export const bfPushInventory = async (cat: string, bfId: string, amount: number): Promise<{ok: boolean, melding?: string, fout?: BfFout}> => {
   try {
-    const r = await fetch(`${ADDON_BASE}api/brewfather/patch/inventory/${cat}/${bfId}`, {
+    const r = await fetch(`${ADDON_BASE}api/brewfather/patch/inventory/${encodeURIComponent(cat)}/${encodeURIComponent(bfId)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ inventory: amount }),
     })
-    return r.ok
-  } catch { return false }
+    if (r.ok) return {ok: true}
+    const fout = await bfFoutUitAntwoord(r)
+    return {ok: false, melding: bfFoutTekst(fout, t), fout}
+  } catch (e: any) { return {ok: false, melding: e?.message || String(e)} }
 }
 
-import { tod } from './format'
-import { BF_TO_APP } from './constants'
-
-export const bfMapBatch = (b: any) => ({
-  brewfather_id:  b._id,
-  // Brewfather's eigen batchnummer blijft als referentie bewaard, maar staat
-  // losstaand van het app-eigen `batch_nummer` (zie nextBatchNummer).
-  brewfather_batch_nummer: b.batchNo != null ? String(b.batchNo) : '',
-  naam:           b.recipe?.name || b.name || 'Onbekend',
-  batch_nummer:   '',
-  stijl:          b.recipe?.style?.name || '',
-  status:         BF_TO_APP[b.status] || 'Gepland',
-  liter_vergist:  bfNumSafe(b.measuredBatchSize || b.estimatedBatchSize || b.recipe?.batchSize),
-  // Gemeten waarden alleen uit de `measured*`-velden: een geschatte OG/FG/ABV
-  // (recept-doel) is géén meting en hoort in de `verwacht_*`-velden, zodat de
-  // flow ze als placeholder toont en de gebruiker ze zelf moet bevestigen.
-  OG:  bfNumSafe(b.measuredOg),
-  FG:  bfNumSafe(b.measuredFg),
-  ABV: bfNumSafe(b.measuredAbv),
-  verwacht_og:  bfNumSafe(b.estimatedOg),
-  verwacht_fg:  bfNumSafe(b.estimatedFg),
-  verwacht_abv: bfNumSafe(b.estimatedAbv),
-  platogehalte: (() => { const og = Number(bfNumSafe(b.measuredOg)); return og >= 1 && og <= 1.2 ? Math.round((-616.868 + 1111.14*og - 630.272*og*og + 135.997*og*og*og)*10)/10 : ''; })(),
-  tank:'', electra_kosten:'', water_kosten:'', schoonmaak_kosten:'', overige_kosten:'',
-  notities: (Array.isArray(b.notes)?b.notes.join(' '):(typeof b.notes==='object'&&b.notes?'':b.notes||'')) || (Array.isArray(b.tasteNotes)?b.tasteNotes.join(' '):(typeof b.tasteNotes==='object'&&b.tasteNotes?'':b.tasteNotes||'')),
-  brouwzaal_eff: bfNumSafe(b.measuredBrewhouseEfficiency != null ? b.measuredBrewhouseEfficiency : b.estimatedBrewhouseEfficiency),
-  maisch_eff: bfNumSafe(b.measuredMashEfficiency),
-  maisch_ph: bfNumSafe(b.measuredMashPh),
-  product_ph: bfNumSafe(b.measuredFermentationPh != null ? b.measuredFermentationPh : b.measuredPh),
-  datum: b.brewDate ? new Date(b.brewDate).toISOString().split('T')[0] : tod(),
-  kleur:       bfNumSafe(b.recipe?.color),
-  kooktijd:    bfNumSafe(b.recipe?.boilTime),
-  kook_volume: bfNumSafe(b.recipe?.boilSize),
-  vergistingsprofiel: (b.recipe?.fermentation?.steps||[]).map((s: any) => ({
-    type: s.type || s.name || '',
-    temp: bfNumSafe(s.stepTemp ?? s.displayTemp),
-    // Gebruik stepTime (geplande duur in dagen). Brewfather's actualTime is
-    // een unix ms-timestamp (wanneer de stap daadwerkelijk werd bereikt),
-    // géén dagentelling — die hier lezen gaf voorheen waarden als 1775858400000.
-    tijd: bfNumSafe(s.stepTime),
-    ramp: bfNumSafe(s.rampTime ?? s.ramp),
-  })),
-  maischprofiel: (b.recipe?.mash?.steps||[]).map((s: any) => ({
-    naam:     s.name || '',
-    type:     s.type || '',
-    temp:     bfNumSafe(s.stepTemp ?? s.displayTemp),
-    tijd:     bfNumSafe(s.stepTime),
-    rampTijd: bfNumSafe(s.rampTime),
-  })),
-})
-
-export const bfMapBis = (b: any, batchId: number, startId: number): any[] => {
-  const rows: any[] = []
-  const r = b.recipe || {}
-  // Mout: bewaar `yield` (extract%) zodat brouwzaal-/maisch-efficiency
-  // automatisch berekend kan worden. Brewfather levert yield als % (0-100).
-  ;(r.fermentables||[]).forEach((f: any) => rows.push({
-    batch_id: batchId,
-    ingredient_naam: f.name||'',
-    // Suiker/honing uit de fermentables-lijst houdt zijn eigen type, zodat de
-    // regel bij het suiker-ingredient in de voorraad hoort (en niet bij mout).
-    ingredient_type: bfFermType(f.type),
-    hoeveelheid: Number(f.amount||0).toFixed(3),
-    eenheid: 'kg',
-    extract_pct: f.yield != null ? Number(f.yield) : (f.potential != null ? Math.round((Number(f.potential)-1)/0.046*100*10)/10 : ''),
-  }))
-  // Hop: bewaar alpha%, kooktijd (min vóór einde) en gebruik (boil/whirlpool/dry-hop)
-  // voor IBU-berekening via Tinseth. `time` in BF is min vóór einde koken.
-  // `temp` is alleen relevant voor whirlpool/aroma additions (typisch 75-90°C).
-  ;(r.hops||[]).forEach((h: any) => rows.push({
-    batch_id: batchId,
-    ingredient_naam: h.name||'',
-    ingredient_type: 'Hop',
-    hoeveelheid: Number(h.amount||0).toFixed(1),
-    eenheid: 'g',
-    alpha_pct: h.alpha != null ? Number(h.alpha) : '',
-    tijdstip_min: h.time != null ? Number(h.time) : '',
-    gebruik: mapHopGebruik(h.use),
-    temp_c: h.temp != null ? Number(h.temp) : '',
-  }))
-  ;(r.yeasts||[]).forEach((y: any) =>      rows.push({batch_id:batchId, ingredient_naam:y.name||'', ingredient_type:'Gist', hoeveelheid:Number(y.amount||1),            eenheid:'stuks'}))
-  ;(r.miscs||[]).forEach((m: any) =>       rows.push({batch_id:batchId, ingredient_naam:m.name||'', ingredient_type:'Overig', hoeveelheid:Number(m.amount||1),          eenheid:m.amountType||'g'}))
-  return rows.map((row,i) => ({...row, id: startId+i, ingredient_id:null, lot_id:'', kosten:'', afboeken:false}))
-}

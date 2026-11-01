@@ -11,6 +11,7 @@ import { brekenBijPunt, leverChip, watTekst } from '../../utils/verkoopDashboard
 import { vulIn } from '../../utils/attentieTekst'
 import type { ChipTekst, TePickenRij, WatRegel } from '../../utils/verkoopDashboard'
 import type { GaNaar } from '../../utils/route'
+import { PIL_KLEUR } from '../ui/StatusPil'
 
 interface TePickenProps {
   rijen: TePickenRij[]
@@ -23,13 +24,8 @@ interface TePickenProps {
   max?: number
 }
 
-// Vaste, semantische kleuren (geen themakleuren).
-const CHIP: Record<ChipTekst['kleur'], string> = {
-  groen: 'bg-green-100 text-green-800',
-  oranje: 'bg-orange-100 text-orange-800',
-  rood: 'bg-red-100 text-red-700',
-  grijs: 'bg-gray-100 text-gray-600',
-}
+// Eén tabel voor alle statuspillen (components/ui/StatusPil.tsx).
+const CHIP = PIL_KLEUR
 const STATUS_CHIP: Record<string, string> = {
   nieuw: 'bg-blue-100 text-blue-700',
   bevestigd: 'bg-cyan-100 text-cyan-700',

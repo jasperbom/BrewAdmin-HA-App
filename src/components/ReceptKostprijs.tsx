@@ -160,7 +160,7 @@ const ReceptKostprijs: React.FC<ReceptKostprijsProps> = ({
               <div className="text-xs text-gray-500 mb-0.5">
                 {eenheid ? t('recipe_cost_per_unit_of').replace('{v}', eenheidNaam) : t('recipe_cost_per_sellable')}
               </div>
-              <div className="text-2xl font-bold leading-none" style={{color: 'var(--t-accent)'}}>
+              <div className="text-2xl font-bold leading-none" style={{color: 'var(--t-accent-text, var(--t-accent))'}}>
                 {eenheid ? eur3(eenheid.totaal) : perLiter !== null ? eur3(perLiter) : '—'}
               </div>
               <div className="text-xs text-gray-500 mt-1">

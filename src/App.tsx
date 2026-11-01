@@ -7,7 +7,7 @@ import {
 } from './utils/route'
 import { detailTitel } from './utils/detailTitel'
 import { afgeleideThemaKleuren } from './utils/kleurContrast'
-import { useStore, bfGetBatches, bfMapBatch, bfNumSafe, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet, wcPut, newId, ruimteklimaatStatus } from './utils/api'
+import { useStore, bfGetBatches, bfPatchBatch, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet, wcPut, newId, ruimteklimaatStatus } from './utils/api'
 import { wcVoorraadLijst, gewijzigdeVoorraad, pushWcVoorraad, metGepushteVoorraad, volgendeVoorraadPoging, WC_VOORRAAD_WACHT_MS } from './utils/wcVoorraad'
 import { openBestellingReserveringen } from './utils/calculations'
 import { beschikbaarVoorAfvulling as beschikbaarNaPicks } from './utils/beschikbaarheid'
@@ -18,7 +18,12 @@ import { crafteryLees } from './utils/craftery'
 import { excelExport, excelImport, voegToeOpId } from './utils/excel'
 import { logAudit, setAuditUser, auditGebruiker } from './utils/audit'
 import { rolMagKey } from './utils/rollen'
-import { bfStatusOvergang } from './utils/bfStatus'
+import { bfTeSchrijven, bfNaPush } from './utils/bfTerugschrijven'
+import { bfStatusOvergang, BF_NAAR_APP_STATUS } from './utils/bfStatus'
+import { bfBatchWijzigingen, bfVerweesdeBatches, bfProfielen, BF_VELD_LABEL } from './utils/bfBatchSync'
+import type { BfVeld, BfOvername } from './utils/bfBatchSync'
+import { bfRichtingen, bfKoppelingAan, bfBatchesKoppelbaar, bfBatchesLezen, bfBatchesSchrijven } from './utils/bfRichting'
+import { afgevuldeLiters } from './utils/batchesLijst'
 import { migreerInternGebruik } from './utils/internGebruik'
 import { findKlantVoorOrder, resolveKlantSnapshot } from './utils/klant'
 import { autoMailReden, bouwOrderMail, naMailVerstuurd, mailAuditTekst } from './utils/orderMail'
@@ -38,13 +43,17 @@ import { attentiePosten, attentieDoel, AttentieDoel, attentieVoorPagina, attenti
 import { attentieLabel } from './utils/attentieTekst'
 import type { VerkoopCtx } from './utils/verkoopOverzicht'
 import { beslissingen } from './utils/beslissingen'
-import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, groepFase, BF_TO_APP, NAV_THEMES, detectLang } from './utils/constants'
+import { DEFAULT_HYGIENE_ITEMS, DEFAULT_HYGIENE_GROUPS, DEFAULT_BROUWDAG_CHECKLIST, DEFAULT_BOTTELDAG_CHECKLIST, DEFAULT_GN_CODES, DEFAULT_CCP_DEFINITIES, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, groepFase, NAV_THEMES, THEMA_STANDAARD, detectLang } from './utils/constants'
+import { batchTitel } from './utils/productKeten'
 import Rail from './components/ui/Rail'
 import Onderbalk from './components/ui/Onderbalk'
 import AttentieSheet from './components/ui/AttentieSheet'
 import Kopbalk from './components/ui/Kopbalk'
 import PaginaNav, { PaginaNavItem } from './components/ui/PaginaNav'
 import UndoBar, { UndoProvider, useUitgesteldeActie } from './components/ui/UndoBar'
+import Modal from './components/ui/Modal'
+import AppMelding from './components/ui/AppMelding'
+import Btn from './components/ui/Btn'
 import EtiketBijwerken, { EtiketBijwerkenProvider, maakEtiketDienst } from './components/batch/EtiketBijwerken'
 import type { EtiketBijwerkenData, EtiketVerzoek } from './components/batch/EtiketBijwerken'
 import NieuweBatchBlad, { NieuweBatchProvider } from './components/batch/NieuweBatchBlad'
@@ -161,7 +170,7 @@ function App() {
   const [logo, setLogo] = useStore('app_logo', null);
   const [factuurLogo, setFactuurLogo] = useStore('factuur_logo', null);
   const [appName, setAppName] = useStore('app_name', '');
-  const [navTheme, setNavTheme] = useStore('nav_theme', 'amber');
+  const [navTheme, setNavTheme] = useStore('nav_theme', THEMA_STANDAARD);
   const [bfCreds, setBfCreds] = useStore('brewfather_creds', {userId:'', apiKey:'', enabled:false, lastSync:null}, {secure:true});
   const [wcCreds, setWcCreds] = useStore('woocommerce_creds', {storeUrl:'', consumerKey:'', consumerSecret:'', enabled:false, lastSync:null}, {secure:true});
   const [claudeCreds, setClaudeCreds] = useStore('claude_creds', {apiKey:'', enabled:false}, {secure:true});
@@ -566,7 +575,6 @@ function App() {
     navigeer(lijstRoute(routeRef.current), { vervang: true });
   };
   const importRef = useRef<any>(null);
-  const bfAutoSynced = React.useRef(false);
 
   // Eénmalige sanitizer: corrigeer vergistings-/maischprofiel-stappen waar
   // tijd per ongeluk een unix-ms-timestamp bevat i.p.v. dagen. Wacht expliciet
@@ -1082,28 +1090,9 @@ function App() {
         !(f?.leverancier || '').trim() && !(f?.factuurnummer || '').trim()
       );
       if (lege.length === 0) { setLegeFacturenMigratie('done'); return; }
-      const bevestiging = confirm(
-        t('confirm_lege_facturen_opruimen').replace('{n}', String(lege.length))
-      );
-      if (bevestiging) {
-        const legeIds = new Set(lege.map((f: any) => f.id));
-        setInkoopFacturen((prev: any[]) => (prev || []).filter((f: any) => !legeIds.has(f.id)));
-        setBankKoppelingen((prev: any) => {
-          const out: any = {};
-          for (const [k, v] of Object.entries(prev || {})) {
-            const koppeling: any = v;
-            if (koppeling?.soort === 'inkoop' && legeIds.has(koppeling.factuurId)) continue;
-            out[k] = v;
-          }
-          return out;
-        });
-        logAudit(auditLog, setAuditLog, {
-          entiteit: 'Inkoopfactuur',
-          entiteit_id: 0,
-          actie: 'verwijderd',
-          omschrijving: t('audit_lege_facturen_opgeruimd').replace('{n}', String(lege.length)),
-        });
-      }
+      // Vragen in een venster van de app (geen confirm()); opruimen pas na
+      // "Opruimen" (ruimLegeFacturenOp hieronder). Eenmalig, zoals voorheen.
+      setLegeFacturenVraag(lege.map((f: any) => f.id));
       setLegeFacturenMigratie('done');
     };
     if (ready()) { run(); return; }
@@ -1111,6 +1100,30 @@ function App() {
     const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000);
     return () => { clearInterval(int); clearTimeout(timeout); };
   }, [legeFacturenMigratie]);
+
+  // De vraag van de migratie hierboven: welke lege facturen opgeruimd mogen
+  // worden. Pas na "Opruimen" verdwijnen ze (met hun inkoopkoppelingen).
+  const [legeFacturenVraag, setLegeFacturenVraag] = React.useState<any[] | null>(null);
+  const ruimLegeFacturenOp = (ids: any[]) => {
+    const legeIds = new Set(ids);
+    setInkoopFacturen((prev: any[]) => (prev || []).filter((f: any) => !legeIds.has(f.id)));
+    setBankKoppelingen((prev: any) => {
+      const out: any = {};
+      for (const [k, v] of Object.entries(prev || {})) {
+        const koppeling: any = v;
+        if (koppeling?.soort === 'inkoop' && legeIds.has(koppeling.factuurId)) continue;
+        out[k] = v;
+      }
+      return out;
+    });
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Inkoopfactuur',
+      entiteit_id: 0,
+      actie: 'verwijderd',
+      omschrijving: t('audit_lege_facturen_opgeruimd').replace('{n}', String(ids.length)),
+    });
+    setLegeFacturenVraag(null);
+  };
 
   // Eenmalige journaal-opbouw (ERP-plan 2.1): een bestaande administratie
   // krijgt journaalregels voor alle al aanwezige verkoop-/inkoopfacturen en
@@ -1154,16 +1167,44 @@ function App() {
     setJournaalMigratie('done');
   }, [journaalStoresGeladen, journaalMigratie, journaal, verkoopFacturen, inkoopFacturen, accijnsAangiftes, btwAangiftes, btwInst]);
 
-  // Brewfather-autosync: één keer per mount, pas als de rol bekend is en de
-  // stores waarmee de statusovername rekent (tanks, vrijgaven, afvullingen,
-  // log) van de server zijn — een poller, want een 404-fetch verandert geen
-  // state. Een rol die geen batches mag schrijven slaat de sync over.
-  // `lastSync` staat in de beheer-only credentials-key: alleen beheer werkt
-  // hem bij, anders volgt bij elke start een 403 en een "geen rechten"-melding.
+  // Brewfather, per onderdeel uit / lezen / schrijven (utils/bfRichting.ts,
+  // Instellingen → Koppelingen; de server houdt zich er ook aan). Status en
+  // meetwaarden van gekoppelde batches: op *lezen* haalt de sync ze bij het
+  // openen uit Brewfather, op *schrijven* gaan ze vanzelf naar Brewfather.
+  // Recepten en ingrediënten haal je op hun eigen pagina op (Sync).
+  const bfAan = bfKoppelingAan(bfCreds);
+  const bfRicht = React.useMemo(() => bfRichtingen(bfCreds), [bfCreds?.richting]);
+  const bfRichtingStatus = bfRicht.batch_status;
+  const bfRichtingMetingen = bfRicht.batch_metingen;
+  // Koppelen (de batchpagina, "Nieuw in Brewfather") zodra status of
+  // meetwaarden niet uit staan.
+  const bfKoppelbaar = bfAan && bfBatchesKoppelbaar(bfRicht);
+  // De Brewfather-batches om aan te koppelen (niet bewaard): de batchpagina
+  // kiest hieruit bij "Koppel aan Brewfather", Batches › Lopend toont de nog
+  // niet gekoppelde als "Nieuw in Brewfather". `null` = nog niet opgehaald.
+  const [bfBatchLijst, setBfBatchLijst] = useState<any[] | null>(null);
+  const vernieuwBfBatches = React.useCallback(async (): Promise<{ok: boolean, fout?: string}> => {
+    try {
+      const { batches, volledig, fout } = await bfGetBatches();
+      if (batches.length || volledig) setBfBatchLijst(batches);
+      return {ok: volledig, fout};
+    } catch (e: any) { return {ok: false, fout: e?.message || String(e)}; }
+  }, []);
+
+  // ── Lezen: de sync bij het openen (en na een nieuwe koppeling) ──
+  // Pas als de rol bekend is en de stores waarmee de statusovername rekent
+  // (tanks, vrijgaven, afvullingen, log) van de server zijn — een poller, want
+  // een 404-fetch verandert geen state. Een rol die geen batches mag schrijven
+  // slaat de sync over. `lastSync` staat in de beheer-only credentials-key:
+  // alleen beheer werkt hem bij.
   const tankStatussenRef = React.useRef<any>(tankStatussen);
   tankStatussenRef.current = tankStatussen;
   const tankLogRef = React.useRef<any[]>(tankReinigingLog);
   tankLogRef.current = tankReinigingLog;
+  const vrijgavenRef = React.useRef<any[]>(haccpVrijgaven);
+  vrijgavenRef.current = haccpVrijgaven;
+  const avRef = React.useRef<any[]>(av);
+  avRef.current = av;
   const [bfSyncStoresGeladen, setBfSyncStoresGeladen] = useState(false);
   React.useEffect(() => {
     const needed = ['batches', 'tank_statussen', 'tank_reinigingslog', 'haccp_vrijgaven', 'afvullingen', 'voorraad_log', 'audit_log'];
@@ -1173,15 +1214,34 @@ function App() {
     const timeout = setTimeout(() => clearInterval(int), 30000);
     return () => { clearInterval(int); clearTimeout(timeout); };
   }, []);
+  const bfLezen = bfAan && bfBatchesLezen(bfRicht);
+  // Welke batches gekoppeld zijn: een nieuwe koppeling haalt meteen op
+  // (ontkoppelen haalt niets op).
+  const bfGekoppeld = React.useMemo(() => (bat || [])
+    .filter((b: any) => b?.brewfather_id).map((b: any) => `${b.id}:${b.brewfather_id}`).sort().join(','), [bat]);
+  const bfGelezen = React.useRef<{gekoppeld: string, richting: string} | null>(null);
+  const bfLeesBezig = React.useRef(false);
   React.useEffect(() => {
-    if (bfAutoSynced.current || !bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) return;
-    if (!whoamiKlaar || !bfSyncStoresGeladen) return;
-    bfAutoSynced.current = true;
+    if (!bfLezen || !whoamiKlaar || !bfSyncStoresGeladen || bfLeesBezig.current) return;
     const rol = whoami?.rol;
     if (!rolMagKey(rol, 'batches')) return;
+    const richting = `${bfRichtingStatus}/${bfRichtingMetingen}`;
+    const vorige = bfGelezen.current;
+    if (vorige && vorige.richting === richting) {
+      const was = new Set(vorige.gekoppeld.split(','));
+      const nieuw = bfGekoppeld.split(',').some(x => x && !was.has(x));
+      bfGelezen.current = {gekoppeld: bfGekoppeld, richting};
+      if (!nieuw) return;
+    }
+    bfGelezen.current = {gekoppeld: bfGekoppeld, richting};
+    const statusLezen = bfRichtingStatus === 'lezen';
+    const metingenLezen = bfRichtingMetingen === 'lezen';
+    const eersteKeer = !vorige;
+    bfLeesBezig.current = true;
     (async () => {
       try {
-        const bfBatches = await bfGetBatches();
+        const { batches: bfBatches, volledig } = await bfGetBatches({waarden: true});
+        setBfBatchLijst(bfBatches);
         const updBatches: any[] = [];
         // Statusovername langs de regels van de batch-flow (utils/bfStatus.ts),
         // batch na batch op de al bijgewerkte stand: twee batches mogen niet
@@ -1191,28 +1251,31 @@ function App() {
         let tankLg = tankLogRef.current;
         let tankGewijzigd = false;
         const statusWissels: Array<{id: number, oud: string, nieuw: string}> = [];
+        const overnames: Array<{id: number, velden: Record<string, {oud: any, nieuw: any}>}> = [];
         for (const bfB of bfBatches) {
-          // Matchen gebeurt uitsluitend op brewfather_id om te voorkomen dat
-          // een toevallige gelijkenis tussen app-`batch_nummer` en BF-`batchNo`
-          // twee verschillende batches aan elkaar koppelt.
+          // Alleen op brewfather_id: een toevallige gelijkenis tussen
+          // batchnummers koppelt nooit twee verschillende batches.
           const existing = werkBatches.find((b: any) => b.brewfather_id === bfB._id);
-          const appStatus = BF_TO_APP[bfB.status] || 'Gepland';
-          if (!existing) {
-            // Auto-sync importeert geen nieuwe batches meer — die komen via
-            // het popup-importscherm op de Batches-pagina (handmatige sync).
-            continue;
+          if (!existing) continue;
+          let ch: Record<string, unknown> = {};
+          let overgenomen: BfOvername[] = [];
+          if (metingenLezen) {
+            // Nooit stil overschrijven wat hier is aangepast (utils/bfBatchSync.ts);
+            // een verschil komt als melding op de batch.
+            const u = bfBatchWijzigingen(existing, bfB, bfProfielen(bfB));
+            ch = u.ch; overgenomen = u.overgenomen;
           } else {
-            const ch: any = {brewfather_id: bfB._id};
-            if (bfB.batchNo != null && !existing.brewfather_batch_nummer) {
-              ch.brewfather_batch_nummer = String(bfB.batchNo);
-            }
+            if (bfB.batchNo != null && !existing.brewfather_batch_nummer) ch.brewfather_batch_nummer = String(bfB.batchNo);
+            if (existing.bf_verweesd) ch.bf_verweesd = undefined;
+          }
+          const appStatus = statusLezen ? BF_NAAR_APP_STATUS[bfB.status] : undefined;
+          if (appStatus) {
             // Alleen vooruit, en niet als de batch-flow hier zou blokkeren of
             // een bevestiging zou vragen (tank bezet/niet ontsmet, geen CCP 1-
-            // vrijgave). Dan blijft de status staan tot de brouwer hem zelf
-            // doorzet in de batch-flow.
+            // vrijgave): dan zet de brouwer hem zelf door.
             const overgang = bfStatusOvergang(existing, appStatus, {
               batches: werkBatches, tankStatussen: tankSt, tankLog: tankLg,
-              vrijgaven: haccpVrijgaven || [], afvullingen: av || [], datum: tod(),
+              vrijgaven: vrijgavenRef.current || [], afvullingen: avRef.current || [], datum: tod(),
             });
             if (overgang.status) {
               ch.status = overgang.status;
@@ -1220,42 +1283,22 @@ function App() {
               werkBatches = werkBatches.map((b: any) => b.id === existing.id ? {...b, status: overgang.status} : b);
               if (overgang.tankGewijzigd) { tankSt = overgang.tankStatussen; tankLg = overgang.tankLog; tankGewijzigd = true; }
             }
-            if (bfB.measuredBatchSize) ch.liter_vergist = bfNumSafe(bfB.measuredBatchSize);
-            // Gravity op 3 dec, ABV op 2 dec afronden; een door de gebruiker
-            // vastgezette ABV (abv_definitief) NOOIT overschrijven. Een ABV uit
-            // Brewfather draagt die bron (`abv_bron`), zodat de etiketkaart hem
-            // "Brewfather" noemt en niet "ingevoerd" (utils/etiket.ts).
-            if (bfB.measuredOg)  { const _n = Number(bfNumSafe(bfB.measuredOg)); ch.OG = isNaN(_n) ? '' : Math.round(_n * 1000) / 1000; }
-            if (bfB.measuredFg)  { const _n = Number(bfNumSafe(bfB.measuredFg)); ch.FG = isNaN(_n) ? '' : Math.round(_n * 1000) / 1000; }
-            if (bfB.measuredAbv && !existing.abv_definitief) {
-              const _n = Number(bfNumSafe(bfB.measuredAbv));
-              ch.ABV = isNaN(_n) ? '' : Math.round(_n * 100) / 100;
-              if (ch.ABV !== '') ch.abv_bron = 'brewfather';
-            }
-            // Schattingen (recept-doel) blijven als 'verwacht' bewaard — dit zijn
-            // géén metingen en overschrijven de gemeten velden nooit.
-            if (bfB.estimatedOg)  { const _n = Number(bfNumSafe(bfB.estimatedOg));  ch.verwacht_og  = isNaN(_n) ? '' : Math.round(_n * 1000) / 1000; }
-            if (bfB.estimatedFg)  { const _n = Number(bfNumSafe(bfB.estimatedFg));  ch.verwacht_fg  = isNaN(_n) ? '' : Math.round(_n * 1000) / 1000; }
-            if (bfB.estimatedAbv) { const _n = Number(bfNumSafe(bfB.estimatedAbv)); ch.verwacht_abv = isNaN(_n) ? '' : Math.round(_n * 100) / 100; }
-            if (bfB.measuredBrewhouseEfficiency != null) ch.brouwzaal_eff = bfNumSafe(bfB.measuredBrewhouseEfficiency);
-            else if (bfB.estimatedBrewhouseEfficiency != null && !existing.brouwzaal_eff) ch.brouwzaal_eff = bfNumSafe(bfB.estimatedBrewhouseEfficiency);
-            if (bfB.measuredMashEfficiency != null) ch.maisch_eff = bfNumSafe(bfB.measuredMashEfficiency);
-            if (bfB.measuredMashPh != null) ch.maisch_ph = bfNumSafe(bfB.measuredMashPh);
-            if (bfB.measuredFermentationPh != null) ch.product_ph = bfNumSafe(bfB.measuredFermentationPh);
-            else if (bfB.measuredPh != null && !existing.product_ph) ch.product_ph = bfNumSafe(bfB.measuredPh);
-            { const _rawN=bfB.notes||bfB.tasteNotes; if (_rawN && !existing.notities) { ch.notities = Array.isArray(_rawN)?_rawN.map((x: any)=>typeof x==='string'?x:(x?.note||x?.text||x?.message||'')).filter(Boolean).join('\n'):(typeof _rawN==='object'&&_rawN?String((_rawN as any).$string||(_rawN as any).text||(_rawN as any).note||''):String(_rawN||'')); } }
-            // Profielen alleen overnemen als Brewfather er werkelijk een
-            // heeft. Onvoorwaardelijk toekennen wiste een profiel dat hier
-            // was ingevuld zodra het recept in Brewfather er geen had — en
-            // deze sync draait vanzelf bij het openen van de app.
-            const mapped = bfMapBatch(bfB);
-            if (mapped.vergistingsprofiel?.length) ch.vergistingsprofiel = mapped.vergistingsprofiel;
-            if (mapped.maischprofiel?.length) ch.maischprofiel = mapped.maischprofiel;
-            updBatches.push({id: existing.id, ch});
           }
+          if (overgenomen.length) {
+            const velden: Record<string, {oud: any, nieuw: any}> = {};
+            for (const o of overgenomen) velden[o.veld] = {oud: o.oud, nieuw: o.nieuw};
+            overnames.push({id: existing.id, velden});
+          }
+          if (Object.keys(ch).length) updBatches.push({id: existing.id, ch});
         }
-        if (updBatches.length) setBat((prev: any) => prev.map((b: any) => {
-          const u = updBatches.find((x: any)=>x.id===b.id); return u ? {...b, ...u.ch} : b;
+        // Een gekoppelde batch die niet meer in Brewfather staat (alleen als
+        // de hele lijst goed binnenkwam) krijgt een melding op de batchpagina.
+        const bfIds = new Set<string>(bfBatches.map((b: any) => String(b._id)));
+        for (const id of bfVerweesdeBatches(werkBatches, bfIds, volledig)) {
+          updBatches.push({id, ch: {bf_verweesd: tod()}});
+        }
+        if (updBatches.length) setBat((prev: any) => (prev || []).map((b: any) => {
+          const u = updBatches.find((x: any) => x.id === b.id); return u ? {...b, ...u.ch} : b;
         }));
         // Zelfde neveneffecten als gaNaarFase: tank op Vuil bij vertrek, een
         // statusregel (de tijdlijn van het batchdossier leest 'Oud → Nieuw')
@@ -1273,10 +1316,61 @@ function App() {
             omschrijving: t('audit_status_brewfather').replace('{oud}', w.oud).replace('{nieuw}', w.nieuw),
           });
         }
-        if (rolMagKey(rol, 'brewfather_creds')) setBfCreds((prev: any) => ({...prev, lastSync: tod()}));
-      } catch(e) { /* silent */ }
+        // Elke overname van een gemeten waarde: één auditregel per batch.
+        for (const o of overnames) logAudit(auditLog, setAuditLog, {
+          entiteit: 'Batch', entiteit_id: o.id, actie: 'gewijzigd', velden: o.velden,
+          omschrijving: t('audit_brewfather_overgenomen').replace('{velden}',
+            Object.keys(o.velden).map(v => t(BF_VELD_LABEL[v as BfVeld] || v)).join(', ')),
+        });
+        if (eersteKeer && rolMagKey(rol, 'brewfather_creds')) setBfCreds((prev: any) => ({...prev, lastSync: tod()}));
+      } catch (e) { console.debug('[bf] batchsync mislukt', e) }
+      finally { bfLeesBezig.current = false; }
     })();
-  }, [bfCreds?.enabled, bfCreds?.userId, whoamiKlaar, bfSyncStoresGeladen]);
+  }, [bfLezen, whoamiKlaar, bfSyncStoresGeladen, bfGekoppeld, bfRichtingStatus, bfRichtingMetingen]);
+
+  // ── Schrijven: een paar seconden na een wijziging ──
+  // Een reeks metingen = één bericht; alleen de batches waarvan het bericht
+  // anders is dan het vorige, één voor één, met alleen de delen die op
+  // schrijven staan (utils/bfTerugschrijven.ts). Een mislukte poging wacht een
+  // kwartier (geen lus); een 404 maakt de batch verweesd (melding op de batch).
+  const bfPogingen = React.useRef(new Map<number, {sleutel: string, op: number}>());
+  const bfBezig = React.useRef(false);
+  const bfDelen = React.useMemo(() => ({
+    status: bfRichtingStatus === 'schrijven', metingen: bfRichtingMetingen === 'schrijven',
+  }), [bfRichtingStatus, bfRichtingMetingen]);
+  const bfMagSchrijven = bfAan && bfBatchesSchrijven(bfRicht) && whoamiKlaar && rolMagKey(whoami?.rol, 'batches') && _fetchedKeys.has('batches');
+  // Een mislukte poging komt na een kwartier opnieuw aan de beurt, ook als er
+  // intussen niets verandert.
+  const [bfTik, setBfTik] = useState(0);
+  React.useEffect(() => {
+    if (!bfMagSchrijven) return;
+    const int = setInterval(() => setBfTik(n => n + 1), 15 * 60_000);
+    return () => clearInterval(int);
+  }, [bfMagSchrijven]);
+  React.useEffect(() => {
+    if (!bfMagSchrijven) return;
+    const teSchrijven = (lijst: any[]) => bfTeSchrijven(lijst, {
+      afgevuldLiter: id => afgevuldeLiters(id, avRef.current || []), pogingen: bfPogingen.current, delen: bfDelen,
+    });
+    if (!teSchrijven(bat || []).length) return;
+    const timer = setTimeout(async () => {
+      if (bfBezig.current) return;
+      bfBezig.current = true;
+      try {
+        // Opnieuw op de verse stand: tijdens het wachten kan er meer veranderd zijn.
+        for (const item of teSchrijven(batRef.current || [])) {
+          const r = await bfPatchBatch(item.bfId, item.bericht);
+          if (!r.ok) bfPogingen.current.set(item.id, {sleutel: item.sleutel, op: Date.now()});
+          else bfPogingen.current.delete(item.id);
+          const ch = bfNaPush(r, item, tod(), new Date().toISOString());
+          setBat((prev: any[]) => (prev || []).map((b: any) => b?.id === item.id ? {...b, ...ch} : b));
+          // Te veel aanroepen: de rest later (de wachttijd van Brewfather gaat voor).
+          if (r.status === 429) break;
+        }
+      } finally { bfBezig.current = false; }
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [bat, av, bfMagSchrijven, bfTik, bfDelen]);
 
   // Live tank temps for dashboard: refresh every 60s, all sensors regardless of batch status
   const [haTankTemps, setHaTankTemps] = React.useState<Record<string, number>>({})
@@ -1516,6 +1610,12 @@ function App() {
     const id = setInterval(() => setStapNowTick(n => n + 1), 5 * 60 * 1000)
     return () => clearInterval(id)
   }, [heeftGistendeBatch])
+  // De naam van een batch in de Nu-actief-strook: dezelfde titel als overal
+  // (product → recept → naam, met nummer: "Kadeblond #2609"), niet de kale
+  // `naam` die bij een batch uit een product vaak leeg is.
+  const batchLabel = React.useCallback((b: any): string =>
+    batchTitel(b, { producten, recepten }).label || b?.biernaam || t('lbl_naamloos'),
+  [producten, recepten])
   const stapGereedBatches = React.useMemo(() => {
     if (notificatieInst?.on_screen === false) return []
     const nu = Date.now()
@@ -1530,13 +1630,13 @@ function App() {
         return {
           id: b.id as number,
           ackKey: `${b.id}:${b.vergisting_stap_start || start || ''}`,
-          naam: b.naam || b.biernaam || t('lbl_naamloos'),
+          naam: batchLabel(b),
           stap: stap.type || t('lbl_stap_n').replace('{n}', String(idx + 1)),
           dag: dagen != null ? Math.floor(dagen) + 1 : 1,
         }
       })
       .filter((x: any) => !stapAcked.includes(x.ackKey))
-  }, [bat, stapAcked, notificatieInst?.on_screen, stapNowTick])
+  }, [bat, stapAcked, notificatieInst?.on_screen, stapNowTick, batchLabel])
 
   // ── Temperatuurbewaking gisttanks ──────────────────────────────────────────
   // De server-tick beoordeelt elke 5 minuten de automatische metingen en opent
@@ -1854,12 +1954,12 @@ function App() {
           id: a.id as number,
           batchId: a.batch_id as number,
           soort: a.soort as string,
-          naam: b?.naam || b?.biernaam || t('lbl_naamloos'),
+          naam: b ? batchLabel(b) : t('lbl_naamloos'),
           tank: tk?.naam || a.tank || '',
           tekst: tankAlarmTekst(a),
         }
       })
-  }, [tankAlarmen, bat, tanks, notificatieInst?.on_screen, bewakingAan])
+  }, [tankAlarmen, bat, tanks, notificatieInst?.on_screen, bewakingAan, batchLabel])
 
   // Wegklikken bewaart de bevestiging op de regel zelf: de storing blijft open
   // (en zichtbaar bij de batch), maar de banner komt niet terug — tot de server
@@ -1886,7 +1986,7 @@ function App() {
   }
   const brouwendeBatches = React.useMemo(() => (bat || [])
     .filter((b: any) => b.status === 'Brouwen')
-    .map((b: any) => ({ id: b.id as number, naam: b.naam || b.biernaam || t('lbl_naamloos') })), [bat])
+    .map((b: any) => ({ id: b.id as number, naam: batchLabel(b) })), [bat, batchLabel])
   const carboniserendeBatches = React.useMemo(() => {
     const seen = new Set<number>()
     const out: Array<{ id: number, naam: string }> = []
@@ -1895,10 +1995,10 @@ function App() {
       const b = (bat || []).find((x: any) => x.id === s.batch_id)
       if (!b || b.status !== 'Conditioneren' || seen.has(b.id)) continue
       seen.add(b.id)
-      out.push({ id: b.id as number, naam: b.naam || b.biernaam || t('lbl_naamloos') })
+      out.push({ id: b.id as number, naam: batchLabel(b) })
     }
     return out
-  }, [bat, carbSessies])
+  }, [bat, carbSessies, batchLabel])
   const nuActief: NuActiefChip[] = React.useMemo(() => {
     const chips: NuActiefChip[] = []
     for (const a of openTankAlarmen) chips.push({
@@ -1917,7 +2017,7 @@ function App() {
       const b = (bat || []).find((x: any) => x.id === s.batch_id)
       chips.push({
         key: `carbdoel:${s.id}`, soort: 'carb_doel', actie: true,
-        tekst: t('nu_chip_carb_doel').replace('{batch}', b?.naam || b?.biernaam || t('lbl_naamloos')),
+        tekst: t('nu_chip_carb_doel').replace('{batch}', b ? batchLabel(b) : t('lbl_naamloos')),
         knop: t('nu_btn_afronden'), batchId: s.batch_id,
         onOpen: () => openBatch(s.batch_id), onSluit: () => setCarbAcked((p: number[]) => [...p, s.id]),
       })
@@ -1949,7 +2049,7 @@ function App() {
       })
     }
     return chips
-  }, [openTankAlarmen, stapGereedBatches, carbDoelBereikt, wcAutoMelding, brouwendeBatches, carboniserendeBatches, bat, ruimteklimaatAan, rkStatus])
+  }, [openTankAlarmen, stapGereedBatches, carbDoelBereikt, wcAutoMelding, brouwendeBatches, carboniserendeBatches, bat, ruimteklimaatAan, rkStatus, batchLabel])
 
   const doExport = () => {
     excelExport({
@@ -2021,11 +2121,21 @@ function App() {
     });
   };
 
+  // Backup terugzetten: eerst een venster met de vraag (geen confirm()), de
+  // fout van een ongeldig bestand in datzelfde venster (geen alert()).
+  const [importBestand, setImportBestand] = React.useState<File | null>(null);
+  const [importFout, setImportFout] = React.useState('');
   const doImport = (e: any) => {
     const f = e.target.files?.[0];
+    e.target.value = '';
     if (!f) return;
-    if (!confirm(t('err_confirm_backup_import'))) { e.target.value = ''; return; }
+    setImportFout('');
+    setImportBestand(f);
+  };
+  const zetBackupTerug = (f: File) => {
+    setImportFout('');
     excelImport(f, (d) => {
+      setImportBestand(null);
       if (Array.isArray(d.ingredienten)) setIng(d.ingredienten);
       if (Array.isArray(d.lots)) setLots(d.lots);
       if (Array.isArray(d.batches)) setBat(d.batches);
@@ -2147,8 +2257,7 @@ function App() {
         entiteit: 'Instelling', entiteit_id: 0, actie: 'gewijzigd',
         omschrijving: `Backup teruggezet uit "${f.name}" — ${teruggezet.length} gegevenssoorten, ${records} records`,
       });
-    }, (msg?: string) => alert(t('err_invalid_backup') + (msg ? `\n\n${msg}` : '')));
-    e.target.value = '';
+    }, (msg?: string) => setImportFout(t('err_invalid_backup') + (msg ? ` ${msg}` : '')));
   };
 
   const resetApp = () => {
@@ -2193,7 +2302,7 @@ function App() {
     setHaccpCcpDefinities(DEFAULT_CCP_DEFINITIES); setHaccpCcpMetingen([]);
     setHaccpCapa([]); setHaccpWaterkwaliteit([]);
     setHaccpOngedierte([]); setHaccpOpleidingen([]);
-    setLogo(null); setFactuurLogo(null); setAppName(''); setNavTheme('amber');
+    setLogo(null); setFactuurLogo(null); setAppName(''); setNavTheme(THEMA_STANDAARD);
     setWcSyncLog([]);
     // Het journaal wordt bewust NIET gewist: het is de onveranderlijke
     // financiële vastlegging (fiscale bewaarplicht) en de server weigert
@@ -2398,7 +2507,7 @@ function App() {
   // via api/app_icoon (ETag); pas als dat 404't valt hij terug op het
   // ingebouwde standaardicoon.
   const [logoIcoonFout, setLogoIcoonFout] = React.useState(false);
-  const nt = NAV_THEMES[navTheme] || NAV_THEMES.amber;
+  const nt = NAV_THEMES[navTheme] || NAV_THEMES[THEMA_STANDAARD];
   // --safe-top (zie het thema-effect hieronder): als home-screen-app op iOS
   // staat de webview sinds het schrappen van `black-translucent` (1.12.57)
   // ónder een ondoorzichtige statusbalk, dus de inset is in staand formaat
@@ -2408,9 +2517,14 @@ function App() {
   // worden.
   const kopStyle = {background:`linear-gradient(to right, ${nt.from}, ${nt.to}, ${nt.from})`, paddingTop: 'var(--safe-top, 0px)'};
   const railStyle = {background:`linear-gradient(to bottom, ${nt.from}, ${nt.to})`};
-  React.useEffect(() => {
-    const th = NAV_THEMES[navTheme] || NAV_THEMES.amber;
+  // useLayoutEffect: vóór de eerste weergave, zodat een thema met een eigen
+  // lettertype (CSS onder `html[data-thema]`) niet eerst in Inter verschijnt.
+  React.useLayoutEffect(() => {
+    const th = NAV_THEMES[navTheme] || NAV_THEMES[THEMA_STANDAARD];
+    document.documentElement.dataset.thema = NAV_THEMES[navTheme] ? navTheme : THEMA_STANDAARD;
     const r = document.documentElement.style;
+    r.setProperty('--t-btn-text', th.btnText || '#ffffff');
+    r.setProperty('--t-hdr', th.hdr || th.btnA);
     r.setProperty('--t-accent', th.accent);
     r.setProperty('--t-light',  th.light);
     r.setProperty('--t-pale',   th.pale);
@@ -2605,6 +2719,11 @@ function App() {
     openBatchId: navBatchId,
     onOpenBatch: openRecord('batches'),
     onNieuweBatch: openNieuweBatch,
+    // Brewfather koppelen (utils/bfKoppeling.ts): alleen als de koppeling aan staat.
+    bfAan: bfKoppelbaar,
+    bfRichting: bfRicht,
+    bfBatchLijst,
+    vernieuwBfBatches,
     setProductArtikelen,
     ccpMetingen: haccpCcpMetingen,
     setCcpMetingen: setHaccpCcpMetingen,
@@ -2691,7 +2810,7 @@ function App() {
       {nuActief.length > 0 && (
         <div role="status" aria-live="polite" className="bg-gray-50 border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-3 sm:px-4 min-h-[2.5rem] py-1 flex items-center gap-2 overflow-x-auto nav-scroll">
-            <span className="text-[11px] font-semibold text-gray-500 flex-shrink-0">{t('nu_actief')}</span>
+            <span className="text-xs font-semibold text-gray-500 flex-shrink-0">{t('nu_actief')}</span>
             {nuActief.map(c => {
               const open = navBatchId != null && c.batchId === navBatchId;
               return (
@@ -2700,7 +2819,7 @@ function App() {
                     className={`flex items-center gap-1.5 pl-2.5 py-1 min-h-[32px] text-xs whitespace-nowrap ${c.actie ? 'font-semibold pr-1' : 'font-medium pr-2.5'}`}>
                     <span className={`inline-block w-2 h-2 rounded-full ${NU_ACTIEF_DOT[c.soort]} ${c.actie ? 'animate-pulse' : ''}`} aria-hidden="true" />
                     <span>{c.tekst}</span>
-                    {c.actie && c.knop && <span className="ml-1 tbtn text-white rounded-full px-2 py-0.5 text-[11px] font-semibold">{c.knop} ›</span>}
+                    {c.actie && c.knop && <span className="ml-1 tbtn text-white rounded-full px-2 py-0.5 text-xs font-semibold">{c.knop} ›</span>}
                   </button>
                   {c.actie && c.onSluit && (
                     <button type="button" onClick={c.onSluit} aria-label={t('nu_chip_wegklikken')} title={t('nu_chip_wegklikken')}
@@ -2817,6 +2936,29 @@ function App() {
           onSluit={() => setAllergenenVerzoek(null)}
         />
       )}
+      {legeFacturenVraag && legeFacturenVraag.length > 0 && (
+        <Modal title={t('lege_facturen_titel')} onClose={() => setLegeFacturenVraag(null)}>
+          <p className="text-sm text-gray-700 mb-4">
+            {t('confirm_lege_facturen_opruimen').replace('{n}', String(legeFacturenVraag.length))}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Btn v="secondary" onClick={() => setLegeFacturenVraag(null)}>{t('lege_facturen_laten')}</Btn>
+            <Btn v="danger" onClick={() => ruimLegeFacturenOp(legeFacturenVraag)}>{t('lege_facturen_opruimen')}</Btn>
+          </div>
+        </Modal>
+      )}
+      {importBestand && (
+        <Modal title={t('backup_terugzetten_titel')} onClose={() => { setImportBestand(null); setImportFout(''); }}>
+          <p className="text-sm text-gray-700">{t('err_confirm_backup_import')}</p>
+          <p className="text-sm text-gray-500 mt-1 break-words min-w-0">{importBestand.name}</p>
+          {importFout && <p role="alert" className="text-sm text-red-600 mt-3">{importFout}</p>}
+          <div className="flex justify-end gap-2 mt-4">
+            <Btn v="secondary" onClick={() => { setImportBestand(null); setImportFout(''); }}>{t('btn_cancel')}</Btn>
+            <Btn v="danger" onClick={() => zetBackupTerug(importBestand)}>{t('backup_terugzetten_knop')}</Btn>
+          </div>
+        </Modal>
+      )}
+      <AppMelding />
       <UndoBar undo={undo} />
     </div>
     </AllergenenOpzoekenProvider>

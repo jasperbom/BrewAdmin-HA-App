@@ -3,6 +3,7 @@ import { t, getLang } from '../i18n'
 import { landOpties } from '../utils/btwCategorie'
 import { BESTEL_URL_STANDAARD } from '../utils/levering'
 import { ORDER_MAIL_SOORTEN, MAIL_HANDELING, mailAutoAan, zetMailAuto } from '../utils/orderMail'
+import { uitnodigingUrl, uitnodigingStandaard, isWhatsAppLink } from '../utils/mailUitnodiging'
 import { peppolSchemaVoor } from '../utils/ubl'
 import { controleerTemplate } from '../utils/template'
 import { FACTUUR_CSS_DEFAULT, FACTUUR_HTML_DEFAULT, FACTUUR_TEMPLATE_VELDEN } from '../utils/factuurTemplate'
@@ -10,7 +11,14 @@ import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
 import Sel from '../components/ui/Sel'
 import BevestigKnop from '../components/ui/BevestigKnop'
-import { BF_TO_APP, BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS, NAV_THEMES } from '../utils/constants'
+import { useUndo } from '../components/ui/UndoBar'
+import PaginaMelding from '../components/bestelling/PaginaMelding'
+import { APP_NAAR_BF_STATUS } from '../utils/bfTerugschrijven'
+import { BF_NAAR_APP_STATUS } from '../utils/bfStatus'
+import { BF_ONDERDELEN, BF_RICHTING_KEUZES, bfRichtingen, bfScopes } from '../utils/bfRichting'
+import type { BfOnderdeel, BfRichting, BfRichtingen } from '../utils/bfRichting'
+import Segment from '../components/ui/Segment'
+import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS, NAV_THEMES } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, mailTestApi, mailSendApi, mollieTestApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker, getServerHealth, ServerHealth } from '../utils/api'
 import { SCAN_MODELLEN, modelNaam } from '../utils/claudeScan'
@@ -206,6 +214,10 @@ const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => vo
   // Echte HA-gebruikers als keuzelijst (datalist) — vrije invoer blijft
   // mogelijk wanneer de lijst niet beschikbaar is (buiten HA / geen beheer).
   const [haGebruikers, setHaGebruikers] = React.useState<HaGebruiker[]>([]);
+  // Meldingen in de kaart i.p.v. alert(): de lockout-weigering en een
+  // mislukte uitlog. Elke volgende handeling wist ze.
+  const [fout, setFout] = React.useState('');
+  const [uitlogFout, setUitlogFout] = React.useState('');
   React.useEffect(() => {
     getWhoami().then(setWie);
     getHaGebruikers().then(g => { if (g) setHaGebruikers(g); });
@@ -220,10 +232,11 @@ const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => vo
   // Lockout-guard: de ingelogde beheerder mag zichzelf niet uit `beheer`
   // zetten (de server weigert dat ook, met 422 — dit vangt het eerder af).
   const opslaan = (next: any) => {
+    setFout('');
     if (wie?.gebruiker) {
       // Hoofdletterongevoelig, net als de server en HA zelf.
       const eigen = rolVanGebruiker(next, wie.gebruiker);
-      if (eigen !== 'beheer') { alert(t('settings_rollen_lockout')); return; }
+      if (eigen !== 'beheer') { setFout(t('settings_rollen_lockout')); return; }
     }
     setRollen(next);
   };
@@ -240,11 +253,13 @@ const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => vo
         </span>
         {wie?.sessie && (
           <Btn v="secondary" s="sm" onClick={async () => {
+            setUitlogFout('');
             if (await uitloggen()) location.reload();
-            else alert(t('err_uitloggen_mislukt'));
+            else setUitlogFout(t('err_uitloggen_mislukt'));
           }}>{t('btn_uitloggen')}</Btn>
         )}
       </div>
+      <PaginaMelding tekst={uitlogFout} onSluit={() => setUitlogFout('')} cls="-mt-2 mb-4" />
       {namen.length === 0 ? (
         <p className="text-sm text-gray-400 mb-4">{t('settings_rollen_leeg')}</p>
       ) : (
@@ -292,6 +307,7 @@ const RollenCard = ({rollen, setRollen}: {rollen: any, setRollen: (v: any) => vo
           setNaam('');
         }}>{t('settings_rollen_toevoegen')}</Btn>
       </div>
+      <PaginaMelding tekst={fout} onSluit={() => setFout('')} cls="mb-4" />
       <div className="flex flex-wrap items-center gap-3">
         <label className="text-xs font-semibold text-gray-500">{t('settings_rollen_standaard')}</label>
         <select value={conf.standaard_rol || 'beheer'} className={selectCls}
@@ -311,9 +327,12 @@ const LoginStyleCard = ({inst, setInst}: {inst: any, setInst: (v: any) => void})
   const [draft, setDraft] = React.useState({
     titel: conf.titel || '', ondertitel: conf.ondertitel || '',
     knop_tekst: conf.knop_tekst || '',
+    // Standaard = server.py _LOGIN_*_STANDAARD.
     accent: conf.accent || '#b45309', achtergrond: conf.achtergrond || '#1c1917',
   });
   const [msg, setMsg] = React.useState('');
+  // Afbeelding te groot: een rode regel bij de kiezer i.p.v. alert().
+  const [afbFout, setAfbFout] = React.useState('');
 
   // Actuele themakleur (--t-btn) als hex; kleurinputs accepteren alleen hex.
   const themaKleur = (): string => {
@@ -382,7 +401,8 @@ const LoginStyleCard = ({inst, setInst}: {inst: any, setInst: (v: any) => void})
               <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={(e: any) => {
                 const f = e.target.files?.[0];
                 if (!f) return;
-                if (f.size > 1_000_000) { alert(t('err_login_afb_groot')); e.target.value = ''; return; }
+                setAfbFout('');
+                if (f.size > 1_000_000) { setAfbFout(t('err_login_afb_groot')); e.target.value = ''; return; }
                 const reader = new FileReader();
                 reader.onload = (ev: any) => opslaan({achtergrond_afbeelding: ev.target.result});
                 reader.readAsDataURL(f);
@@ -390,11 +410,12 @@ const LoginStyleCard = ({inst, setInst}: {inst: any, setInst: (v: any) => void})
               }} />
             </label>
             {conf.achtergrond_afbeelding && (
-              <Btn v="danger" s="sm" onClick={() => opslaan({achtergrond_afbeelding: null})}>
+              <Btn v="danger" s="sm" onClick={() => { setAfbFout(''); opslaan({achtergrond_afbeelding: null}); }}>
                 {t('btn_login_afb_weg')}
               </Btn>
             )}
           </div>
+          <PaginaMelding tekst={afbFout} onSluit={() => setAfbFout('')} cls="mt-2" />
         </div>
         <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
           <input type="checkbox" className="t-checkbox" checked={conf.logo_tonen !== false}
@@ -536,7 +557,7 @@ const BackupCard = () => {
               </div>
               <button onClick={() => downloadBackup(b.date)}
                 className="text-xs font-medium px-2.5 py-1 rounded transition-colors"
-                style={{color: 'var(--t-accent)'}}>
+                style={{color: 'var(--t-accent-text, var(--t-accent))'}}>
                 {t('settings_backup_download')}
               </button>
             </div>
@@ -585,6 +606,22 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const [auditDateFrom, setAuditDateFrom] = React.useState('');
   const [auditDateTo, setAuditDateTo] = React.useState('');
   const [auditLimit, setAuditLimit] = React.useState(100);
+  // Verwijderen en terugzetten gaan met een terugweg van vijf seconden
+  // (UndoBar) i.p.v. confirm(); wat nog terug kan staat al uit beeld.
+  const undo = useUndo();
+  const wachtId = String(undo.actie?.id || '');
+  // Meldingen per kaart i.p.v. alert(): een rode regel bij de knop die ze
+  // veroorzaakte, gewist bij de volgende handeling.
+  const [tariefFout, setTariefFout] = React.useState('');
+  const [jaarFout, setJaarFout] = React.useState('');
+  const [tankFout, setTankFout] = React.useState('');
+  const [altRekFout, setAltRekFout] = React.useState('');
+  const [ingTypeFout, setIngTypeFout] = React.useState('');
+  const [kostenSoortFout, setKostenSoortFout] = React.useState('');
+  const [gnFout, setGnFout] = React.useState('');
+  const [groepFout, setGroepFout] = React.useState('');
+  const [resetMelding, setResetMelding] = React.useState<{soort: 'fout' | 'ok', tekst: string} | null>(null);
+  const [resetInvoer, setResetInvoer] = useState('');
 
   const testFormula = (formula: any) => {
     if (!formula.trim()) { setFormulaError(''); return true; }
@@ -604,7 +641,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const saveTarieven = () => {
     const r1 = parseFloat(tarieven.tarief_per_hl_abv);
     const r2 = parseFloat(tarieven.tarief_per_hl);
-    if (isNaN(r1)||isNaN(r2)) { alert(t('err_valid_numbers')); return; }
+    setTariefFout('');
+    if (isNaN(r1)||isNaN(r2)) { setTariefFout(t('err_valid_numbers')); return; }
     if (customFormulaEnabled && !testFormula(customFormula)) return;
     // Preserveer bestaande tarieven_historie — anders zou het opslaan van de
     // root-tarieven het hele historie-array wissen.
@@ -615,6 +653,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const resetTarieven = () => {
+    setTariefFout('');
     setTarieven({tarief_per_hl_abv:'7.51', tarief_per_hl:'24.17'});
     setCustomFormulaEnabled(false);
     setCustomFormula('');
@@ -666,12 +705,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const deleteHistorieEntry = (jaar: number) => {
-    if (!confirm(t('settings_excise_historie_confirm_delete').replace('{j}', String(jaar)))) return;
-    setAccijnsInst((prev: any) => ({
-      ...(prev || {}),
-      tarieven_historie: (prev?.tarieven_historie || []).filter((x: any) => Number(x.jaar) !== jaar),
-    }));
-    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'verwijderd', omschrijving:`Accijnstarief ${jaar} verwijderd`});
+    undo.plan(`accijnstarief-verwijder-${jaar}`, t('undo_accijnstarief_verwijderd', 'Accijnstarief {j} verwijderd').replace('{j}', String(jaar)), () => {
+      setAccijnsInst((prev: any) => ({
+        ...(prev || {}),
+        tarieven_historie: (prev?.tarieven_historie || []).filter((x: any) => Number(x.jaar) !== jaar),
+      }));
+      logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'verwijderd', omschrijving:`Accijnstarief ${jaar} verwijderd`});
+    });
   };
 
   const openImpact = (jaar: number, nieuwTarief: {tarief_per_hl_abv: number, tarief_per_hl: number, tarief_per_hl_plato?: number}, nogOpslaan: boolean) => {
@@ -701,9 +741,11 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   };
 
   const clearLog = () => {
-    if (!window.confirm(`${t('error_confirm_clear_log')} (${t('lbl_n_regels_n').replace('{n}', String((log||[]).length))})`)) return;
-    logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Foutlog gewist (${(log||[]).length} regels)`});
-    setLog([]);
+    const n = (log||[]).length;
+    undo.plan('log-wissen', t('undo_log_gewist', 'Mutatielog gewist ({n} regels)').replace('{n}', String(n)), () => {
+      logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Foutlog gewist (${n} regels)`});
+      setLog([]);
+    });
   };
 
   const [tankInput, setTankInput] = React.useState('');
@@ -717,9 +759,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const [editChecklistLabel, setEditChecklistLabel] = React.useState('');
   const addTank = () => {
     const id = tankInput.trim().toUpperCase();
+    setTankFout('');
     if (!id) return;
     // @ts-ignore
-    if (tanks.find(t=>t.id===id)) { alert(t('err_tank_exists').replace('{id}',id)); return; }
+    if (tanks.find(t=>t.id===id)) { setTankFout(t('err_tank_exists').replace('{id}',id)); return; }
     setTanks((prev: any)=>[...prev, {id, soort: tankSoortInput}]);
     logAudit(auditLog, setAuditLog, {entiteit:'Tank', entiteit_id:0, actie:'aangemaakt', omschrijving:`Tank ${id} (${tankSoortInput}) toegevoegd`});
     setTankInput('');
@@ -747,21 +790,30 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setIntegriteitResultaat((prev: any[]|null) => (prev || []).filter((x: any) => x !== p));
   };
 
-  const [bfForm, setBfForm]   = React.useState({userId: bfCreds?.userId||'', apiKey: bfCreds?.apiKey||'', enabled: bfCreds?.enabled||false});
+  // `richting` = per onderdeel uit / lezen / schrijven (utils/bfRichting.ts);
+  // de server leest dezelfde keuze uit de opgeslagen creds en houdt zich eraan.
+  const [bfForm, setBfForm]   = React.useState<{userId: string, apiKey: string, enabled: boolean, richting: BfRichtingen}>({userId: bfCreds?.userId||'', apiKey: bfCreds?.apiKey||'', enabled: bfCreds?.enabled||false, richting: bfRichtingen(bfCreds)});
   const [bfTesting, setBfTesting] = React.useState(false);
   const [bfMsg, setBfMsg]     = React.useState('');
 
   const bfFormInitialized = React.useRef(false);
   React.useEffect(() => {
     if (!bfFormInitialized.current && (bfCreds?.userId || bfCreds?.apiKey || bfCreds?.enabled)) {
-      setBfForm({userId: bfCreds.userId||'', apiKey: bfCreds.apiKey||'', enabled: bfCreds.enabled||false});
+      setBfForm({userId: bfCreds.userId||'', apiKey: bfCreds.apiKey||'', enabled: bfCreds.enabled||false, richting: bfRichtingen(bfCreds)});
       bfFormInitialized.current = true;
     }
   }, [bfCreds?.userId, bfCreds?.apiKey, bfCreds?.enabled]);
+  const kiesBfRichting = (o: BfOnderdeel, r: BfRichting) =>
+    setBfForm(f => ({...f, richting: {...f.richting, [o]: r}}));
 
   const saveBf = () => {
+    const oudeRichting = bfRichtingen(bfCreds);
     setBfCreds((prev: any) => ({...prev, ...bfForm}));
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Brewfather credentials ${bfForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
+    const gewijzigd = BF_ONDERDELEN.filter(o => oudeRichting[o] !== bfForm.richting[o]);
+    if (gewijzigd.length) logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd',
+      velden: Object.fromEntries(gewijzigd.map(o => [`brewfather_${o}`, {oud: oudeRichting[o], nieuw: bfForm.richting[o]}])),
+      omschrijving: t('audit_bf_richting').replace('{wat}', gewijzigd.map(o => `${t(`bf_onderdeel_${o}`)}: ${t(`bf_richting_${bfForm.richting[o]}`)}`).join(', '))});
     setBfMsg('✓ ' + t('lbl_saved'));
     setTimeout(() => setBfMsg(''), 2000);
   };
@@ -1302,11 +1354,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     const inGebruik = (inkoopFacturen||[]).some((f: any) => f.betaald_via_alt_id === id) ||
       (verkoopFacturen||[]).some((f: any) => f.verrekend_alt_id === id) ||
       Object.values(bankKoppelingen||{}).some((k: any) => k?.soort === 'aflossing' && k.altRekeningId === id)
-    if (inGebruik) { alert(t('msg_alt_rekening_in_gebruik')); return }
-    if (!confirm(t('msg_alt_rekening_verwijderen'))) return
+    setAltRekFout('')
+    if (inGebruik) { setAltRekFout(t('msg_alt_rekening_in_gebruik')); return }
     const r = (altRekeningen||[]).find((x: any) => x.id === id)
-    setAltRekeningen((prev: any[]) => prev.filter((x: any) => x.id !== id))
-    logAudit(auditLog, setAuditLog, {entiteit:'AltRekening', entiteit_id:id, actie:'verwijderd', omschrijving:r?.naam||''})
+    undo.plan(`altrek-verwijder-${id}`, t('undo_alt_rekening_verwijderd', 'Rekening verwijderd: {naam}').replace('{naam}', r?.naam || t('lbl_naamloos')), () => {
+      setAltRekeningen((prev: any[]) => prev.filter((x: any) => x.id !== id))
+      logAudit(auditLog, setAuditLog, {entiteit:'AltRekening', entiteit_id:id, actie:'verwijderd', omschrijving:r?.naam||''})
+    })
   }
 
   return (
@@ -1375,7 +1429,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               className={`flex items-center gap-2 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${lang===lng.code ? 't-nav' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
               <span className="text-[11px] font-semibold tracking-wide w-8 text-center rounded bg-gray-100 text-gray-600 py-0.5 flex-shrink-0">{lng.kort}</span>
               <span>{lng.label}</span>
-              {lang===lng.code && <span className="ml-auto" style={{color:'var(--t-accent)'}}>✓</span>}
+              {lang===lng.code && <span className="ml-auto" style={{color: 'var(--t-accent-text, var(--t-accent))'}}>✓</span>}
             </button>
           ))}
         </div>
@@ -1396,10 +1450,15 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             className="w-full max-w-xs border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2" />
         </div>
         <div className="flex items-center gap-4 flex-wrap">
-          {logo && (
+          {logo && wachtId !== 'logo-verwijder' && (
             <div className="relative">
               <img src={logo} alt={t('lbl_logo_current')} className="h-16 max-w-[180px] object-contain border border-gray-200 rounded-lg p-1 bg-white" />
-              <button onClick={()=>{ if(confirm(t('settings_logo_reset_confirm'))) setLogo(null); }}
+              <button onClick={()=>{
+                // Alleen dít logo weghalen: een nieuw logo dat binnen de
+                // terugweg is gekozen, blijft staan.
+                const weg = logo;
+                undo.plan('logo-verwijder', t('undo_logo_verwijderd', 'Logo verwijderd'), () => setLogo((prev: any) => prev === weg ? null : prev));
+              }}
                 className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-red-600 transition-colors"
                 title={t('btn_delete')}>✕</button>
             </div>
@@ -1458,6 +1517,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             {t('settings_tank_add_btn')}
           </button>
         </div>
+        <PaginaMelding tekst={tankFout} onSluit={() => setTankFout('')} cls="mt-2" />
       </div>
 
       {/* Planning-defaults: conditioneren-duur */}
@@ -1907,11 +1967,12 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   {t('settings_factuur_template_laad')}
                 </Btn>
                 {(html.trim() || css.trim()) && (
-                  <Btn v="danger" onClick={() => {
-                    if (!confirm(t('settings_factuur_template_reset_confirm'))) return
-                    setBreweryDetails((p: any) => {
-                      const {factuur_template: _weg, ...rest} = p || {}
-                      return rest
+                  <Btn v="danger" disabled={wachtId === 'factuurtemplate-reset'} onClick={() => {
+                    undo.plan('factuurtemplate-reset', t('undo_factuur_template_verwijderd', 'Eigen factuurlayout verwijderd'), () => {
+                      setBreweryDetails((p: any) => {
+                        const {factuur_template: _weg, ...rest} = p || {}
+                        return rest
+                      })
                     })
                   }}>{t('settings_factuur_template_reset')}</Btn>
                 )}
@@ -2057,6 +2118,55 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         </div>
       </div>
 
+      {/* Uitnodiging onder elke mail aan een klant (WhatsApp-groep, nieuwsbrief):
+          utils/mailUitnodiging.ts. De link staat alleen hier, in de
+          administratie — nooit in de code. Zonder geldige link gaat er niets mee. */}
+      {(() => {
+        const inst = (breweryDetails as any)?.mail_uitnodiging || {}
+        const zet = (veld: 'kop'|'tekst'|'knop'|'url', waarde: string) =>
+          setBreweryDetails((p: any) => ({...(p || {}), mail_uitnodiging: {...((p || {}).mail_uitnodiging || {}), [veld]: waarde}}))
+        const urlFout = !!String(inst.url || '').trim() && !uitnodigingUrl(inst.url)
+        // De voorbeeldteksten volgen de link: een WhatsApp-link krijgt die van WhatsApp.
+        const geldigeUrl = uitnodigingUrl(inst.url)
+        const std = uitnodigingStandaard(geldigeUrl)
+        const whatsapp = !!geldigeUrl && isWhatsAppLink(geldigeUrl)
+        return (
+          <div className={card}>
+            <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_mail_uitnodiging_title')}</h2>
+            <p className="text-sm text-gray-500 mb-4">{t('settings_mail_uitnodiging_desc')}</p>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_mail_uitnodiging_url')}</label>
+                <input type="url" value={inst.url || ''} onChange={(e: any) => zet('url', e.target.value)}
+                  placeholder="https://chat.whatsapp.com/…"
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+                {urlFout && <p className="text-xs text-red-600 mt-0.5">{t('settings_mail_uitnodiging_url_fout')}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_mail_uitnodiging_kop')}</label>
+                <input type="text" value={inst.kop || ''} onChange={(e: any) => zet('kop', e.target.value)}
+                  placeholder={std.kop}
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_mail_uitnodiging_tekst')}</label>
+                <textarea value={inst.tekst || ''} onChange={(e: any) => zet('tekst', e.target.value)}
+                  placeholder={std.tekst} rows={3}
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_mail_uitnodiging_knop')}</label>
+                <input type="text" value={inst.knop || ''} onChange={(e: any) => zet('knop', e.target.value)}
+                  placeholder={std.knop}
+                  className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
+              </div>
+              {whatsapp && <p className="text-xs text-gray-600">{t('settings_mail_uitnodiging_whatsapp')}</p>}
+              <p className="text-xs text-gray-500">{t('settings_mail_uitnodiging_hint')}</p>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Alternatieve betaalrekeningen */}
       <div className={card}>
         <div className="flex items-start justify-between gap-3 mb-1">
@@ -2064,6 +2174,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <Btn s="sm" onClick={()=>openAltRekModal()}>{t('btn_nieuwe_alt_rekening')}</Btn>
         </div>
         <p className="text-sm text-gray-500 mb-4">{t('settings_alt_rekeningen_desc')}</p>
+        <PaginaMelding tekst={altRekFout} onSluit={() => setAltRekFout('')} cls="mb-3" />
         {(altRekeningen||[]).length === 0 ? (
           <div className="text-center py-6 text-gray-400 text-sm">{t('msg_geen_alt_rekeningen')}</div>
         ) : (
@@ -2079,7 +2190,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 </tr>
               </thead>
               <tbody>
-                {(altRekeningen||[]).map((r: any) => {
+                {(altRekeningen||[]).filter((r: any) => wachtId !== `altrek-verwijder-${r.id}`).map((r: any) => {
                   const schuld = altRekSchuld(r.id)
                   return (
                     <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
@@ -2150,7 +2261,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_brewfather_section')}</h2>
         <p className="text-sm text-gray-500 mb-4">
           {t('settings_brewfather_connect_desc')}<br/>
-          {t('settings_brewfather_api_hint')}
+          {t('settings_brewfather_api_hint')}{' '}
+          {bfScopes(bfForm.richting).length
+            ? t('settings_brewfather_scopes').replace('{lijst}', bfScopes(bfForm.richting).map(sc => t(`bf_scope_${sc}`)).join(', '))
+            : t('settings_brewfather_scopes_geen')}
         </p>
         <div className="flex flex-col gap-4">
           <label className="flex items-center gap-3 cursor-pointer w-fit">
@@ -2174,6 +2288,23 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
             </div>
           </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-800">{t('settings_bf_richting_titel')}</p>
+            <p className="text-sm text-gray-500 mb-2">{t('settings_bf_richting_tekst')}</p>
+            <ul className="divide-y divide-gray-200 border-y border-gray-200">
+              {BF_ONDERDELEN.map(o => (
+                <li key={o} className="py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-700">{t(`bf_onderdeel_${o}`)}</p>
+                    <p className="text-xs text-gray-500">{t(`bf_onderdeel_${o}_uitleg`)}</p>
+                  </div>
+                  <Segment label={t(`bf_onderdeel_${o}`)} waarde={bfForm.richting[o]} klein cls="shrink-0 self-start sm:self-auto"
+                    opties={BF_RICHTING_KEUZES[o].map(r => ({v: r, l: t(`bf_richting_${r}`)}))}
+                    onKies={r => kiesBfRichting(o, r)} />
+                </li>
+              ))}
+            </ul>
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             <button onClick={saveBf} className="px-4 py-2 tbtn rounded text-sm font-medium transition-colors">{t('btn_save')}</button>
             <button onClick={testBf} disabled={bfTesting||!bfForm.userId||!bfForm.apiKey}
@@ -2183,14 +2314,26 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             {bfMsg && <span className={`text-sm font-medium ${bfMsg.startsWith('✓')?'text-green-600':'text-red-600'}`}>{bfMsg}</span>}
           </div>
         </div>
-        <div className="mt-4 pt-4 border-t">
-          <p className="text-xs font-semibold text-gray-400 mb-2">{t('settings_bf_status_mapping')}</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 text-xs text-gray-500">
-            {Object.entries(BF_TO_APP).map(([bf,app]) => (
-              <span key={bf}><span className="font-medium text-gray-600">{bf}</span> → {({Gepland:t('status_planning'),Brouwen:t('status_brewing'),Vergisten:t('status_fermenting'),Conditioneren:t('status_conditioning'),Afgevuld:t('status_packaged'),Verpakt:t('status_packaged'),Gesloten:t('status_closed')} as any)[app]||app}</span>
-            ))}
-          </div>
-        </div>
+        {bfForm.richting.batch_status !== 'uit' && (() => {
+          // Hoe de status vertaald wordt, in de richting die nu gekozen is.
+          const appLabel = (app: string) => (({Gepland:t('status_planning'),Brouwen:t('status_brewing'),Vergisten:t('status_fermenting'),Conditioneren:t('status_conditioning'),Afgevuld:t('status_packaged'),Verpakt:t('status_packaged'),Gesloten:t('status_closed')} as Record<string, string>)[app] || app);
+          const lezen = bfForm.richting.batch_status === 'lezen';
+          return (
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-sm font-semibold text-gray-800 mb-1">{t(lezen ? 'settings_bf_status_mapping_lezen' : 'settings_bf_status_mapping')}</p>
+              <p className="text-xs text-gray-500 mb-2">{t(lezen ? 'settings_bf_status_lezen_uitleg' : 'settings_bf_status_schrijven_uitleg')}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs text-gray-500">
+                {lezen
+                  ? Object.entries(BF_NAAR_APP_STATUS).map(([bf, app]) => (
+                    <span key={bf}><span className="font-medium text-gray-600">{bf}</span> → {appLabel(app)}</span>
+                  ))
+                  : Object.entries(APP_NAAR_BF_STATUS).filter(([app]) => app !== 'Verpakt').map(([app, bf]) => (
+                    <span key={app}>{appLabel(app)} → <span className="font-medium text-gray-600">{bf}</span></span>
+                  ))}
+              </div>
+            </div>
+          );
+        })()}
         {bfCreds?.lastSync && <p className="text-xs text-gray-400 mt-3">{t('lbl_last_sync')}{fmtTs(bfCreds.lastSync)}</p>}
       </div>
       </>}
@@ -3147,6 +3290,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             </button>
             {saved && <span className="text-sm text-green-600 font-medium">{t('settings_excise_saved')}</span>}
           </div>
+          <PaginaMelding tekst={tariefFout} onSluit={() => setTariefFout('')} />
         </div>
       </div>
 
@@ -3171,7 +3315,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 </tr>
               </thead>
               <tbody>
-                {historieLijst.map((e: any) => {
+                {historieLijst.filter((e: any) => wachtId !== `accijnstarief-verwijder-${Number(e.jaar)}`).map((e: any) => {
                   // Een tariefwijziging raakt de uitslagen van dat jaar (het
                   // belastbare feit), niet de batches die er gebrouwen zijn.
                   const uitslagenInJaar = (acc || []).filter((a: any) =>
@@ -3230,11 +3374,12 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               const j = Number(jaarForm.jaar);
               const r1 = Number(jaarForm.tarief_per_hl_abv);
               const r2 = Number(jaarForm.tarief_per_hl);
+              setJaarFout('');
               if (!isFinite(j) || !isFinite(r1) || !isFinite(r2) || j < 2000 || j > 2100) {
-                alert(t('err_valid_numbers')); return;
+                setJaarFout(t('err_valid_numbers')); return;
               }
               if (historieLijst.some((x: any) => Number(x.jaar) === j)) {
-                alert(t('settings_excise_historie_year_exists').replace('{j}', String(j))); return;
+                setJaarFout(t('settings_excise_historie_year_exists').replace('{j}', String(j))); return;
               }
               saveHistorieEntry({
                 jaar: j,
@@ -3246,6 +3391,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               setJaarForm({jaar: String(j + 1), tarief_per_hl_abv: '', tarief_per_hl: '', tarief_per_hl_plato: '', notitie: ''});
             }}>{t('btn_add')}</Btn>
           </div>
+          <PaginaMelding tekst={jaarFout} onSluit={() => setJaarFout('')} cls="mt-2" />
         </div>
 
         <p className="mt-4 pt-4 border-t text-xs text-gray-400">{t('settings_excise_historie_hint')}</p>
@@ -3317,38 +3463,38 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <div className="flex items-start gap-2 min-w-[960px]">
             {/* Stap 1: Inkoop */}
             <div className="flex flex-col items-center">
-              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_inkoop')}</div>
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold t-btn-text text-center w-24\" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_inkoop')}</div>
             </div>
             <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
 
             {/* Stap 2: Opslag grondstoffen */}
             <div className="flex flex-col items-center">
-              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_opslag_grond')}</div>
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold t-btn-text text-center w-24\" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_opslag_grond')}</div>
             </div>
             <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
 
             {/* Stap 3: Productie */}
             <div className="flex flex-col items-center">
-              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_productie')}</div>
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold t-btn-text text-center w-24\" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_productie')}</div>
             </div>
             <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
 
             {/* Stap 4: Verpakking */}
             <div className="flex flex-col items-center">
-              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_verpakking')}</div>
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold t-btn-text text-center w-24\" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_verpakking')}</div>
             </div>
             <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
 
             {/* Stap 5: Opslag gereed product */}
             <div className="flex flex-col items-center">
-              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-28" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_opslag_gereed')}</div>
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold t-btn-text text-center w-28\" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_opslag_gereed')}</div>
             </div>
             <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
 
             {/* Stap 6: Uitslaan — het bier verlaat de AGP, hier ontstaat de accijns */}
             <div className="flex flex-col items-center">
-              <div className="px-3 py-2 rounded-lg text-xs font-semibold text-white text-center w-24" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_uitslag')}</div>
-              <span className="mt-1 text-[10px] text-purple-700 text-center w-24">{t('agp_stroom_uitslag_sub')}</span>
+              <div className="px-3 py-2 rounded-lg text-xs font-semibold t-btn-text text-center w-24\" style={{backgroundColor:'var(--t-accent)'}}>{t('agp_stroom_uitslag')}</div>
+              <span className="mt-1 text-xs text-purple-700 text-center w-24">{t('agp_stroom_uitslag_sub')}</span>
             </div>
             <div className="flex items-center pt-2.5 text-gray-400 text-lg">&rarr;</div>
 
@@ -3361,7 +3507,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             {/* Stap 8: Verkoop — altijd uit vrije voorraad, nooit rechtstreeks uit de AGP */}
             <div className="flex flex-col items-center">
               <div className="px-3 py-2 rounded-lg text-xs font-semibold text-center w-24 bg-green-100 text-green-800">{t('agp_stroom_verkoop')}</div>
-              <span className="mt-1 text-[10px] text-gray-500 text-center w-24">{t('agp_stroom_verkoop_sub')}</span>
+              <span className="mt-1 text-xs text-gray-500 text-center w-24">{t('agp_stroom_verkoop_sub')}</span>
             </div>
           </div>
 
@@ -3445,7 +3591,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                           <td className="px-2 py-1.5 text-gray-600 whitespace-nowrap">
                             {fmtD(r.datum)}
                             {r.aangegeven && (
-                              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-100 text-gray-500 align-middle"
+                              <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded font-medium bg-gray-100 text-gray-500 align-middle"
                                 title={t('settings_excise_impact_aangegeven_tip')}>
                                 {t('settings_excise_impact_aangegeven')}
                               </span>
@@ -3530,7 +3676,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_ingredient_types_title')}</h2>
           <p className="text-sm text-gray-500 mb-4">{t('settings_ingredient_types_desc')}</p>
           <div className="space-y-2 mb-4">
-            {ingTypes.map((typ: any, idx: number) => (
+            {ingTypes.map((typ: any, idx: number) => wachtId === `ingtype-verwijder-${typ}` ? null : (
               <div key={idx} className="flex items-center gap-2">
                 <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input"
                   value={typ}
@@ -3547,21 +3693,26 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 <button
                   title={ing.some((i: any)=>i.type===typ)?t('err_ingredient_type_in_use').replace('{typ}',typ):t('btn_delete')}
                   onClick={()=>{
-                    if(ing.some((i: any)=>i.type===typ)){alert(t('err_ingredient_type_in_use_detail').replace('{typ}',typ));return;}
-                    if(!confirm(t('confirm_ingredient_type_delete').replace('{typ}',typ)))return;
-                    logAudit(auditLog, setAuditLog, {entiteit:'Ingrediënttype', entiteit_id:idx, actie:'verwijderd', omschrijving:`Type "${typ}" verwijderd`});
-                    setIngTypes((prev: any)=>prev.filter((_: any,i: number)=>i!==idx));
-                    setIngTypeBtw((prev: any)=>{const next={...prev};delete next[typ];return next;});
+                    setIngTypeFout('');
+                    if(ing.some((i: any)=>i.type===typ)){setIngTypeFout(t('err_ingredient_type_in_use_detail').replace('{typ}',typ));return;}
+                    undo.plan(`ingtype-verwijder-${typ}`, t('undo_type_verwijderd', 'Type verwijderd: {typ}').replace('{typ}', typ), () => {
+                      logAudit(auditLog, setAuditLog, {entiteit:'Ingrediënttype', entiteit_id:idx, actie:'verwijderd', omschrijving:`Type "${typ}" verwijderd`});
+                      // Op naam, niet op positie: binnen de terugweg kan de
+                      // lijst al verschoven zijn (een eerdere verwijdering).
+                      setIngTypes((prev: any)=>{const i=prev.indexOf(typ);return i<0?prev:prev.filter((_: any,j: number)=>j!==i);});
+                      setIngTypeBtw((prev: any)=>{const next={...prev};delete next[typ];return next;});
+                    });
                   }}
                   className={`text-sm px-2 py-1.5 rounded transition-colors ${ing.some((i: any)=>i.type===typ)?'text-gray-300 cursor-not-allowed':'text-red-400 hover:text-red-600 hover:bg-red-50'}`}>✕</button>
               </div>
             ))}
           </div>
+          <PaginaMelding tekst={ingTypeFout} onSluit={() => setIngTypeFout('')} cls="mb-3" />
           <p className="text-xs text-gray-400 mb-3">{t('settings_ingredient_btw_desc')}</p>
           <div className="flex gap-2">
             <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder={t('ph_new_ingredient_type')} value={newIngType} onChange={(e: any)=>setNewIngType(e.target.value)}
-              onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);logAudit(auditLog, setAuditLog, {entiteit:'Ingrediënttype', entiteit_id:0, actie:'aangemaakt', omschrijving:`Type "${val}" toegevoegd`});setNewIngType('');}}} />
-            <Btn onClick={()=>{const val=newIngType.trim();if(!val)return;if(ingTypes.includes(val)){alert(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);logAudit(auditLog, setAuditLog, {entiteit:'Ingrediënttype', entiteit_id:0, actie:'aangemaakt', omschrijving:`Type "${val}" toegevoegd`});setNewIngType('');}}>{t('btn_add')}</Btn>
+              onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newIngType.trim();setIngTypeFout('');if(!val)return;if(ingTypes.includes(val)){setIngTypeFout(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);logAudit(auditLog, setAuditLog, {entiteit:'Ingrediënttype', entiteit_id:0, actie:'aangemaakt', omschrijving:`Type "${val}" toegevoegd`});setNewIngType('');}}} />
+            <Btn onClick={()=>{const val=newIngType.trim();setIngTypeFout('');if(!val)return;if(ingTypes.includes(val)){setIngTypeFout(t('err_type_exists'));return;}setIngTypes((prev: any)=>[...prev,val]);logAudit(auditLog, setAuditLog, {entiteit:'Ingrediënttype', entiteit_id:0, actie:'aangemaakt', omschrijving:`Type "${val}" toegevoegd`});setNewIngType('');}}>{t('btn_add')}</Btn>
           </div>
         </div>
       )}
@@ -3572,7 +3723,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_kosten_soorten_title')}</h2>
           <p className="text-sm text-gray-500 mb-4">{t('settings_kosten_soorten_desc')}</p>
           <div className="space-y-2 mb-4">
-            {kostenSoorten.map((ks: string, idx: number) => (
+            {kostenSoorten.map((ks: string, idx: number) => wachtId === `kostensoort-verwijder-${ks}` ? null : (
               <div key={idx} className="flex items-center gap-2">
                 <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input"
                   value={ks}
@@ -3581,9 +3732,12 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 <button
                   title={t('btn_delete')}
                   onClick={()=>{
-                    if(!confirm(t('confirm_ingredient_type_delete').replace('{typ}',ks)))return;
-                    logAudit(auditLog, setAuditLog, {entiteit:'Kostensoort', entiteit_id:idx, actie:'verwijderd', omschrijving:`Kostensoort "${ks}" verwijderd`});
-                    setKostenSoorten((prev: any)=>prev.filter((_: any,i: number)=>i!==idx));
+                    setKostenSoortFout('');
+                    undo.plan(`kostensoort-verwijder-${ks}`, t('undo_kostensoort_verwijderd', 'Kostensoort verwijderd: {naam}').replace('{naam}', ks), () => {
+                      logAudit(auditLog, setAuditLog, {entiteit:'Kostensoort', entiteit_id:idx, actie:'verwijderd', omschrijving:`Kostensoort "${ks}" verwijderd`});
+                      // Op naam, niet op positie (zie ingrediënttypen).
+                      setKostenSoorten((prev: any)=>{const i=prev.indexOf(ks);return i<0?prev:prev.filter((_: any,j: number)=>j!==i);});
+                    });
                   }}
                   className="text-sm px-2 py-1.5 rounded transition-colors text-red-400 hover:text-red-600 hover:bg-red-50">✕</button>
               </div>
@@ -3591,9 +3745,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </div>
           <div className="flex gap-2">
             <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder={t('ph_kostensoort')} value={newKostenSoort} onChange={(e: any)=>setNewKostenSoort(e.target.value)}
-              onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newKostenSoort.trim();if(!val)return;if(kostenSoorten.includes(val)){alert(t('err_type_exists'));return;}setKostenSoorten((prev: any)=>[...prev,val]);logAudit(auditLog, setAuditLog, {entiteit:'Kostensoort', entiteit_id:0, actie:'aangemaakt', omschrijving:`Kostensoort "${val}" toegevoegd`});setNewKostenSoort('');}}} />
-            <Btn onClick={()=>{const val=newKostenSoort.trim();if(!val)return;if(kostenSoorten.includes(val)){alert(t('err_type_exists'));return;}setKostenSoorten((prev: any)=>[...prev,val]);logAudit(auditLog, setAuditLog, {entiteit:'Kostensoort', entiteit_id:0, actie:'aangemaakt', omschrijving:`Kostensoort "${val}" toegevoegd`});setNewKostenSoort('');}}>{t('btn_add')}</Btn>
+              onKeyDown={(e: any)=>{if(e.key==='Enter'){const val=newKostenSoort.trim();setKostenSoortFout('');if(!val)return;if(kostenSoorten.includes(val)){setKostenSoortFout(t('err_type_exists'));return;}setKostenSoorten((prev: any)=>[...prev,val]);logAudit(auditLog, setAuditLog, {entiteit:'Kostensoort', entiteit_id:0, actie:'aangemaakt', omschrijving:`Kostensoort "${val}" toegevoegd`});setNewKostenSoort('');}}} />
+            <Btn onClick={()=>{const val=newKostenSoort.trim();setKostenSoortFout('');if(!val)return;if(kostenSoorten.includes(val)){setKostenSoortFout(t('err_type_exists'));return;}setKostenSoorten((prev: any)=>[...prev,val]);logAudit(auditLog, setAuditLog, {entiteit:'Kostensoort', entiteit_id:0, actie:'aangemaakt', omschrijving:`Kostensoort "${val}" toegevoegd`});setNewKostenSoort('');}}>{t('btn_add')}</Btn>
           </div>
+          <PaginaMelding tekst={kostenSoortFout} onSluit={() => setKostenSoortFout('')} cls="mt-2" />
         </div>
       )}
 
@@ -3603,7 +3758,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_gn_codes_title')}</h2>
           <p className="text-sm text-gray-500 mb-4">{t('settings_gn_codes_desc')}</p>
           <div className="space-y-2 mb-4">
-            {(gnCodes||[]).map((gc: any, idx: number) => (
+            {(gnCodes||[]).map((gc: any, idx: number) => wachtId === `gncode-verwijder-${gc.code}` ? null : (
               <div key={idx} className="flex items-center gap-2">
                 <input className="w-32 border rounded px-2 py-1.5 text-sm t-input font-mono"
                   value={gc.code}
@@ -3614,9 +3769,12 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 <button
                   title={t('btn_delete')}
                   onClick={()=>{
-                    if(!confirm(t('confirm_gn_code_delete').replace('{code}',gc.code)))return;
-                    logAudit(auditLog, setAuditLog, {entiteit:'GN-code', entiteit_id:idx, actie:'verwijderd', omschrijving:`GN-code "${gc.code}" verwijderd`});
-                    setGnCodes((prev: any)=>prev.filter((_: any,i: number)=>i!==idx));
+                    setGnFout('');
+                    undo.plan(`gncode-verwijder-${gc.code}`, t('undo_gn_code_verwijderd', 'GN-code verwijderd: {code}').replace('{code}', gc.code), () => {
+                      logAudit(auditLog, setAuditLog, {entiteit:'GN-code', entiteit_id:idx, actie:'verwijderd', omschrijving:`GN-code "${gc.code}" verwijderd`});
+                      // Op code en naam, niet op positie (zie ingrediënttypen).
+                      setGnCodes((prev: any)=>{const i=(prev||[]).findIndex((g: any)=>g.code===gc.code&&g.naam===gc.naam);return i<0?prev:prev.filter((_: any,j: number)=>j!==i);});
+                    });
                   }}
                   className="text-sm px-2 py-1.5 rounded transition-colors text-red-400 hover:text-red-600 hover:bg-red-50">✕</button>
               </div>
@@ -3625,9 +3783,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <div className="flex gap-2">
             <input className="w-32 border rounded px-2 py-1.5 text-sm t-input font-mono" placeholder={t('ph_gn_code')} value={newGnCode} onChange={(e: any)=>setNewGnCode(e.target.value)} />
             <input className="flex-1 border rounded px-2 py-1.5 text-sm t-input" placeholder={t('ph_gn_naam')} value={newGnNaam} onChange={(e: any)=>setNewGnNaam(e.target.value)}
-              onKeyDown={(e: any)=>{if(e.key==='Enter'){const code=newGnCode.trim();const naam=newGnNaam.trim();if(!code||!naam)return;if((gnCodes||[]).some((g: any)=>g.code===code)){alert(t('err_gn_code_exists'));return;}setGnCodes((prev: any)=>[...prev,{code,naam}]);logAudit(auditLog, setAuditLog, {entiteit:'GN-code', entiteit_id:0, actie:'aangemaakt', omschrijving:`GN-code "${code}" toegevoegd`});setNewGnCode('');setNewGnNaam('');}}} />
-            <Btn onClick={()=>{const code=newGnCode.trim();const naam=newGnNaam.trim();if(!code||!naam)return;if((gnCodes||[]).some((g: any)=>g.code===code)){alert(t('err_gn_code_exists'));return;}setGnCodes((prev: any)=>[...prev,{code,naam}]);logAudit(auditLog, setAuditLog, {entiteit:'GN-code', entiteit_id:0, actie:'aangemaakt', omschrijving:`GN-code "${code}" toegevoegd`});setNewGnCode('');setNewGnNaam('');}}>{t('btn_add')}</Btn>
+              onKeyDown={(e: any)=>{if(e.key==='Enter'){const code=newGnCode.trim();const naam=newGnNaam.trim();setGnFout('');if(!code||!naam)return;if((gnCodes||[]).some((g: any)=>g.code===code)){setGnFout(t('err_gn_code_exists'));return;}setGnCodes((prev: any)=>[...prev,{code,naam}]);logAudit(auditLog, setAuditLog, {entiteit:'GN-code', entiteit_id:0, actie:'aangemaakt', omschrijving:`GN-code "${code}" toegevoegd`});setNewGnCode('');setNewGnNaam('');}}} />
+            <Btn onClick={()=>{const code=newGnCode.trim();const naam=newGnNaam.trim();setGnFout('');if(!code||!naam)return;if((gnCodes||[]).some((g: any)=>g.code===code)){setGnFout(t('err_gn_code_exists'));return;}setGnCodes((prev: any)=>[...prev,{code,naam}]);logAudit(auditLog, setAuditLog, {entiteit:'GN-code', entiteit_id:0, actie:'aangemaakt', omschrijving:`GN-code "${code}" toegevoegd`});setNewGnCode('');setNewGnNaam('');}}>{t('btn_add')}</Btn>
           </div>
+          <PaginaMelding tekst={gnFout} onSluit={() => setGnFout('')} cls="mt-2" />
         </div>
       )}
 
@@ -3640,19 +3799,31 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
 
         const addGroep = () => {
           const naam = nieuwGroep.trim();
+          setGroepFout('');
           if (!naam) return;
-          if (groups.find((g: any)=>(g.naam||'').toLowerCase()===naam.toLowerCase())) { alert(t('err_group_exists')); return; }
+          if (groups.find((g: any)=>(g.naam||'').toLowerCase()===naam.toLowerCase())) { setGroepFout(t('err_group_exists')); return; }
           const maxId = groups.length ? Math.max(...groups.map((g: any)=>g.id||0)) : 0;
           setBatchTakenGroepen([...groups, {id: maxId+1, naam, volgorde: groups.length}]);
           logAudit(auditLog, setAuditLog, {entiteit:'BatchTaakGroep', entiteit_id:maxId+1, actie:'aangemaakt', omschrijving:`Groep "${naam}" toegevoegd`});
           setNieuwGroep('');
         };
         const removeGroep = (id: any) => {
-          if (items.some((i: any)=>i.group_id===id)) {
-            if (!confirm(t('settings_hygiene_group_has_items'))) return;
-            setBatchTakenItems(items.map((i: any)=>i.group_id===id ? {...i, group_id:null} : i));
-          }
+          setGroepFout('');
           const g = groups.find((g: any)=>g.id===id);
+          const gekoppeld = items.filter((i: any)=>i.group_id===id).length;
+          if (gekoppeld > 0) {
+            // Met taken eraan: vijf seconden terugweg i.p.v. confirm(). De
+            // taken gaan daarna naar "Geen groep". Functionele updates, want
+            // binnen de terugweg kan de lijst nog veranderen.
+            undo.plan(`taakgroep-verwijder-${id}`,
+              t('undo_groep_verwijderd_items', 'Groep verwijderd: {naam} ({n} taken zonder groep)').replace('{naam}', g?.naam || String(id)).replace('{n}', String(gekoppeld)),
+              () => {
+                setBatchTakenItems((prev: any[]) => (prev && prev.length ? prev : DEFAULT_BATCH_TAKEN_ITEMS).map((i: any)=>i.group_id===id ? {...i, group_id:null} : i));
+                logAudit(auditLog, setAuditLog, {entiteit:'BatchTaakGroep', entiteit_id:id, actie:'verwijderd', omschrijving:`Groep "${g?.naam||id}" verwijderd`});
+                setBatchTakenGroepen((prev: any[]) => (prev && prev.length ? prev : DEFAULT_BATCH_TAKEN_GROEPEN).filter((x: any)=>x.id!==id));
+              });
+            return;
+          }
           logAudit(auditLog, setAuditLog, {entiteit:'BatchTaakGroep', entiteit_id:id, actie:'verwijderd', omschrijving:`Groep "${g?.naam||id}" verwijderd`});
           setBatchTakenGroepen(groups.filter((g: any)=>g.id!==id));
         };
@@ -3675,8 +3846,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         };
         const renameGroep = (id: number) => {
           const naam = editGroepNaam.trim();
+          setGroepFout('');
           if (!naam) { setEditGroepId(null); return; }
-          if (groups.find((g: any) => g.id !== id && (g.naam||'').toLowerCase() === naam.toLowerCase())) { alert(t('err_group_exists')); return; }
+          if (groups.find((g: any) => g.id !== id && (g.naam||'').toLowerCase() === naam.toLowerCase())) { setGroepFout(t('err_group_exists')); return; }
           const old = groups.find((g: any) => g.id === id);
           setBatchTakenGroepen(groups.map((g: any) => g.id === id ? { ...g, naam } : g));
           logAudit(auditLog, setAuditLog, { entiteit: 'BatchTaakGroep', entiteit_id: id, actie: 'gewijzigd', omschrijving: `Groep "${old?.naam}" hernoemd naar "${naam}"` });
@@ -3718,11 +3890,14 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         const setItemGroep = (id: any, group_id: any) => setBatchTakenItems(items.map((i: any)=>i.id===id?{...i,group_id:group_id?Number(group_id):null}:i));
         const setItemField = (id: number, field: string, val: any) => setBatchTakenItems(items.map((i: any)=>i.id===id?{...i, [field]: val}:i));
         const resetAlles = () => {
-          if(confirm(t('settings_batch_taken_reset_confirm'))) {
+          setGroepFout('');
+          // Vijf seconden terugweg i.p.v. confirm(): eigen taken en groepen
+          // gaan pas daarna verloren.
+          undo.plan('batchtaken-reset', t('undo_batch_taken_gereset', 'Taken en groepen teruggezet naar standaard'), () => {
             setBatchTakenGroepen(DEFAULT_BATCH_TAKEN_GROEPEN);
             setBatchTakenItems(DEFAULT_BATCH_TAKEN_ITEMS);
             logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:'Batch-taken gereset naar standaard'});
-          }
+          });
         };
         const startEdit = (it: any) => {
           setEditChecklistId({kind:'taak', id: it.id});
@@ -3750,7 +3925,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <div className="text-xs font-semibold text-gray-500 mb-2">{t('settings_hygiene_groups')}</div>
               <div className="space-y-1 mb-3">
                 {groups.length===0 && <p className="text-sm text-gray-400 italic">{t('settings_hygiene_groups_none')}</p>}
-                {[...groups].sort((a: any, b: any)=>(a.volgorde||0)-(b.volgorde||0)).map((g: any, idx: number)=>(
+                {[...groups].filter((g: any)=>wachtId !== `taakgroep-verwijder-${g.id}`).sort((a: any, b: any)=>(a.volgorde||0)-(b.volgorde||0)).map((g: any, idx: number)=>(
                   <div key={g.id} className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">
                     {editGroepId === g.id ? (
                       <input type="text" value={editGroepNaam} onChange={(e: any) => setEditGroepNaam(e.target.value)}
@@ -3786,6 +3961,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   {t('settings_hygiene_group_add_btn')}
                 </button>
               </div>
+              <PaginaMelding tekst={groepFout} onSluit={() => setGroepFout('')} cls="mt-2" />
             </div>
 
             {/* Items beheer */}
@@ -3799,7 +3975,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                   return (
                     <div key={item.id} className={`border rounded-lg px-3 py-1.5 ${isMeting ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
                       <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded ${isMeting ?'bg-purple-200 text-purple-800' : 'bg-teal-200 text-teal-800'}`}>
+                        <span className={`text-xs font-semibold tracking-wide px-1.5 py-0.5 rounded ${isMeting ?'bg-purple-200 text-purple-800' : 'bg-teal-200 text-teal-800'}`}>
                           {isMeting ? t('batch_taken_type_meting') : t('batch_taken_type_check')}
                         </span>
                         {isEditing ? (
@@ -3827,7 +4003,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                         // het reinigingslogboek vastleggen en/of een uitvoering
                         // op een HACCP-schoonmaaktaak loggen.
                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className="text-[10px] font-semibold text-gray-400">{t('settings_taken_reiniging_label')}</span>
+                          <span className="text-xs font-semibold text-gray-400">{t('settings_taken_reiniging_label')}</span>
                           <select value={taakReinigingStatus(item)}
                             onChange={(e: any)=>setItemField(item.id, 'tank_reiniging', e.target.value)}
                             title={t('settings_taken_reiniging_hint')}
@@ -3888,8 +4064,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               </div>
             </div>
 
-            <button onClick={resetAlles}
-              className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded text-sm hover:bg-gray-200 transition-colors">
+            <button onClick={resetAlles} disabled={wachtId === 'batchtaken-reset'}
+              className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded text-sm hover:bg-gray-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
               {t('settings_logo_reset')}
             </button>
           </div>
@@ -3916,13 +4092,28 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <div className="mt-6 pt-4 border-t border-gray-200">
           <h3 className="text-sm font-semibold text-red-600 mb-1">{t('settings_reset_title')}</h3>
           <p className="text-xs text-gray-500 mb-3">{t('settings_reset_desc')}</p>
-          <Btn v="danger" onClick={() => {
-            const naam = prompt(t('settings_reset_confirm'));
-            if (naam === null) return;
-            if (naam !== 'RESET') { alert(t('settings_reset_wrong')); return; }
-            resetApp();
-            alert(t('settings_reset_done'));
-          }}>{t('settings_reset_btn')}</Btn>
+          {/* Bevestigen door RESET te typen, in de pagina (geen prompt()): de
+              knop werkt pas als het woord klopt. */}
+          <label htmlFor="reset-invoer" className="block text-sm text-gray-700 mb-1">{t('settings_reset_confirm')}</label>
+          <div className="flex flex-wrap items-center gap-2">
+            <input id="reset-invoer" type="text" value={resetInvoer} autoComplete="off" spellCheck={false}
+              onChange={(e: any) => { setResetInvoer(e.target.value); setResetMelding(null) }}
+              placeholder="RESET"
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-40 t-input font-mono" />
+            <Btn v="danger" disabled={resetInvoer.trim() !== 'RESET'} onClick={() => {
+              setResetMelding(null);
+              if (resetInvoer.trim() !== 'RESET') { setResetMelding({soort: 'fout', tekst: t('settings_reset_wrong')}); return; }
+              resetApp();
+              setResetInvoer('');
+              setResetMelding({soort: 'ok', tekst: t('settings_reset_done')});
+            }}>{t('settings_reset_btn')}</Btn>
+          </div>
+          {resetMelding?.soort === 'fout' && (
+            <PaginaMelding tekst={resetMelding.tekst} onSluit={() => setResetMelding(null)} cls="mt-2" />
+          )}
+          {resetMelding?.soort === 'ok' && (
+            <p role="status" className="text-sm text-green-700 mt-2">{resetMelding.tekst}</p>
+          )}
         </div>
       </div>
       )}
@@ -4078,7 +4269,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           {t('settings_log_count').replace('{n}',String((log||[]).length))}
         </p>
         <button onClick={clearLog}
-          disabled={!(log||[]).length}
+          disabled={!(log||[]).length || wachtId === 'log-wissen'}
           className="px-4 py-2 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
           {t('settings_log_clear')}
         </button>
@@ -4163,7 +4354,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             </div>
             {filtered.length > auditLimit && (
               <button onClick={() => setAuditLimit((prev: number) => prev + 100)}
-                className="mt-3 text-sm font-medium hover:underline" style={{color:'var(--t-accent)'}}>
+                className="mt-3 text-sm font-medium hover:underline" style={{color: 'var(--t-accent-text, var(--t-accent))'}}>
                 {t('audit_meer_tonen')} ({filtered.length - auditLimit} {t('audit_titel').toLowerCase()})
               </button>
             )}

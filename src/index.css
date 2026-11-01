@@ -107,6 +107,34 @@ body.schil-detail .actiebalk::after {
   .schil-rail { padding-left: 84px; }
 }
 
+/* Het grijs en oranje van Tailwind als variabelen (tailwind.config.js →
+   `gray`, `orange`): exact de standaardschalen; een thema kan ze vervangen
+   (craftery.css). */
+:root {
+  --grijs-50: 249 250 251;
+  --grijs-100: 243 244 246;
+  --grijs-200: 229 231 235;
+  --grijs-300: 209 213 219;
+  --grijs-400: 156 163 175;
+  --grijs-500: 107 114 128;
+  --grijs-600: 75 85 99;
+  --grijs-700: 55 65 81;
+  --grijs-800: 31 41 55;
+  --grijs-900: 17 24 39;
+  --grijs-950: 3 7 18;
+  --oranje-50: 255 247 237;
+  --oranje-100: 255 237 213;
+  --oranje-200: 254 215 170;
+  --oranje-300: 253 186 116;
+  --oranje-400: 251 146 60;
+  --oranje-500: 249 115 22;
+  --oranje-600: 234 88 12;
+  --oranje-700: 194 65 12;
+  --oranje-800: 154 52 18;
+  --oranje-900: 124 45 18;
+  --oranje-950: 67 20 7;
+}
+
 :root {
   --t-accent: #b45309;
   --t-light: #fde68a;
@@ -116,19 +144,44 @@ body.schil-detail .actiebalk::after {
   --t-btn-h: #92400e;
   --t-btn-a: #78350f;
   --t-bg: #fefdf5;
+  /* Tekst óp de knop/het accent en de effen sectiekop: een thema met een
+     licht accent (amber) zet hier een donkere inkt (NAV_THEMES.btnText). */
+  --t-btn-text: #fff;
+  --t-hdr: var(--t-btn-a);
 }
 
 /* Primaire actieknop */
 .tbtn {
   background-color: var(--t-btn);
-  color: #fff;
+  color: var(--t-btn-text, #fff);
   transition: background-color 150ms ease, opacity 150ms ease, box-shadow 150ms ease;
 }
 .tbtn:hover:not(:disabled) { background-color: var(--t-btn-h); }
+/* Uit: grijs, geen bleke themakleur (ook bij `disabled:opacity-40` op de knop). */
+.tbtn:disabled {
+  background-color: rgb(var(--grijs-100));
+  color: rgb(var(--grijs-500));
+  box-shadow: inset 0 0 0 1px rgb(var(--grijs-200));
+  opacity: 1;
+  cursor: not-allowed;
+}
 .tbtn:active:not(:disabled) { background-color: var(--t-btn-a); }
 .tbtn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--t-pale), 0 0 0 5px var(--t-accent);
+}
+
+/* Focus (toetsenbord): één ring in de themakleur met 3:1 tegen wit en de
+   pagina (`--t-accent-edge`), ook waar een component `ring-[var(--t-accent)]`
+   zegt — bij een licht accent (Craftery-amber) was die ring 2:1. Elementen
+   zonder eigen ring krijgen dezelfde kleur als omlijning. */
+:where(a, button, summary, [role="button"], [tabindex]):focus-visible {
+  outline: 3px solid var(--t-accent-edge, var(--t-accent));
+  outline-offset: 2px;
+}
+.focus-visible\:ring-\[var\(--t-accent\)\]:focus-visible,
+.focus\:ring-\[var\(--t-accent\)\]:focus {
+  --tw-ring-color: var(--t-accent-edge, var(--t-accent));
 }
 
 /* Navigatie en tabs */
@@ -140,7 +193,7 @@ body.schil-detail .actiebalk::after {
    gebruikt, waardoor een pagina een zebrapad van gekleurde banden werd. Een
    sectie krijgt nu standaard een rustige kop (zie SectionHeader); deze balk is
    er voor het onderwerp van de pagina zelf. */
-.t-hdr-solid { background-color: var(--t-btn-a); }
+.t-hdr-solid { background-color: var(--t-hdr, var(--t-btn-a)); }
 
 /* Nav, panels, cards */
 .t-nav { background-color: var(--t-pale) !important; color: var(--t-text) !important; border-color: var(--t-accent) !important; }
@@ -157,7 +210,7 @@ body.schil-detail .actiebalk::after {
 .t-input:focus {
   box-shadow: 0 0 0 3px var(--t-light) !important;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--t-accent) 20%, transparent) !important;
-  border-color: var(--t-accent) !important;
+  border-color: var(--t-accent-edge, var(--t-accent)) !important;
 }
 
 /* Formulier controls */
@@ -165,7 +218,7 @@ body.schil-detail .actiebalk::after {
 .peer:checked ~ .t-toggle { background-color: var(--t-accent) !important; }
 
 /* Icon hover */
-.t-icon-hover:hover { color: var(--t-accent); transition: color 150ms ease; }
+.t-icon-hover:hover { color: var(--t-accent-edge, var(--t-accent)); transition: color 150ms ease; }
 
 /* Themakleur als tekstkleur. Vervangt de hardcoded `text-amber-*`: die zag er
    in het amberthema goed uit, maar bleef amber in de vijf andere thema's.
@@ -174,6 +227,14 @@ body.schil-detail .actiebalk::after {
    --t-accent-edge is dezelfde tint op 3:1 voor randen en tab-strepen. */
 .t-accent-text { color: var(--t-accent-text, var(--t-accent)); }
 .t-accent-text-h:hover { color: var(--t-accent-text, var(--t-accent)); }
+/* Een kerncijfer (bedrag, meting, teller): cijfers even breed, zodat ze onder
+   elkaar uitlijnen en niet verspringen. Een thema kan er een eigen letter aan
+   geven (Craftery: IBM Plex Mono, zoals de "terminal" op de site). */
+.cijfer { font-variant-numeric: tabular-nums; }
+
+/* Tekst óp een vlak in de accentkleur (telbolletje, actieve pil, stap): niet
+   `text-white`, want bij een licht accent is wit onleesbaar. */
+.t-btn-text { color: var(--t-btn-text, #fff); }
 
 /* WooCommerce knoppen */
 .wc-btn {

@@ -162,6 +162,13 @@ export const onderdeelTypeLabel = (type: string | null | undefined): string | nu
 // instellingen, `label` = de i18n-sleutel; de rest zijn de CSS-variabelen
 // (`--t-*`) plus de headergradient (`from`/`to`).
 //
+// Optioneel: `btnText` = de tekstkleur óp de knop en op andere vlakken in de
+// accentkleur (`--t-btn-text`, `.t-btn-text`; zonder: wit) — nodig bij een
+// licht accent zoals amber, waar wit onleesbaar wordt. `hdr` = de effen
+// sectiekop (`--t-hdr`, `.t-hdr-solid`, witte tekst; zonder: `btnA`). Een
+// thema dat meer wil (eigen lettertype, vormen) schrijft CSS onder
+// `html[data-thema="<naam>"]`: App.tsx zet dat attribuut.
+//
 // server.py spiegelt `from`, `bg` en de `--t-*`-kleuren in `_NAV_THEMAS` en
 // zet ze bij het serveren van index.html al in de `<head>`: iOS 26 bemonstert
 // de html-/body-achtergrond van de éérste weergave voor de statusbalk van
@@ -186,7 +193,17 @@ export const NAV_THEMES: Record<string, any> = {
   // achtige achtergrond. Bewust géén verzadigde tint of steile gradient.
   sand:   {label:'nav_color_sand',   p1:'#3d3833',p2:'#57504a',p3:'#7d6450',p4:'#e8e0d5',p5:'#f5f1ea',
            from:'#3d3833',to:'#57504a',accent:'#7d6450',light:'#e8e0d5',pale:'#f5f1ea',text:'#4a3f36',btn:'#7d6450',btnH:'#6a5442',btnA:'#574536',bg:'#faf8f5'},
+  // Craftery: het nieuwe ontwerp van de Craftery-webshop
+  // (thema 6.x, assets/css/v6.css) — papier, inkt en amber. Amber is licht,
+  // dus inkt óp de knop (`btnText`) en een inktzwarte sectiekop (`hdr`); de
+  // hover is lichter, zoals op de site. Lettertypes en vormen: src/craftery.css.
+  craftery: {label:'nav_color_craftery', p1:'#151311',p2:'#4a443d',p3:'#eba640',p4:'#c9d5b0',p5:'#f3eee4',
+           from:'#151311',to:'#26221d',accent:'#eba640',light:'#f8deb4',pale:'#fffcf3',text:'#151311',btn:'#eba640',btnH:'#f5be62',btnA:'#d9a04a',btnText:'#151311',hdr:'#151311',bg:'#f3eee4'},
 }
+
+// Het thema zonder (geldige) keuze. server.py heeft
+// dezelfde standaard (`_THEMA_STANDAARD`, pytest bewaakt het).
+export const THEMA_STANDAARD = 'amber'
 
 export const DEFAULT_HYGIENE_GROUPS = [
   {id:1,naam:'Voorbereiding',volgorde:0},
@@ -463,12 +480,6 @@ export const ZUUR_MIDDELEN: ZuurMiddel[] = [
   // meq_per_ml: effectieve sterkte bij pH ±5,5 (niet-volledige dissociatie).
   { key: 'melkzuur_80', labelKey: 'tool_ph_middel_melkzuur80', concentratie: 80, ml_per_liter_per_01: 0.0581, meq_per_ml: 10.3, densiteit: 1.19 },
 ]
-
-export const BF_TO_APP: Record<string,string> = {
-  Planning:'Gepland',Brewing:'Brouwen',Fermenting:'Vergisten',
-  Conditioning:'Conditioneren',Carbonating:'Conditioneren',
-  Packaging:'Afgevuld',Completed:'Gesloten',Archived:'Gesloten'
-}
 
 const SUPPORTED_LANGS = ['nl', 'en', 'de', 'fr', 'es']
 

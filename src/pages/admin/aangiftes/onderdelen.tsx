@@ -68,7 +68,7 @@ export const BedragCel: React.FC<{ rij: AangifteRij, groot?: boolean }> = ({ rij
     <span className={`block tabular-nums font-semibold ${groot ? 'text-base' : 'text-sm'} ${rij.bedragCent < 0 ? 'text-green-700' : rij.totNu ? 'text-gray-700' : 'text-gray-900'}`}>
       {fmtCent(Math.abs(rij.bedragCent))}
     </span>
-    <span className="block text-[11px] text-gray-500 whitespace-nowrap">{t(bedragSleutel(rij))}</span>
+    <span className="block text-xs text-gray-500 whitespace-nowrap">{t(bedragSleutel(rij))}</span>
   </span>
 )
 
@@ -106,7 +106,7 @@ export const StappenBalk: React.FC<{ rij: AangifteRij, volledig?: boolean, cls?:
               )}
               {/* Boven het lijntje van de volgende stap, dat tot het midden van deze stip loopt. */}
               <span aria-hidden="true" title={t(stapNaamSleutel(rij, i))} className={`relative z-10 w-4 h-4 rounded-full border-2 ${STIP[stand]}`} />
-              <span className={`mt-1 text-[10px] leading-tight whitespace-nowrap ${stand === 'nu' || telefoon ? '' : 'hidden lg:block'} ${stand === 'nu' ? 'font-semibold text-gray-900' : stand === 'open' ? 'text-gray-400' : 'text-gray-600'} ${stand === 'overgeslagen' ? 'line-through' : ''}`}>
+              <span className={`mt-1 text-xs leading-tight whitespace-nowrap ${stand === 'nu' || telefoon ? '' : 'hidden lg:block'} ${stand === 'nu' ? 'font-semibold text-gray-900' : stand === 'open' ? 'text-gray-400' : 'text-gray-600'} ${stand === 'overgeslagen' ? 'line-through' : ''}`}>
                 {t(stapNaamSleutel(rij, i))}
               </span>
             </li>

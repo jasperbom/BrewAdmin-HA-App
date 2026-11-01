@@ -105,7 +105,7 @@ const Rij: React.FC<{ r: AndereModel } & Pick<AndereBatchesProps, 'onOpen' | 'on
         </div>
         {/* Telefoon en een smal bureauvenster: de etiketchip onder de regel; breed: rechts bij de knop. */}
         {toonEtiket(r) && (
-          <span className={`${telefoon ? 'inline-flex' : 'inline-flex lg:hidden'} mt-1 px-2 py-0.5 rounded-lg text-[11px] font-medium ring-1 ${ETIKET_CHIP[r.etiket.status.kleur]}`}>{etiketTekst(r.etiket.status)}</span>
+          <span className={`${telefoon ? 'inline-flex' : 'inline-flex lg:hidden'} mt-1 px-2 py-0.5 rounded-lg text-xs font-medium ring-1 ${ETIKET_CHIP[r.etiket.status.kleur]}`}>{etiketTekst(r.etiket.status)}</span>
         )}
       </div>
       <div className="relative z-[1] flex items-center gap-2 flex-shrink-0">

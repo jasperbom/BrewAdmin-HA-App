@@ -1143,7 +1143,7 @@ function BankSectie() {
         ) : (
           <span className="block text-sm text-gray-500">
             {tx.storno
-              ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-800" title={t('lbl_mt940_storno_hint')}>{t('lbl_mt940_storno')}</span>
+              ? <span className="px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-orange-100 text-orange-800" title={t('lbl_mt940_storno_hint')}>{t('lbl_mt940_storno')}</span>
               : w.titel}
           </span>
         )}

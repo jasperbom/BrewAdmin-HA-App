@@ -55,7 +55,7 @@ const PaginaNav: React.FC<PaginaNavProps> = ({ items, pagina, onKies, variant, c
   }, [pagina, variant])
 
   const badge = (it: PaginaNavItem) => it.badge != null && it.badge > 0 && (
-    <span title={it.badgeTitel} className="absolute top-0.5 -right-1 bg-orange-700 text-white text-[10px] rounded-full px-1 min-w-[1rem] h-4 flex items-center justify-center leading-none font-bold">{it.badge}</span>
+    <span title={it.badgeTitel} className="absolute top-0.5 -right-1 bg-orange-700 text-white text-[11px] rounded-full px-1 min-w-[1rem] h-4 flex items-center justify-center leading-none font-bold">{it.badge}</span>
   )
 
   if (variant === 'chips') {
@@ -66,7 +66,7 @@ const PaginaNav: React.FC<PaginaNavProps> = ({ items, pagina, onKies, variant, c
     }
     return (
       <nav aria-label={t('nav_paginas')} className={`bg-white border-b border-gray-200 ${cls}`}>
-        <div className="flex items-center gap-2 px-3 py-2 overflow-x-auto nav-scroll chips-vervaag">
+        <div className="pagina-chips flex items-center gap-2 px-3 py-2 overflow-x-auto nav-scroll chips-vervaag">
           {plat.map(it => {
             const aan = pagina === it.id
             return (
@@ -76,6 +76,7 @@ const PaginaNav: React.FC<PaginaNavProps> = ({ items, pagina, onKies, variant, c
                 type="button"
                 onClick={() => onKies(it.id)}
                 aria-current={aan ? 'page' : undefined}
+                data-aan={aan || undefined}
                 className={`relative flex-shrink-0 min-h-[40px] px-3.5 rounded-full text-sm whitespace-nowrap border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] ${aan ? 'font-semibold' : 'font-medium bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}
                 style={aan ? { backgroundColor: 'var(--t-pale)', color: 'var(--t-accent-text, var(--t-accent))', borderColor: 'var(--t-accent-edge, var(--t-accent))' } : undefined}
               >
@@ -97,7 +98,7 @@ const PaginaNav: React.FC<PaginaNavProps> = ({ items, pagina, onKies, variant, c
     aan ? { color: 'var(--t-accent-text, var(--t-accent))', borderBottomColor: 'var(--t-accent-edge, var(--t-accent))' } : undefined
 
   return (
-    <nav aria-label={t('nav_paginas')} className={`flex items-center gap-1 overflow-x-auto nav-scroll ${cls}`}>
+    <nav aria-label={t('nav_paginas')} className={`pagina-tabs flex items-center gap-1 overflow-x-auto nav-scroll ${cls}`}>
       {items.map(it => it.sub ? (
         <div key={it.id} className="relative flex-shrink-0">
           <button
@@ -106,6 +107,7 @@ const PaginaNav: React.FC<PaginaNavProps> = ({ items, pagina, onKies, variant, c
             onClick={() => setOpenGroep(v => v === it.id ? null : it.id)}
             aria-haspopup="menu"
             aria-expanded={openGroep === it.id}
+            data-aan={subIds.get(pagina) === it.id || undefined}
             className={`${tabCls(subIds.get(pagina) === it.id)} flex items-center gap-1`}
             style={tabStyle(subIds.get(pagina) === it.id)}
           >
@@ -137,6 +139,7 @@ const PaginaNav: React.FC<PaginaNavProps> = ({ items, pagina, onKies, variant, c
         </div>
       ) : (
         <button key={it.id} type="button" onClick={() => onKies(it.id)} aria-current={pagina === it.id ? 'page' : undefined}
+          data-aan={pagina === it.id || undefined}
           className={tabCls(pagina === it.id)} style={tabStyle(pagina === it.id)}>
           {it.label}
           {badge(it)}

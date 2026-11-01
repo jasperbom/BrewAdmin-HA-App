@@ -58,8 +58,8 @@ const bfOptie = (key: string, o: string): string => key === 'storage' ? t('brew_
 export const BronLabel: React.FC<{ bron: 'scan' | 'etiket' | null }> = ({ bron }) => {
   if (!bron) return null
   return bron === 'etiket'
-    ? <span className="text-[11px] font-medium text-green-700 whitespace-nowrap">● {t('inkoop_bron_etiket')}</span>
-    : <span className="text-[11px] text-gray-500 whitespace-nowrap">{t('inkoop_bron_scan')}</span>
+    ? <span className="text-xs font-medium text-green-700 whitespace-nowrap">● {t('inkoop_bron_etiket')}</span>
+    : <span className="text-xs text-gray-500 whitespace-nowrap">{t('inkoop_bron_scan')}</span>
 }
 
 const veldCls = (fout?: boolean) =>
@@ -205,7 +205,7 @@ const RegelEditor: React.FC<RegelEditorProps> = ({ regel: r, onWijzig, onSoort, 
                   {terug !== undefined && terug !== null && terug !== '' && (
                     <button type="button" onClick={() => set(fld.kind === 'number' ? Number(formatBrewValue(terug)) : formatBrewValue(terug))}
                       title={t('btn_use_bf_value')}
-                      className="text-[11px] text-gray-500 hover:text-gray-800 mt-0.5 hover:underline">
+                      className="text-xs text-gray-500 hover:text-gray-800 mt-0.5 hover:underline">
                       {t('brew_props_fallback_hint').replace('{value}', formatBrewValue(terug))}
                     </button>
                   )}

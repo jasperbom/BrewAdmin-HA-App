@@ -1,0 +1,180 @@
+/*
+ * Craftery — de huisstijl van de webshop (het nieuwe ontwerp, thema 6.x) in de
+ * app, als thema te kiezen. De kleuren staan in NAV_THEMES.craftery
+ * (utils/constants.ts); hier de lettertypes en de vormen, alleen actief bij
+ * dat thema (`html[data-thema="craftery"]`, gezet door App.tsx).
+ *
+ * Lettertypes: dezelfde woff2-bestanden als de webshop
+ * (src/assets/craftery/, SIL Open Font License 1.1 — zie LICENTIE.txt daar).
+ * De build zet ze als data-URL in index.html; de CSP staat `font-src data:`
+ * toe, dus er gaat geen verzoek naar buiten.
+ *   - Space Grotesk: alle tekst
+ *   - Jost: alleen de grote koppen (zoals het logo, in de geest van Futura)
+ *   - IBM Plex Mono: codes en nummers (`font-mono`, de "terminal" van de site)
+ */
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./assets/craftery/space-grotesk-400-700.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Jost';
+  font-style: normal;
+  font-weight: 700 800;
+  font-display: swap;
+  src: url(./assets/craftery/jost-700-800.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./assets/craftery/ibm-plex-mono-400.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./assets/craftery/ibm-plex-mono-600.woff2) format('woff2');
+}
+
+html[data-thema="craftery"] {
+  --cf-sans: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --cf-kop: 'Jost', 'Space Grotesk', Futura, 'Century Gothic', sans-serif;
+  --cf-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+/* Warme grijzen met een bruine ondertoon, zoals alle neutralen op de site.
+   400 en 500 zijn zo donker dat lichte tekst 4,5:1 haalt op papier (#F3EEE4)
+   en op gray-100: `text-gray-400` was daar 2,2:1. */
+html[data-thema="craftery"] {
+  --grijs-50: 248 245 239;   /* #f8f5ef */
+  --grijs-100: 239 234 224;  /* #efeae0 */
+  --grijs-200: 227 220 207;  /* #e3dccf */
+  --grijs-300: 203 194 179;  /* #cbc2b3 */
+  --grijs-400: 112 103 89;   /* #706759 */
+  --grijs-500: 95 87 76;     /* #5f574c */
+  --grijs-600: 74 68 61;     /* #4a443d — tekst-2 van de site */
+  --grijs-700: 56 51 45;     /* #38332d */
+  --grijs-800: 38 34 29;     /* #26221d */
+  --grijs-900: 21 19 17;     /* #151311 — inkt */
+  --grijs-950: 12 11 10;     /* #0c0b0a */
+  /* Roest i.p.v. oranje: "let op" moet anders ogen dan de amber knoppen
+     (amber ≈ 36°, roest ≈ 14°). */
+  --oranje-50: 253 243 239;  /* #fdf3ef */
+  --oranje-100: 251 226 216; /* #fbe2d8 */
+  --oranje-200: 246 195 176; /* #f6c3b0 */
+  --oranje-300: 238 156 128; /* #ee9c80 */
+  --oranje-400: 226 113 79;  /* #e2714f */
+  --oranje-500: 212 83 46;   /* #d4532e */
+  --oranje-600: 187 65 32;   /* #bb4120 */
+  --oranje-700: 156 52 24;   /* #9c3418 */
+  --oranje-800: 126 43 22;   /* #7e2b16 */
+  --oranje-900: 102 37 21;   /* #662515 */
+  --oranje-950: 56 16 8;     /* #381008 */
+}
+
+html[data-thema="craftery"] body,
+html[data-thema="craftery"] .font-sans {
+  font-family: var(--cf-sans);
+}
+html[data-thema="craftery"] .font-mono,
+html[data-thema="craftery"] .cijfer {
+  font-family: var(--cf-mono);
+}
+/* Mono is breder: een kerncijfer iets strakker, zodat het in zijn kader past. */
+html[data-thema="craftery"] .cijfer {
+  letter-spacing: -0.02em;
+}
+/* De titel van de werkruimte (bureau) en van het scherm (telefoon). */
+html[data-thema="craftery"] h1 {
+  font-family: var(--cf-kop);
+  letter-spacing: -0.01em;
+}
+
+/* Knoppen zoals op de site: een pil, amber met inkt. */
+html[data-thema="craftery"] .tbtn {
+  border-radius: 9999px;
+  font-weight: 600;
+}
+
+/* Selectie in amber met inkt, zoals op de site. */
+html[data-thema="craftery"] ::selection {
+  background: #eba640;
+  color: #151311;
+}
+
+/* De paginatabs op het bureau zoals de tabs op de site (`.cf6-tabs`): één blok
+   met een inktrand, de tabs in mono met een inktlijn ertussen, de actieve tab
+   inktzwart met papieren letters. De inline themakleur van de actieve tab
+   (PaginaNav) wijkt hier voor het blok. */
+html[data-thema="craftery"] .pagina-tabs {
+  flex: 0 1 auto;
+  align-self: center;
+  gap: 0;
+  border: 2px solid #151311;
+  border-radius: 12px;
+  background: #fffcf3;
+}
+html[data-thema="craftery"] .pagina-tabs > button,
+html[data-thema="craftery"] .pagina-tabs > div > button {
+  height: auto;
+  padding: 7px 12px;
+  border-bottom: 0 !important;
+  font-family: var(--cf-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: #151311 !important;
+}
+/* Het telbolletje van een tab staat in het blok naast de tekst, niet erover. */
+html[data-thema="craftery"] .pagina-tabs button > span.absolute {
+  position: static;
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+html[data-thema="craftery"] .pagina-tabs > * + * {
+  border-left: 2px solid #151311;
+}
+html[data-thema="craftery"] .pagina-tabs > button:hover:not([data-aan]),
+html[data-thema="craftery"] .pagina-tabs > div > button:hover:not([data-aan]) {
+  background: #f6e2bd;
+}
+html[data-thema="craftery"] .pagina-tabs [data-aan] {
+  background: #151311;
+  color: #f3eee4 !important;
+  font-weight: 600;
+}
+/* De telefoonchips: de actieve chip ook inktzwart. */
+html[data-thema="craftery"] .pagina-chips [data-aan] {
+  background: #151311 !important;
+  color: #f3eee4 !important;
+  border-color: #151311 !important;
+}
+
+/* De actieve werkruimte in de balk: een amber streep aan de rand, zoals de
+   cursor op de site. */
+html[data-thema="craftery"] .rail-knop[aria-current="page"]::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 14px;
+  bottom: 14px;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: #eba640;
+}
+
+/* Kaarten op papier: kaartkleur in plaats van koud wit, zoals op de site. */
+html[data-thema="craftery"] .bg-white {
+  background-color: #fffcf3;
+}
+/* Eén ding dat nu aandacht vraagt (een tank die over tijd is of een
+   temperatuurmelding heeft) krijgt de inktrand van de site. Bewust niet elke
+   kaart: in een app vol lijsten maakt dat alles even belangrijk. */
+html[data-thema="craftery"] .tank-kaart[data-aandacht] {
+  border: 2px solid #151311;
+  box-shadow: 4px 4px 0 #151311;
+}

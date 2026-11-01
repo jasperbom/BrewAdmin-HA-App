@@ -5,6 +5,7 @@ import SectionHeader from '../ui/SectionHeader'
 import RowActions from '../ui/RowActions'
 import type { RowActie } from '../ui/RowActions'
 import type { ProductEtiketOordeel } from '../../utils/productPagina'
+import { PIL_KLEUR } from '../ui/StatusPil'
 
 // De kop van een product (SPEC M ①, N ①). Op het bureau de enige gevulde
 // themabalk van de pagina: stip, naam, stijl, de status en de etiketversie,
@@ -29,11 +30,8 @@ export interface ProductKopProps {
   onEtiket?: () => void
 }
 
-const CHIP: Record<'rood' | 'oranje' | 'groen', string> = {
-  rood: 'bg-red-100 text-red-700',
-  oranje: 'bg-orange-100 text-orange-800',
-  groen: 'bg-green-100 text-green-700',
-}
+// Eén tabel voor alle statuspillen (components/ui/StatusPil.tsx).
+const CHIP = PIL_KLEUR
 
 /** "Actief", "Uit roulatie" of "Gearchiveerd". */
 const statusVan = (p: any): { tekst: string; actief: boolean } =>

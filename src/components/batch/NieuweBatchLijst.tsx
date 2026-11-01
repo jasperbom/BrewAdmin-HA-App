@@ -101,7 +101,7 @@ const NieuweBatchLijst: React.FC<NieuweBatchLijstProps> = ({
       const v = voorraadChip(r.recept)
       if (v) chips.push(v)
       if (!smal && verkoopTekort?.has(pid)) {
-        chips.push(<span key="s" className="text-[11px] text-gray-500 whitespace-nowrap">{t('nb_chip_verkoop_tekort')}</span>)
+        chips.push(<span key="s" className="text-xs text-gray-500 whitespace-nowrap">{t('nb_chip_verkoop_tekort')}</span>)
       }
     }
     const open = lijst.zoekt || !!eerderOpen[pid]

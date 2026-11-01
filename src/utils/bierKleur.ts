@@ -48,6 +48,22 @@ const getal = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * Brewfather geeft kleur in SRM: `Recipe.color`, `Batch.estimatedColor` en de
+ * kleur van mout heten in de API-documentatie "Color in SRM", ongeacht de
+ * eenheid die de gebruiker in Brewfather op het scherm ziet. De app rekent
+ * overal in EBC, met Brewfathers eigen omrekening EBC = SRM × 1,97. Vóór
+ * 1.13.19 ging de SRM-waarde ongewijzigd door als EBC: het bier stond dan
+ * ongeveer half zo donker in de app.
+ */
+export const SRM_NAAR_EBC = 1.97
+
+/** EBC uit een SRM-waarde van Brewfather (één decimaal); leeg of ongeldig → ''. */
+export const ebcUitSrm = (srm: unknown): number | '' => {
+  const n = getal(srm)
+  return n === null || n < 0 ? '' : Math.round(n * SRM_NAAR_EBC * 10) / 10
+}
+
 /** Geldige EBC (>0) of null. */
 export const ebcVan = (v: unknown): number | null => {
   const n = getal(v)

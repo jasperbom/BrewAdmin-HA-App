@@ -35,6 +35,41 @@ describe('verzendMail — één mail de deur uit', () => {
     expect(body.html).toContain('href="https://winkel.nl/b/1"')
   })
 
+  it('uitnodiging: met een ingestelde link onder de mail, in de HTML én de platte tekst', async () => {
+    const brewery = {naam: 'De Kade', mail_uitnodiging: {tekst: 'Nieuwe bieren?', knop: 'Doe mee', url: 'https://chat.example.com/g1'}}
+    await verzendMail({...basis, mollie: {amountCent: 4950, description: 'F1', redirectUrl: 'https://dekade.nl',
+      bestaandeLink: {url: 'https://mollie.test/p/oud'}}}, {brewery})
+    const body = api.mailSendApi.mock.calls[0][0]
+    // Ná de betaallink: de mail eindigt met de uitnodiging.
+    expect(body.text.endsWith('\n\nWist je dat?\nNieuwe bieren?\nhttps://chat.example.com/g1')).toBe(true)
+    expect(body.text.indexOf('https://mollie.test/p/oud')).toBeLessThan(body.text.indexOf('Nieuwe bieren?'))
+    expect(body.html).toContain('href="https://chat.example.com/g1"')
+    expect(body.html).toContain('Doe mee')
+    // Geen WhatsApp-link: geen WhatsApp-logo als bijlage.
+    expect(body.inlineImages).toBeUndefined()
+  })
+
+  it('uitnodiging naar WhatsApp: het logo gaat als inline bijlage mee, naast het eigen logo', async () => {
+    const brewery = {naam: 'De Kade', mail_uitnodiging: {url: 'https://chat.whatsapp.com/g1'}}
+    await verzendMail(basis, {brewery, logoDataUri: LOGO})
+    const body = api.mailSendApi.mock.calls[0][0]
+    expect(body.inlineImages.map((b: any) => b.contentId)).toEqual([LOGO_CID, 'whatsapp-logo'])
+    expect(body.html).toContain('src="cid:whatsapp-logo"')
+    // Herinnering zonder uitnodiging: ook geen logo.
+    await verzendMail({...basis, uitnodiging: false}, {brewery})
+    expect(api.mailSendApi.mock.calls[1][0].inlineImages).toBeUndefined()
+  })
+
+  it('uitnodiging: uit voor deze mail (herinnering) of geen link = niets extra', async () => {
+    const brewery = {naam: 'De Kade', mail_uitnodiging: {url: 'https://chat.example.com/g1'}}
+    await verzendMail({...basis, uitnodiging: false}, {brewery})
+    await verzendMail(basis, {brewery: {naam: 'De Kade', mail_uitnodiging: {tekst: 'Nieuwe bieren?'}}})
+    for (const [body] of api.mailSendApi.mock.calls) {
+      expect(body.text).toBe(basis.text)
+      expect(body.html).not.toContain('chat.example.com')
+    }
+  })
+
   it('betaallink: een bestaande link gaat opnieuw mee, er komt geen tweede', async () => {
     const onLinkAangemaakt = vi.fn()
     await verzendMail({...basis, mollie: {amountCent: 4950, description: 'F1', redirectUrl: 'https://dekade.nl',

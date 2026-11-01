@@ -295,6 +295,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const emptyRegel = {bier_naam: '', verpakking_type: '', aantal: '1', prijs_per_stuk: '', btw_pct: String(stdBtw), omschrijving: '', prijsType: 'normaal'}
   const [regelForm, setRegelForm] = useState<any>(emptyRegel)
   const [manualVerzending, setManualVerzending] = useState({enabled: false, naam: '', prijs: '', btw_pct: '21'})
+  // Waarom opslaan (of uitslaan vanuit het formulier) niet doorging, en waarom
+  // een regel niet toegevoegd kon worden: in de modal zelf, naast de knop, in
+  // plaats van een alert().
+  const [manualFout, setManualFout] = useState('')
+  const [regelFout, setRegelFout] = useState('')
 
   const selectedOrder = (bestellingen||[]).find((b: any) => b.id === selectedId)
 
@@ -629,6 +634,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const openManualOrder = () => {
     manualOpslaanRef.current = false
     setManualOpslaanBezig(false)
+    setManualFout('')
+    setRegelFout('')
     setManualForm(emptyManual)
     setShowManualModal(true)
   }
@@ -647,11 +654,12 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     }
   }
   const slaManualOrderOp = async (): Promise<boolean | undefined> => {
-    if (!manualForm.klant_naam.trim()) { alert(t('err_order_customer_required')); return }
+    setManualFout('')
+    if (!manualForm.klant_naam.trim()) { setManualFout(t('err_order_customer_required')); return }
     if (manualForm.klant_type === 'zakelijk' && !manualForm.klant_bedrijf?.trim()) {
-      alert(t('err_order_company_required')); return
+      setManualFout(t('err_order_company_required')); return
     }
-    if (!manualForm.regels.length) { alert(t('err_order_min_lines')); return }
+    if (!manualForm.regels.length) { setManualFout(t('err_order_min_lines')); return }
     let regels = [...manualForm.regels];
     // Klantkorting: vast percentage van de klantkaart, toegepast over de
     // productregels — bewust vóór de verzendkosten berekend zodat de korting
@@ -723,8 +731,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   }
 
   const addRegel = () => {
+    setRegelFout('')
     if (!regelForm.bier_naam || !regelForm.verpakking_type || !regelForm.aantal) {
-      alert(t('err_order_line_fields_required')); return
+      setRegelFout(t('err_order_line_fields_required')); return
     }
     const artMatch = artikelVoorKeuze(regelForm.bier_naam, regelForm.verpakking_type)
     const regel = {
@@ -743,6 +752,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     }
     setManualForm((f: any) => ({...f, regels: [...f.regels, regel]}))
     setRegelForm(emptyRegel)
+    // "Voeg minstens één regel toe" geldt niet meer.
+    setManualFout('')
   }
 
   // --- Helper: uitleveringen uit picks — de verkoop zelf ---
@@ -779,8 +790,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const [uitslagDoel, setUitslagDoel] = useState<{naam: string, afvullingen: any[], aantal: number, terug: 'pick' | 'manual'} | null>(null)
 
   const openUitslagVanuit = (terug: 'pick' | 'manual', naam: string, afvullingen: any[], aantal: number) => {
-    // Vanuit de pickmodal staat de melding in de modal zelf (pickFout).
-    const meld = (tekst: string) => { if (terug === 'pick') setPickFout(tekst); else alert(tekst) }
+    // De melding staat in de modal waar je vandaan kwam: pickFout in de
+    // pickmodal, manualFout in het formulier voor een nieuwe bestelling.
+    const meld = (tekst: string) => { if (terug === 'pick') setPickFout(tekst); else setManualFout(tekst) }
     // Periode-lock (ERP-plan 0.4): een uitslag boekt accijns op de uitslagdatum.
     if (accijnsMaandGesloten(tod(), accijnsAangiftes || [])) {
       meld(t('err_accijns_maand_gesloten_boeking')); return
@@ -790,6 +802,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     }
     // Een eerdere melding geldt niet meer na het uitslaan.
     setPickFout('')
+    setManualFout('')
     if (terug === 'pick') setShowPickModal(false)
     else setShowManualModal(false)
     setUitslagDoel({naam, afvullingen, aantal, terug})
@@ -806,7 +819,16 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     // gelden daarop (tweede slot naast de modal).
     const datumFout = uitslagDatumFout(datum, allocaties, {accijnsAangiftes: accijnsAangiftes || []})
     if (datumFout) {
-      alert(t(VERPLAATS_FOUT_KEYS[datumFout]).replace('{datum}', fmtD(laatsteAfvulDatum(allocaties)))); return
+      // De modal toetst hetzelfde al; mocht het toch hier stranden, dan gaat
+      // hij dicht en staat de reden in de modal waar je vandaan kwam (de
+      // pagina zelf ligt daaronder en is dan niet te zien).
+      const tekst = t(VERPLAATS_FOUT_KEYS[datumFout]).replace('{datum}', fmtD(laatsteAfvulDatum(allocaties)))
+      const terug = uitslagDoel?.terug
+      sluitUitslag()
+      if (terug === 'pick') setPickFout(tekst)
+      else if (terug === 'manual') setManualFout(tekst)
+      else setMelding(tekst)
+      return
     }
     const naar = (locaties || []).find((l: any) => l.id === naar_locatie_id)
     const r = bouwUitslagBoekingen(
@@ -2597,7 +2619,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 uitleveringen. */}
             <div className="mb-3 border border-gray-200 rounded-lg p-3 space-y-3">
               <div className="text-xs font-semibold text-gray-800">{t('picking_levering_titel')}</div>
-              <div className="text-[11px] text-gray-500">{t('picking_levering_uitleg')}</div>
+              <div className="text-xs text-gray-500">{t('picking_levering_uitleg')}</div>
               <div className="grid grid-cols-2 gap-3">
                 <select
                   value={uitleveringForm.type_uitlevering}
@@ -2782,7 +2804,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     {/* Te weinig vrij, wel iets in de AGP: eerst uitslaan, dan picken. */}
                     {uitslaanNodig > 0 && (
                       <div className="mt-2 flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-2">
-                        <div className="flex-1 text-[11px] text-orange-800">
+                        <div className="flex-1 text-xs text-orange-800">
                           {t('picking_uitslaan_hint').replace('{agp}', String(agpRegel)).replace('{n}', String(uitslaanNodig))}
                         </div>
                         <Btn s="sm" onClick={() => openUitslagVanuit('pick', `${r.bier_naam} \u2014 ${r.verpakking_type}`, allAfvullingen, uitslaanNodig)}>
@@ -2805,7 +2827,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                         een regel die bij géén eigen bier hoort (merchVoorstel). */}
                     {resterend > 0 && afvullingen.length === 0 && !alleenInAgp && gepicktVoorRegel(selectedOrder.id, r.id) === 0 && levRegel?.merchVoorstel && (
                       <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-2">
-                        <div className="flex-1 min-w-[12rem] text-[11px] text-purple-800">
+                        <div className="flex-1 min-w-[12rem] text-xs text-purple-800">
                           <div className="font-semibold">{t('picking_merch_titel')}</div>
                           <div>{t('picking_merch_uitleg')}</div>
                         </div>
@@ -3251,14 +3273,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     <div key={idx} className="px-3 py-2 text-sm bg-gray-50">
                     <div className="flex items-center gap-2">
                       <span className="flex-1 font-medium">{r.bier_naam} – {r.verpakking_type}</span>
-                      {r.prijsType === 'b2b' && <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">B2B</span>}
+                      {r.prijsType === 'b2b' && <span className="text-[11px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">B2B</span>}
                       <span className="text-gray-500">{r.aantal}× à {fmt(r.prijs_per_stuk)}</span>
                       <span className="text-gray-400">{r.btw_pct}% BTW</span>
                       <button onClick={() => setManualForm((f: any) => ({...f, regels: f.regels.filter((_: any, i: number) => i !== idx)}))}
                         className="text-red-400 hover:text-red-600 text-xs">✕</button>
                     </div>
                     {vr && nUit > 0 && (
-                      <div className="mt-1 flex items-center gap-2 text-[11px] text-orange-800">
+                      <div className="mt-1 flex items-center gap-2 text-xs text-orange-800">
                         <span className="flex-1">{t('manual_order_uitslaan_hint').replace('{vrij}', String(vr.vrij)).replace('{agp}', String(vr.agp))}</span>
                         <Btn s="sm" v="secondary" onClick={() => openUitslagVanuit('manual', `${r.bier_naam} \u2014 ${r.verpakking_type}`, vr.afvs, nUit)}>
                           {t('uitslag_knop')}
@@ -3281,7 +3303,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       const prijs = art ? String(art.verkoopprijs||'') : regelForm.prijs_per_stuk;
                       setRegelForm((f: any) => ({...f, prijsType: 'normaal', prijs_per_stuk: prijs}));
                     }}
-                      className={`px-2.5 py-0.5 text-[11px] font-medium rounded-md transition-colors ${regelForm.prijsType !== 'b2b' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}>
+                      className={`px-2.5 py-0.5 text-xs font-medium rounded-md transition-colors ${regelForm.prijsType !== 'b2b' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}>
                       {t('lbl_prijs_normaal')}
                     </button>
                     <button type="button" onClick={() => {
@@ -3289,7 +3311,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                       const prijs = art && art.b2b_prijs ? String(art.b2b_prijs) : regelForm.prijs_per_stuk;
                       setRegelForm((f: any) => ({...f, prijsType: 'b2b', prijs_per_stuk: prijs}));
                     }}
-                      className={`px-2.5 py-0.5 text-[11px] font-medium rounded-md transition-colors ${regelForm.prijsType === 'b2b' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}>
+                      className={`px-2.5 py-0.5 text-xs font-medium rounded-md transition-colors ${regelForm.prijsType === 'b2b' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}>
                       B2B
                     </button>
                   </div>
@@ -3360,6 +3382,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   </div>
                 </div>
                 <Btn s="sm" onClick={addRegel}>{t('manual_order_add_line')}</Btn>
+                {regelFout && <p role="alert" className="text-sm text-red-600 mt-1">{regelFout}</p>}
               </div>
             </div>
 
@@ -3390,6 +3413,11 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" rows={2} placeholder={t('ph_optionele_opmerkingen')} />
             </div>
           </div>
+          {manualFout && (
+            <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {manualFout}
+            </div>
+          )}
           <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
             <Btn v="secondary" onClick={() => setShowManualModal(false)} disabled={manualOpslaanBezig}>{t('btn_cancel')}</Btn>
             <Btn onClick={saveManualOrder} disabled={manualOpslaanBezig}>{manualOpslaanBezig ? t('lbl_bezig') : t('btn_save')}</Btn>

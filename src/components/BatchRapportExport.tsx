@@ -16,6 +16,7 @@
 import { t, getLang } from '../i18n'
 import { fmtEuroDoc, fmtDatumDoc, fmtQty, fmtSg, tod } from '../utils/format'
 import { DOC_CSS, esc, breweryBlock, openPrint } from './PakbonExport'
+import { metHuisstijl } from '../utils/huisstijl'
 import { htmlNaarPdfDownload } from '../utils/pdf'
 import { rapportBestandsnaam } from '../utils/batchRapport'
 import { etiketKaartBlokken } from '../utils/etiketKaart'
@@ -29,7 +30,7 @@ import type {
 // Extra opmaak bovenop de gedeelde documentstijl. Bewust karig: het dossier
 // is een archiefstuk, geen folder. `.blok` markeert wat bij het knippen van
 // de PDF heel moet blijven.
-const DOSSIER_CSS = `${DOC_CSS}
+const DOSSIER_EXTRA_CSS = `
   /* Ruimere rijen dan de pakbon/factuur. Die zijn één pagina en gaan naar de
      printer; het dossier wordt door html2canvas in beeld omgezet, en die zet
      tekst een paar pixels lager dan de browser. Met de krappe regelhoogte van
@@ -87,6 +88,8 @@ const DOSSIER_CSS = `${DOC_CSS}
     font-size: 8.5pt; color: #888; }
   @media print { .blok { page-break-inside: avoid; } }
 `
+/** De documentstijl (met de Craftery-laag bij dat thema) plus de dossieropmaak. */
+const dossierCss = (): string => metHuisstijl(DOC_CSS) + DOSSIER_EXTRA_CSS
 
 const fmtEuro = fmtEuroDoc
 const fmtDate = fmtDatumDoc
@@ -450,7 +453,7 @@ export function buildBatchDossierHTML(
   const filename = rapportBestandsnaam(rapport)
   const body = bouwDossierBody(rapport, brewery, appName, logo)
   return {
-    html: `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(filename)}</title><style>${DOSSIER_CSS}</style></head><body>${body}</body></html>`,
+    html: `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(filename)}</title><style>${dossierCss()}</style></head><body>${body}</body></html>`,
     filename,
   }
 }
@@ -464,7 +467,7 @@ export function printBatchDossier(
   logo: string | null | undefined,
 ): void {
   const body = bouwDossierBody(rapport, brewery, appName, logo)
-  openPrint(body, rapportBestandsnaam(rapport), DOSSIER_CSS)
+  openPrint(body, rapportBestandsnaam(rapport), dossierCss())
 }
 
 /** Zet het dossier rechtstreeks als `.pdf` in de downloads. */
