@@ -10,8 +10,8 @@ import StatusPil from '../ui/StatusPil'
 
 // "Koppel aan Brewfather" op de batchpagina (utils/bfKoppeling.ts): de
 // Brewfather-batches die nog nergens aan hangen, de best passende eerst (zelfde
-// recept, zelfde brouwdag). Eén klik koppelt; de gemeten waarden komen mee
-// zoals bij de sync — nooit stil over een waarde heen die hier al staat.
+// recept, zelfde brouwdag). Eén klik koppelt; wat er daarna gebeurt hangt af
+// van de keuze per onderdeel (utils/bfRichting.ts) en staat erboven.
 
 interface BfKoppelVensterProps {
   batch: any
@@ -20,6 +20,8 @@ interface BfKoppelVensterProps {
   bfBatches: any[] | null
   /** Namen om op te matchen: de titel en het recept van de batch. */
   namen: string[]
+  /** Wat er na het koppelen gebeurt, als i18n-sleutels (`bfKoppelGevolgen`). */
+  gevolgen: string[]
   vernieuw: () => Promise<{ ok: boolean, fout?: string }>
   onKoppel: (k: BfKandidaat) => void
   onSluit: () => void
@@ -30,7 +32,7 @@ const BF_STATUS_LABEL: Record<string, string> = {
   Conditioning: 'status_conditioning', Completed: 'status_closed',
 }
 
-const BfKoppelVenster: React.FC<BfKoppelVensterProps> = ({ batch, alleBatches, bfBatches, namen, vernieuw, onKoppel, onSluit }) => {
+const BfKoppelVenster: React.FC<BfKoppelVensterProps> = ({ batch, alleBatches, bfBatches, namen, gevolgen, vernieuw, onKoppel, onSluit }) => {
   const [bezig, setBezig] = React.useState(false)
   const [fout, setFout] = React.useState<string | null>(null)
   const haal = React.useCallback(async () => {
@@ -50,6 +52,11 @@ const BfKoppelVenster: React.FC<BfKoppelVensterProps> = ({ batch, alleBatches, b
   return (
     <Blad titel={t('bf_koppel_titel')} onSluit={onSluit} wide>
       <p className="text-sm text-gray-600">{t('bf_koppel_uitleg')}</p>
+      {gevolgen.length > 0 && (
+        <ul className="text-sm text-gray-600 list-disc pl-5 space-y-0.5">
+          {gevolgen.map(g => <li key={g}>{t(g)}</li>)}
+        </ul>
+      )}
       {fout && <p role="alert" className="text-sm text-red-700">{fout}</p>}
       {bezig && bfBatches === null ? (
         <p className="text-sm text-gray-600">{t('bf_koppel_laden')}</p>

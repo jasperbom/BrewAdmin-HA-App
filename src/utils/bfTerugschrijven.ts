@@ -1,9 +1,10 @@
-// Batches terugschrijven naar Brewfather: BrewAdmin is leidend.
+// Batches terugschrijven naar Brewfather, voor wie in BrewAdmin brouwt.
 //
-// Er wordt gebrouwen in BrewAdmin (brouwdag, metingen, fases, afvullen).
-// Brewfather krijgt per gekoppelde batch de status en de gemeten waarden
-// (`PATCH /batches/:id`, API 3.1.0+, scope `batches.write`); er komt niets
-// terug. Recepten en ingrediënten blijven uit Brewfather komen.
+// Staat de status en/of de meetwaarden van batches op *schrijven*
+// (utils/bfRichting.ts), dan krijgt Brewfather per gekoppelde batch die delen
+// (`PATCH /batches/:id`, API 3.1.0+, scope `batches.write`). Wat op *lezen*
+// staat komt juist uit Brewfather (utils/bfBatchSync.ts, utils/bfStatus.ts);
+// één onderdeel gaat nooit beide kanten op.
 //
 // De Brewfather-API kan geen batch aanmaken: de batch maak je één keer in
 // Brewfather aan (vanuit het recept, *Brew*) en koppel je hier
@@ -94,14 +95,20 @@ const ph = (v: unknown): number | null => {
 
 export type BfBericht = Record<string, string | number>
 
+/** Welke delen van een batch naar Brewfather gaan (de keuze in utils/bfRichting.ts). */
+export interface BfDelen { status: boolean, metingen: boolean }
+const ALLE_DELEN: BfDelen = { status: true, metingen: true }
+
 /**
  * Het bericht voor Brewfather: de status en elk meetveld met een geldige
- * waarde. `afgevuldLiter` = de afgevulde liters (batchesLijst `afgevuldeLiters`).
+ * waarde, voor zover die delen op schrijven staan. `afgevuldLiter` = de
+ * afgevulde liters (batchesLijst `afgevuldeLiters`).
  */
-export const bfBatchBericht = (b: BfBatchBron, afgevuldLiter = 0): BfBericht => {
+export const bfBatchBericht = (b: BfBatchBron, afgevuldLiter = 0, delen: BfDelen = ALLE_DELEN): BfBericht => {
   const uit: BfBericht = {}
   const status = APP_NAAR_BF_STATUS[String(b.status || '')]
-  if (status) uit.status = status
+  if (status && delen.status) uit.status = status
+  if (!delen.metingen) return uit
   const zet = (veld: string, n: number | null) => { if (n !== null) uit[veld] = n }
   zet('measuredOg', sg(b.OG))
   zet('measuredFg', sg(b.FG))
@@ -138,6 +145,7 @@ export const bfTeSchrijven = (
     pogingen?: ReadonlyMap<number, { sleutel: string, op: number }>
     nu?: number
     wachtMs?: number
+    delen?: BfDelen
   } = {},
 ): BfTeSchrijven[] => {
   const nu = opts.nu ?? Date.now()
@@ -146,7 +154,7 @@ export const bfTeSchrijven = (
   for (const b of batches || []) {
     if (!b || b.id == null || !b.brewfather_id || b.bf_verweesd) continue
     if (!APP_NAAR_BF_STATUS[String(b.status || '')]) continue
-    const bericht = bfBatchBericht(b, opts.afgevuldLiter?.(b.id) ?? 0)
+    const bericht = bfBatchBericht(b, opts.afgevuldLiter?.(b.id) ?? 0, opts.delen ?? ALLE_DELEN)
     if (!Object.keys(bericht).length) continue
     const sleutel = bfBerichtSleutel(bericht)
     if (b.bf_gepusht?.sleutel === sleutel) continue
@@ -176,7 +184,7 @@ export const bfOntkoppelen = (): Record<string, unknown> => ({
   bf_gepusht: undefined,
   bf_fout: undefined,
   bf_verweesd: undefined,
-  // Van 1.13.19 (toen de sync nog ophaalde):
+  // Van de sync die ophaalt (utils/bfBatchSync.ts):
   bf_stand: undefined,
   bf_verschil: undefined,
 })

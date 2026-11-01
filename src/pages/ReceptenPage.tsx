@@ -2,6 +2,7 @@ import React from 'react'
 import { t } from '../i18n'
 import { fmtD, tod } from '../utils/format'
 import { bfGetRecipesWithVersions, _fetchedKeys } from '../utils/api'
+import { bfMag, bfKoppelingAan } from '../utils/bfRichting'
 import Btn from '../components/ui/Btn'
 import LegeStaat from '../components/ui/LegeStaat'
 import { useUndo } from '../components/ui/UndoBar'
@@ -249,8 +250,12 @@ function ReceptenPage({
 
   // ── Brewfather-sync ───────────────────────────────────────────────────────
 
+  // Recepten ophalen kan als de koppeling aan staat en recepten op lezen staan
+  // (utils/bfRichting.ts). Staan ze uit, dan is er ook geen knop.
+  const bfReceptenLezen = bfMag(bfCreds, 'recepten', 'lezen')
+  const bfReceptenUit = bfKoppelingAan(bfCreds) && !bfReceptenLezen
   const runSync = async () => {
-    if (!bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) {
+    if (!bfReceptenLezen) {
       setMsg('⚠ ' + t('settings_brewfather_section')); return
     }
     setSyncing(true); setMsg('')
@@ -352,9 +357,11 @@ function ReceptenPage({
           <h2 className="text-xl md:text-2xl font-bold text-gray-900">{t('nav_recepten')}</h2>
           <div className="flex items-center gap-3 min-w-0">
             {syncTekst && <span className="hidden sm:inline text-sm text-gray-500 truncate">{syncTekst}</span>}
-            <Btn v="secondary" onClick={runSync} disabled={syncing || !bfCreds?.enabled}>
-              {syncing ? t('recipe_syncing') : t('recipe_sync_brewfather')}
-            </Btn>
+            {!bfReceptenUit && (
+              <Btn v="secondary" onClick={runSync} disabled={syncing || !bfReceptenLezen}>
+                {syncing ? t('recipe_syncing') : t('recipe_sync_brewfather')}
+              </Btn>
+            )}
           </div>
         </div>
         {syncTekst && <p className="sm:hidden text-xs text-gray-500 mt-1">{syncTekst}</p>}
@@ -389,7 +396,7 @@ function ReceptenPage({
             onProduct={naarProduct}
             vandaag={vandaag}
             geenRecepten={(recepten || []).length === 0}
-            onSync={bfCreds?.enabled && !syncing ? runSync : undefined}
+            onSync={bfReceptenLezen && !syncing ? runSync : undefined}
           />
         </div>
 

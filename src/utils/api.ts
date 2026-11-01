@@ -1515,16 +1515,18 @@ export const bfGetRecipesWithVersions = async (): Promise<{
 }
 
 /**
- * De Brewfather-batches om aan te koppelen (utils/bfKoppeling.ts): de lopende
- * met hun recept, en de afgeronde (Completed) zonder `complete` — alleen id,
- * nummer, naam, recept en brouwdag zijn nodig. BrewAdmin haalt geen
- * batchwaarden meer op: het schrijft ze naar Brewfather (bfPatchBatch).
+ * De Brewfather-batches. Om aan te koppelen (utils/bfKoppeling.ts) zijn de
+ * lopende met hun recept genoeg, en de afgeronde (Completed) zonder `complete`
+ * — alleen id, nummer, naam, recept en brouwdag. Met `waarden` (de sync die
+ * status of meetwaarden ophaalt, utils/bfBatchSync.ts) ook Completed compleet
+ * en Archived zonder: alleen dan mag een gekoppelde batch die er niet tussen
+ * zit als verwijderd gelden (`bfVerweesdeBatches`).
  * `volledig` = elke pagina kwam goed binnen; `fout` = de eerste mislukte, als melding.
  */
-export const bfGetBatches = async (): Promise<{batches: any[], volledig: boolean, fout?: string}> => {
-  const statuses: Array<[string, boolean]> = [
-    ['Planning', true], ['Brewing', true], ['Fermenting', true], ['Conditioning', true], ['Completed', false],
-  ]
+export const bfGetBatches = async (opts: {waarden?: boolean} = {}): Promise<{batches: any[], volledig: boolean, fout?: string}> => {
+  const statuses: Array<[string, boolean]> = opts.waarden
+    ? [['Planning', true], ['Brewing', true], ['Fermenting', true], ['Conditioning', true], ['Completed', true], ['Archived', false]]
+    : [['Planning', true], ['Brewing', true], ['Fermenting', true], ['Conditioning', true], ['Completed', false]]
   const all: any[] = []
   let volledig = true
   let fout: string | undefined

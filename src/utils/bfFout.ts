@@ -15,6 +15,7 @@ export type BfOorzaak =
   | 'niet_gevonden'  // 404
   | 'te_veel'        // 429: aanroeplimiet bereikt
   | 'niet_toegestaan'// 403 van onze proxy: deze schrijfactie staat niet op de lijst
+  | 'uit'            // 403 van onze proxy: dit onderdeel staat uit (of niet op schrijven) in de instellingen
   | 'brewfather'     // 5xx van Brewfather zelf
   | 'http'           // overige status
 
@@ -36,6 +37,7 @@ export const parseBfFout = (status: number, body: unknown, retryAfter?: string |
   const fout = (oorzaak: BfOorzaak): BfFout => ({status, oorzaak, detail, wachtS})
   if (b.error === 'brewfather_onbereikbaar') return fout('onbereikbaar')
   if (b.error === 'brewfather_niet_toegestaan') return fout('niet_toegestaan')
+  if (b.error === 'brewfather_uit') return fout('uit')
   if (b.error === 'no credentials configured') return fout('geen_sleutel')
   if (status === 429) return fout('te_veel')
   if (status === 401 || status === 403) return fout('auth')

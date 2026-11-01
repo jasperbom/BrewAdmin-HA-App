@@ -71,7 +71,26 @@ describe('na de poging', () => {
   it('de sleutel hangt niet af van de volgorde', () => {
     expect(bfBerichtSleutel({ a: 1, b: 'x' })).toBe(bfBerichtSleutel({ b: 'x', a: 1 }))
   })
-  it('ontkoppelen wist ook de velden van 1.13.19', () => {
+  it('ontkoppelen wist ook de velden van de sync die ophaalt', () => {
     expect(Object.keys(bfOntkoppelen())).toEqual(expect.arrayContaining(['brewfather_id', 'bf_gepusht', 'bf_stand', 'bf_verschil']))
+  })
+})
+
+describe('alleen de delen die op schrijven staan', () => {
+  const b = { id: 1, status: 'Vergisten', brewfather_id: 'b1', OG: 1.05, FG: 1.01 }
+  it('alleen de status', () => {
+    expect(bfBatchBericht(b, 0, { status: true, metingen: false })).toEqual({ status: 'Fermenting' })
+  })
+  it('alleen de meetwaarden', () => {
+    expect(bfBatchBericht(b, 0, { status: false, metingen: true })).toEqual({ measuredOg: 1.05, measuredFg: 1.01 })
+  })
+  it('niets te schrijven = niets versturen', () => {
+    expect(bfTeSchrijven([{ ...b, OG: '', FG: '' }], { delen: { status: false, metingen: true } })).toEqual([])
+    expect(bfTeSchrijven([b], { delen: { status: false, metingen: false } })).toEqual([])
+  })
+  it('een andere keuze is een ander bericht: de batch gaat opnieuw', () => {
+    const eerst = bfTeSchrijven([b], { delen: { status: true, metingen: false } })[0]
+    const daarna = bfTeSchrijven([{ ...b, bf_gepusht: { sleutel: eerst.sleutel } }], { delen: { status: true, metingen: true } })
+    expect(daarna).toHaveLength(1)
   })
 })

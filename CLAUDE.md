@@ -367,7 +367,12 @@ BrewAdmin-HA-App/
 │   │   │                   # orderregels, tankkaarten): `productEbc`/`batchEbc` (eigen veld →
 │   │   │                   # product → recept), `tekstKleurOp`, `ebcUitSrm` (Brewfather geeft SRM).
 │   │   │                   # Component: ui/BierKleur.tsx
-│   │   ├── bfTerugschrijven.ts # Batches naar Brewfather (BrewAdmin leidend): status + meetwaarden,
+│   │   ├── bfRichting.ts   # Brewfather per onderdeel uit/lezen/schrijven (`brewfather_creds.richting`):
+│   │   │                   # keuzes, standaard (= server.py, pytest bewaakt het), `bfMag`, `bfScopes`
+│   │   ├── bfBatchSync.ts  # Batches uit Brewfather lezen: meetwaarden nooit stil overschrijven
+│   │   │                   # (`bf_stand`/`bf_verschil`), verweesd, schema's (`bfProfielen`)
+│   │   ├── bfStatus.ts     # Status uit Brewfather (`BF_NAAR_APP_STATUS`) langs de tank- en CCP-regels
+│   │   ├── bfTerugschrijven.ts # Batches naar Brewfather schrijven: status en/of meetwaarden,
 │   │   │                   # alleen bij een nieuw bericht (`bf_gepusht`), `bf_fout`, `bf_verweesd`
 │   │   ├── bfKoppeling.ts  # Een batch aan een Brewfather-batch koppelen: kandidaten met voorstel,
 │   │   │                   # "Nieuw in Brewfather", bestaande batch voorstellen, recept erbij
@@ -814,9 +819,13 @@ op het oude gedrag), `receptGebruik.ts`/`receptLijst.ts`, `verkoopOverzicht.ts`
 Testdata van de demo-brouwerij uit het opzet: `__tests__/demoBrouwerij.ts`.
 De Brewfather-koppeling: `bfTerugschrijven.test.ts` (het bericht: status, afronding,
 lege en onzinnige velden gaan niet mee; alleen gekoppelde, niet-verweesde, niet-gesloten
-batches met een nieuw bericht; wachten na een mislukte poging; 404 = verweesd),
-`bfKoppeling.test.ts` (voorstel op recept en brouwdag, al gekoppeld, opnieuw koppelen,
-Nieuw in Brewfather, bestaande batch) en `bfFout.test.ts`.
+batches met een nieuw bericht; wachten na een mislukte poging; 404 = verweesd; alleen
+de delen die op schrijven staan), `bfBatchSync.test.ts` + `bfStatus.test.ts` (lezen:
+leeg vullen, nooit stil overschrijven, verschil overnemen of houden, na het afvullen
+alleen lege velden, vastgezette ABV, schema's, status alleen vooruit langs tank en
+CCP 1), `bfRichting.test.ts` (standaard, ongeldige keuzes, rechten van de sleutel,
+gevolgen van koppelen), `bfKoppeling.test.ts` (voorstel op recept en brouwdag, al
+gekoppeld, opnieuw koppelen, Nieuw in Brewfather, bestaande batch) en `bfFout.test.ts`.
 
 `server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
 key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
@@ -849,7 +858,7 @@ alleen lezen, uitval halverwege, plafond op onverwerkte facturen en op de mailgr
 gebruikersnaam, mapnamen met haken/accenten als modified UTF-7, opnieuw doorlopen en het
 loslaten van de waterlijn bij een teruggezette lijst), verbindingsfouten → codes, de rollen,
 de secret-bestemming en de backup-versleuteling van `imap_creds`.
-`TestBrewfatherDoorgang` bewaakt de Brewfather-proxy tegen een nep-Brewfather: alleen voorraad en batchstatus + meetwaarden schrijven (velden gelijk aan `bfTerugschrijven.ts`, nooit `null`), NaN geweigerd, alleen-lezen geweigerd, foutmelding en `Retry-After` doorgegeven, onbereikbaar = 502.
+`TestBrewfatherDoorgang` bewaakt de Brewfather-proxy tegen een nep-Brewfather: alleen voorraad en batchstatus + meetwaarden schrijven (velden gelijk aan `bfTerugschrijven.ts`, nooit `null`), de richting per onderdeel (uit of alleen lezen = 403 `brewfather_uit`, status en meetwaarden apart, standaard en keuzes gelijk aan `bfRichting.ts`), NaN geweigerd, alleen-lezen geweigerd, foutmelding en `Retry-After` doorgegeven, onbereikbaar = 502.
 `TestBankAfschriften` bewaakt de bewaarde bankafschriften: `bank_transacties`
 en `bank_afschriften` alleen als lijst (422), `productie` krijgt 403 (ook in
 een commit), `boekhouding` mag schrijven, delta toevoegen/verwijderen werkt.
@@ -1411,7 +1420,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 |-----|------|--------|
 | `ingredienten` | array | Ingrediënten. `allergenen` (ontbrekend = niet beoordeeld, `[]` = geen) met `allergenen_bron` (`regel`/`claude`/`handmatig`), `allergenen_toelichting` en `allergenen_model` (bij `claude`) — gezet door *Allergenen opzoeken* of de matrix (`handmatigBeoordeeld`) |
 | `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
-| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). Brewfather (alleen terugschrijven): `brewfather_id`/`brewfather_batch_nummer`, `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht), `bf_fout` (`{op, melding}` van de laatste mislukte poging), `bf_verweesd` (datum waarop Brewfather de batch niet meer kende) — `utils/bfTerugschrijven.ts`. `bf_stand`/`bf_verschil` van 1.13.19 worden niet meer gebruikt |
+| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). Brewfather: `brewfather_id`/`brewfather_batch_nummer`, `bf_verweesd` (datum waarop Brewfather de batch niet meer kende); bij lezen `bf_stand` (per veld de laatst overgenomen waarde, een schema als hash) en `bf_verschil` (waarden waarin Brewfather afwijkt van een hier aangepaste waarde) — `utils/bfBatchSync.ts`; bij schrijven `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht) en `bf_fout` (`{op, melding}` van de laatste mislukte poging) — `utils/bfTerugschrijven.ts` |
 | `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
 | `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull en `voorraad_gepusht`/`voorraad_gepusht_op` = de voorraad bij de laatste push — ook op `merch_artikelen` en de oude `artikelen`) |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
@@ -1497,7 +1506,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `factuur_logo` | string\|null | Base64 factuurlogo |
 | `app_name` | string | Naam van de brouwerij-app |
 | `nav_theme` | string | UI-thema (`amber`/`green`/`blue`/`slate`/`red`/`purple`/`sand`/`craftery`; leeg of onbekend = `THEMA_STANDAARD` = `amber`) |
-| `brewfather_creds` *(secure)* | object | Brewfather API-credentials (nooit in backup) |
+| `brewfather_creds` *(secure)* | object | Brewfather API-credentials + `richting` (per onderdeel uit/lezen/schrijven, `utils/bfRichting.ts`; de server leest hem ook) — nooit in backup |
 | `woocommerce_creds` *(secure)* | object | WooCommerce API-credentials + import-instellingen (`importStatussen`, standaard incl. `completed`; `importVanaf`-datum) `prijzenInclBtw` (voert de winkel prijzen incl. BTW in? default ja — bepaalt de omrekening bij een productpush) en `themaVelden` (Craftery-`_cf_`-velden beheren, default aan), `voorraadAutoPush` (voorraad vanzelf naar de winkel na een handmatige bestelling, kassaverkoop of annulering; default aan, `utils/wcVoorraad.ts`), `bestelUrl` (eigen sjabloon voor de bestelpagina van de klant met `{winkel}`/`{id}`/`{sleutel}`; leeg = de bij de import per order bepaalde `wc_bestel_url` — knop in de bestelbevestiging via `bestelLink` in `utils/levering.ts`) — nooit in backup |
 | `claude_creds` *(secure)* | object | Anthropic API-key (nooit in backup) |
 | `smtp_creds` *(secure)* | object | SMTP-server (host/port/user/pass/from/security/enabled) voor pakbon-, factuur- en bestelmail (nooit in backup) |
@@ -1731,31 +1740,53 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 ### Brewfather API
 
 - REST API, authenticated via Basic auth (user ID + API key)
-- Used for: recepten en ingrediënten ophalen, ingrediëntvoorraad pushen, batches terugschrijven
-- Credentials in de secure key `brewfather_creds` (`userId`, `apiKey`, `enabled`, `lastSync`)
-- **Richting (1.13.20): BrewAdmin is leidend voor batches.** Er wordt in BrewAdmin
-  gebrouwen; recepten en ingrediënten komen uit Brewfather (Recepten/Ingrediënten →
-  Sync), batches gaan alleen náár Brewfather. Er wordt nooit een batchwaarde of
-  -status uit Brewfather opgehaald
-- **Terugschrijven** (`utils/bfTerugschrijven.ts`, effect in App.tsx): elke gekoppelde
-  batch krijgt `PATCH batches/:id` met de status (`APP_NAAR_BF_STATUS`: Afgevuld/
-  Verpakt = Completed; een gesloten batch gaat niet meer) en de meetwaarden met een
-  geldige waarde (`BF_MEETVELDEN`: OG, FG, pre-boil-SG, kookvolume begin/eind, liters
-  vergist, afgevulde liters, maisch-pH, pH bier). Een leeg veld gaat nooit mee (wist
-  niets). Alleen als het bericht anders is dan `bf_gepusht.sleutel`, vier seconden na
-  een wijziging, één voor één; een mislukte poging (`bf_fout`, melding op de batch)
-  wacht een kwartier; 404 = `bf_verweesd` (melding: opnieuw koppelen of verbreken).
+- Used for: recepten en ingrediënten ophalen, ingrediëntvoorraad pushen, batches ophalen óf terugschrijven
+- Credentials in de secure key `brewfather_creds` (`userId`, `apiKey`, `enabled`, `lastSync`,
+  `richting`)
+- **Richting per onderdeel (1.13.22, `utils/bfRichting.ts`):** `brewfather_creds.richting`
+  = `{recepten, ingredienten, voorraad, batch_status, batch_metingen}` met per onderdeel
+  `uit`/`lezen`/`schrijven` — alleen wat `BF_RICHTING_KEUZES` toelaat (recepten en
+  ingrediënten alleen lezen, voorraad alleen schrijven, status en meetwaarden alle
+  drie, elk apart). Ontbrekend of ongeldig = `BF_RICHTING_STANDAARD` (het gedrag van
+  vóór de instelling: alles lezen, voorraad schrijven). Instellingen → Koppelingen →
+  Brewfather (een `Segment` per onderdeel, opgeslagen met de creds, audit
+  `audit_bf_richting`); de benodigde sleutelrechten volgen de keuze (`bfScopes`). Een
+  knop voor iets wat uit staat verdwijnt (`bfMag`). **De server dwingt het af**
+  (`_bf_richting_fout`, 403 `brewfather_uit` + serveraudit bij een PATCH): spiegel
+  `_BF_RICHTING_KEUZES`/`_BF_RICHTING_STANDAARD`, pytest bewaakt dat ze gelijk zijn.
+  Een nieuw Brewfather-onderdeel = een regel in beide tabellen én in `_bf_richting_fout`
+- **Lezen** (`utils/bfBatchSync.ts`, `utils/bfStatus.ts`, effect in App.tsx): bij het
+  openen (en na een nieuwe koppeling) `bfGetBatches({waarden: true})`; per gekoppelde
+  batch (alleen op `brewfather_id`) de meetwaarden via `bfBatchWijzigingen` — leeg =
+  vullen, gelijk aan `bf_stand` = overnemen, hier aangepast = nooit stil overschrijven
+  maar `bf_verschil` (melding `BfMelding`: overnemen of hier houden), na het afvullen
+  alleen lege velden, een vastgezette ABV nooit — en de status via `BF_NAAR_APP_STATUS`
+  + `bfStatusOvergang` (alleen vooruit, niet langs een tankclaim of CCP 1-vrijgave;
+  zelfde neveneffecten als `gaNaarFase`). Elke overname een auditregel; een batch die
+  niet meer in Brewfather staat (alleen bij een volledige lijst incl. Archived) =
+  `bf_verweesd`. Schema's via `bfProfielen` (`stepTime`, nooit `actualTime`)
+- **Schrijven** (`utils/bfTerugschrijven.ts`, effect in App.tsx): elke gekoppelde
+  batch krijgt `PATCH batches/:id` met alleen de delen die op schrijven staan
+  (`BfDelen`): de status (`APP_NAAR_BF_STATUS`: Afgevuld/Verpakt = Completed; een
+  gesloten batch gaat niet meer) en/of de meetwaarden met een geldige waarde
+  (`BF_MEETVELDEN`: OG, FG, pre-boil-SG, kookvolume begin/eind, liters vergist,
+  afgevulde liters, maisch-pH, pH bier). Een leeg veld gaat nooit mee (wist niets).
+  Alleen als het bericht anders is dan `bf_gepusht.sleutel`, vier seconden na een
+  wijziging, één voor één; een mislukte poging (`bf_fout`, melding op de batch) wacht
+  een kwartier; 404 = `bf_verweesd` (melding: opnieuw koppelen of verbreken).
   Brewfather negeert onbekende velden zonder melding — de veldnamen komen uit de
-  API-documentatie. Alleen voor een rol die `batches` mag schrijven
+  API-documentatie. Lezen en schrijven alleen voor een rol die `batches` mag schrijven
 - **Koppelen** (`utils/bfKoppeling.ts`): de API maakt geen batches, dus de batch maak je
   één keer in Brewfather (vanuit het recept) en koppel je hier. Batch → ⋯ → *Koppel aan
   Brewfather* (`BfKoppelVenster`, voorstel op recept + brouwdag); Batches › Lopend →
   *Nieuw in Brewfather* (`BfNieuwKaart`, de lijst één keer per sessie opgehaald met
   `bfGetBatches`): koppelen aan de batch die er al is (`bfVoorstelBatch`) of plannen via
   "Wat brouw je?" met `verzoek.brewfather`. Koppelen (`bfKoppelWijziging`) zet alleen de
-  koppeling; meteen daarna gaat de batch naar Brewfather
-- **Proxy** (`_bf_proxy_get`/`_bf_proxy_patch` in server.py): GET gaat door, schrijven
-  alleen wat `_bf_patch_toegestaan` toelaat — de voorraad van één ingrediënt
+  koppeling; meteen daarna haalt de app de batch op of schrijft hem terug (wat er
+  gebeurt staat in het venster en de melding: `bfKoppelGevolgen`). Koppelen kan zodra
+  status of meetwaarden niet uit staan (`bfBatchesKoppelbaar`)
+- **Proxy** (`_bf_proxy_get`/`_bf_proxy_patch` in server.py): eerst de richting
+  (`_bf_richting_fout`), dan voor schrijven de vorm: alleen wat `_bf_patch_toegestaan` toelaat — de voorraad van één ingrediënt
   (`inventory`/`inventory_adjust` als getal) en de status + `_BF_BATCH_VELDEN` van één
   batch (spiegel van `BF_MEETVELDEN`/`BF_STATUSSEN`, pytest bewaakt het; nooit `null`).
   De rest 403 + audit `brewfather_geweigerd`. Sinds API 3.1.0 kan een sleutel met
@@ -1764,7 +1795,7 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   `Retry-After`; `utils/bfFout.ts` maakt er een melding van
 - **Kleur:** Brewfather geeft SRM (`Recipe.color`); de app rekent in EBC — `ebcUitSrm`
   in `utils/bierKleur.ts` (×1,97) in `bfMapRecipe`
-- Automatische schrijfacties (het terugschrijven, de klantkoppeling, de
+- Automatische schrijfacties (het terugschrijven, de batchsync, de klantkoppeling, de
   'ingelogd'-auditregel) wachten op `whoami` en slaan een key over die de
   rol niet mag schrijven (`rolMagKey` in `utils/rollen.ts`, spiegel van
   `_rol_mag_key`); `lastSync` in de creds schrijft alleen beheer

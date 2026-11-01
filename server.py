@@ -669,6 +669,11 @@ def _load_bf_creds() -> tuple[str, str] | None:
         return None
 
 
+def _load_bf_richting() -> dict:
+    """De keuze per Brewfather-onderdeel (`_bf_richting`)."""
+    return _bf_richting(_read_json('brewfather_creds'))
+
+
 def _load_smtp_creds() -> dict | None:
     """Read stored SMTP credentials; returns a sanitized dict or None.
 
@@ -912,6 +917,68 @@ def _bf_patch_toegestaan(subpad: str, body) -> bool:
                 return False
         return True
     return False
+
+
+# Wat de app met Brewfather mag, per onderdeel (Instellingen → Koppelingen,
+# `brewfather_creds.richting`). Spiegel van BF_RICHTING_KEUZES en
+# BF_RICHTING_STANDAARD in src/utils/bfRichting.ts (pytest bewaakt dat ze gelijk
+# zijn). Zonder keuze: het gedrag van vóór de instelling.
+_BF_RICHTING_KEUZES = {
+    'recepten': ('uit', 'lezen'),
+    'ingredienten': ('uit', 'lezen'),
+    'voorraad': ('uit', 'schrijven'),
+    'batch_status': ('uit', 'lezen', 'schrijven'),
+    'batch_metingen': ('uit', 'lezen', 'schrijven'),
+}
+_BF_RICHTING_STANDAARD = {
+    'recepten': 'lezen',
+    'ingredienten': 'lezen',
+    'voorraad': 'schrijven',
+    'batch_status': 'lezen',
+    'batch_metingen': 'lezen',
+}
+
+
+def _bf_richting(creds) -> dict:
+    """De keuze per onderdeel uit de opgeslagen creds; ontbrekend of ongeldig
+    wordt de standaard."""
+    r = creds.get('richting') if isinstance(creds, dict) else None
+    if not isinstance(r, dict):
+        r = {}
+    uit = dict(_BF_RICHTING_STANDAARD)
+    for onderdeel, keuzes in _BF_RICHTING_KEUZES.items():
+        v = r.get(onderdeel)
+        if isinstance(v, str) and v in keuzes:
+            uit[onderdeel] = v
+    return uit
+
+
+def _bf_richting_fout(subpad: str, methode: str, body, richting: dict) -> str | None:
+    """Het onderdeel dat deze aanroep nodig heeft maar dat niet zo aan staat;
+    None = mag. Lezen: recepten, de ingrediëntenlijst (`inventory/…`) en de
+    batches (zodra status of meetwaarden niet uit staan — koppelen haalt de
+    lijst op). Schrijven: de voorraad, en per batch alleen de delen die op
+    schrijven staan."""
+    pad = (subpad or '').split('?', 1)[0].strip('/')
+    deel = pad.split('/', 1)[0]
+    if methode == 'GET':
+        if deel == 'recipes':
+            return None if richting.get('recepten') == 'lezen' else 'recepten'
+        if deel == 'inventory':
+            return None if richting.get('ingredienten') == 'lezen' else 'ingredienten'
+        if deel == 'batches':
+            koppelbaar = richting.get('batch_status') != 'uit' or richting.get('batch_metingen') != 'uit'
+            return None if koppelbaar else 'batch_status'
+        return None
+    if _BF_PATCH_PAD_RE.match(pad):
+        return None if richting.get('voorraad') == 'schrijven' else 'voorraad'
+    if _BF_BATCH_PAD_RE.match(pad) and isinstance(body, dict):
+        if 'status' in body and richting.get('batch_status') != 'schrijven':
+            return 'batch_status'
+        if any(k != 'status' for k in body) and richting.get('batch_metingen') != 'schrijven':
+            return 'batch_metingen'
+        return None
+    return None
 
 
 def _bf_retry_after(waarde) -> str | None:
@@ -7266,6 +7333,11 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._json(400, {'error': 'invalid path'})
             return
 
+        uit = _bf_richting_fout(bf_subpath, 'GET', None, _load_bf_richting())
+        if uit is not None:
+            self._json(403, {'error': 'brewfather_uit', 'onderdeel': uit})
+            return
+
         creds = _load_bf_creds()
         if creds is None:
             self._json(401, {'error': 'no credentials configured'})
@@ -7290,7 +7362,9 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         """Proxy a PATCH request to Brewfather, delivered as browser POST.
 
         Alleen wat `_bf_patch_toegestaan` toelaat (de voorraad van één
-        ingrediënt); de rest krijgt 403 en een auditregel."""
+        ingrediënt, de status en meetwaarden van één batch) en wat in de
+        instellingen op schrijven staat (`_bf_richting_fout`); de rest krijgt
+        403 en een auditregel."""
         full = self.path
         idx = full.find(BF_PATCH_PREFIX)
         bf_subpath = full[idx + len(BF_PATCH_PREFIX):]
@@ -7310,6 +7384,15 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                          ip=self.client_address[0], rol=self._rol(),
                          gebruiker=self._ingress_user())
             self._json(403, {'error': 'brewfather_niet_toegestaan'})
+            return
+        # Wat in de instellingen niet op schrijven staat gaat ook langs een
+        # omweg niet naar Brewfather.
+        uit = _bf_richting_fout(bf_subpath, 'PATCH', geparsed, _load_bf_richting())
+        if uit is not None:
+            _audit_write('brewfather_uit', f'{uit}: {bf_subpath[:100]}',
+                         ip=self.client_address[0], rol=self._rol(),
+                         gebruiker=self._ingress_user())
+            self._json(403, {'error': 'brewfather_uit', 'onderdeel': uit})
             return
         creds = _load_bf_creds()
         if creds is None:

@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { t } from '../i18n'
 import { newId, bfGetIngredients, bfPushInventory, extractBfProps } from '../utils/api'
+import { bfMag } from '../utils/bfRichting'
 import { bfFermType } from '../utils/ingTypes'
 import { fmt, fmtD, tod, fmtQty, r3 } from '../utils/format'
 import { thtAlertLots } from '../utils/calculations'
@@ -222,8 +223,12 @@ const IngredientenPage: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ing, tab])
 
+  // Brewfather per onderdeel (utils/bfRichting.ts): de ingrediëntenlijst
+  // ophalen en de voorraad terugsturen staan elk apart aan of uit.
+  const bfIngLezen = bfMag(bfCreds, 'ingredienten', 'lezen')
+  const bfVoorraadSchrijven = bfMag(bfCreds, 'voorraad', 'schrijven')
   const runBfIngSync = async () => {
-    if (!bfCreds?.enabled || !bfCreds.userId || !bfCreds.apiKey) {
+    if (!bfIngLezen) {
       setBfMsg('⚠ ' + t('settings_brewfather_section')); return
     }
     setBfSyncing(true); setBfMsg('')
@@ -631,7 +636,7 @@ const IngredientenPage: React.FC<Props> = ({
         {tab === 'ingredienten' && (
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {bfMsg && <span className={`text-xs ${bfMsg.startsWith('✓') ? 'text-green-600' : 'text-orange-600'}`}>{bfMsg}</span>}
-            {bfCreds?.enabled && <Btn v="secondary" onClick={runBfIngSync} disabled={bfSyncing}>{bfSyncing ? t('ing_bf_syncing') : t('ing_bf_sync')}</Btn>}
+            {bfIngLezen && <Btn v="secondary" onClick={runBfIngSync} disabled={bfSyncing}>{bfSyncing ? t('ing_bf_syncing') : t('ing_bf_sync')}</Btn>}
             <Btn onClick={() => { setOntvangstInitTab('ingredienten'); setOntvangstInitIngId(''); setShowO(true) }}>{t('btn_ontvangst')}</Btn>
           </div>
         )}
@@ -779,7 +784,7 @@ const IngredientenPage: React.FC<Props> = ({
               <SectionHeader
                 title={<>{selIng.naam}{selIng.fabrikant && <span className="font-normal opacity-70 ml-1">· {selIng.fabrikant}</span>} — {t('ing_lots')}</>}
                 info={<>
-                  {selIng.brewfather_id && selIng.brewfather_cat && bfCreds?.enabled && (
+                  {selIng.brewfather_id && selIng.brewfather_cat && bfVoorraadSchrijven && (
                     <Btn s="sm" v="header" onClick={() => pushBfStock(selIng)} disabled={bfPushing}>{bfPushing ? '...' : t('btn_push_bf_stock')}</Btn>
                   )}
                   <Btn s="sm" v="header" onClick={openIngEdit}>{t('btn_edit')}</Btn>

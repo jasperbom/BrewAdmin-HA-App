@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.22] — 2026-11-01
+
+### Brewfather: per onderdeel uit, lezen of schrijven
+
+Onder Instellingen → Koppelingen → Brewfather kies je nu per onderdeel wat de
+app met Brewfather doet. Zo kan de een in Brewfather plannen en meten (lezen)
+en de ander in BrewAdmin brouwen en Brewfather alleen bijwerken (schrijven).
+
+| Onderdeel | Te kiezen | Standaard |
+|---|---|---|
+| Recepten (Recepten → Sync) | uit · lezen | lezen |
+| Ingrediënten (Ingrediënten → Sync) | uit · lezen | lezen |
+| Voorraad (knop bij een ingrediënt) | uit · schrijven | schrijven |
+| Status van batches | uit · lezen · schrijven | lezen |
+| Meetwaarden van batches | uit · lezen · schrijven | lezen |
+
+- **Zonder keuze blijft alles zoals vóór 1.13.20**: status en meetwaarden komen
+  uit Brewfather. Brouw je in BrewAdmin, zet die twee dan op *schrijven*.
+- **Lezen** werkt zoals in 1.13.19: een lege waarde wordt gevuld, een waarde
+  die hier is aangepast wordt nooit stil overschreven (een melding op de batch
+  vraagt wat er moet gebeuren), de status gaat alleen vooruit en langs de
+  tank- en CCP-controles, en elke overname komt in het auditlogboek. Na een
+  nieuwe koppeling haalt de app de batch meteen op.
+- **Schrijven** werkt zoals in 1.13.20, maar stuurt alleen de delen die op
+  schrijven staan. Status en meetwaarden kunnen elk een eigen richting hebben.
+- **De server houdt zich eraan.** Wat uit staat of niet op schrijven staat,
+  gaat ook langs een omweg niet naar of van Brewfather (403, met een regel in
+  het serverauditlog). Knoppen voor iets wat uit staat verdwijnen.
+- **Welke rechten de API-sleutel nodig heeft** staat er nu bij en volgt je
+  keuze; de statusvertaling toont de richting die je gekozen hebt.
+
 ## [1.13.21] — 2026-11-01
 
 ### Alles uit de Craftery-kopie in de gewone BrewAdmin
@@ -23,8 +54,7 @@ anders is dan in die kopie:
   standaardlogo. Upload je eigen logo onder Instellingen → App.
 - **Loginpagina (directe poort):** weer de neutrale standaardkleuren; de tekst
   op de knop wordt nu wel vanzelf donker op een licht accent.
-- **Brewfather:** zoals in 1.13.20 (batches naar Brewfather). In de volgende
-  versie wordt dat per onderdeel instelbaar.
+- **Brewfather:** per onderdeel instelbaar, zie 1.13.22.
 
 ## [1.13.20] — 2026-11-01
 

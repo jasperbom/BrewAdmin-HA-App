@@ -14,6 +14,10 @@ import BevestigKnop from '../components/ui/BevestigKnop'
 import { useUndo } from '../components/ui/UndoBar'
 import PaginaMelding from '../components/bestelling/PaginaMelding'
 import { APP_NAAR_BF_STATUS } from '../utils/bfTerugschrijven'
+import { BF_NAAR_APP_STATUS } from '../utils/bfStatus'
+import { BF_ONDERDELEN, BF_RICHTING_KEUZES, bfRichtingen, bfScopes } from '../utils/bfRichting'
+import type { BfOnderdeel, BfRichting, BfRichtingen } from '../utils/bfRichting'
+import Segment from '../components/ui/Segment'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS, NAV_THEMES } from '../utils/constants'
 import { buildFactuurHTML } from '../components/PakbonExport'
 import { bfTest, wcTestCreds, mailTestApi, mailSendApi, mollieTestApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker, getServerHealth, ServerHealth } from '../utils/api'
@@ -786,21 +790,30 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setIntegriteitResultaat((prev: any[]|null) => (prev || []).filter((x: any) => x !== p));
   };
 
-  const [bfForm, setBfForm]   = React.useState({userId: bfCreds?.userId||'', apiKey: bfCreds?.apiKey||'', enabled: bfCreds?.enabled||false});
+  // `richting` = per onderdeel uit / lezen / schrijven (utils/bfRichting.ts);
+  // de server leest dezelfde keuze uit de opgeslagen creds en houdt zich eraan.
+  const [bfForm, setBfForm]   = React.useState<{userId: string, apiKey: string, enabled: boolean, richting: BfRichtingen}>({userId: bfCreds?.userId||'', apiKey: bfCreds?.apiKey||'', enabled: bfCreds?.enabled||false, richting: bfRichtingen(bfCreds)});
   const [bfTesting, setBfTesting] = React.useState(false);
   const [bfMsg, setBfMsg]     = React.useState('');
 
   const bfFormInitialized = React.useRef(false);
   React.useEffect(() => {
     if (!bfFormInitialized.current && (bfCreds?.userId || bfCreds?.apiKey || bfCreds?.enabled)) {
-      setBfForm({userId: bfCreds.userId||'', apiKey: bfCreds.apiKey||'', enabled: bfCreds.enabled||false});
+      setBfForm({userId: bfCreds.userId||'', apiKey: bfCreds.apiKey||'', enabled: bfCreds.enabled||false, richting: bfRichtingen(bfCreds)});
       bfFormInitialized.current = true;
     }
   }, [bfCreds?.userId, bfCreds?.apiKey, bfCreds?.enabled]);
+  const kiesBfRichting = (o: BfOnderdeel, r: BfRichting) =>
+    setBfForm(f => ({...f, richting: {...f.richting, [o]: r}}));
 
   const saveBf = () => {
+    const oudeRichting = bfRichtingen(bfCreds);
     setBfCreds((prev: any) => ({...prev, ...bfForm}));
     logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd', omschrijving:`Brewfather credentials ${bfForm.enabled ? 'ingeschakeld' : 'uitgeschakeld'}`});
+    const gewijzigd = BF_ONDERDELEN.filter(o => oudeRichting[o] !== bfForm.richting[o]);
+    if (gewijzigd.length) logAudit(auditLog, setAuditLog, {entiteit:'Instelling', entiteit_id:0, actie:'gewijzigd',
+      velden: Object.fromEntries(gewijzigd.map(o => [`brewfather_${o}`, {oud: oudeRichting[o], nieuw: bfForm.richting[o]}])),
+      omschrijving: t('audit_bf_richting').replace('{wat}', gewijzigd.map(o => `${t(`bf_onderdeel_${o}`)}: ${t(`bf_richting_${bfForm.richting[o]}`)}`).join(', '))});
     setBfMsg('✓ ' + t('lbl_saved'));
     setTimeout(() => setBfMsg(''), 2000);
   };
@@ -2248,7 +2261,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_brewfather_section')}</h2>
         <p className="text-sm text-gray-500 mb-4">
           {t('settings_brewfather_connect_desc')}<br/>
-          {t('settings_brewfather_api_hint')} {t('settings_brewfather_scopes')}
+          {t('settings_brewfather_api_hint')}{' '}
+          {bfScopes(bfForm.richting).length
+            ? t('settings_brewfather_scopes').replace('{lijst}', bfScopes(bfForm.richting).map(sc => t(`bf_scope_${sc}`)).join(', '))
+            : t('settings_brewfather_scopes_geen')}
         </p>
         <div className="flex flex-col gap-4">
           <label className="flex items-center gap-3 cursor-pointer w-fit">
@@ -2272,6 +2288,23 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
             </div>
           </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-800">{t('settings_bf_richting_titel')}</p>
+            <p className="text-sm text-gray-500 mb-2">{t('settings_bf_richting_tekst')}</p>
+            <ul className="divide-y divide-gray-200 border-y border-gray-200">
+              {BF_ONDERDELEN.map(o => (
+                <li key={o} className="py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-700">{t(`bf_onderdeel_${o}`)}</p>
+                    <p className="text-xs text-gray-500">{t(`bf_onderdeel_${o}_uitleg`)}</p>
+                  </div>
+                  <Segment label={t(`bf_onderdeel_${o}`)} waarde={bfForm.richting[o]} klein cls="shrink-0 self-start sm:self-auto"
+                    opties={BF_RICHTING_KEUZES[o].map(r => ({v: r, l: t(`bf_richting_${r}`)}))}
+                    onKies={r => kiesBfRichting(o, r)} />
+                </li>
+              ))}
+            </ul>
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             <button onClick={saveBf} className="px-4 py-2 tbtn rounded text-sm font-medium transition-colors">{t('btn_save')}</button>
             <button onClick={testBf} disabled={bfTesting||!bfForm.userId||!bfForm.apiKey}
@@ -2281,15 +2314,26 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             {bfMsg && <span className={`text-sm font-medium ${bfMsg.startsWith('✓')?'text-green-600':'text-red-600'}`}>{bfMsg}</span>}
           </div>
         </div>
-        <div className="mt-4 pt-4 border-t">
-          <p className="text-xs font-semibold text-gray-400 mb-2">{t('settings_bf_status_mapping')}</p>
-          <p className="text-xs text-gray-500 mb-2">{t('settings_bf_terugschrijven')}</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 text-xs text-gray-500">
-            {Object.entries(APP_NAAR_BF_STATUS).filter(([app]) => app !== 'Verpakt').map(([app, bf]) => (
-              <span key={app}>{({Gepland:t('status_planning'),Brouwen:t('status_brewing'),Vergisten:t('status_fermenting'),Conditioneren:t('status_conditioning'),Afgevuld:t('status_packaged')} as any)[app]||app} → <span className="font-medium text-gray-600">{bf}</span></span>
-            ))}
-          </div>
-        </div>
+        {bfForm.richting.batch_status !== 'uit' && (() => {
+          // Hoe de status vertaald wordt, in de richting die nu gekozen is.
+          const appLabel = (app: string) => (({Gepland:t('status_planning'),Brouwen:t('status_brewing'),Vergisten:t('status_fermenting'),Conditioneren:t('status_conditioning'),Afgevuld:t('status_packaged'),Verpakt:t('status_packaged'),Gesloten:t('status_closed')} as Record<string, string>)[app] || app);
+          const lezen = bfForm.richting.batch_status === 'lezen';
+          return (
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-sm font-semibold text-gray-800 mb-1">{t(lezen ? 'settings_bf_status_mapping_lezen' : 'settings_bf_status_mapping')}</p>
+              <p className="text-xs text-gray-500 mb-2">{t(lezen ? 'settings_bf_status_lezen_uitleg' : 'settings_bf_status_schrijven_uitleg')}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs text-gray-500">
+                {lezen
+                  ? Object.entries(BF_NAAR_APP_STATUS).map(([bf, app]) => (
+                    <span key={bf}><span className="font-medium text-gray-600">{bf}</span> → {appLabel(app)}</span>
+                  ))
+                  : Object.entries(APP_NAAR_BF_STATUS).filter(([app]) => app !== 'Verpakt').map(([app, bf]) => (
+                    <span key={app}>{appLabel(app)} → <span className="font-medium text-gray-600">{bf}</span></span>
+                  ))}
+              </div>
+            </div>
+          );
+        })()}
         {bfCreds?.lastSync && <p className="text-xs text-gray-400 mt-3">{t('lbl_last_sync')}{fmtTs(bfCreds.lastSync)}</p>}
       </div>
       </>}

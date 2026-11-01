@@ -2,6 +2,10 @@ import React, { useState } from 'react'
 import { t, getLang } from '../i18n'
 import { newId, haGetState, haCallService } from '../utils/api'
 import { bfOntkoppelen } from '../utils/bfTerugschrijven'
+import { bfVerschilOvernemen, bfVerschilHouden, BF_VELD_LABEL } from '../utils/bfBatchSync'
+import type { BfVeld, BfOvername } from '../utils/bfBatchSync'
+import { bfKoppelGevolgen, BF_RICHTING_STANDAARD } from '../utils/bfRichting'
+import type { BfRichtingen } from '../utils/bfRichting'
 import { bfKoppelWijziging } from '../utils/bfKoppeling'
 import type { BfKandidaat } from '../utils/bfKoppeling'
 import { rolMagKey } from '../utils/rollen'
@@ -197,8 +201,10 @@ interface BatchFlowPageProps {
       Eenmalig signaal — de pagina consumeert en wist het via onNavDoelConsumed. */
   navDoel?: AttentieDoel | null,
   onNavDoelConsumed?: () => void,
-  /** Brewfather staat aan: ⋯ → Koppel aan Brewfather (utils/bfKoppeling.ts). */
+  /** Brewfather staat aan en batches koppelen heeft zin: ⋯ → Koppel aan Brewfather (utils/bfKoppeling.ts). */
   bfAan?: boolean,
+  /** Wat de app per onderdeel met Brewfather doet (utils/bfRichting.ts). */
+  bfRichting?: BfRichtingen,
   /** De Brewfather-batches van de laatste sync (App.tsx); null = nog niet opgehaald. */
   bfBatchLijst?: any[] | null,
   vernieuwBfBatches?: () => Promise<{ok: boolean, fout?: string}>,
@@ -485,7 +491,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   setPage, gaNaar, openBatchId, onOpenBatch,
   ccpMetingen, setCcpMetingen,
   navDoel = null, onNavDoelConsumed = () => {},
-  bfAan = false, bfBatchLijst = null, vernieuwBfBatches,
+  bfAan = false, bfRichting = BF_RICHTING_STANDAARD, bfBatchLijst = null, vernieuwBfBatches,
 }) => {
   // De geopende batch. De route is de bron (App.tsx, `#/productie/batches/<id>`):
   // `setSel` opent of sluit een batch via onOpenBatch — een history-entry, dus
@@ -4391,16 +4397,33 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     setTimeout(() => document.getElementById('batch-gegevens')?.scrollIntoView({behavior: 'smooth', block: 'start'}), 50)
   }
   const verwijderReden = selB.status === 'Gepland' ? verwijderBlokkade(selB) : null
-  // ── Brewfather: koppelen, verweesd, terugschrijven (utils/bfKoppeling.ts,
-  // utils/bfTerugschrijven.ts — App.tsx schrijft gekoppelde batches terug) ──
+  // ── Brewfather: koppelen, verschillen, verweesd (utils/bfKoppeling.ts,
+  // utils/bfBatchSync.ts; App.tsx haalt op of schrijft terug, utils/bfRichting.ts) ──
   const magBatchSchrijven = rolMagKey(whoami?.rol, 'batches')
+  const bfGevolgen = bfKoppelGevolgen(bfRichting)
+  const bfVeldNamen = (velden: BfVeld[]) => velden.map(v => t(BF_VELD_LABEL[v])).join(', ')
+  const pasBfToe = (id: number, ch: Record<string, unknown>, overgenomen: BfOvername[], omschrijving: string) => {
+    setBat((prev: any[]) => prev.map((b: any) => b.id === id ? {...b, ...ch} : b))
+    const velden: Record<string, {oud: any, nieuw: any}> = {}
+    for (const o of overgenomen) velden[o.veld] = {oud: o.oud, nieuw: o.nieuw}
+    logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: id, actie: 'gewijzigd',
+      ...(Object.keys(velden).length ? {velden} : {}), omschrijving})
+  }
+  const bfOvernemen = (velden?: BfVeld[]) => {
+    const u = bfVerschilOvernemen(selB, velden)
+    pasBfToe(selB.id, u.ch, u.overgenomen, t('audit_brewfather_overgenomen').replace('{velden}', bfVeldNamen(u.overgenomen.map(o => o.veld))))
+  }
+  const bfHouden = (velden?: BfVeld[]) => {
+    const gekozen = (velden || Object.keys(selB.bf_verschil || {})) as BfVeld[]
+    pasBfToe(selB.id, bfVerschilHouden(selB, velden), [], t('audit_brewfather_gehouden').replace('{velden}', bfVeldNamen(gekozen)))
+  }
   const bfKoppel = (k: BfKandidaat) => {
     const naam = k.batchNo ? `${k.naam} #${k.batchNo}` : k.naam
     setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...bfKoppelWijziging(k.bf)} : b))
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd',
       omschrijving: t('audit_brewfather_gekoppeld').replace('{naam}', naam)})
     setBfKoppelOpen(false)
-    toonMelding(t('bf_gekoppeld').replace('{naam}', naam))
+    toonMelding([t('bf_gekoppeld').replace('{naam}', naam), ...bfGevolgen.map(g => t(g))].join(' '))
   }
   const bfOntkoppel = () => {
     const id = selB.id
@@ -4472,11 +4495,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           open={openFasen.length ? openFasen[0] : null} onToggle={toggleFase} onKies={i => setOpenFasen([i])} />
       </BatchKop>
 
-      <BfMelding batch={selB} magWijzigen={magBatchSchrijven} bfAan={bfAan} onOntkoppelen={bfOntkoppel}
+      <BfMelding batch={selB} magWijzigen={magBatchSchrijven} bfAan={bfAan}
+        toonVerschil={bfRichting.batch_metingen === 'lezen'} toonPushFout={bfRichting.batch_status === 'schrijven' || bfRichting.batch_metingen === 'schrijven'}
+        onOvernemen={bfOvernemen} onHouden={bfHouden} onOntkoppelen={bfOntkoppel}
         onKoppelOpnieuw={() => setBfKoppelOpen(true)} />
 
       {bfKoppelOpen && vernieuwBfBatches && (
-        <BfKoppelVenster batch={selB} alleBatches={bat || []} bfBatches={bfBatchLijst}
+        <BfKoppelVenster batch={selB} alleBatches={bat || []} bfBatches={bfBatchLijst} gevolgen={bfGevolgen}
           namen={[kopTitel.titel, kopTitel.receptNaam || ''].filter(Boolean)}
           vernieuw={vernieuwBfBatches} onKoppel={bfKoppel} onSluit={() => setBfKoppelOpen(false)} />
       )}

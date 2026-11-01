@@ -231,8 +231,8 @@ const NieuweBatchBlad: React.FC<NieuweBatchBladProps> = (p) => {
     if (r.ok === false) { setFout(foutTekst(r.fout)); return }
     const { nieuwProduct, product, automatisch, naamZonder } = r.plan
     // Vanuit "Nieuw in Brewfather": de nieuwe batch hangt meteen aan die
-    // Brewfather-batch; de app schrijft hem daarna naar Brewfather
-    // (utils/bfKoppeling.ts, utils/bfTerugschrijven.ts).
+    // Brewfather-batch; daarna haalt de app op of schrijft hij terug, zoals
+    // ingesteld (utils/bfKoppeling.ts, utils/bfRichting.ts, App.tsx).
     const bfB = verzoek.brewfather
     const batch: any = bfB ? { ...r.plan.batch, ...bfKoppelWijziging(bfB) } : r.plan.batch
     ingepland.current = true

@@ -30,6 +30,8 @@ import LopendLijst from '../components/batches/LopendLijst'
 import BfNieuwKaart from '../components/batches/BfNieuwKaart'
 import { bfNieuweBatches, receptVoorBfBatch, bfBatchDatum, bfBatchNaam, bfVoorstelBatch, bfKoppelWijziging } from '../utils/bfKoppeling'
 import { toonMelding } from '../components/ui/AppMelding'
+import { bfKoppelGevolgen, BF_RICHTING_STANDAARD } from '../utils/bfRichting'
+import type { BfRichtingen } from '../utils/bfRichting'
 import type { LopendRij, LopendWeergave } from '../components/batches/LopendLijst'
 import GeslotenLijst from '../components/batches/GeslotenLijst'
 import type { GeslotenRij } from '../components/batches/GeslotenLijst'
@@ -54,8 +56,10 @@ export interface BatchesPageProps {
   onNavDoelConsumed?: () => void
   /** *+ Nieuwe batch*: het blad "Wat brouw je?" (App.tsx → openNieuweBatch). */
   onNieuweBatch?: (verzoek?: NieuweBatchVerzoek) => void
-  /** Brewfather staat aan en de laatste sync kwam binnen: "Nieuw in Brewfather" op Lopend. */
+  /** Brewfather staat aan en batches koppelen heeft zin: "Nieuw in Brewfather" op Lopend. */
   bfAan?: boolean
+  /** Wat de app per onderdeel met Brewfather doet (utils/bfRichting.ts). */
+  bfRichting?: BfRichtingen
   bfBatchLijst?: any[] | null
   vernieuwBfBatches?: () => Promise<{ ok: boolean, fout?: string }>
 
@@ -112,7 +116,7 @@ let terugkeer: { zoek: string; product: string; recept: string; tot: number } | 
  */
 const BatchesPage: React.FC<BatchesPageProps> = (p) => {
   const {
-    stand, onStand, onOpenBatch, gaNaar, navDoel = null, onNavDoelConsumed, onNieuweBatch, bfAan = false, bfBatchLijst = null, vernieuwBfBatches,
+    stand, onStand, onOpenBatch, gaNaar, navDoel = null, onNavDoelConsumed, onNieuweBatch, bfAan = false, bfRichting = BF_RICHTING_STANDAARD, bfBatchLijst = null, vernieuwBfBatches,
     bat, setBat, bi, setBi, ing, lots, av, producten, recepten, gistMetingen, setGistMetingen,
     log, setLog, auditLog, setAuditLog,
   } = p
@@ -164,7 +168,7 @@ const BatchesPage: React.FC<BatchesPageProps> = (p) => {
     const naam = `${bfBatchNaam(bf)}${bf.batchNo != null ? ` #${bf.batchNo}` : ''}`
     logAudit(auditLog, setAuditLog, { entiteit: 'Batch', entiteit_id: batchId, actie: 'gewijzigd',
       omschrijving: t('audit_brewfather_gekoppeld').replace('{naam}', naam) })
-    toonMelding(t('bf_gekoppeld').replace('{naam}', naam))
+    toonMelding([t('bf_gekoppeld').replace('{naam}', naam), ...bfKoppelGevolgen(bfRichting).map(g => t(g))].join(' '))
   }
   const [metingVoor, setMetingVoor] = useState<number | null>(null)
 

@@ -20,6 +20,7 @@ describe('parseBfFout', () => {
   it('oorzaken uit de proxy gaan voor de status', () => {
     expect(parseBfFout(502, {error: 'brewfather_onbereikbaar'}).oorzaak).toBe('onbereikbaar')
     expect(parseBfFout(403, {error: 'brewfather_niet_toegestaan'}).oorzaak).toBe('niet_toegestaan')
+    expect(parseBfFout(403, {error: 'brewfather_uit', onderdeel: 'recepten'}).oorzaak).toBe('uit')
     expect(parseBfFout(401, {error: 'no credentials configured'}).oorzaak).toBe('geen_sleutel')
   })
 

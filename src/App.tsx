@@ -19,6 +19,10 @@ import { excelExport, excelImport, voegToeOpId } from './utils/excel'
 import { logAudit, setAuditUser, auditGebruiker } from './utils/audit'
 import { rolMagKey } from './utils/rollen'
 import { bfTeSchrijven, bfNaPush } from './utils/bfTerugschrijven'
+import { bfStatusOvergang, BF_NAAR_APP_STATUS } from './utils/bfStatus'
+import { bfBatchWijzigingen, bfVerweesdeBatches, bfProfielen, BF_VELD_LABEL } from './utils/bfBatchSync'
+import type { BfVeld, BfOvername } from './utils/bfBatchSync'
+import { bfRichtingen, bfKoppelingAan, bfBatchesKoppelbaar, bfBatchesLezen, bfBatchesSchrijven } from './utils/bfRichting'
 import { afgevuldeLiters } from './utils/batchesLijst'
 import { migreerInternGebruik } from './utils/internGebruik'
 import { findKlantVoorOrder, resolveKlantSnapshot } from './utils/klant'
@@ -1163,11 +1167,18 @@ function App() {
     setJournaalMigratie('done');
   }, [journaalStoresGeladen, journaalMigratie, journaal, verkoopFacturen, inkoopFacturen, accijnsAangiftes, btwAangiftes, btwInst]);
 
-  // Brewfather: BrewAdmin is leidend. Er wordt hier gebrouwen; gekoppelde
-  // batches gaan vanzelf naar Brewfather (status + meetwaarden,
-  // utils/bfTerugschrijven.ts) en er komt niets terug. Recepten en
-  // ingrediënten blijven uit Brewfather komen (Recepten/Ingrediënten → Sync).
-  const bfAan = !!(bfCreds?.enabled && bfCreds?.userId && bfCreds?.apiKey);
+  // Brewfather, per onderdeel uit / lezen / schrijven (utils/bfRichting.ts,
+  // Instellingen → Koppelingen; de server houdt zich er ook aan). Status en
+  // meetwaarden van gekoppelde batches: op *lezen* haalt de sync ze bij het
+  // openen uit Brewfather, op *schrijven* gaan ze vanzelf naar Brewfather.
+  // Recepten en ingrediënten haal je op hun eigen pagina op (Sync).
+  const bfAan = bfKoppelingAan(bfCreds);
+  const bfRicht = React.useMemo(() => bfRichtingen(bfCreds), [bfCreds?.richting]);
+  const bfRichtingStatus = bfRicht.batch_status;
+  const bfRichtingMetingen = bfRicht.batch_metingen;
+  // Koppelen (de batchpagina, "Nieuw in Brewfather") zodra status of
+  // meetwaarden niet uit staan.
+  const bfKoppelbaar = bfAan && bfBatchesKoppelbaar(bfRicht);
   // De Brewfather-batches om aan te koppelen (niet bewaard): de batchpagina
   // kiest hieruit bij "Koppel aan Brewfather", Batches › Lopend toont de nog
   // niet gekoppelde als "Nieuw in Brewfather". `null` = nog niet opgehaald.
@@ -1179,15 +1190,155 @@ function App() {
       return {ok: volledig, fout};
     } catch (e: any) { return {ok: false, fout: e?.message || String(e)}; }
   }, []);
-  // Terugschrijven: een paar seconden na een wijziging (een reeks metingen =
-  // één bericht), alleen de batches waarvan het bericht anders is dan het
-  // vorige, één voor één. Een mislukte poging wacht een kwartier (geen lus);
-  // een 404 maakt de batch verweesd (melding op de batch).
-  const bfPogingen = React.useRef(new Map<number, {sleutel: string, op: number}>());
-  const bfBezig = React.useRef(false);
+
+  // ── Lezen: de sync bij het openen (en na een nieuwe koppeling) ──
+  // Pas als de rol bekend is en de stores waarmee de statusovername rekent
+  // (tanks, vrijgaven, afvullingen, log) van de server zijn — een poller, want
+  // een 404-fetch verandert geen state. Een rol die geen batches mag schrijven
+  // slaat de sync over. `lastSync` staat in de beheer-only credentials-key:
+  // alleen beheer werkt hem bij.
+  const tankStatussenRef = React.useRef<any>(tankStatussen);
+  tankStatussenRef.current = tankStatussen;
+  const tankLogRef = React.useRef<any[]>(tankReinigingLog);
+  tankLogRef.current = tankReinigingLog;
+  const vrijgavenRef = React.useRef<any[]>(haccpVrijgaven);
+  vrijgavenRef.current = haccpVrijgaven;
   const avRef = React.useRef<any[]>(av);
   avRef.current = av;
-  const bfMagSchrijven = bfAan && whoamiKlaar && rolMagKey(whoami?.rol, 'batches') && _fetchedKeys.has('batches');
+  const [bfSyncStoresGeladen, setBfSyncStoresGeladen] = useState(false);
+  React.useEffect(() => {
+    const needed = ['batches', 'tank_statussen', 'tank_reinigingslog', 'haccp_vrijgaven', 'afvullingen', 'voorraad_log', 'audit_log'];
+    const ready = () => needed.every(k => _fetchedKeys.has(k));
+    if (ready()) { setBfSyncStoresGeladen(true); return; }
+    const int = setInterval(() => { if (ready()) { clearInterval(int); setBfSyncStoresGeladen(true); } }, 500);
+    const timeout = setTimeout(() => clearInterval(int), 30000);
+    return () => { clearInterval(int); clearTimeout(timeout); };
+  }, []);
+  const bfLezen = bfAan && bfBatchesLezen(bfRicht);
+  // Welke batches gekoppeld zijn: een nieuwe koppeling haalt meteen op
+  // (ontkoppelen haalt niets op).
+  const bfGekoppeld = React.useMemo(() => (bat || [])
+    .filter((b: any) => b?.brewfather_id).map((b: any) => `${b.id}:${b.brewfather_id}`).sort().join(','), [bat]);
+  const bfGelezen = React.useRef<{gekoppeld: string, richting: string} | null>(null);
+  const bfLeesBezig = React.useRef(false);
+  React.useEffect(() => {
+    if (!bfLezen || !whoamiKlaar || !bfSyncStoresGeladen || bfLeesBezig.current) return;
+    const rol = whoami?.rol;
+    if (!rolMagKey(rol, 'batches')) return;
+    const richting = `${bfRichtingStatus}/${bfRichtingMetingen}`;
+    const vorige = bfGelezen.current;
+    if (vorige && vorige.richting === richting) {
+      const was = new Set(vorige.gekoppeld.split(','));
+      const nieuw = bfGekoppeld.split(',').some(x => x && !was.has(x));
+      bfGelezen.current = {gekoppeld: bfGekoppeld, richting};
+      if (!nieuw) return;
+    }
+    bfGelezen.current = {gekoppeld: bfGekoppeld, richting};
+    const statusLezen = bfRichtingStatus === 'lezen';
+    const metingenLezen = bfRichtingMetingen === 'lezen';
+    const eersteKeer = !vorige;
+    bfLeesBezig.current = true;
+    (async () => {
+      try {
+        const { batches: bfBatches, volledig } = await bfGetBatches({waarden: true});
+        setBfBatchLijst(bfBatches);
+        const updBatches: any[] = [];
+        // Statusovername langs de regels van de batch-flow (utils/bfStatus.ts),
+        // batch na batch op de al bijgewerkte stand: twee batches mogen niet
+        // allebei dezelfde tank claimen.
+        let werkBatches: any[] = [...(batRef.current || [])];
+        let tankSt = tankStatussenRef.current;
+        let tankLg = tankLogRef.current;
+        let tankGewijzigd = false;
+        const statusWissels: Array<{id: number, oud: string, nieuw: string}> = [];
+        const overnames: Array<{id: number, velden: Record<string, {oud: any, nieuw: any}>}> = [];
+        for (const bfB of bfBatches) {
+          // Alleen op brewfather_id: een toevallige gelijkenis tussen
+          // batchnummers koppelt nooit twee verschillende batches.
+          const existing = werkBatches.find((b: any) => b.brewfather_id === bfB._id);
+          if (!existing) continue;
+          let ch: Record<string, unknown> = {};
+          let overgenomen: BfOvername[] = [];
+          if (metingenLezen) {
+            // Nooit stil overschrijven wat hier is aangepast (utils/bfBatchSync.ts);
+            // een verschil komt als melding op de batch.
+            const u = bfBatchWijzigingen(existing, bfB, bfProfielen(bfB));
+            ch = u.ch; overgenomen = u.overgenomen;
+          } else {
+            if (bfB.batchNo != null && !existing.brewfather_batch_nummer) ch.brewfather_batch_nummer = String(bfB.batchNo);
+            if (existing.bf_verweesd) ch.bf_verweesd = undefined;
+          }
+          const appStatus = statusLezen ? BF_NAAR_APP_STATUS[bfB.status] : undefined;
+          if (appStatus) {
+            // Alleen vooruit, en niet als de batch-flow hier zou blokkeren of
+            // een bevestiging zou vragen (tank bezet/niet ontsmet, geen CCP 1-
+            // vrijgave): dan zet de brouwer hem zelf door.
+            const overgang = bfStatusOvergang(existing, appStatus, {
+              batches: werkBatches, tankStatussen: tankSt, tankLog: tankLg,
+              vrijgaven: vrijgavenRef.current || [], afvullingen: avRef.current || [], datum: tod(),
+            });
+            if (overgang.status) {
+              ch.status = overgang.status;
+              statusWissels.push({id: existing.id, oud: existing.status, nieuw: overgang.status});
+              werkBatches = werkBatches.map((b: any) => b.id === existing.id ? {...b, status: overgang.status} : b);
+              if (overgang.tankGewijzigd) { tankSt = overgang.tankStatussen; tankLg = overgang.tankLog; tankGewijzigd = true; }
+            }
+          }
+          if (overgenomen.length) {
+            const velden: Record<string, {oud: any, nieuw: any}> = {};
+            for (const o of overgenomen) velden[o.veld] = {oud: o.oud, nieuw: o.nieuw};
+            overnames.push({id: existing.id, velden});
+          }
+          if (Object.keys(ch).length) updBatches.push({id: existing.id, ch});
+        }
+        // Een gekoppelde batch die niet meer in Brewfather staat (alleen als
+        // de hele lijst goed binnenkwam) krijgt een melding op de batchpagina.
+        const bfIds = new Set<string>(bfBatches.map((b: any) => String(b._id)));
+        for (const id of bfVerweesdeBatches(werkBatches, bfIds, volledig)) {
+          updBatches.push({id, ch: {bf_verweesd: tod()}});
+        }
+        if (updBatches.length) setBat((prev: any) => (prev || []).map((b: any) => {
+          const u = updBatches.find((x: any) => x.id === b.id); return u ? {...b, ...u.ch} : b;
+        }));
+        // Zelfde neveneffecten als gaNaarFase: tank op Vuil bij vertrek, een
+        // statusregel (de tijdlijn van het batchdossier leest 'Oud → Nieuw')
+        // en een auditregel.
+        if (tankGewijzigd) { setTankStatussen(tankSt); setTankReinigingLog(tankLg); }
+        if (statusWissels.length) {
+          const datum = tod();
+          setLog((prev: any[]) => {
+            const lijst = [...(prev || [])];
+            for (const w of statusWissels) lijst.push({id: newId(lijst), datum, type: 'status', batch_id: w.id, referentie: `${w.oud} → ${w.nieuw}`});
+            return lijst;
+          });
+          for (const w of statusWissels) logAudit(auditLog, setAuditLog, {
+            entiteit: 'Batch', entiteit_id: w.id, actie: 'gewijzigd', velden: {status: {oud: w.oud, nieuw: w.nieuw}},
+            omschrijving: t('audit_status_brewfather').replace('{oud}', w.oud).replace('{nieuw}', w.nieuw),
+          });
+        }
+        // Elke overname van een gemeten waarde: één auditregel per batch.
+        for (const o of overnames) logAudit(auditLog, setAuditLog, {
+          entiteit: 'Batch', entiteit_id: o.id, actie: 'gewijzigd', velden: o.velden,
+          omschrijving: t('audit_brewfather_overgenomen').replace('{velden}',
+            Object.keys(o.velden).map(v => t(BF_VELD_LABEL[v as BfVeld] || v)).join(', ')),
+        });
+        if (eersteKeer && rolMagKey(rol, 'brewfather_creds')) setBfCreds((prev: any) => ({...prev, lastSync: tod()}));
+      } catch (e) { console.debug('[bf] batchsync mislukt', e) }
+      finally { bfLeesBezig.current = false; }
+    })();
+  }, [bfLezen, whoamiKlaar, bfSyncStoresGeladen, bfGekoppeld, bfRichtingStatus, bfRichtingMetingen]);
+
+  // ── Schrijven: een paar seconden na een wijziging ──
+  // Een reeks metingen = één bericht; alleen de batches waarvan het bericht
+  // anders is dan het vorige, één voor één, met alleen de delen die op
+  // schrijven staan (utils/bfTerugschrijven.ts). Een mislukte poging wacht een
+  // kwartier (geen lus); een 404 maakt de batch verweesd (melding op de batch).
+  const bfPogingen = React.useRef(new Map<number, {sleutel: string, op: number}>());
+  const bfBezig = React.useRef(false);
+  const bfDelen = React.useMemo(() => ({
+    status: bfRichtingStatus === 'schrijven', metingen: bfRichtingMetingen === 'schrijven',
+  }), [bfRichtingStatus, bfRichtingMetingen]);
+  const bfMagSchrijven = bfAan && bfBatchesSchrijven(bfRicht) && whoamiKlaar && rolMagKey(whoami?.rol, 'batches') && _fetchedKeys.has('batches');
   // Een mislukte poging komt na een kwartier opnieuw aan de beurt, ook als er
   // intussen niets verandert.
   const [bfTik, setBfTik] = useState(0);
@@ -1198,15 +1349,16 @@ function App() {
   }, [bfMagSchrijven]);
   React.useEffect(() => {
     if (!bfMagSchrijven) return;
-    const lijst = bfTeSchrijven(bat || [], { afgevuldLiter: id => afgevuldeLiters(id, avRef.current || []), pogingen: bfPogingen.current });
-    if (!lijst.length) return;
+    const teSchrijven = (lijst: any[]) => bfTeSchrijven(lijst, {
+      afgevuldLiter: id => afgevuldeLiters(id, avRef.current || []), pogingen: bfPogingen.current, delen: bfDelen,
+    });
+    if (!teSchrijven(bat || []).length) return;
     const timer = setTimeout(async () => {
       if (bfBezig.current) return;
       bfBezig.current = true;
       try {
         // Opnieuw op de verse stand: tijdens het wachten kan er meer veranderd zijn.
-        const nu = bfTeSchrijven(batRef.current || [], { afgevuldLiter: id => afgevuldeLiters(id, avRef.current || []), pogingen: bfPogingen.current });
-        for (const item of nu) {
+        for (const item of teSchrijven(batRef.current || [])) {
           const r = await bfPatchBatch(item.bfId, item.bericht);
           if (!r.ok) bfPogingen.current.set(item.id, {sleutel: item.sleutel, op: Date.now()});
           else bfPogingen.current.delete(item.id);
@@ -1218,7 +1370,7 @@ function App() {
       } finally { bfBezig.current = false; }
     }, 4000);
     return () => clearTimeout(timer);
-  }, [bat, av, bfMagSchrijven, bfTik]);
+  }, [bat, av, bfMagSchrijven, bfTik, bfDelen]);
 
   // Live tank temps for dashboard: refresh every 60s, all sensors regardless of batch status
   const [haTankTemps, setHaTankTemps] = React.useState<Record<string, number>>({})
@@ -2568,7 +2720,8 @@ function App() {
     onOpenBatch: openRecord('batches'),
     onNieuweBatch: openNieuweBatch,
     // Brewfather koppelen (utils/bfKoppeling.ts): alleen als de koppeling aan staat.
-    bfAan,
+    bfAan: bfKoppelbaar,
+    bfRichting: bfRicht,
     bfBatchLijst,
     vernieuwBfBatches,
     setProductArtikelen,

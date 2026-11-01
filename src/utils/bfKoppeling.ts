@@ -1,16 +1,17 @@
 // Een batch aan een Brewfather-batch koppelen.
 //
-// BrewAdmin is leidend: er wordt hier gebrouwen en Brewfather krijgt de status
-// en de meetwaarden (utils/bfTerugschrijven.ts). De API van Brewfather kan geen
-// batches aanmaken, dus de batch maak je één keer in Brewfather aan (vanuit het
-// recept) en koppel je hier. Twee ingangen:
+// Een gekoppelde batch volgt Brewfather (lezen) of werkt Brewfather bij
+// (schrijven), per onderdeel zoals ingesteld (utils/bfRichting.ts). De API van
+// Brewfather kan geen batches aanmaken, dus de batch maak je één keer in
+// Brewfather aan (vanuit het recept) en koppel je hier. Twee ingangen:
 //   - op de batch: ⋯ → Koppel aan Brewfather, met een voorstel op receptnaam
 //     en brouwdag (`bfKoppelKandidaten`);
 //   - op Batches › Lopend: "Nieuw in Brewfather" (`bfNieuweBatches`): koppelen
 //     aan de batch die hier al staat (`bfVoorstelBatch`), of plannen via "Wat
 //     brouw je?" met het recept en de datum al ingevuld.
-// Koppelen haalt niets uit Brewfather op; direct daarna schrijft de app de
-// batch naar Brewfather.
+// Koppelen zet alleen de koppeling; direct daarna haalt App.tsx de batch op
+// (lezen, utils/bfBatchSync.ts) of schrijft hem naar Brewfather (schrijven,
+// utils/bfTerugschrijven.ts).
 
 /** Brewfather-statussen waarvan een batch nog loopt. */
 export const BF_LOPEND: readonly string[] = ['Planning', 'Brewing', 'Fermenting', 'Conditioning']
@@ -121,8 +122,8 @@ export const receptVoorBfBatch = (bfB: any, recepten: Array<{id?: unknown, naam?
 
 /**
  * Wat er op de batch verandert bij het koppelen: alleen de koppeling. Een
- * eerdere stand (van een andere Brewfather-batch) gaat weg, zodat de app de
- * batch meteen opnieuw naar Brewfather schrijft.
+ * eerdere stand (van een andere Brewfather-batch) gaat weg: de sync begint
+ * schoon en het terugschrijven stuurt de batch meteen opnieuw.
  */
 export const bfKoppelWijziging = (bfB: { _id: string, batchNo?: unknown }): Record<string, unknown> => ({
   brewfather_id: String(bfB._id),

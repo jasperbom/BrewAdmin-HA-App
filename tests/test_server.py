@@ -6156,6 +6156,10 @@ class TestBrewfatherDoorgang:
         _NepBrewfather.antwoord = (200, b'{"ok": true}', {})
         monkeypatch.setattr(srv, 'BF_API_BASE', f'http://127.0.0.1:{httpd.server_address[1]}/v2')
         monkeypatch.setattr(srv, '_load_bf_creds', lambda: ('uid', 'sleutel'))
+        # Alles wat kan aan; de tests van de richting zetten hun eigen keuze.
+        _NepBrewfather.richting = {'recepten': 'lezen', 'ingredienten': 'lezen', 'voorraad': 'schrijven',
+                                   'batch_status': 'schrijven', 'batch_metingen': 'schrijven'}
+        monkeypatch.setattr(srv, '_load_bf_richting', lambda: dict(_NepBrewfather.richting))
         yield _NepBrewfather
         httpd.shutdown()
 
@@ -6199,6 +6203,45 @@ class TestBrewfatherDoorgang:
         statussen = re.search(r"BF_STATUSSEN: readonly string\[\] = \[([^\]]+)\]", ts).group(1)
         assert tuple(re.findall(r"'([A-Za-z]+)'", statussen)) == srv._BF_BATCH_STATUSSEN
 
+    # per onderdeel uit / lezen / schrijven (utils/bfRichting.ts)
+    def test_richting_standaard_en_ongeldig(self):
+        assert srv._bf_richting(None) == srv._BF_RICHTING_STANDAARD
+        assert srv._bf_richting({'richting': 'schrijven'}) == srv._BF_RICHTING_STANDAARD
+        r = srv._bf_richting({'richting': {'batch_status': 'schrijven', 'recepten': 'schrijven',
+                                           'voorraad': 'lezen', 'batch_metingen': 'uit', 'x': 'lezen'}})
+        assert r == {'recepten': 'lezen', 'ingredienten': 'lezen', 'voorraad': 'schrijven',
+                     'batch_status': 'schrijven', 'batch_metingen': 'uit'}
+        for onderdeel, keuzes in srv._BF_RICHTING_KEUZES.items():
+            assert srv._BF_RICHTING_STANDAARD[onderdeel] in keuzes
+
+    def test_richting_fout_per_onderdeel(self):
+        fout = srv._bf_richting_fout
+        alles_uit = {k: 'uit' for k in srv._BF_RICHTING_KEUZES}
+        std = dict(srv._BF_RICHTING_STANDAARD)
+        assert fout('recipes?complete=true', 'GET', None, std) is None
+        assert fout('recipes/abc/versions', 'GET', None, alles_uit) == 'recepten'
+        assert fout('inventory/hops?limit=50', 'GET', None, alles_uit) == 'ingredienten'
+        assert fout('batches?status=Planning', 'GET', None, alles_uit) == 'batch_status'
+        # Koppelen haalt de lijst op: batches lezen mag zodra één kant niet uit staat.
+        assert fout('batches?status=Planning', 'GET', None, {**alles_uit, 'batch_metingen': 'schrijven'}) is None
+        assert fout('inventory/hops/abc', 'PATCH', {'inventory': 1}, std) is None
+        assert fout('inventory/hops/abc', 'PATCH', {'inventory': 1}, alles_uit) == 'voorraad'
+        # Standaard lezen = niet schrijven.
+        assert fout('batches/b1', 'PATCH', {'status': 'Fermenting'}, std) == 'batch_status'
+        assert fout('batches/b1', 'PATCH', {'measuredOg': 1.05}, std) == 'batch_metingen'
+        gemengd = {**std, 'batch_status': 'lezen', 'batch_metingen': 'schrijven'}
+        assert fout('batches/b1', 'PATCH', {'measuredOg': 1.05}, gemengd) is None
+        assert fout('batches/b1', 'PATCH', {'status': 'Fermenting', 'measuredOg': 1.05}, gemengd) == 'batch_status'
+
+    def test_typescript_kent_dezelfde_richtingen(self):
+        ts = (Path(__file__).resolve().parent.parent / 'src' / 'utils' / 'bfRichting.ts').read_text()
+        keuzes = re.search(r'BF_RICHTING_KEUZES[^=]*= \{(.*?)\n\}', ts, re.S).group(1)
+        ts_keuzes = {k: tuple(re.findall(r"'([a-z]+)'", v))
+                     for k, v in re.findall(r"(\w+): \[([^\]]*)\]", keuzes)}
+        assert ts_keuzes == srv._BF_RICHTING_KEUZES
+        standaard = re.search(r'BF_RICHTING_STANDAARD[^=]*= \{(.*?)\n\}', ts, re.S).group(1)
+        assert dict(re.findall(r"(\w+): '([a-z]+)'", standaard)) == srv._BF_RICHTING_STANDAARD
+
     def test_retry_after_alleen_redelijke_seconden(self):
         assert srv._bf_retry_after('30') == '30'
         assert srv._bf_retry_after(' 0 ') == '0'
@@ -6239,6 +6282,32 @@ class TestBrewfatherDoorgang:
         methode, pad, body = nep.verzoeken[-1]
         assert (methode, pad) == ('PATCH', '/v2/batches/b12')
         assert json.loads(body) == {'status': 'Fermenting', 'measuredOg': 1.05}
+
+    def test_uit_of_lezen_gaat_niet_naar_brewfather(self, app, nep):
+        nep.richting = dict(srv._BF_RICHTING_STANDAARD)   # batches lezen
+        status, antwoord, _ = req(app, 'POST', '/api/brewfather/patch/batches/b12',
+                                  body={'status': 'Fermenting'})
+        assert status == 403 and antwoord == {'error': 'brewfather_uit', 'onderdeel': 'batch_status'}
+        nep.richting = {**nep.richting, 'batch_status': 'schrijven'}
+        status, antwoord, _ = req(app, 'POST', '/api/brewfather/patch/batches/b12',
+                                  body={'status': 'Fermenting', 'measuredOg': 1.05})
+        assert status == 403 and antwoord['onderdeel'] == 'batch_metingen'
+        nep.richting = {**nep.richting, 'recepten': 'uit', 'voorraad': 'uit'}
+        status, antwoord, _ = req(app, 'GET', '/api/brewfather/recipes?complete=true&limit=50')
+        assert status == 403 and antwoord == {'error': 'brewfather_uit', 'onderdeel': 'recepten'}
+        status, _, _ = req(app, 'POST', '/api/brewfather/patch/inventory/hops/abc', body={'inventory': 7})
+        assert status == 403
+        assert nep.verzoeken == []
+        # Wat wel aan staat gaat gewoon door.
+        status, _, _ = req(app, 'POST', '/api/brewfather/patch/batches/b12', body={'status': 'Fermenting'})
+        assert status == 200
+        assert nep.verzoeken[-1][:2] == ('PATCH', '/v2/batches/b12')
+
+    def test_richting_uit_de_opgeslagen_creds(self, app, monkeypatch):
+        monkeypatch.setattr(srv, '_read_json', lambda key: {
+            'userId': 'u', 'apiKey': 'k', 'richting': {'batch_metingen': 'schrijven'}} if key == 'brewfather_creds' else None)
+        assert srv._load_bf_richting()['batch_metingen'] == 'schrijven'
+        assert srv._load_bf_richting()['batch_status'] == 'lezen'
 
     def test_patch_weigert_nan(self, app, nep):
         status, _, _ = req(app, 'POST', '/api/brewfather/patch/inventory/hops/abc',
