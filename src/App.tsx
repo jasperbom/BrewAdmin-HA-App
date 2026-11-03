@@ -29,10 +29,9 @@ import { findKlantVoorOrder, resolveKlantSnapshot } from './utils/klant'
 import { autoMailReden, bouwOrderMail, naMailVerstuurd, mailAuditTekst } from './utils/orderMail'
 import { verzendMail } from './utils/mailVerzenden'
 import {
-  naAankoopInstellingen, naAankoopPlan, bouwNaAankoopMail, naNaAankoopVerstuurd, naAankoopAuditTekst, taplijst,
+  naAankoopInstellingen, naAankoopPlan, bouwNaAankoopMail, naNaAankoopVerstuurd, naAankoopAuditTekst,
   NA_AANKOOP_STANDAARD,
 } from './utils/naAankoopMail'
-import { verkoopOverzicht } from './utils/verkoopOverzicht'
 import { verkoopFactuurBoeking, inkoopFactuurBoeking, accijnsAangifteBoeking, btwAangifteBoeking, voegBoekingToe } from './utils/journaal'
 import { periodeKeyLabel, standaardBtwPct } from './utils/btw'
 import { wcFoutMelding } from './utils/wcFout'
@@ -1731,8 +1730,7 @@ function App() {
     const r = wcImportRefs.current
     const bekend = new Set((bekendeOrders || []).map((b: any) => b?.wc_order_id).filter((id: any) => id != null))
     const ctx = {sjablonen: r.mailTemplates, brouwerij: r.breweryDetails?.naam || r.appName || '',
-      storeUrl: r.wcCreds?.storeUrl || '', bestelUrlSjabloon: r.wcCreds?.bestelUrl,
-      refs: {producten: r.producten, productArtikelen: r.productArtikelen, artikelen: r.artikelen, merchArtikelen: r.merchArtikelen}}
+      storeUrl: r.wcCreds?.storeUrl || '', bestelUrlSjabloon: r.wcCreds?.bestelUrl}
     for (const b of nieuw.filter((n: any) => !bekend.has(n.wc_order_id))) {
       const order = resolveKlantSnapshot(b, r.klanten || []) || b
       if (autoMailReden('bestelling', order, {sjablonen: r.mailTemplates, smtpAan: !!r.smtpCreds?.enabled}) !== null) continue
@@ -1754,18 +1752,15 @@ function App() {
         })
     }
   }
-  // ── Na-aankoopmails (utils/naAankoopMail.ts) ──────────────────────────────
+  // ── Mail na een webshopbestelling: "Hoe smaakte het?" (utils/naAankoopMail.ts)
   // Standaard uit. Na elke geslaagde import — binnen de lease van dit tabblad,
   // dus nooit twee tabbladen tegelijk — gaan de mails die nu aan de beurt zijn
-  // de deur uit: serveertips, "hoe smaakte hij?" en de taplijst. Eén voor één;
-  // de stempel (`mails_verstuurd.na_<stap>`) pas na een geslaagde verzending.
+  // de deur uit. Eén voor één; de stempel (`mails_verstuurd.na_smaak`) pas na
+  // een geslaagde verzending.
   // Mislukt er één, dan stopt de ronde (de SMTP-server ligt er waarschijnlijk
   // uit) en probeert de volgende import het opnieuw. Zonder open tabblad gaat
   // er niets: net als de automatische bevestiging verstuurt de app, niet de server.
   const naAankoopBezig = React.useRef(false)
-  // De verkooptelling (voor de taplijst) wordt verderop berekend; dit ref
-  // houdt de laatste stand vast voor de ronde.
-  const verkoopCtxRef = React.useRef<VerkoopCtx | null>(null)
   const verstuurNaAankoopMails = async (lijst: any[]) => {
     const r = wcImportRefs.current
     const inst = naAankoopInstellingen(r.naAankoopMails)
@@ -1781,7 +1776,6 @@ function App() {
         afmeldingen: r.mailAfmeldingen || [],
         sjablonen: r.mailTemplates,
         refs: {producten: r.producten, productArtikelen: r.productArtikelen, artikelen: r.artikelen, merchArtikelen: r.merchArtikelen},
-        taplijst: inst.stappen.taplijst.aan && verkoopCtxRef.current ? taplijst(verkoopOverzicht(verkoopCtxRef.current)) : [],
         afmeldAdres: r.breweryDetails?.email || r.smtpCreds?.fromEmail || '',
         storeUrl: r.wcCreds?.storeUrl || '',
         brouwerij: r.breweryDetails?.naam || r.appName || '',
@@ -1789,7 +1783,7 @@ function App() {
       for (const taak of naAankoopPlan(ctx)) {
         const order = ctx.bestellingen.find((b: any) => b.id === taak.bestellingId)
         if (!order) continue
-        const mail = bouwNaAankoopMail(taak.stap, order, ctx)
+        const mail = bouwNaAankoopMail(order, ctx)
         const proef = inst.modus === 'proef'
         try {
           await verzendMail(mail, {brewery: r.breweryDetails, logoDataUri: r.factuurLogo || r.logo, replyTo: r.breweryDetails?.email})
@@ -1797,13 +1791,13 @@ function App() {
           setBestellingen((prev: any[]) => (prev || []).map((x: any) =>
             x.id === order.id ? {...x, ...naNaAankoopVerstuurd(x, taak.stempel, datum)} : x))
           logAudit(wcImportRefs.current.auditLog, setAuditLog, {entiteit: 'Bestelling', entiteit_id: order.id, actie: 'gewijzigd',
-            omschrijving: naAankoopAuditTekst(taak.stap, mail.to, proef)})
+            omschrijving: naAankoopAuditTekst(mail.to, proef)})
         } catch (e: any) {
           const fout = e?.message || ''
           logAudit(wcImportRefs.current.auditLog, setAuditLog, {entiteit: 'Bestelling', entiteit_id: order.id, actie: 'gewijzigd',
-            omschrijving: `${naAankoopAuditTekst(taak.stap, mail.to, proef)} mislukt: ${fout}`})
+            omschrijving: `${naAankoopAuditTekst(mail.to, proef)} mislukt: ${fout}`})
           setWcSyncLog((prev: any[]) => [{id: Date.now(), ts: new Date().toISOString(), type: 'fout',
-            msg: t('mail_auto_mislukt').replace('{mail}', t(`settings_mail_template_na_${taak.stap}`))
+            msg: t('mail_auto_mislukt').replace('{mail}', t('settings_mail_template_na_smaak'))
               .replace('{email}', mail.to).replace('{fout}', fout), details: ''}, ...(prev || [])].slice(0, 100))
           break
         }
@@ -2404,7 +2398,6 @@ function App() {
     conditionerenDagen: planningInst?.conditioneren_dagen, vandaag: vandaagIso,
   }), [producten, productArtikelen, artikelen, merchArtikelen, verpakkingen, bat, av, uit, verplaatsingen,
     afboekingen, locaties, bestellingen, bestellingPicks, verliesRegistraties, planningInst?.conditioneren_dagen, vandaagIso]);
-  verkoopCtxRef.current = verkoopCtx;
 
   // "Etiket bijwerken" (components/batch/EtiketBijwerken.tsx): één dialoog
   // voor de hele app, de énige schrijfweg voor het etiket van een product. De
@@ -2939,7 +2932,7 @@ function App() {
         {(page==='facturen' || page==='bank' || page==='aangiftes' || page==='rapporten') && <AdministratiePage sectie={page} navDoel={doelVoor(page)} onNavDoelConsumed={wisNavDoel} gaNaarDoel={gaNaar} whoami={whoami} bankTransacties={bankTransacties} setBankTransacties={setBankTransacties} bankAfschriften={bankAfschriften} setBankAfschriften={setBankAfschriften} refreshBankTransacties={refreshBankTransacties} refreshBankAfschriften={refreshBankAfschriften} refreshBankKoppelingen={refreshBankKoppelingen} refreshBankSaldi={refreshBankSaldi} wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} verpakkingen={verpakkingen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setBestellingen={setBestellingen} setPage={setPage} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} mollieCreds={mollieCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} journaal={journaal} setJournaal={setJournaal} bankSaldi={bankSaldi} setBankSaldi={setBankSaldi} jaarafsluitingen={jaarafsluitingen} setJaarafsluitingen={setJaarafsluitingen} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} inkoopInbox={inkoopInbox} setInkoopInbox={setInkoopInbox} refreshInkoopInbox={refreshInkoopInbox} imapCreds={imapCreds} onNaarPostvakInstellingen={() => gaNaar({pagina: 'instellingen', tab: 'koppelingen', filter: 'postvak'})} />}
         {page==='instellingen' && <InstellingenPage haccpSchoonmaakTaken={haccpSchoonmaakTaken} accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} wcImportStatus={wcImportStatus} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} mollieCreds={mollieCreds} setMollieCreds={setMollieCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} acc={acc} accijnsAangiftes={accijnsAangiftes} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} notificatieInst={notificatieInst} setNotificatieInst={setNotificatieInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} websiteTelemetrie={websiteTelemetrie} setWebsiteTelemetrie={setWebsiteTelemetrie} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} haccpInst={haccpInst} setHaccpInst={setHaccpInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} gebruikersRollen={gebruikersRollen} setGebruikersRollen={setGebruikersRollen} loginInst={loginInst} setLoginInst={setLoginInst} resetApp={resetApp} integriteitData={{ingredienten: ing, lots, batches: bat, batch_ingredienten: bi, afvullingen: av, uitleveringen: uit, accijns: acc, bestellingen, bestelling_picks: bestellingPicks, verkoop_facturen: verkoopFacturen, afboekingen, klanten, producten, product_artikelen: productArtikelen, locaties, verplaatsingen, verpakkingen}} integriteitSetters={{lots: setLots, batches: setBat, afvullingen: setAv, product_artikelen: setProductArtikelen}} imapCreds={imapCreds} setImapCreds={setImapCreds} navDoel={doelVoor('instellingen')} onNavDoelConsumed={wisNavDoel}
           naAankoop={{inst: naAankoopMails, setInst: setNaAankoopMails, afmeldingen: mailAfmeldingen, setAfmeldingen: setMailAfmeldingen,
-            bestellingen, klanten, refs: {producten, productArtikelen, artikelen, merchArtikelen}, verkoopCtx}} />}
+            bestellingen, klanten, refs: {producten, productArtikelen, artikelen, merchArtikelen}}} />}
         {page==='meer' && <MeerPage whoami={whoami} appName={appName} onInstellingen={()=>setPage('instellingen')} />}
       </main>
       </PageErrorBoundary>

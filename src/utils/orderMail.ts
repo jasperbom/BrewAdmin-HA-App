@@ -25,8 +25,6 @@ import {
   leveringMailVars, afhaalMailKnop, afhaalGemistMailVars, afhaalGemistMailKnop, verzendMailVars, bestelLink,
 } from './levering'
 import type { MailKnop } from './levering'
-import { serveertipsVoorOrder } from './naAankoopMail'
-import type { NaAankoopRefs } from './naAankoopMail'
 
 export type OrderMailSoort =
   | 'bestelling' | 'verzending' | 'afhaal_gemist' | 'annulering' | 'pakbon' | 'factuur' | 'factuur_betaald'
@@ -151,8 +149,6 @@ export interface OrderMailContext {
   storeUrl?: string
   /** Eigen sjabloon voor de bestelpagina (`woocommerce_creds.bestelUrl`). */
   bestelUrlSjabloon?: string
-  /** Producten en artikelen: {serveertips} in de bestelbevestiging (utils/naAankoopMail.ts). */
-  refs?: NaAankoopRefs
 }
 
 /** Een mail zoals het mailvenster en de automaat hem versturen (zonder bijlagen). */
@@ -211,8 +207,7 @@ export function bouwOrderMail(
         orderUrl ? {url: orderUrl, label: t('mail_bestelling_knop'), textLine: t('mail_bestelling_knop_regel')} : null,
       ].filter((k): k is MailKnop => !!k)
       return mail(soort, order, ctx,
-        {...basis, regels: regelLijstVoorMail(order), ...leveringMailVars(order, {storeUrl}),
-          serveertips: serveertipsVoorOrder(order, ctx.refs)}, knoppen)
+        {...basis, regels: regelLijstVoorMail(order), ...leveringMailVars(order, {storeUrl})}, knoppen)
     }
     case 'verzending':
       return mail(soort, order, ctx, {...basis, regels: regelLijstVoorMail(order), ...verzendMailVars(order)})

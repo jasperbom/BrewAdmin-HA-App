@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.27] — 2026-11-03
+
+### Alleen nog de mail "Hoe smaakte het?"
+
+De serveertipsmail en de taplijstmail na een webshopbestelling zijn helemaal
+weggehaald: code, instellingen, standaardteksten (vijf talen), droge run en
+tests. Ook de variabele `{serveertips}` in de bestelbevestiging is weg; die
+bestond alleen voor de serveertipsmail. Wie hem toch in een eigen sjabloon had
+staan, ziet hem nu letterlijk staan: haal hem daar weg.
+
+De mail "Hoe smaakte het?" werkt zoals hij werkte: per bier de Untappd-link,
+na afhalen een reviewlink, alleen met toestemming of bij soft opt-in,
+afmelden met één klik, de afmeldzin per grondslag, proefstand en droge run.
+
+- **Instellingen blijven bewaard.** De wachttijd staat nu bovenaan
+  (`dagen`, `vanaf`); een wachttijd die nog onder het oude `stappen.smaak`
+  staat, wordt gelezen. Het sjabloon (`mail_templates.na_smaak`), de
+  verzendstempels (`na_smaak`) en de afmeldlijst blijven gelijk.
+- **Geen aparte schakelaar meer.** Met één mail is de stand (Uit, Proef, Aan)
+  de schakelaar; "Deze mail versturen" is weg.
+- Oude sjablonen en stempels van de serveertips- en taplijstmail blijven in de
+  opslag staan, maar worden nergens meer gebruikt.
+
+---
+
 ## [1.13.26] — 2026-11-03
 
 ### Na-aankoopmails: afmeldzin past bij "alleen met toestemming"
