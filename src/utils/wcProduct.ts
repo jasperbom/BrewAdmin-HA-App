@@ -17,6 +17,12 @@
 //     afbeeldingen hier als lijst met id/URL beheerd worden.
 //  4. **Geen enkel veld is verplicht.** Elk artikel dat nog geen `wc`-blok
 //     heeft gedraagt zich exact als vroeger: alleen voorraad wordt gepusht.
+//  5. **Status en afbeeldingen volgen de winkel, tenzij je ze hier wijzigt.**
+//     Publiceren en foto's uploaden gebeurt in WordPress. Het `wc`-blok is
+//     voor die twee velden een kopie van de winkel bij het laatste contact
+//     (`winkel_stand`); ze gaan alleen mee als ze hier sindsdien gewijzigd
+//     zijn. Anders zette een push een gepubliceerd product terug op concept,
+//     of verving hij de foto door de foto van het laatste ophalen.
 
 export type WcStatus = 'publish' | 'draft' | 'pending' | 'private'
 export type WcZichtbaarheid = 'visible' | 'catalog' | 'search' | 'hidden'
@@ -105,6 +111,20 @@ export interface WcVelden {
    */
   meta_stand?: Record<string, WcMetaWaarde>
   meta_stand_op?: string
+  /**
+   * Status en afbeeldingen zoals de winkel ze bij het laatste contact (ophalen,
+   * push) had. Wijkt `status`/`afbeeldingen` hiervan af, dan is het hier
+   * gewijzigd en gaat het mee in de push; anders volgt de app de winkel. Zie
+   * `wcMetWinkelStand`. Ontbreekt (oudere artikelen) = niet gewijzigd.
+   */
+  winkel_stand?: WcWinkelStand
+}
+
+export interface WcWinkelStand {
+  /** '' = de winkel noemde geen (geldige) status. */
+  status: WcStatus | ''
+  /** `afbeeldingSleutel` van de lijst. */
+  afbeeldingen: string
 }
 
 /** Een meta-waarde: tekst, getal of een lijstje label/waarde-regels. */
@@ -204,6 +224,72 @@ const _dim = (v: any): string => {
   return n === null ? '' : String(n)
 }
 
+const _status = (s: unknown): WcStatus | '' =>
+  typeof s === 'string' && (WC_STATUSSEN as string[]).includes(s) ? s as WcStatus : ''
+
+const _afbeeldingenUit = (images: unknown): WcAfbeelding[] =>
+  Array.isArray(images)
+    ? images.map((i: any) => ({id: _num(i?.id) ?? undefined, src: i?.src || '', alt: i?.alt || '', naam: i?.name || ''}))
+    : []
+
+/**
+ * Eén sleutel voor een afbeeldingenlijst: volgorde, id (of URL) en alt-tekst —
+ * precies wat een push meestuurt. Een regel zonder id én zonder URL telt niet,
+ * die gaat ook niet mee.
+ */
+export const afbeeldingSleutel = (lijst: WcAfbeelding[] | null | undefined): string =>
+  (lijst || [])
+    .filter(a => a && (a.id || (a.src && String(a.src).trim())))
+    .map(a => `${a.id ? `#${a.id}` : String(a.src).trim()}|${a.alt || ''}`)
+    .join('\n')
+
+/** Is de status hier gewijzigd sinds het laatste contact met de winkel? */
+export const wcStatusGewijzigd = (v: WcVelden | null | undefined): boolean =>
+  !!v?.winkel_stand && _status(v.status) !== (v.winkel_stand.status ?? '')
+
+/** Zijn de afbeeldingen hier gewijzigd sinds het laatste contact met de winkel? */
+export const wcAfbeeldingenGewijzigd = (v: WcVelden | null | undefined): boolean =>
+  !!v?.winkel_stand && afbeeldingSleutel(v.afbeeldingen) !== (v.winkel_stand.afbeeldingen ?? '')
+
+/**
+ * Het `wc`-blok aan het begin van een bewerking (de productkaart openen). Heeft
+ * het nog geen winkelstand — een artikel van vóór die stand —, dan geldt wat er
+ * nu staat als stand: alleen wat je vanaf nu wijzigt telt als wijziging.
+ */
+export const wcMetBeginStand = (wc: WcVelden | null | undefined): WcVelden =>
+  wc?.winkel_stand
+    ? {...wc}
+    : {...(wc || {}), winkel_stand: {status: _status(wc?.status), afbeeldingen: afbeeldingSleutel(wc?.afbeeldingen)}}
+
+/**
+ * Werk het `wc`-blok bij met het product zoals de winkel het nu heeft (het
+ * antwoord van een push, of het product bij het openen van de kaart). Status
+ * en afbeeldingen die hier niet gewijzigd zijn nemen de winkelwaarde over; de
+ * winkelstand wordt de stand van nu. Een wijziging die hier nog openstaat
+ * blijft staan. Zegt het product niets over een veld, dan blijft dat veld zoals
+ * het was.
+ */
+export function wcMetWinkelStand(wc: WcVelden | null | undefined, product: any): WcVelden {
+  const uit: WcVelden = {...(wc || {})}
+  if (!product || typeof product !== 'object') return uit
+  const stand: WcWinkelStand = {
+    status: uit.winkel_stand?.status ?? _status(uit.status),
+    afbeeldingen: uit.winkel_stand?.afbeeldingen ?? afbeeldingSleutel(uit.afbeeldingen),
+  }
+  if ('status' in product) {
+    const st = _status(product.status)
+    if (!wcStatusGewijzigd(uit)) uit.status = st || undefined
+    stand.status = st
+  }
+  if (Array.isArray(product.images)) {
+    const afb = _afbeeldingenUit(product.images)
+    if (!wcAfbeeldingenGewijzigd(uit)) uit.afbeeldingen = afb
+    stand.afbeeldingen = afbeeldingSleutel(afb)
+  }
+  uit.winkel_stand = stand
+  return uit
+}
+
 /**
  * Bouw de payload voor een WooCommerce product-PUT (bijwerken) of -POST
  * (aanmaken). Lege lokale velden blijven weg zodat de webshop ze behoudt.
@@ -220,7 +306,9 @@ export function bouwWcPayload(input: WcPayloadInput): Record<string, any> {
   if (!_leeg(input.sku)) out.sku = String(input.sku).trim()
   if (!_leeg(v.slug)) out.slug = String(v.slug).trim()
 
-  if (v.status && WC_STATUSSEN.includes(v.status)) out.status = v.status
+  // Status en afbeeldingen alleen bij aanmaken of als ze hier gewijzigd zijn;
+  // verder volgt de app de winkel (punt 5 bovenaan).
+  if (v.status && WC_STATUSSEN.includes(v.status) && (input.nieuw || wcStatusGewijzigd(v))) out.status = v.status
   if (v.zichtbaarheid && WC_ZICHTBAARHEDEN.includes(v.zichtbaarheid)) out.catalog_visibility = v.zichtbaarheid
   if (typeof v.uitgelicht === 'boolean') out.featured = v.uitgelicht
   if (typeof v.apart_verkopen === 'boolean') out.sold_individually = v.apart_verkopen
@@ -267,7 +355,9 @@ export function bouwWcPayload(input: WcPayloadInput): Record<string, any> {
   const afb = (v.afbeeldingen || [])
     .map(a => (a.id ? {id: a.id, ...(a.alt ? {alt: a.alt} : {})} : (a.src ? {src: a.src, ...(a.alt ? {alt: a.alt} : {})} : null)))
     .filter(Boolean) as Record<string, any>[]
-  if (afb.length) out.images = afb
+  // WooCommerce vervangt bij `images` de hele lijst — een oude kopie zou de
+  // foto die er nu staat weghalen.
+  if (afb.length && (input.nieuw || wcAfbeeldingenGewijzigd(v))) out.images = afb
 
   const volgorde = _num(v.menu_volgorde)
   if (volgorde !== null) out.menu_order = volgorde
@@ -410,11 +500,10 @@ export function leesWcProduct(
     lage_voorraad: p.low_stock_amount ?? '',
     apart_verkopen: typeof p.sold_individually === 'boolean' ? p.sold_individually : undefined,
     menu_volgorde: _num(p.menu_order) ?? '',
-    afbeeldingen: Array.isArray(p.images)
-      ? p.images.map((i: any) => ({id: _num(i?.id) ?? undefined, src: i?.src || '', alt: i?.alt || '', naam: i?.name || ''}))
-      : [],
+    afbeeldingen: _afbeeldingenUit(p.images),
     permalink: p.permalink || '',
   }
+  uit.winkel_stand = {status: _status(p.status), afbeeldingen: afbeeldingSleutel(uit.afbeeldingen)}
   // Alleen de meta-sleutels die de app beheert overnemen: de winkel zit vol
   // meta van WooCommerce zelf en van andere plugins, en daar blijven we af.
   const sleutels = opties?.metaSleutels || []

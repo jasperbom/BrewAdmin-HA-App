@@ -5,7 +5,7 @@ import { logAudit } from '../../utils/audit'
 import { wcGet, wcPut } from '../../utils/api'
 import { wcFoutMelding } from '../../utils/wcFout'
 import { CRAFTERY_SLEUTELS } from '../../utils/craftery'
-import { wcArtikelPush, wcMetaStandNaPush, wcMetStand } from '../../utils/wcProduct'
+import { wcArtikelPush, wcMetaStandNaPush, wcMetStand, wcMetWinkelStand } from '../../utils/wcProduct'
 import {
   allergeenRegel, energieKeuze, etiketDialoogKop, etiketGetalReden, etiketGetalTekst, etiketGetalVoorstellen,
   etiketWaarden, etiketWijzigingUitKeuze, keuzeVraagtNieuweVersie, legEtiketVast, metEtiketVan, productEtiketWaarden,
@@ -496,7 +496,7 @@ const useWebshopStap = ({product, naam, voorstel, webshop, vastgelegd, undoId, o
         const stand = wcMetaStandNaPush({antwoord: r.antwoord, vooraf: r.vooraf, verstuurd: r.body.meta_data, sleutels: CRAFTERY_SLEUTELS})
         const op = new Date().toISOString()
         webshop.setProductArtikelen(prev => (prev || []).map(x => (Number(x.id) === a.artikelId
-          ? {...x, wc: wcMetStand({...(x.wc || {}), wc_id: x.wc?.wc_id ?? (Number(r.vooraf?.id) || undefined)}, stand, op)}
+          ? {...x, wc: wcMetStand(wcMetWinkelStand({...(x.wc || {}), wc_id: x.wc?.wc_id ?? (Number(r.vooraf?.id) || undefined)}, r.antwoord), stand, op)}
           : x)))
         setUitkomst(u => ({...u, [a.artikelId]: {ok: true}}))
         webshop.onLog?.('push', `↑ ${naam} ${a.naam} — ${t('etiket_webshop_log')}`, regels.map(x => x.sleutel).join(', '))

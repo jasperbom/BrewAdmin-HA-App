@@ -1521,7 +1521,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
 | `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). Brewfather: `brewfather_id`/`brewfather_batch_nummer`, `bf_verweesd` (datum waarop Brewfather de batch niet meer kende); bij lezen `bf_stand` (per veld de laatst overgenomen waarde, een schema als hash) en `bf_verschil` (waarden waarin Brewfather afwijkt van een hier aangepaste waarde) — `utils/bfBatchSync.ts`; bij schrijven `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht) en `bf_fout` (`{op, melding}` van de laatste mislukte poging) — `utils/bfTerugschrijven.ts`. Brouwlog: `brouwlog_publiek` (alleen een echte `true` telt: deze batch gaat naar /brouwlog/ van de webshop) `brouwlog_notitie` (publieke tekst, max 600 tekens — los van `notities`/`batch_notities`, die intern blijven) en `brouwlog_artikel` (het webshopartikel voor naam en link: een `product_artikelen`-id, `'geen'` = geen link, leeg = automatisch); eigen velden die Brewfather-sync, receptsync en "opnieuw toepassen" niet aanraken |
 | `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
-| `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull en `voorraad_gepusht`/`voorraad_gepusht_op` = de voorraad bij de laatste push — ook op `merch_artikelen` en de oude `artikelen`) |
+| `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull en `voorraad_gepusht`/`voorraad_gepusht_op` = de voorraad bij de laatste push en `winkel_stand` = `{status, afbeeldingen}` zoals de winkel ze bij het laatste contact had — ook op `merch_artikelen` en de oude `artikelen`) |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
 | `afvullingen` | array | Afvullingen / releases |
 | `uitslagen` | array | Biervoorraaduitslagen |
@@ -2027,6 +2027,16 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   `↑ Push alles` (complete kaart) en `↓ Ophalen uit webshop` op de
   productenpagina. Een SKU die de winkel nog niet kent wordt aangemaakt via
   `POST /api/woocommerce/create/products`
+- **Status en afbeeldingen volgen de winkel** (1.13.43): publiceren en foto's
+  uploaden gebeurt in WordPress, dus `wc.status`/`wc.afbeeldingen` zijn een kopie
+  van de winkel bij het laatste contact (`wc.winkel_stand`). `bouwWcPayload`
+  stuurt ze alleen bij aanmaken of als ze hier sindsdien gewijzigd zijn
+  (`wcStatusGewijzigd`/`wcAfbeeldingenGewijzigd`); na elke push en bij het openen
+  van de kaart neemt `wcMetWinkelStand` de winkelwaarde over voor wat hier niet
+  gewijzigd is. Vóór 1.13.43 stuurde elke push de kopie van het laatste ophalen
+  terug: een gepubliceerd product ging terug op concept en WooCommerce verving de
+  foto (`images` vervangt de hele lijst). Een blok zonder stand geldt als niet
+  gewijzigd (`wcMetBeginStand`). Nooit zo'n kopie weer ongevraagd meesturen
 - **Bierinformatie** (`utils/bierinfo.ts`): kcal, ingrediënten, smaakprofiel,
   serveertip, de vijf smaakassen, Untappd, "uit roulatie" en vrije extra regels
   staan als **gewone velden op het product**; maat/aantal, pakketinhoud, badge

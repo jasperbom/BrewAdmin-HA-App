@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.43] — 2026-11-03
+
+### Pushen naar de webshop: geen concept meer, de foto blijft staan
+
+- Een bier dat je naar de webshop pusht, ging steeds terug op concept, en de
+  foto die er al stond verdween. De app bewaarde bij *Ophalen uit webshop* een
+  kopie van de status en de foto's, en stuurde die oude kopie bij elke push
+  terug — ook als je het product daarna in WordPress had gepubliceerd of een
+  nieuwe foto had gezet.
+- Status en foto's volgen nu de winkel. Ze gaan alleen mee als je ze in de
+  productkaart (knop `WC`) zelf wijzigt. Na elke push, en bij het openen van de
+  kaart, neemt de app de stand van de winkel over.
+- Staat een bier op dit moment op concept of mist het zijn foto: zet het één
+  keer goed in WordPress. Een push zet het daarna niet meer terug.
+
+---
+
 ## [1.13.42] — 2026-11-03
 
 ### Afhaalafspraak na de afhaaltermijn

@@ -7,6 +7,7 @@ import Btn from './ui/Btn'
 import {
   WcVelden, WcCategorie, WcAfbeelding,
   bouwWcPayload, leesWcProduct, wcVerschillen, wcRegulierePrijsExcl, wcMetaStandNaPush, wcMetaUitProduct, wcMetStand,
+  wcMetBeginStand, wcMetWinkelStand,
   ordenCategorieen, WC_VELD_LABEL, veiligeAfbeeldingUrl,
   WC_STATUSSEN, WC_ZICHTBAARHEDEN, WC_BACKORDERS, WC_BTW_STATUSSEN,
 } from '../utils/wcProduct'
@@ -91,7 +92,9 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
   bierInfo = null, themaMeta = null, artikelVelden = [], onArtikelVeld,
 }) => {
   const {useState, useEffect, useMemo} = React
-  const [v, setV] = useState<WcVelden>({...(velden || {})})
+  // Status en afbeeldingen volgen de winkel tenzij je ze hier wijzigt: de
+  // winkelstand legt vast wat er bij openen stond (utils/wcProduct.ts).
+  const [v, setV] = useState<WcVelden>(() => wcMetBeginStand(velden))
   const [wcProduct, setWcProduct] = useState<any>(null)
   const [cats, setCats] = useState<WcCategorie[]>([])
   const [laden, setLaden] = useState(true)
@@ -127,7 +130,12 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
       const gevonden = Array.isArray(prods) ? prods[0] : null
       setWcProduct(gevonden || null)
       setCats((catLijst || []).map((c: any) => ({id: Number(c.id), naam: String(c.name || ''), parent: Number(c.parent || 0)})))
-      if (gevonden && !v.wc_id) zet({wc_id: Number(gevonden.id), permalink: gevonden.permalink || ''})
+      // Wat je hier niet gewijzigd hebt, toont de stand van de winkel (een
+      // product dat in WordPress gepubliceerd is staat hier niet op concept).
+      if (gevonden) setV(f => {
+        const n = wcMetWinkelStand(f, gevonden)
+        return f.wc_id ? n : {...n, wc_id: Number(gevonden.id), permalink: gevonden.permalink || ''}
+      })
     } catch (e: any) {
       setMsg({soort: 'fout', tekst: wcFoutMelding(e, t)})
       onLog?.('fout', `${titel} — ${wcFoutMelding(e, t)}`, e?.message)
@@ -172,12 +180,12 @@ const WcProductModal: React.FC<WcProductModalProps> = ({
       const stand = themaMeta
         ? wcMetaStandNaPush({antwoord: res, vooraf: nieuw ? null : wcProduct, verstuurd: body.meta_data, sleutels: CRAFTERY_SLEUTELS})
         : null
-      const bijgewerkt: WcVelden = wcMetStand({
+      const bijgewerkt: WcVelden = wcMetStand(wcMetWinkelStand({
         ...v,
         wc_id: Number(res?.id) || v.wc_id,
         permalink: res?.permalink || v.permalink,
         gesynct: nu,
-      }, stand, nu)
+      }, res), stand, nu)
       setV(bijgewerkt)
       onOpslaan(bijgewerkt)
       const tekst = nieuw ? t('wc_msg_aangemaakt') : t('wc_msg_gepusht')

@@ -3,6 +3,7 @@ import {
   bouwWcPayload, leesWcProduct, wcVerschillen, wcPrijsString, wcPrijsNaarExcl,
   wcRegulierePrijsExcl, ordenCategorieen, WcVelden, wcPrijsBehouden,
   veiligeAfbeeldingUrl, wcVoorraadPayload, wcMetaUitProduct, wcMetaStandNaPush, wcMetStand, wcArtikelPush,
+  wcMetBeginStand, wcMetWinkelStand, wcStatusGewijzigd, wcAfbeeldingenGewijzigd,
 } from '../wcProduct'
 import { CRAFTERY_SLEUTELS } from '../craftery'
 
@@ -41,7 +42,9 @@ describe('bouwWcPayload', () => {
     expect(p.stock_quantity).toBeUndefined()
   })
 
-  it('neemt alle ingevulde velden mee, met prijzen inclusief BTW', () => {
+  // Bij aanmaken gaat alles mee; bij bijwerken status en afbeeldingen alleen
+  // als ze hier gewijzigd zijn (zie "status en afbeeldingen volgen de winkel").
+  it('neemt bij aanmaken alle ingevulde velden mee, met prijzen inclusief BTW', () => {
     const velden: WcVelden = {
       naam: 'Tripel Phase 33cl', slug: 'tripel-phase-33', status: 'publish',
       zichtbaarheid: 'visible', uitgelicht: true, apart_verkopen: false,
@@ -53,9 +56,9 @@ describe('bouwWcPayload', () => {
       backorders: 'notify', lage_voorraad: 6, menu_volgorde: 3,
       afbeeldingen: [{id: 44, alt: 'fles'}, {src: 'https://x.nl/a.jpg'}],
     }
-    const p = bouwWcPayload({velden, sku: 'TRP033', prijsExcl: 3.31, btwPct: 21, voorraad: 42, prijzenInclBtw: true})
+    const p = bouwWcPayload({velden, sku: 'TRP033', prijsExcl: 3.31, btwPct: 21, voorraad: 42, prijzenInclBtw: true, nieuw: true})
     expect(p).toMatchObject({
-      name: 'Tripel Phase 33cl', slug: 'tripel-phase-33', sku: 'TRP033',
+      type: 'simple', name: 'Tripel Phase 33cl', slug: 'tripel-phase-33', sku: 'TRP033',
       status: 'publish', catalog_visibility: 'visible', featured: true, sold_individually: false,
       short_description: 'Kort', description: '<p>Lang</p>',
       regular_price: '4.01', sale_price: '3.03',
@@ -105,8 +108,94 @@ describe('bouwWcPayload', () => {
   })
 
   it('slaat afbeeldingen zonder id én zonder URL over', () => {
-    const p = bouwWcPayload({velden: {afbeeldingen: [{alt: 'niets'}, {id: 5}]}})
+    const p = bouwWcPayload({velden: {afbeeldingen: [{alt: 'niets'}, {id: 5}]}, nieuw: true})
     expect(p.images).toEqual([{id: 5}])
+  })
+})
+
+// Melding: "een bier dat ik naar de site push staat steeds weer op concept, en
+// de foto die er al stond is weg". Het wc-blok was voor status en afbeeldingen
+// een kopie van de winkel bij het laatste ophalen, en elke push stuurde die
+// oude kopie terug.
+describe('status en afbeeldingen volgen de winkel, tenzij je ze hier wijzigt', () => {
+  // Opgehaald toen het product nog een concept was, met de eerste foto.
+  const toenOpgehaald = leesWcProduct({id: 7, status: 'draft', images: [{id: 11, src: 'https://x.nl/oud.jpg', alt: ''}]})
+  // Daarna in WordPress gepubliceerd, met een nieuwe foto.
+  const winkelNu = {id: 7, status: 'publish', images: [{id: 22, src: 'https://x.nl/nieuw.jpg', alt: 'fles'}]}
+
+  it('een push zet een gepubliceerd product niet terug op concept en laat de foto staan', () => {
+    const p = bouwWcPayload({velden: toenOpgehaald, sku: 'KB33'})
+    expect('status' in p).toBe(false)
+    expect('images' in p).toBe(false)
+  })
+
+  it('een oud wc-blok zonder winkelstand stuurt zijn status en afbeeldingen ook niet terug', () => {
+    const oud: WcVelden = {wc_id: 7, status: 'draft', afbeeldingen: [{id: 11}]}
+    const p = bouwWcPayload({velden: oud, sku: 'KB33'})
+    expect('status' in p).toBe(false)
+    expect('images' in p).toBe(false)
+  })
+
+  it('wat je hier wijzigt gaat wél mee', () => {
+    const v = wcMetWinkelStand(toenOpgehaald, winkelNu)
+    expect(bouwWcPayload({velden: {...v, status: 'private'}}).status).toBe('private')
+    // Een foto toevoegen: de lijst die meegaat begint met de foto die er nu staat.
+    const meer = {...v, afbeeldingen: [...(v.afbeeldingen || []), {src: 'https://x.nl/derde.jpg'}]}
+    expect(bouwWcPayload({velden: meer}).images).toEqual([{id: 22, alt: 'fles'}, {src: 'https://x.nl/derde.jpg'}])
+    // Een andere alt-tekst is ook een wijziging.
+    const alt = {...v, afbeeldingen: [{id: 22, alt: 'flesje'}]}
+    expect(bouwWcPayload({velden: alt}).images).toEqual([{id: 22, alt: 'flesje'}])
+  })
+
+  it('de kaart openen: een oud blok krijgt de huidige waarden als stand, een wijziging telt daarna', () => {
+    const oud: WcVelden = {status: 'draft', afbeeldingen: [{id: 11}]}
+    const begin = wcMetBeginStand(oud)
+    expect(begin.winkel_stand).toEqual({status: 'draft', afbeeldingen: '#11|'})
+    expect(wcStatusGewijzigd(begin)).toBe(false)
+    expect(wcStatusGewijzigd({...begin, status: 'publish'})).toBe(true)
+    // Een bestaande stand blijft staan.
+    const metStand: WcVelden = {status: 'publish', winkel_stand: {status: 'draft', afbeeldingen: ''}}
+    expect(wcMetBeginStand(metStand).winkel_stand).toEqual({status: 'draft', afbeeldingen: ''})
+  })
+
+  it('na contact met de winkel volgt wat hier niet gewijzigd is de winkel', () => {
+    const v = wcMetWinkelStand(toenOpgehaald, winkelNu)
+    expect(v.status).toBe('publish')
+    expect(v.afbeeldingen).toEqual([{id: 22, src: 'https://x.nl/nieuw.jpg', alt: 'fles', naam: ''}])
+    expect(v.winkel_stand).toEqual({status: 'publish', afbeeldingen: '#22|fles'})
+    expect(wcStatusGewijzigd(v)).toBe(false)
+    expect(wcAfbeeldingenGewijzigd(v)).toBe(false)
+    // Ook een oud blok zonder stand.
+    expect(wcMetWinkelStand({status: 'draft'}, winkelNu).status).toBe('publish')
+  })
+
+  it('een wijziging die nog niet gepusht is blijft staan', () => {
+    const gewijzigd = {...toenOpgehaald, status: 'private' as const}
+    const v = wcMetWinkelStand(gewijzigd, winkelNu)
+    expect(v.status).toBe('private')
+    expect(v.winkel_stand?.status).toBe('publish')
+    expect(bouwWcPayload({velden: v}).status).toBe('private')
+  })
+
+  it('na een push met de gewijzigde status is hij niet meer gewijzigd', () => {
+    const v = {...wcMetWinkelStand(toenOpgehaald, winkelNu), status: 'private' as const}
+    const body = bouwWcPayload({velden: v})
+    const naPush = wcMetWinkelStand(v, {...winkelNu, ...body})
+    expect(naPush.status).toBe('private')
+    expect('status' in bouwWcPayload({velden: naPush})).toBe(false)
+  })
+
+  it('zonder antwoord, of een antwoord zonder die velden, verandert er niets', () => {
+    expect(wcMetWinkelStand(toenOpgehaald, null)).toEqual(toenOpgehaald)
+    const v = wcMetWinkelStand(toenOpgehaald, {id: 7, stock_quantity: 3})
+    expect(v.status).toBe('draft')
+    expect(v.afbeeldingen).toEqual(toenOpgehaald.afbeeldingen)
+  })
+
+  it('aanmaken stuurt status en afbeeldingen gewoon mee', () => {
+    const p = bouwWcPayload({velden: wcMetBeginStand({status: 'draft', afbeeldingen: [{src: 'https://x.nl/a.jpg'}]}), nieuw: true})
+    expect(p.status).toBe('draft')
+    expect(p.images).toEqual([{src: 'https://x.nl/a.jpg'}])
   })
 })
 

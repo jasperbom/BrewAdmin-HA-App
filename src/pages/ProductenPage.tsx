@@ -4,7 +4,7 @@ import { newId, wcGet, wcPut, ADDON_BASE } from '../utils/api'
 import { _fetchedKeys } from '../utils/api'
 import LegeStaat from '../components/ui/LegeStaat'
 import WcProductModal from '../components/WcProductModal'
-import { WcVelden, bouwWcPayload, leesWcProduct, wcRegulierePrijsExcl, wcArtikelPush, wcMetaStandNaPush, wcMetaUitProduct, wcMetStand, wcVoorraadPayload } from '../utils/wcProduct'
+import { WcVelden, bouwWcPayload, leesWcProduct, wcRegulierePrijsExcl, wcArtikelPush, wcMetaStandNaPush, wcMetaUitProduct, wcMetStand, wcMetWinkelStand, wcVoorraadPayload } from '../utils/wcProduct'
 import { wcVoorraadVoorArtikel, metGepushteVoorraad } from '../utils/wcVoorraad'
 import {
   bierInvulVelden, afgeleideBierInfo, bierInfoVoorArtikel, bierInfoWeergave,
@@ -1299,6 +1299,9 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
     // Wat er per artikel aan voorraad verstuurd is: de automatische push na
     // een verkoop stuurt daarna alleen wat afwijkt (utils/wcVoorraad.ts).
     const voorraadPa: Record<number, number> = {};
+    // Het product zoals de winkel het na de push heeft: status en afbeeldingen
+    // die hier niet gewijzigd zijn volgen daarna de winkel (wcMetWinkelStand).
+    const antwoorden: Record<number, any> = {};
     try {
       let bijgewerkt = 0;
       // Fouten per artikel verzamelen i.p.v. de hele push afbreken: één trage
@@ -1345,6 +1348,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           }
           if (volledig && art._pa) gesynct[art.id] = {wc_id: r.vooraf.id, permalink: r.vooraf.permalink};
           if (art._pa) voorraadPa[art.id] = beschikbaar;
+          if (art._pa && r.antwoord) antwoorden[art.id] = r.antwoord;
           // De stand die verstuurd/ontvangen is, ook bij de voorraadpush (de
           // winkel meldt zijn meta terug; die push verandert hem niet).
           if (themaAan && art._pa) {
@@ -1364,6 +1368,7 @@ function ProductenPage({producten, setProducten, ing=[], productArtikelen, setPr
           if (!gesynct[a.id] && !standen[a.id] && voorraadPa[a.id] === undefined) return a;
           let wc = gesynct[a.id] ? {...(a.wc || {}), ...gesynct[a.id], gesynct: nu} : (a.wc || {});
           if (voorraadPa[a.id] !== undefined) wc = metGepushteVoorraad(wc, voorraadPa[a.id], nu);
+          if (antwoorden[a.id]) wc = wcMetWinkelStand(wc, antwoorden[a.id]);
           return {...a, wc: wcMetStand(wc, standen[a.id], nu)};
         }));
       }
