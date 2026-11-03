@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.36] — 2026-11-03
+
+### Eigen pakbonlayout
+
+De pakbon kan nu een eigen layout krijgen, net als de factuur: Instellingen →
+Bedrijf → **Pakbonlayout** (HTML en CSS, met *Standaard als startpunt laden*,
+*Voorbeeld bekijken* en *Terug naar standaard* met terugweg).
+
+- Zonder eigen layout is de pakbon precies zoals hij was.
+- De eigen layout geldt ook voor de pakbonnen die met de picklijst worden
+  afgedrukt. Houd de CSS daarom onder een eigen klasse, anders verandert de
+  picklijst mee.
+- Velden: dezelfde brouwerij- en klantgegevens als op de factuur (ook in
+  delen en als voet), pakbonnummer, datum (ook voluit), ordernummer, per regel
+  bier, verpakking, inhoud, lot, THT en batch, concept of voor in de doos, het
+  totaal aantal stuks (en hoeveel er al in de doos zit) en de opmerking.
+- Een fout in de eigen layout: de app valt terug op de standaard, zodat een
+  pakbon altijd te printen is.
+- Noemt de opmaak een lettertype van de app, dan gaat het mee naar het
+  printvenster en de PDF-bijlage.
+
+---
+
 ## [1.13.35] — 2026-11-03
 
 ### Meer mogelijkheden voor een eigen factuurlayout

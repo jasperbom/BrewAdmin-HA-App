@@ -5972,5 +5972,8 @@
   "factuur_stand_open": "zu zahlen",
   "factuur_stand_betaald": "bezahlt",
   "factuur_stand_vervallen": "überfällig",
-  "factuur_stand_credit": "Gutschrift"
+  "factuur_stand_credit": "Gutschrift",
+  "settings_pakbon_template_title": "Lieferschein-Layout",
+  "settings_pakbon_template_desc": "Das Layout des Lieferscheins als Vorlage, auch für die Lieferscheine, die mit der Pickliste gedruckt werden. Leer = das integrierte Standardlayout. Bei einem Fehler in deiner Vorlage nutzt die App das Standardlayout. Halte das CSS unter einer eigenen Klasse, sonst ändert sich die Pickliste mit.",
+  "undo_pakbon_template_verwijderd": "Eigenes Lieferschein-Layout entfernt"
 }

@@ -5972,5 +5972,8 @@
   "factuur_stand_open": "à payer",
   "factuur_stand_betaald": "payée",
   "factuur_stand_vervallen": "en retard",
-  "factuur_stand_credit": "avoir"
+  "factuur_stand_credit": "avoir",
+  "settings_pakbon_template_title": "Mise en page du bon de livraison",
+  "settings_pakbon_template_desc": "La mise en page du bon de livraison comme modèle, aussi pour les bons imprimés avec la liste de préparation. Vide = la mise en page par défaut. En cas d'erreur dans ton modèle, l'application revient à la mise en page par défaut. Garde le CSS sous une classe à part, sinon la liste de préparation change aussi.",
+  "undo_pakbon_template_verwijderd": "Mise en page personnalisée du bon supprimée"
 }

@@ -5972,5 +5972,8 @@
   "factuur_stand_open": "pendiente",
   "factuur_stand_betaald": "pagada",
   "factuur_stand_vervallen": "vencida",
-  "factuur_stand_credit": "factura rectificativa"
+  "factuur_stand_credit": "factura rectificativa",
+  "settings_pakbon_template_title": "Diseño del albarán",
+  "settings_pakbon_template_desc": "El diseño del albarán como plantilla, también para los albaranes que se imprimen con la lista de preparación. Vacío = el diseño predeterminado. Si tu plantilla tiene un error, la app vuelve al diseño predeterminado. Mantén el CSS bajo una clase propia; si no, la lista de preparación también cambia.",
+  "undo_pakbon_template_verwijderd": "Diseño propio del albarán eliminado"
 }

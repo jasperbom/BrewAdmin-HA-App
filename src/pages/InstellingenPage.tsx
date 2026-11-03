@@ -7,7 +7,6 @@ import NaAankoopMailInstellingen from '../components/NaAankoopMailInstellingen'
 import MailOpmaakInstellingen from '../components/MailOpmaakInstellingen'
 import { uitnodigingUrl, uitnodigingStandaard, isWhatsAppLink } from '../utils/mailUitnodiging'
 import { peppolSchemaVoor } from '../utils/ubl'
-import { controleerTemplate } from '../utils/template'
 import { FACTUUR_CSS_DEFAULT, FACTUUR_HTML_DEFAULT, FACTUUR_TEMPLATE_VELDEN } from '../utils/factuurTemplate'
 import Btn from '../components/ui/Btn'
 import SectionHeader from '../components/ui/SectionHeader'
@@ -21,7 +20,9 @@ import { BF_ONDERDELEN, BF_RICHTING_KEUZES, bfRichtingen, bfScopes } from '../ut
 import type { BfOnderdeel, BfRichting, BfRichtingen } from '../utils/bfRichting'
 import Segment from '../components/ui/Segment'
 import { BUILTIN_ING_TYPES, BUILTIN_KOSTEN_SOORTEN, DEFAULT_BATCH_TAKEN_ITEMS, DEFAULT_BATCH_TAKEN_GROEPEN, DEFAULT_HACCP_INST, TOEVOEGING_SOORTEN, STATUSSEN, groepFase, FASE_LABEL_KEYS, NAV_THEMES } from '../utils/constants'
-import { buildFactuurHTML } from '../components/PakbonExport'
+import { buildFactuurHTML, buildPakbonHTML, DOC_CSS } from '../components/PakbonExport'
+import LayoutEditorKaart from '../components/LayoutEditorKaart'
+import { PAKBON_HTML_DEFAULT, PAKBON_TEMPLATE_VELDEN } from '../utils/pakbonTemplate'
 import { bfTest, wcTestCreds, mailTestApi, mailSendApi, mollieTestApi, _WC_PING, ADDON_BASE, API_BASE, _allKeys, _fetchedKeys, _syncErrors, _syncPending, _serverReachable, haGetState, haListStates, haCallService, haListNotifyServices, haNotify, HaStateEntry, newId, getWhoami, Whoami, uitloggen, getHaGebruikers, HaGebruiker, getServerHealth, ServerHealth } from '../utils/api'
 import { SCAN_MODELLEN, modelNaam } from '../utils/claudeScan'
 import Modal from '../components/ui/Modal'
@@ -1931,70 +1932,59 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         }}>{t('btn_factuur_voorbeeld')}</Btn>
       </div>
 
-      {/* Factuurlayout als template (utils/factuurTemplate.ts). Leeg = de
-          ingebouwde standaardlayout; een fout in de eigen template valt bij het
-          renderen automatisch terug op de standaard. */}
-      <div className={card}>
-        <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_factuur_template_title')}</h2>
-        <p className="text-sm text-gray-500 mb-3">{t('settings_factuur_template_desc')}</p>
-        {(() => {
-          const tpl = breweryDetails?.factuur_template || {}
-          const html = String(tpl.html || '')
-          const css = String(tpl.css || '')
-          const fout = html.trim() ? controleerTemplate(html) : null
-          const zetTemplate = (velden: any) => setBreweryDetails((p: any) => ({
-            ...p, factuur_template: {...(p?.factuur_template || {}), ...velden},
-          }))
-          return (
-            <>
-              <div className="mb-3">
-                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${html.trim() ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
-                  {html.trim() ? t('settings_factuur_template_eigen') : t('settings_factuur_template_standaard')}
-                </span>
-              </div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings_factuur_template_html')}</label>
-              <textarea value={html} rows={14} spellCheck={false}
-                onChange={(e: any) => zetTemplate({html: e.target.value})}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono t-input" />
-              {html.trim() && (
-                <p className={`text-xs mt-1 ${fout ? 'text-red-600' : 'text-green-600'}`}>
-                  {fout ? `${t('settings_factuur_template_fout')}: ${fout}` : t('settings_factuur_template_ok')}
-                </p>
-              )}
-              <label className="block text-sm font-medium text-gray-700 mb-1 mt-3">{t('settings_factuur_template_css')}</label>
-              <textarea value={css} rows={8} spellCheck={false}
-                onChange={(e: any) => zetTemplate({css: e.target.value})}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-xs font-mono t-input" />
-              <div className="flex flex-wrap items-center gap-2 mt-3">
-                <Btn v="secondary" onClick={() => zetTemplate({html: FACTUUR_HTML_DEFAULT, css: FACTUUR_CSS_DEFAULT})}>
-                  {t('settings_factuur_template_laad')}
-                </Btn>
-                {(html.trim() || css.trim()) && (
-                  <Btn v="danger" disabled={wachtId === 'factuurtemplate-reset'} onClick={() => {
-                    undo.plan('factuurtemplate-reset', t('undo_factuur_template_verwijderd', 'Eigen factuurlayout verwijderd'), () => {
-                      setBreweryDetails((p: any) => {
-                        const {factuur_template: _weg, ...rest} = p || {}
-                        return rest
-                      })
-                    })
-                  }}>{t('settings_factuur_template_reset')}</Btn>
-                )}
-              </div>
-              <details className="mt-3">
-                <summary className="text-xs font-semibold text-gray-500 cursor-pointer">
-                  {t('settings_factuur_template_velden')}
-                </summary>
-                <p className="text-xs text-gray-500 mt-2">{t('settings_factuur_template_velden_hint')}</p>
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {FACTUUR_TEMPLATE_VELDEN.map(veld => (
-                    <code key={veld} className="text-xs bg-gray-100 text-gray-700 rounded px-1.5 py-0.5">{`{{${veld}}}`}</code>
-                  ))}
-                </div>
-              </details>
-            </>
-          )
-        })()}
-      </div>
+      {/* Factuur- en pakbonlayout als template (utils/factuurTemplate.ts,
+          utils/pakbonTemplate.ts). Leeg = de ingebouwde standaardlayout; een
+          fout in de eigen template valt bij het renderen terug op de standaard. */}
+      <LayoutEditorKaart cls={card}
+        titel={t('settings_factuur_template_title')} uitleg={t('settings_factuur_template_desc')}
+        layout={breweryDetails?.factuur_template}
+        onZet={(velden) => setBreweryDetails((p: any) => ({...p, factuur_template: {...(p?.factuur_template || {}), ...velden}}))}
+        standaard={{html: FACTUUR_HTML_DEFAULT, css: FACTUUR_CSS_DEFAULT}} velden={FACTUUR_TEMPLATE_VELDEN}
+        verwijderBezig={wachtId === 'factuurtemplate-reset'}
+        onVerwijder={() => undo.plan('factuurtemplate-reset', t('undo_factuur_template_verwijderd', 'Eigen factuurlayout verwijderd'), () => {
+          setBreweryDetails((p: any) => {
+            const {factuur_template: _weg, ...rest} = p || {}
+            return rest
+          })
+        })} />
+      <LayoutEditorKaart cls={card}
+        titel={t('settings_pakbon_template_title')} uitleg={t('settings_pakbon_template_desc')}
+        layout={breweryDetails?.pakbon_template}
+        onZet={(velden) => setBreweryDetails((p: any) => ({...p, pakbon_template: {...(p?.pakbon_template || {}), ...velden}}))}
+        standaard={{html: PAKBON_HTML_DEFAULT, css: DOC_CSS}} velden={PAKBON_TEMPLATE_VELDEN}
+        verwijderBezig={wachtId === 'pakbontemplate-reset'}
+        onVerwijder={() => undo.plan('pakbontemplate-reset', t('undo_pakbon_template_verwijderd', 'Eigen pakbonlayout verwijderd'), () => {
+          setBreweryDetails((p: any) => {
+            const {pakbon_template: _weg, ...rest} = p || {}
+            return rest
+          })
+        })}
+        onVoorbeeld={() => {
+          // Testgegevens: twee regels, één met lot en THT uit een afvulling.
+          const tht = new Date(); tht.setFullYear(tht.getFullYear() + 1)
+          const thtIso = tht.toISOString().slice(0, 10)
+          const order = {
+            id: 12, pakbon_nummer: 'P-2026-012', pakbon_datum: tod(), wc_order_nummer: '1187',
+            klant_bedrijf: 'Café De Proeverij', klant_naam: 'Jan Jansen', klant_straat: 'Kerkstraat', klant_huisnummer: '42',
+            klant_postcode: '5678 CD', klant_stad: 'Rotterdam', klant_email: 'jan@proeverij.nl',
+            regels: [{id: 1, bier_naam: 'IPA', verpakking_type: 'Fles 33cl', aantal: 24}, {id: 2, bier_naam: 'Blond', verpakking_type: 'Fust 20L', aantal: 1}],
+          }
+          const av = [
+            {id: 1, batch_id: 1, lotcode: 'L2601-B1', tht: thtIso, verpakking_type: 'Fles 33cl', inhoud_per_eenheid: 0.33},
+            {id: 2, batch_id: 2, lotcode: 'L2602-B1', tht: thtIso, verpakking_type: 'Fust 20L', inhoud_per_eenheid: 20},
+          ]
+          const bat = [{id: 1, batch_nummer: '2601'}, {id: 2, batch_nummer: '2602'}]
+          const picks = [{id: 1, regel_id: 1, afvulling_id: 1, batch_id: 1, aantal: 24}, {id: 2, regel_id: 2, afvulling_id: 2, batch_id: 2, aantal: 1}]
+          const fv = breweryDetails?.factuur_velden || {}
+          const {html} = buildPakbonHTML(order, picks, av, bat, {...breweryDetails, naam: breweryDetails?.naam || appName || 'Voorbeeldbrouwerij'},
+            appName || 'Brouwerij', fv.logo !== false ? (factuurLogo || logo) : null)
+          const w = window.open('', '_blank', 'width=900,height=700')
+          if (w) {
+            w.document.write(html)
+            w.document.close()
+            w.focus()
+          }
+        }} />
 
       {/* Verzendkosten */}
       <div className={card}>
