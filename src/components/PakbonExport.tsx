@@ -345,7 +345,7 @@ function buildPakbonBody(
       </tbody>
     </table>
 
-    ${order.opmerkingen ? `<div class="remarks"><strong>${t('lbl_opmerking')}:</strong> ${esc(order.opmerkingen)}</div>` : ''}
+    ${order.opmerkingen ? `<div class="remarks"><strong>${t('lbl_opmerking')}:</strong> ${esc(order.opmerkingen).replace(/\n/g, '<br>')}</div>` : ''}
 
     <div class="footer">
       <div class="sign-block">
@@ -458,7 +458,7 @@ function buildPicklijstBody(
       <td>${levering}</td>
       <td class="r">${esc(o.regels)}</td>
       <td class="r">${esc(o.stuks)}</td>
-      <td>${esc(o.opmerkingen)}</td>
+      <td>${esc(o.opmerkingen).replace(/\n/g, '<br>')}</td>
     </tr>`
   }).join('')
 

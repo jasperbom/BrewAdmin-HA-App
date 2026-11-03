@@ -10,7 +10,9 @@
  *                          in elke status: ook een annulering of terugbetaling
  *                          in de winkel moet hier aankomen
  *  - `wcOrderNaarBestelling` / `wcOrderUpdate` — één order omzetten resp. de
- *                          betaal-/leverings-/statusvelden van een bekende order verversen
+ *                          betaal-/leverings-/statusvelden, het adres en de
+ *                          klantnotitie van een bekende order verversen
+ *  - `wcKlantNotitie`    — de notitie die de klant bij het afrekenen schreef
  *  - `importeerWcOrders` — het geheel: geeft `{nieuw, updates, onbekendeRegels}`
  *  - `pasImportToe`      — het resultaat in de bestellingenlijst verwerken; laat
  *                          een order vallen die intussen al bestaat (twee tabs)
@@ -27,7 +29,7 @@
 import { newId } from './api'
 import { tod } from './format'
 import { findKlantVoorOrder } from './klant'
-import { wcAdres } from './adres'
+import { wcAdresVolledig } from './adres'
 import {
   WcRefs, WC_IMPORT_STATUSSEN_DEFAULT, wcOrdersPad, mapWcOrderRegels,
   wcBetaalVelden, betaalVeldenGewijzigd, BETAAL_KEYS, betaalVeldenNaEigenSync,
@@ -169,6 +171,20 @@ export function wcBtwNummer(order: any): string {
 }
 
 /**
+ * De notitie die de klant bij het afrekenen schreef ("Graag bij de buren
+ * afgeven"), WooCommerce `customer_note` — in de klassieke checkout het veld
+ * "Bestelnotities", in de blokcheckout "Een notitie toevoegen". Regels blijven
+ * regels; spaties en lege regels worden opgeruimd.
+ */
+export function wcKlantNotitie(o: any): string {
+  const ruw = o?.customer_note
+  if (typeof ruw !== 'string') return ''
+  return ruw.replace(/\r\n?/g, '\n').split('\n')
+    .map(r => r.replace(/[ \t]+/g, ' ').trim()).join('\n')
+    .replace(/\n{3,}/g, '\n\n').trim()
+}
+
+/**
  * De pagina-ID's en endpoint-slugs van de winkel, voor de bestellink per
  * order (utils/levering → bestelPaginaLink). `settings/advanced` vraagt
  * beheerrechten op de API-sleutel; lukt het niet, dan `null` en valt de
@@ -194,8 +210,11 @@ export function wcOrderNaarBestelling(
   const company = String(o?.billing?.company || '').trim()
   const klantType: 'prive' | 'zakelijk' = (company || wcBtwNummer(o)) ? 'zakelijk' : 'prive'
   // Straat en huisnummer apart (utils/adres.ts): WooCommerce heeft één
-  // adresregel, een NL-checkoutplugin losse velden.
-  const adres = wcAdres(o)
+  // adresregel, een NL-checkout losse velden. Postcode en plaats van dezelfde
+  // kant (factuur, of verzend als het factuuradres leeg was).
+  const adres = wcAdresVolledig(o)
+  const naam = (a: any) => `${a?.first_name || ''} ${a?.last_name || ''}`.trim()
+  const notitie = wcKlantNotitie(o)
   const nb: any = {
     id: newId(bestaand),
     status: 'nieuw',
@@ -209,15 +228,18 @@ export function wcOrderNaarBestelling(
     // afhaalpagina van de klant en de link naar de bestelling in de
     // webshop (utils/levering.ts).
     ...wcLeveringVelden(o, link),
-    klant_naam: `${o?.billing?.first_name || ''} ${o?.billing?.last_name || ''}`.trim() || t('lbl_onbekend'),
+    klant_naam: naam(o?.billing) || naam(o?.shipping) || t('lbl_onbekend'),
     klant_email: o?.billing?.email || '',
     klant_straat: adres.straat,
     klant_huisnummer: adres.huisnummer,
-    klant_postcode: o?.billing?.postcode || '',
-    klant_stad: o?.billing?.city || '',
+    klant_postcode: adres.postcode,
+    klant_stad: adres.stad,
     klant_bedrijf: company,
     klant_type: klantType,
     regels,
+    // De notitie van de klant komt in de opmerkingen (orderdetail, pakbon,
+    // picklijst); `wc_notitie` onthoudt wat uit de winkel kwam (wcOrderUpdate).
+    ...(notitie ? {opmerkingen: notitie, wc_notitie: notitie} : {}),
     wc_order_id: o?.id,
     wc_order_nummer: String(o?.number || o?.id),
     // Webshopstatus alleen als hij om aandacht vraagt (zie wcOrderUpdate).
@@ -231,19 +253,41 @@ export function wcOrderNaarBestelling(
 }
 
 /**
- * Adres van een order die vóór v1.12.79 binnenkwam: toen ging `address_1`
- * ongesplitst naar de straat en bleef het huisnummer leeg — bij een
- * checkoutplugin met een los huisnummerveld viel het nummer zo helemaal weg.
- * Alleen zolang de straat nog precies die ruwe regel is en er geen huisnummer
- * staat; een adres dat iemand zelf heeft aangepast blijft staan.
+ * Adres van een order die zonder huisnummer binnenkwam: vóór v1.12.79 ging
+ * `address_1` ongesplitst naar de straat, en tot v1.13.23 werd een huisnummer
+ * in een veld van de blokcheckout, onder een andere naam of alleen aan de
+ * verzendkant niet gevonden. Alleen zolang de straat nog precies de ruwe
+ * factuurregel is en er geen huisnummer staat; een adres dat iemand zelf heeft
+ * aangepast blijft staan. Een lege postcode of plaats wordt meteen aangevuld.
  */
 function adresHerstel(bestaand: any, o: any): Record<string, string> | null {
-  if (String(bestaand?.klant_huisnummer || '').trim()) return null
-  const ruw = String(o?.billing?.address_1 ?? '').replace(/\s+/g, ' ').trim()
-  if (String(bestaand?.klant_straat ?? '').replace(/\s+/g, ' ').trim() !== ruw) return null
-  const adres = wcAdres(o)
+  const schoon = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim()
+  if (schoon(bestaand?.klant_huisnummer)) return null
+  if (schoon(bestaand?.klant_straat) !== schoon(o?.billing?.address_1)) return null
+  const adres = wcAdresVolledig(o)
   if (!adres.huisnummer) return null
-  return {klant_straat: adres.straat, klant_huisnummer: adres.huisnummer}
+  const upd: Record<string, string> = {klant_straat: adres.straat, klant_huisnummer: adres.huisnummer}
+  if (!schoon(bestaand?.klant_postcode) && adres.postcode) upd.klant_postcode = adres.postcode
+  if (!schoon(bestaand?.klant_stad) && adres.stad) upd.klant_stad = adres.stad
+  return upd
+}
+
+/**
+ * De klantnotitie van een order die we al hebben: een order van vóór v1.13.23
+ * kreeg hem niet mee, en de winkel kan hem nog aanpassen. `wc_notitie` is wat
+ * er de vorige keer uit de winkel kwam. Zijn de opmerkingen leeg of nog precies
+ * die notitie, dan volgen ze de winkel; staat er iets anders, dan komt de
+ * notitie erachter — de notitie van de klant mag nooit onzichtbaar blijven.
+ */
+function notitieUpdate(bestaand: any, o: any): Record<string, string> | null {
+  const nieuw = wcKlantNotitie(o)
+  const vorige = String(bestaand?.wc_notitie ?? '')
+  if (nieuw === vorige) return null
+  const huidig = String(bestaand?.opmerkingen ?? '').trim()
+  const upd: Record<string, string> = {wc_notitie: nieuw}
+  if (!huidig || huidig === vorige.trim()) upd.opmerkingen = nieuw
+  else if (nieuw && !huidig.includes(nieuw)) upd.opmerkingen = `${huidig}\n${nieuw}`
+  return upd
 }
 
 /**
@@ -252,6 +296,8 @@ function adresHerstel(bestaand: any, o: any): Record<string, string> | null {
  * betaald; zonder deze verversing bleef de app voor altijd denken dat er nog
  * geld moest komen — en zei de factuurmail dat ook. Het afhaalmoment kiest (of
  * verzet) de klant vaak pas ná het bestellen, dus dat gaat op dezelfde manier.
+ * Een ontbrekend huisnummer en de klantnotitie worden ook bijgewerkt
+ * (`adresHerstel`, `notitieUpdate`).
  *
  * Is de order in de winkel geannuleerd, mislukt of terugbetaald, dan komt de
  * webshopstatus als `wc_status` op de bestelling (badge en attentiepost).
@@ -278,6 +324,7 @@ export function wcOrderUpdate(bestaand: any, o: any, link: WcLinkContext = {}, o
     ...(betaalVeldenGewijzigd(bestaand, velden) ? {...leeg(BETAAL_KEYS), ...velden} : {}),
     ...(leveringVeldenGewijzigd(bestaand, levering) ? {...leeg(LEVERING_KEYS), ...levering} : {}),
     ...(adresHerstel(bestaand, o) || {}),
+    ...(notitieUpdate(bestaand, o) || {}),
   }
   // Webshopstatus: alleen bewaren zodra het ertoe doet (of als hij er al
   // stond, zodat een mislukte order die alsnog betaald wordt weer schoon is);
@@ -385,6 +432,7 @@ export function importAuditRegels(r: WcImportResultaat): ImportAuditRegel[] {
       'wc_betaald' in upd ? `betaalstatus ${upd.wc_betaald ? 'betaald' : 'open'}` : '',
       'wc_levering' in upd ? `levering ${leveringOmschrijving(upd)}` : '',
       'klant_huisnummer' in upd ? `adres ${upd.klant_straat} ${upd.klant_huisnummer}` : '',
+      'wc_notitie' in upd ? (upd.wc_notitie ? 'klantnotitie' : 'klantnotitie verwijderd') : '',
       'wc_status' in upd ? `webshopstatus ${upd.wc_status}` : '',
       'status' in upd ? `status ${upd.status}` : '',
     ].filter(Boolean)

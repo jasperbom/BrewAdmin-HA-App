@@ -237,9 +237,7 @@ const brouwerijRegels = (brewery: any): string[] => {
  * Eén definitie voor factuur, pakbon en herinnering (`klantBlock` in
  * PakbonExport.tsx), zodat geen document bedrijf of huisnummer vergeet. */
 export const klantRegels = (order: any): {titel: string, rest: string[]} => {
-  const straat = order?.klant_straat && order?.klant_huisnummer
-    ? `${order.klant_straat} ${order.klant_huisnummer}`
-    : (order?.klant_straat || '')
+  const straat = [order?.klant_straat, order?.klant_huisnummer].map(v => String(v ?? '').trim()).filter(Boolean).join(' ')
   const plaats = [order?.klant_postcode, order?.klant_stad].filter(Boolean).join('  ')
   const regels = [
     order?.klant_bedrijf || '',

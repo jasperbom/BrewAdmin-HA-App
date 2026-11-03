@@ -2352,7 +2352,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   <span className="text-gray-500">{label}</span><span className="text-right text-gray-800">{waarde}</span>
                 </div>
               ))}
-              {selectedOrder.opmerkingen && <div className="pt-1 text-xs text-gray-600 italic break-words">{selectedOrder.opmerkingen}</div>}
+              {selectedOrder.opmerkingen && <div className="pt-1 text-xs text-gray-600 italic break-words whitespace-pre-line">{selectedOrder.opmerkingen}</div>}
             </div>
           )}
         </div>
