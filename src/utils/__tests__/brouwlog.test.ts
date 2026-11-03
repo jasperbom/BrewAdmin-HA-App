@@ -6,7 +6,7 @@ import de from '../../i18n/de.json'
 import fr from '../../i18n/fr.json'
 import es from '../../i18n/es.json'
 import {
-  BROUWLOG_DEFAULT, brouwlogAangevinkt, brouwlogBatch, brouwlogDatum, brouwlogFoutSleutel, brouwlogNotitie,
+  BROUWLOG_DEFAULT, brouwlogAangevinkt, brouwlogBatch, brouwlogRebrand, brouwlogVerkochtAls, brouwlogDatum, brouwlogFoutSleutel, brouwlogNotitie,
   brouwlogNummer, brouwlogRedenSleutel, brouwlogRegel, brouwlogTekens, brouwlogTekst, normaliseerBrouwlogInst, rond,
 } from '../brouwlog'
 import type { BrouwlogBatch } from '../brouwlog'
@@ -114,6 +114,33 @@ describe('brouwlog — tekst en getallen zoals de plugin ze bewaart', () => {
     expect(brouwlogDatum('2017-12-31', 2026)).toBeNull()
     expect(brouwlogDatum('2026-02-29', 2026)).toBeNull()
     expect(brouwlogDatum('2024-02-29', 2026)).toBe('2024-02-29')
+  })
+})
+
+describe('brouwlog — gerebrande batches', () => {
+  it('#124: gebrouwen als Rollbok, verkocht als Bokchain', () => {
+    expect(brouwlogVerkochtAls(batch(124), ctx)?.naam).toBe('Bokchain')
+    expect(brouwlogRebrand(batch(124), ctx)).toEqual({ gebrouwen: 'Rollbok', verkocht: 'Bokchain' })
+    const uit = brouwlogBatch(batch(124), ctx)
+    expect(uit.ok && [uit.batch.bier, uit.batch.product_id]).toEqual(['Bokchain', 80])
+  })
+
+  it('niet gerebrand of nog niet afgevuld: geen uitleg', () => {
+    expect(brouwlogRebrand(batch(2), ctx)).toBeNull()
+    expect(brouwlogRebrand(batch(126), ctx)).toBeNull()
+    expect(brouwlogVerkochtAls(batch(126), ctx)).toBeNull()
+  })
+
+  it('deels gerebrand: het product met de meeste liters', () => {
+    expect(brouwlogVerkochtAls(batch(138), ctx)?.naam).toBe('Tripel A')
+    expect(brouwlogRebrand(batch(138), ctx)).toBeNull()
+  })
+
+  it('de uitleg staat in alle talen met beide namen', () => {
+    for (const [taal, tabel] of Object.entries(TALEN)) {
+      expect(tabel.brouwlog_rebrand_uitleg, taal).toContain('{gebrouwen}')
+      expect(tabel.brouwlog_rebrand_uitleg, taal).toContain('{verkocht}')
+    }
   })
 })
 

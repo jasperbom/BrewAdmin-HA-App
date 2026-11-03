@@ -3,7 +3,7 @@ import { t, getLang } from '../../i18n'
 import SectionHeader from '../ui/SectionHeader'
 import {
   BROUWLOG_NOTITIE_MAX, BrouwlogBatch, BrouwlogCtx, brouwlogAangevinkt, brouwlogBatch, brouwlogNotitie, brouwlogRedenSleutel,
-  brouwlogRegel, brouwlogTekens,
+  brouwlogRebrand, brouwlogRegel, brouwlogTekens,
 } from '../../utils/brouwlog'
 
 // Het blok "Brouwlog" op de batchpagina: het vinkje "Op de brouwlog", de
@@ -31,6 +31,8 @@ const BrouwlogSectie: React.FC<Props> = ({ batch, ctx, brouwlogAan, magWijzigen,
   const publiek = uitkomst.ok ? (uitkomst as { batch: BrouwlogBatch }).batch : null
   const reden = uitkomst.ok ? null : (uitkomst as { reden: string }).reden
   const publiekeNotitie = brouwlogNotitie(notitie)
+  // Gerebrand: de brouwlog toont de naam waaronder de batch verkocht wordt.
+  const rebrand = brouwlogRebrand(batch, ctx)
 
   const zetNotitie = (waarde: string) => {
     // Hooguit 600 tekens zoals de site ze telt (een emoji is één teken).
@@ -91,6 +93,11 @@ const BrouwlogSectie: React.FC<Props> = ({ batch, ctx, brouwlogAan, magWijzigen,
                 </p>
                 {publiekeNotitie && (
                   <p className="text-sm text-gray-700 whitespace-pre-wrap break-words border-l-2 border-gray-200 pl-3 mt-2">{publiekeNotitie}</p>
+                )}
+                {rebrand && (
+                  <p className="text-xs text-gray-600 mt-2">
+                    {t('brouwlog_rebrand_uitleg').replace('{gebrouwen}', rebrand.gebrouwen).split('{verkocht}').join(rebrand.verkocht)}
+                  </p>
                 )}
                 <p className="text-xs text-gray-500 mt-2">
                   {publiek.product_id != null ? t('brouwlog_productlink') : t('brouwlog_geen_productlink')}

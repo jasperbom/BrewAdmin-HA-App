@@ -2012,7 +2012,9 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   eigen slot van 10 s (los van de telemetrie). Uitgezet met `op_site` → één
   lege lijst, meteen. Per batch (`_brouwlog_batch`, spiegel `brouwlogBatch` in
   `utils/brouwlog.ts`, contract in `__tests__/brouwlogContract.json`): nummer
-  (geheel getal, anders niet mee), bier (`batchTitel` zonder "#nummer"), status
+  (geheel getal, anders niet mee), bier (de naam waaronder de batch verkocht
+  wordt: na het afvullen het product van de afvullingen — na een rebrand dus het
+  nieuwe product, `_brouwlog_verkocht_als`; daarvoor `batchTitel`; zonder "#nummer"), status
   (Brouwen/Vergisten/Conditioneren/Afgevuld+Gesloten; **Gepland nooit**),
   brouwdatum (`datum`), afvuldatum (eerste afvulling of niet-afgebroken
   afvulsessie), liters (`liter_vergist`, pas na de brouwdag of met een gemeten
@@ -2020,8 +2022,8 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   verpakking `fles`; een afvulling van onbekende soort = niet zuiver = weglaten),
   ABV/OG/FG alleen gemeten of vastgezet (nooit `verwacht_*`, nooit `abv_bron:
   'recept'`), tank (vanaf Vergisten), notitie (`brouwlog_notitie`) en
-  `product_id` (alleen als alle gekoppelde artikelen naar één gepubliceerd
-  WooCommerce-product wijzen). De grenzen van het contract (50 hoogste nummers,
+  `product_id` (van datzelfde verkochte product; alleen als alle gekoppelde
+  artikelen naar één gepubliceerd WooCommerce-product wijzen). De grenzen van het contract (50 hoogste nummers,
   64 kB, tekstlengtes, bereiken, datums 2018…volgend jaar) haalt BrewAdmin zelf,
   inclusief de tekstopschoning van WordPress (`%xx`, tags), zodat het voorbeeld
   is wat er op de site komt. **Nooit** fusten, de taplijst, klanten,

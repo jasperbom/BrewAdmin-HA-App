@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.30] — 2026-11-03
+
+### Brouwlog: gerebrande batches heten zoals ze verkocht worden
+
+Een gerebrande batch stond in de brouwlog onder de naam waaronder hij gebrouwen
+was, en vond daardoor zijn bier in de winkel niet. Batch #124 stond er
+bijvoorbeeld als "Rollbok" zonder link, terwijl hij als **Bokchain** verkocht
+wordt.
+
+- De brouwlog neemt nu de naam en de webshoplink van het product waaronder de
+  batch is **afgevuld**. Na een rebrand is dat het nieuwe product; vóór het
+  afvullen blijft het de naam van de batch zelf.
+- Deels gerebrand (een deel onder een ander etiket): het product met de meeste
+  liters telt.
+- Op de batchpagina staat bij een gerebrande batch onder "Dit komt er publiek"
+  een regel als: *gebrouwen als Rollbok, verkocht als Bokchain*. Die regel is
+  alleen voor jou; op de site staat alleen de verkoopnaam.
+- Geen wijziging nodig op de webshop: dezelfde plugin Craftery Brouwerij 1.2.0
+  en hetzelfde thema.
+
+---
+
 ## [1.13.29] — 2026-11-03
 
 ### Brouwlog: per batch een release note op je webshop

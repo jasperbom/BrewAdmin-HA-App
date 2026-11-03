@@ -4733,11 +4733,10 @@ def _brouwlog_tank(b: dict, status: str, tanks_per_id: dict) -> str:
     return _brouwlog_tekst(tank.get('naam') or tank.get('id') or tid, _BROUWLOG_GRENZEN['tank'])
 
 
-def _brouwlog_product_id(b: dict, artikelen: list) -> int | None:
+def _brouwlog_product_id(pid, artikelen: list) -> int | None:
     """Het WooCommerce-product voor de link: alleen als alle gekoppelde
-    artikelen van het product van de batch naar hetzelfde gepubliceerde
-    product wijzen. Twijfel = niets; de site zoekt het bier dan op naam."""
-    pid = b.get('product_id')
+    artikelen van dit product naar hetzelfde gepubliceerde product wijzen.
+    Twijfel = niets; de site zoekt het bier dan op naam."""
     if pid is None or isinstance(pid, bool):
         return None
     ids = set()
@@ -4755,6 +4754,33 @@ def _brouwlog_product_id(b: dict, artikelen: list) -> int | None:
     return next(iter(ids)) if len(ids) == 1 else None
 
 
+def _brouwlog_verkocht_als(b: dict, afvullingen: list, producten: list) -> dict | None:
+    """Het product waaronder de batch is afgevuld en dus verkocht wordt. Na een
+    rebrand is dat een ander product dan waaronder hij gebrouwen is: de rebrand
+    hangt de afvullingen om (`product_id`, met `rebrand_van_product_id` als
+    spoor), de batch zelf houdt zijn product. Een afvulling zonder product
+    hoort bij het product van de batch (productVanAfvulling in
+    ProductenPage). Meer producten: dat met de meeste liters, dan de meeste
+    stuks, dan het eerst afgevulde. None = nog niet afgevuld of geen product."""
+    stand: dict = {}
+    for a in afvullingen:
+        aantal = _afv_aantal(a)
+        if aantal <= 0:
+            continue
+        pid = a.get('product_id') or b.get('product_id')
+        if pid is None or isinstance(pid, bool):
+            continue
+        liters, stuks = stand.get(pid, (0.0, 0.0))
+        stand[pid] = (liters + aantal * max(0.0, _afv_inhoud(a)), stuks + aantal)
+    beste = None
+    for pid, gewicht in stand.items():  # volgorde van de afvullingen
+        if beste is None or gewicht > stand[beste]:
+            beste = pid
+    if beste is None:
+        return None
+    return next((p for p in producten if isinstance(p, dict) and p.get('id') == beste), None)
+
+
 def _brouwlog_batch(b: dict, ctx: dict) -> tuple[dict | None, str | None]:
     """Eén aangevinkte batch zoals hij op de site komt, of (None, reden):
     `nummer` (geen bruikbaar batchnummer), `gepland` (nog niet gebrouwen),
@@ -4770,17 +4796,23 @@ def _brouwlog_batch(b: dict, ctx: dict) -> tuple[dict | None, str | None]:
     status = _BROUWLOG_STATUS.get(fase)
     if status is None:
         return None, 'status'
-    bier = _brouwlog_bier(_brouwlog_biernaam(b, ctx['producten'], ctx['recepten']), nummer)
+    bid = b.get('id')
+    eigen = [a for a in ctx['afvullingen'] if isinstance(a, dict) and a.get('batch_id') == bid]
+    # De naam waaronder de batch verkocht wordt: na het afvullen die van het
+    # product van de afvullingen (een rebrand: gebrouwen als Rollbok,
+    # verkocht als Bokchain), daarvoor die van de batch zelf.
+    verkocht = _brouwlog_verkocht_als(b, eigen, ctx['producten'])
+    naam = verkocht.get('naam') if verkocht and verkocht.get('naam') else \
+        _brouwlog_biernaam(b, ctx['producten'], ctx['recepten'])
+    bier = _brouwlog_bier(naam, nummer)
     if not bier:
         return None, 'bier'
 
     jaar = ctx['jaar']
-    bid = b.get('id')
     uit: dict = {'nummer': nummer, 'bier': bier, 'status': status}
     brouwdatum = _brouwlog_datum(b.get('datum'), jaar)
     if brouwdatum:
         uit['brouwdatum'] = brouwdatum
-    eigen = [a for a in ctx['afvullingen'] if isinstance(a, dict) and a.get('batch_id') == bid]
     dagen = [d for d in (_brouwlog_datum(a.get('datum'), jaar) for a in eigen) if d]
     dagen += [d for d in (_brouwlog_datum(_brouwlog_lokale_dag(s.get('start')), jaar)
                           for s in ctx['sessies'] if isinstance(s, dict)
@@ -4813,7 +4845,9 @@ def _brouwlog_batch(b: dict, ctx: dict) -> tuple[dict | None, str | None]:
     notitie = _brouwlog_notitie(b.get('brouwlog_notitie'))
     if notitie:
         uit['notitie'] = notitie
-    product_id = _brouwlog_product_id(b, ctx['artikelen'])
+    # De link gaat naar het product waaronder hij verkocht wordt.
+    product_id = _brouwlog_product_id(verkocht.get('id') if verkocht else b.get('product_id'),
+                                      ctx['artikelen'])
     if product_id is not None:
         uit['product_id'] = product_id
     return uit, None

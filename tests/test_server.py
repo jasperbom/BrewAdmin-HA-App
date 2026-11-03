@@ -4758,7 +4758,7 @@ class TestBrouwlog:
         bericht, overgeslagen = srv._brouwlog_samenstellen(data, 'BrewAdmin t', now)
         # Alleen aangevinkt (5 en 13 niet), Gepland en de onbruikbare nooit;
         # hoogste nummer eerst.
-        assert [b['nummer'] for b in bericht['batches']] == [132, 131, 130, 129, 128, 126, 125]
+        assert [b['nummer'] for b in bericht['batches']] == [139, 138, 132, 131, 130, 129, 128, 126, 125, 124]
         assert {(o['batch_id'], o['reden']) for o in overgeslagen} == {
             (3, 'gepland'), (4, 'nummer'), (10, 'status'), (11, 'bier')}
         assert bericht['alles'] is True and set(bericht) == {'bron', 'alles', 'batches'}
@@ -4882,6 +4882,48 @@ class TestBrouwlog:
         assert pid({'wc': {'wc_id': 77, 'status': 'draft'}}) is None
         assert pid({'wc': {'wc_id': '77'}}) is None
         assert pid() is None
+
+    def test_gerebrand_heet_zoals_hij_verkocht_wordt(self):
+        # #124 op craftery.nl: gebrouwen als Rollbok, helemaal gerebrand naar
+        # Bokchain. De brouwlog moet Bokchain tonen en naar Bokchain linken.
+        data = {
+            'producten': [{'id': 4, 'naam': 'Rollbok'}, {'id': 5, 'naam': 'Bokchain'}],
+            'product_artikelen': [{'product_id': 4, 'wc': {'wc_id': 70}},
+                                  {'product_id': 5, 'wc': {'wc_id': 80}}],
+            'afvullingen': [{'batch_id': 1, 'product_id': 5, 'aantal': 51, 'inhoud_per_eenheid': 0.33,
+                             'rebrand_van_product_id': 4}],
+        }
+
+        def een(**velden):
+            return self._bericht([self._b(1, status='Afgevuld', product_id=4, **velden)], **data)['batches'][0]
+
+        uit = een(product_ids=[5])
+        assert uit['bier'] == 'Bokchain' and uit['product_id'] == 80
+        assert 'Rollbok' not in json.dumps(uit)
+        # Vóór het afvullen heet hij nog zoals hij gebrouwen is.
+        voor = self._bericht([self._b(1, status='Vergisten', product_id=4)],
+                             **dict(data, afvullingen=[]))['batches'][0]
+        assert voor['bier'] == 'Rollbok' and voor['product_id'] == 70
+        # Een afvulling zonder eigen product hoort bij het product van de batch.
+        data['afvullingen'] = [{'batch_id': 1, 'aantal': 10}]
+        assert een()['bier'] == 'Rollbok'
+
+    def test_deels_gerebrand_de_meeste_liters_wint(self):
+        data = {'producten': [{'id': 4, 'naam': 'Rollbok'}, {'id': 5, 'naam': 'Bokchain'}]}
+
+        def bier(*afv):
+            return self._bericht([self._b(1, status='Afgevuld', product_id=4)],
+                                 afvullingen=[dict(a, batch_id=1) for a in afv], **data)['batches'][0]['bier']
+
+        assert bier({'product_id': 5, 'aantal': 30, 'inhoud_per_eenheid': 0.33},
+                    {'aantal': 1, 'inhoud_per_eenheid': 20}) == 'Rollbok'
+        assert bier({'product_id': 5, 'aantal': 70, 'inhoud_per_eenheid': 0.33},
+                    {'aantal': 1, 'inhoud_per_eenheid': 20}) == 'Bokchain'
+        # Zonder inhoud tellen de stuks; bij gelijkstand het eerst afgevulde.
+        assert bier({'product_id': 5, 'aantal': 3}, {'aantal': 2}) == 'Bokchain'
+        assert bier({'aantal': 2}, {'product_id': 5, 'aantal': 2}) == 'Rollbok'
+        # Een product dat niet (meer) bestaat: de naam van de batch.
+        assert bier({'product_id': 99, 'aantal': 5}) == 'Rollbok'
 
     def test_tank_alleen_als_het_bier_erin_ligt_of_lag(self):
         data = {'tanks': [{'id': 't1', 'naam': 'FV1'}, {'id': 't2', 'naam': 'BBT twee lang'}]}
@@ -5181,7 +5223,7 @@ class TestBrouwlog:
             self._seed(creds=self.CREDS)
             status, body, _ = req(app, 'POST', '/api/website/brouwlog/voorbeeld', body={})
             assert status == 200 and body['enabled'] is False
-            assert body['bericht']['alles'] is True and body['aantal'] == 7 and body['max_batches'] == 50
+            assert body['bericht']['alles'] is True and body['aantal'] == 10 and body['max_batches'] == 50
             assert body['max_bytes'] == 65536 and body['bytes'] == len(srv._website_json(body['bericht']))
             assert {(o['batch_id'], o['reden']) for o in body['overgeslagen']} == {
                 (3, 'gepland'), (4, 'nummer'), (10, 'status'), (11, 'bier')}

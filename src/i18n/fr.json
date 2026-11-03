@@ -4092,6 +4092,7 @@
   "brouwlog_uit_melding": "Le journal de brassage est désactivé (Paramètres → Intégrations → Journal de brassage). Tu peux déjà cocher ; rien ne part vers le site tant qu’il n’est pas activé.",
   "brouwlog_productlink": "Avec un lien vers la bière dans la boutique.",
   "brouwlog_geen_productlink": "Sans lien produit fixe : le site cherche la bière par son nom.",
+  "brouwlog_rebrand_uitleg": "Rebaptisé : brassé comme {gebrouwen}, vendu comme {verkocht}. Le journal de brassage affiche {verkocht} et renvoie vers cette bière dans la boutique.",
   "err_verkoop_geen_agp": "Une vente nationale ne sort jamais directement de l'entrepôt fiscal. Mettez d'abord la bière à la consommation (bouton Sortir pour la vente), puis préparez depuis le stock libre.",
   "err_verkoop_vrij_ontoereikend": "Stock libre insuffisant hors entrepôt fiscal ({beschikbaar}). Sortez d'abord la bière de l'entrepôt fiscal ; ensuite vous pouvez vendre.",
   "err_verkoop_vrij_tekort": "Il n'y a pas (ou plus) assez de stock libre hors entrepôt fiscal. Mettez d'abord à la consommation et réessayez.",

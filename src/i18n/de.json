@@ -4092,6 +4092,7 @@
   "brouwlog_uit_melding": "Das Braulog ist aus (Einstellungen → Integrationen → Braulog). Du kannst schon anhaken; auf die Seite geht erst etwas, wenn es eingeschaltet ist.",
   "brouwlog_productlink": "Mit einem Link zum Bier im Webshop.",
   "brouwlog_geen_productlink": "Ohne festen Produktlink: Die Seite sucht das Bier selbst über den Namen.",
+  "brouwlog_rebrand_uitleg": "Umbenannt: gebraut als {gebrouwen}, verkauft als {verkocht}. Das Braulog zeigt {verkocht} und verlinkt auf dieses Bier im Webshop.",
   "err_verkoop_geen_agp": "Ein Inlandsverkauf geht nicht direkt aus dem Steuerlager. Bier zuerst auslagern (Schaltfläche Für Verkauf auslagern) und dann aus freiem Bestand kommissionieren.",
   "err_verkoop_vrij_ontoereikend": "Nicht genug freier Bestand außerhalb des Steuerlagers ({beschikbaar}). Zuerst aus dem Steuerlager auslagern, dann verkaufen.",
   "err_verkoop_vrij_tekort": "Es ist nicht (mehr) genug freier Bestand außerhalb des Steuerlagers vorhanden. Zuerst auslagern und erneut versuchen.",
