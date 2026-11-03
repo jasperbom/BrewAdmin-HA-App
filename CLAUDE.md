@@ -374,6 +374,8 @@ BrewAdmin-HA-App/
 │   │   │                   # attentiepost, chip "Geen afhaalmoment"; `afhaalTermijnVoorbij`: open, geen of
 │   │   │                   # een gemist moment en de termijn om = attentiepost + chip "Over de
 │   │   │                   # afhaaltermijn" — annuleren blijft met de hand (terugbetalen, creditnota);
+│   │   │                   # `afhaalMomentNaTermijn`: een gekozen moment op of na de annuleerdag blijft een
+│   │   │                   # afspraak, maar krijgt een oranje regel en de chip "Afspraak na de termijn";
 │   │   │                   # in de mail `{annuleerregel}` per herinnering (`afhaalHerinneringRol`: de eerste
 │   │   │                   # niets, een volgende "we houden je bestelling graag voor je vast tot en met …",
 │   │   │                   # de laatste — ook als er maar één is — dat we daarna annuleren), `{vasthoudtot}`,
@@ -1956,7 +1958,11 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   niets). Na de afhaaltermijn (`annuleren_na`, houdbaarheid) gaat er geen
   herinnering meer en vraagt de bestelling om annuleren (attentiepost
   `afhaal_termijn`, chip *Over de afhaaltermijn*, rode regel met knop op de
-  bestelling). **Annuleren gaat nooit vanzelf:** een betaalde bestelling moet
+  bestelling). Kiest de klant een moment ná de termijn, dan blijft die afspraak
+  staan (geen annuleren), met een oranje regel op de bestelling en de chip
+  *Afspraak na de termijn* (`afhaalMomentNaTermijn`); komt hij dan niet, dan
+  vraagt de bestelling de dag erna om annuleren. Een herinnering die met de
+  hand ná de termijn gaat, noemt geen datum. **Annuleren gaat nooit vanzelf:** een betaalde bestelling moet
   in de webshop terugbetaald worden en een gefactureerde krijgt een
   creditnota — dat is de gewone annuleerknop. De
   bestelbevestiging van een webshoporder krijgt een knop *Bekijk je

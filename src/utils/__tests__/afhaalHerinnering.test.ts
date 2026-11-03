@@ -3,7 +3,7 @@ import {
   wachtOpAfhaalmoment, afhaalHerinneringNodig, telAfhaalHerinneringNodig, afhaalHerinneringMailVars,
   dagenSindsBestelling, AFHAAL_HERINNERING_NA_DAGEN, AFHAAL_OVERLEG,
   afhaalHerinneringStand, afhaalHerinneringenVerstuurd, afhaalTermijnDatum, afhaalTermijnVoorbij, telAfhaalTermijnVoorbij,
-  afhaalHerinneringRol,
+  afhaalHerinneringRol, afhaalMomentNaTermijn, afhaalLaatsteDag,
 } from '../levering'
 import type { AfhaalSchema } from '../levering'
 import {
@@ -420,5 +420,49 @@ describe('de afhaaltermijn: daarna annuleren', () => {
     })
     // De bestelling van 10-11 zit nog binnen de termijn en vraagt om zijn eerste herinnering.
     expect(verkoop.find(p => p.id === 'afhaal_herinnering')?.aantal).toBe(1)
+  })
+})
+
+describe('een afspraak na de afhaaltermijn', () => {
+  // Besteld 28-10, termijn 21 dagen: klaar t/m 17-11, annuleren op 18-11.
+  const schema: AfhaalSchema = {dagen: [3, 7, 14], annulerenNa: 21}
+  const met = (moment: string): Record<string, any> => ({...afhaal, wc_afhaalmoment: moment})
+
+  it('telt als afspraak (geen annuleren), maar valt op', () => {
+    expect(afhaalLaatsteDag(afhaal, schema)).toBe('2026-11-17')
+    expect(afhaalMomentNaTermijn(met('2026-11-20 14:00'), '2026-11-03', schema)).toBe(true)
+    expect(afhaalMomentNaTermijn(met('2026-11-18 10:00'), '2026-11-03', schema)).toBe(true)   // de annuleerdag zelf
+    expect(afhaalMomentNaTermijn(met('2026-11-17 16:00'), '2026-11-03', schema)).toBe(false)  // de laatste dag: op tijd
+    // Ook na de termijn blijft het een afspraak zolang het moment nog komt.
+    expect(afhaalTermijnVoorbij(met('2026-11-20 14:00'), '2026-11-19', schema)).toBe(false)
+    expect(afhaalMomentNaTermijn(met('2026-11-20 14:00'), '2026-11-19', schema)).toBe(true)
+    // Moment voorbij en niet gekomen: dan is het annuleren, niet meer "na de termijn".
+    expect(afhaalTermijnVoorbij(met('2026-11-20 14:00'), '2026-11-21', schema)).toBe(true)
+    expect(afhaalMomentNaTermijn(met('2026-11-20 14:00'), '2026-11-21', schema)).toBe(false)
+  })
+
+  it('niet zonder termijn, bij "in overleg", bij bezorgen of als de bestelling klaar is', () => {
+    expect(afhaalMomentNaTermijn(met('2026-11-20 14:00'), '2026-11-03', {dagen: [3], annulerenNa: null})).toBe(false)
+    expect(afhaalMomentNaTermijn(met(AFHAAL_OVERLEG), '2026-11-03', schema)).toBe(false)
+    expect(afhaalMomentNaTermijn({...met('2026-11-20 14:00'), wc_levering: 'verzenden'}, '2026-11-03', schema)).toBe(false)
+    expect(afhaalMomentNaTermijn({...met('2026-11-20 14:00'), status: 'afgerond'}, '2026-11-03', schema)).toBe(false)
+    expect(afhaalMomentNaTermijn(afhaal, '2026-11-03', schema)).toBe(false)
+  })
+
+  it('een herinnering met de hand na de termijn noemt geen datum in het verleden', () => {
+    const vars = afhaalHerinneringMailVars({...afhaal, afhaal_herinneringen: ['2026-10-31', '2026-11-04']}, {schema, vandaag: '2026-11-18'})
+    expect(vars.annuleerregel).toBe('')
+    expect(afhaalHerinneringMailVars({...afhaal, afhaal_herinneringen: ['2026-10-31', '2026-11-04']}, {schema, vandaag: '2026-11-17'}).annuleerregel)
+      .toContain('tot en met dinsdag 17 november')
+  })
+
+  it('de chip "Afspraak na de termijn" toont precies die bestellingen', () => {
+    const lijst = [met('2026-11-20 14:00'), {...met('2026-11-10 14:00'), id: 40}, {...afhaal, id: 41}]
+    const afhaalCtx = {vandaag: '2026-11-03', schema}
+    expect(STATUS_FILTERS).toContain('afhaal_na_termijn')
+    const n = statusTellingen(lijst, new Set(), afhaalCtx)
+    expect(n.afhaal_na_termijn).toBe(1)
+    expect(n.gepickt).toBe(3)
+    expect(filterBestellingen(lijst, {status: 'afhaal_na_termijn', omTePicken: new Set(), afhaal: afhaalCtx}).map(b => b.id)).toEqual([12])
   })
 })

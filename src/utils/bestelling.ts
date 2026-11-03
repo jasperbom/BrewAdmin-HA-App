@@ -12,7 +12,7 @@ import { regelBedrag } from './orderRegel'
 import { statiegeldFactuurRegels, isWebshopOrder } from './statiegeld'
 import type { StatiegeldSoort, StatiegeldVerpakking } from './statiegeld'
 import { toCent, centNaarEuro } from './centen'
-import { wachtOpAfhaalmoment, afhaalTermijnVoorbij } from './levering'
+import { wachtOpAfhaalmoment, afhaalTermijnVoorbij, afhaalMomentNaTermijn } from './levering'
 import type { AfhaalSchema } from './levering'
 
 // ── Statussen ───────────────────────────────────────────────────────────────
@@ -21,15 +21,16 @@ export type BestellingStatus = 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' |
 
 /** De chips boven de lijst: alles, "te picken" (zoals de attentie-badge), afhalen
  * zonder afhaalmoment (`wachtOpAfhaalmoment`), over de afhaaltermijn
- * (`afhaalTermijnVoorbij`) en elke status. */
-export type StatusFilter = 'alle' | 'te_picken' | 'geen_afhaalmoment' | 'afhaal_termijn' | BestellingStatus
+ * (`afhaalTermijnVoorbij`), een afspraak na de termijn (`afhaalMomentNaTermijn`)
+ * en elke status. */
+export type StatusFilter = 'alle' | 'te_picken' | 'geen_afhaalmoment' | 'afhaal_termijn' | 'afhaal_na_termijn' | BestellingStatus
 
 export const STATUS_FILTERS: readonly StatusFilter[] = [
-  'alle', 'te_picken', 'geen_afhaalmoment', 'afhaal_termijn', 'nieuw', 'bevestigd', 'gepickt', 'verzonden', 'afgerond', 'geannuleerd',
+  'alle', 'te_picken', 'geen_afhaalmoment', 'afhaal_termijn', 'afhaal_na_termijn', 'nieuw', 'bevestigd', 'gepickt', 'verzonden', 'afgerond', 'geannuleerd',
 ]
 
 /** Chips die alleen verschijnen als er iets onder valt (of als ze gekozen zijn). */
-export const STATUS_FILTERS_ALLEEN_MET_INHOUD: readonly StatusFilter[] = ['geen_afhaalmoment', 'afhaal_termijn']
+export const STATUS_FILTERS_ALLEEN_MET_INHOUD: readonly StatusFilter[] = ['geen_afhaalmoment', 'afhaal_termijn', 'afhaal_na_termijn']
 
 export const isStatusFilter = (v: unknown): v is StatusFilter =>
   typeof v === 'string' && (STATUS_FILTERS as readonly string[]).includes(v)
@@ -129,6 +130,9 @@ export interface AfhaalFilterCtx {
   schema?: AfhaalSchema
 }
 
+// Chips die geen status zijn maar een selectie: die telt `statusTellingen` apart.
+const AFGELEIDE_FILTERS: ReadonlySet<string> = new Set(['alle', 'te_picken', 'geen_afhaalmoment', 'afhaal_termijn', 'afhaal_na_termijn'])
+
 /** Hoeveel bestellingen elke chip telt. `te_picken` = de selectie van de attentie-badge. */
 export const statusTellingen = (
   bestellingen: ReadonlyArray<BestellingLijstBron | null | undefined> | null | undefined,
@@ -142,8 +146,9 @@ export const statusTellingen = (
     if (omTePicken.has(b.id)) uit.te_picken++
     if (wachtOpAfhaalmoment(b as any)) uit.geen_afhaalmoment++
     if (afhaal && afhaalTermijnVoorbij(b as any, afhaal.vandaag, afhaal.schema)) uit.afhaal_termijn++
+    if (afhaal && afhaalMomentNaTermijn(b as any, afhaal.vandaag, afhaal.schema)) uit.afhaal_na_termijn++
     const s = String(b.status || '')
-    if (isStatusFilter(s) && s !== 'alle' && s !== 'te_picken' && s !== 'geen_afhaalmoment' && s !== 'afhaal_termijn') uit[s]++
+    if (isStatusFilter(s) && !AFGELEIDE_FILTERS.has(s)) uit[s]++
   }
   return uit
 }
@@ -160,6 +165,7 @@ export const pastBijStatus = (
   if (filter === 'te_picken') return omTePicken.has(b.id)
   if (filter === 'geen_afhaalmoment') return wachtOpAfhaalmoment(b as any)
   if (filter === 'afhaal_termijn') return !!afhaal && afhaalTermijnVoorbij(b as any, afhaal.vandaag, afhaal.schema)
+  if (filter === 'afhaal_na_termijn') return !!afhaal && afhaalMomentNaTermijn(b as any, afhaal.vandaag, afhaal.schema)
   return b.status === filter
 }
 

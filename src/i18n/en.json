@@ -5748,6 +5748,8 @@
   "orders_afhaal_termijn_tot": "Pickup deadline {datum}",
   "orders_afhaal_termijn_voorbij": "The pickup deadline passed on {datum} and nothing has been arranged. Cancel the order; if it was paid, refund the customer in the webshop.",
   "orders_filter_afhaal_termijn": "Past pickup deadline",
+  "orders_filter_afhaal_na_termijn": "Pickup after deadline",
+  "orders_afhaal_na_termijn": "This pickup time is after the pickup deadline (up to and including {datum}). The appointment stands; if it is too late for you, email the customer.",
   "attentie_afhaal_termijn": "Pickup orders past the pickup deadline",
   "msg_order_cancel_betaald": "This order was paid in the webshop. Cancelling does not refund the customer: do that in the webshop.",
   "settings_mail_auto_handmatig": "Manual only: there is no action, the pickup time simply passes.",

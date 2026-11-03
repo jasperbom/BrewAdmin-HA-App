@@ -5748,6 +5748,8 @@
   "orders_afhaal_termijn_tot": "Abholfrist bis {datum}",
   "orders_afhaal_termijn_voorbij": "Die Abholfrist ist am {datum} abgelaufen und nichts wurde vereinbart. Stornieren Sie die Bestellung; ist sie bezahlt, erstatten Sie den Betrag im Webshop.",
   "orders_filter_afhaal_termijn": "Abholfrist abgelaufen",
+  "orders_filter_afhaal_na_termijn": "Termin nach der Frist",
+  "orders_afhaal_na_termijn": "Dieser Abholtermin liegt nach der Abholfrist (bis einschließlich {datum}). Der Termin bleibt bestehen; ist er Ihnen zu spät, mailen Sie dem Kunden.",
   "attentie_afhaal_termijn": "Abholbestellungen mit abgelaufener Abholfrist",
   "msg_order_cancel_betaald": "Diese Bestellung wurde im Webshop bezahlt. Stornieren erstattet dem Kunden nichts: Das erledigen Sie im Webshop.",
   "settings_mail_auto_handmatig": "Nur manuell: Es gibt keine Aktion, der Abholtermin verstreicht von selbst.",

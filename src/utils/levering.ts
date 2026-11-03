@@ -422,6 +422,31 @@ export function afhaalTermijnVoorbij(
   return !!m && moment.getTime() < new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime()
 }
 
+/** De laatste dag dat de bestelling klaarstaat (JJJJ-MM-DD): de dag vóór het annuleren; null zonder termijn. */
+export function afhaalLaatsteDag(bestelling: AfhaalBestelling, schema: AfhaalSchema = AFHAAL_SCHEMA_STANDAARD): string | null {
+  const termijn = afhaalTermijnDatum(bestelling, schema)
+  return termijn ? plusDagen(termijn, -1) : null
+}
+
+/**
+ * Koos de klant een afhaalmoment dat ná de afhaaltermijn ligt (op of na de
+ * dag van annuleren)? De afspraak blijft gelden — geen annuleren, geen
+ * herinnering — maar de brouwer ziet het: een oranje regel op de bestelling en
+ * de chip "Afspraak na de termijn". Zodra het moment voorbij is zonder dat de
+ * klant kwam, neemt `afhaalTermijnVoorbij` het over. "In overleg" telt niet.
+ */
+export function afhaalMomentNaTermijn(
+  bestelling: AfhaalBestelling, vandaag: string, schema: AfhaalSchema = AFHAAL_SCHEMA_STANDAARD,
+): boolean {
+  if (!bestelling || bestelling.wc_levering !== 'afhalen') return false
+  if (['afgerond', 'geannuleerd', 'verzonden'].includes(str(bestelling.status))) return false
+  const termijn = afhaalTermijnDatum(bestelling, schema)
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(str(bestelling.wc_afhaalmoment))
+  if (!termijn || !m || !afhaalmomentDate(bestelling.wc_afhaalmoment)) return false
+  if (afhaalTermijnVoorbij(bestelling, vandaag, schema)) return false
+  return m[1] >= termijn
+}
+
 /** Hoeveel afhaalbestellingen over de afhaaltermijn zijn (attentiepost op Verkoop). */
 export const telAfhaalTermijnVoorbij = (
   bestellingen: ReadonlyArray<any> | null | undefined, vandaag: string, schema: AfhaalSchema = AFHAAL_SCHEMA_STANDAARD,
@@ -677,7 +702,8 @@ export function afhaalHerinneringMailVars(
   const vasthoudtot = termijn ? dagVoluit(plusDagen(termijn, -1)) : ''
   const over = termijn && opts.vandaag ? dagenTussen(opts.vandaag, termijn) : null
   const rol = afhaalHerinneringRol(b, schema)
-  const annuleerregel = !termijn || rol === 'eerste' ? ''
+  // Is de termijn al om (een herinnering met de hand na de termijn), dan geen datum in het verleden.
+  const annuleerregel = !termijn || rol === 'eerste' || (over !== null && over <= 0) ? ''
     : rol === 'laatste' ? t('mail_afhaal_termijn_laatste').split('{datum}').join(vasthoudtot)
       : over !== null && over > 1
         ? t('mail_afhaal_termijn_tussen').split('{n}').join(String(over)).split('{datum}').join(vasthoudtot)
