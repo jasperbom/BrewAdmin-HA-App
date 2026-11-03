@@ -11,9 +11,10 @@
  *
  * Automatisch versturen (`mail_templates[soort].auto`) hoort bij een
  * handeling: een nieuwe bestelling, markeer verzonden, de factuur maken,
- * afronden, annuleren. De afhaalherinnering hoort bij een wachttijd: na
- * `afhaalHerinneringDagen` dagen zonder afhaalmoment, bij de automatische
- * webshopimport in App.tsx (`afhaalHerinneringPlan`). De afspraak-gemist-mail
+ * afronden, annuleren. De afhaalherinnering hoort bij een wachttijd: tot drie
+ * keer, op de dagen uit `afhaalSchema` zonder afhaalmoment, bij de automatische
+ * webshopimport in App.tsx (`afhaalHerinneringPlan`); daarna de afhaaltermijn,
+ * waarna de bestelling geannuleerd moet worden (dat blijft met de hand). De afspraak-gemist-mail
  * heeft geen handeling (het afhaalmoment verstrijkt vanzelf) en blijft met de
  * hand. De factuurmail voor
  * een al betaalde factuur deelt de instelling met de gewone factuurmail: per
@@ -26,9 +27,9 @@ import { factuurMailBetaalVars } from './factuurMail'
 import { vervaldatumTekst } from './facturen'
 import {
   leveringMailVars, afhaalMailKnop, afhaalGemistMailVars, afhaalGemistMailKnop, verzendMailVars, bestelLink,
-  afhaalHerinneringMailVars, wachtOpAfhaalmoment, dagenSindsBestelling, AFHAAL_HERINNERING_NA_DAGEN,
+  afhaalHerinneringMailVars, afhaalHerinneringStand, afhaalHerinneringenVerstuurd, AFHAAL_HERINNERING_NA_DAGEN,
 } from './levering'
-import type { MailKnop } from './levering'
+import type { MailKnop, AfhaalSchema } from './levering'
 
 export type OrderMailSoort =
   | 'bestelling' | 'verzending' | 'afhaal_herinnering' | 'afhaal_gemist' | 'annulering' | 'pakbon' | 'factuur'
@@ -66,8 +67,11 @@ export interface MailSjabloon {
   auto?: boolean
   /** Wanneer `auto` aan ging (ISO). Een bestelling van daarvóór krijgt geen automatische bevestiging. */
   auto_sinds?: string
-  /** Afhaalherinnering: na hoeveel dagen zonder afhaalmoment (`afhaalHerinneringDagen`). */
-  dagen?: number
+  /** Afhaalherinnering: na hoeveel dagen zonder afhaalmoment, per herinnering
+   * (`afhaalSchema`; een losse waarde = één herinnering, lege plekken tellen niet). */
+  dagen?: number | ReadonlyArray<number | null> | null
+  /** Afhaalherinnering: na hoeveel dagen de bestelling geannuleerd moet worden (leeg = geen termijn). */
+  annuleren_na?: number | null
 }
 export type MailSjablonen = Record<string, MailSjabloon | undefined> | null | undefined
 
@@ -107,14 +111,37 @@ export const AFHAAL_HERINNERING_MAX_TE_LAAT_DAGEN = 14
 /** Hooguit zoveel afhaalherinneringen per importronde; de rest volgt de volgende ronde. */
 export const AFHAAL_HERINNERING_MAX_PER_RONDE = 20
 
-/** Na hoeveel dagen zonder afhaalmoment de herinnering gaat (1–60, anders de standaard). */
-export function afhaalHerinneringDagen(sjablonen: MailSjablonen): number {
-  const n = Number(sjablonen?.afhaal_herinnering?.dagen)
-  return Number.isInteger(n) && n >= 1 && n <= 60 ? n : AFHAAL_HERINNERING_NA_DAGEN
+/** Hooguit zoveel afhaalherinneringen per bestelling. */
+export const AFHAAL_HERINNERING_MAX_AANTAL = 3
+/** De afhaaltermijn kan van 1 tot zoveel dagen. */
+export const AFHAAL_TERMIJN_MAX_DAGEN = 120
+
+const geheelTussen = (x: unknown, min: number, max: number): number | null => {
+  if (x === null || x === undefined || x === '') return null
+  const n = Number(x)
+  return Number.isInteger(n) && n >= min && n <= max ? n : null
+}
+
+/**
+ * Het schema van de afhaalherinnering uit `mail_templates.afhaal_herinnering`:
+ * de herinneringen (`dagen`: 1–60, oplopend, dubbele weg, hooguit
+ * `AFHAAL_HERINNERING_MAX_AANTAL`; niets geldigs = de standaard) en de
+ * afhaaltermijn (`annuleren_na`: 1–`AFHAAL_TERMIJN_MAX_DAGEN`, anders geen).
+ * Een herinnering op of na de termijn vervalt: dan moet er geannuleerd worden.
+ */
+export function afhaalSchema(sjablonen: MailSjablonen): AfhaalSchema {
+  const inst = sjablonen?.afhaal_herinnering
+  const ruw = Array.isArray(inst?.dagen) ? inst!.dagen as ReadonlyArray<unknown> : [inst?.dagen]
+  const geldig = [...new Set(ruw.map(x => geheelTussen(x, 1, 60)).filter((n): n is number => n !== null))]
+    .sort((a, b) => a - b).slice(0, AFHAAL_HERINNERING_MAX_AANTAL)
+  const annulerenNa = geheelTussen(inst?.annuleren_na, 1, AFHAAL_TERMIJN_MAX_DAGEN)
+  const dagen = geldig.length ? geldig : [AFHAAL_HERINNERING_NA_DAGEN]
+  return {dagen: annulerenNa == null ? dagen : dagen.filter(d => d < annulerenNa), annulerenNa}
 }
 
 /** Waarom een mail bij deze handeling níét automatisch gaat (null = wel versturen).
- * `nog_niet`/`te_laat`: de wachttijd van de afhaalherinnering. */
+ * `nog_niet`/`te_laat`: de wachttijd van de afhaalherinnering (`te_laat` ook:
+ * de afhaaltermijn is om). */
 export type AutoMailReden =
   | 'uit' | 'al_verstuurd' | 'status' | 'van_voor_inschakelen' | 'nog_niet' | 'te_laat' | 'geen_email' | 'geen_smtp'
 
@@ -124,7 +151,8 @@ export function autoMailReden(
   opts: {sjablonen: MailSjablonen, smtpAan: boolean, email?: string, vandaag?: string},
 ): AutoMailReden | null {
   if (!mailAutoAan(opts.sjablonen, soort)) return 'uit'
-  if (order?.mails_verstuurd?.[autoSleutel(soort)]) return 'al_verstuurd'
+  // De afhaalherinnering kan vaker (het schema); elke andere mail één keer.
+  if (soort !== 'afhaal_herinnering' && order?.mails_verstuurd?.[autoSleutel(soort)]) return 'al_verstuurd'
   if (soort === 'bestelling') {
     if (order?.status !== 'nieuw') return 'status'
     const sinds = String(opts.sjablonen?.bestelling?.auto_sinds || '').slice(0, 10)
@@ -133,14 +161,16 @@ export function autoMailReden(
   if (soort === 'afhaal_herinnering') {
     // Nog steeds afhalen zonder moment (de import ververst het moment), alleen
     // voor bestellingen van na het aanzetten (geen achterstand in één keer),
-    // pas na de wachttijd en niet als hij weken te laat zou komen.
-    if (!wachtOpAfhaalmoment(order)) return 'status'
+    // de volgende herinnering uit het schema op zijn dag, niet als hij weken
+    // te laat zou komen en niet meer na de afhaaltermijn.
+    const {stand, teLaat} = afhaalHerinneringStand(order, String(opts.vandaag || ''), afhaalSchema(opts.sjablonen))
+    if (stand === 'geen') return 'status'
+    if (stand === 'klaar') return 'al_verstuurd'
     const sinds = String(opts.sjablonen?.afhaal_herinnering?.auto_sinds || '').slice(0, 10)
     if (sinds && String(order?.datum || '').slice(0, 10) < sinds) return 'van_voor_inschakelen'
-    const n = dagenSindsBestelling(order, String(opts.vandaag || ''))
-    const dagen = afhaalHerinneringDagen(opts.sjablonen)
-    if (n === null || n < dagen) return 'nog_niet'
-    if (n > dagen + AFHAAL_HERINNERING_MAX_TE_LAAT_DAGEN) return 'te_laat'
+    if (stand === 'termijn_voorbij') return 'te_laat'
+    if (stand === 'nog_niet') return 'nog_niet'
+    if (teLaat > AFHAAL_HERINNERING_MAX_TE_LAAT_DAGEN) return 'te_laat'
   }
   if (!String(opts.email ?? order?.klant_email ?? '').trim()) return 'geen_email'
   if (!opts.smtpAan) return 'geen_smtp'
@@ -172,6 +202,8 @@ export function naMailVerstuurd(order: any, soort: OrderMailSoort, datum: string
   }
   if (soort === 'verzending') patch.verzendbevestiging_datum = datum
   if (soort === 'afhaal_gemist') patch.afhaal_gemist_datum = datum
+  // Elke afhaalherinnering telt: de volgende uit het schema rekent vanaf de vorige.
+  if (soort === 'afhaal_herinnering') patch.afhaal_herinneringen = [...afhaalHerinneringenVerstuurd(order), datum]
   // Een nieuwe bestelling is bevestigd zodra de bevestiging de deur uit is;
   // een latere status blijft staan (opnieuw mailen verandert niets).
   if (soort === 'bestelling' && order?.status === 'nieuw') patch.status = 'bevestigd'
@@ -271,7 +303,7 @@ export function bouwOrderMail(
       const knop = afhaalMailKnop(order, {storeUrl})
       return mail(soort, order, ctx, {
         ...basis, regels: regelLijstVoorMail(order),
-        ...afhaalHerinneringMailVars(order, {storeUrl, vandaag: ctx.vandaag}),
+        ...afhaalHerinneringMailVars(order, {storeUrl, vandaag: ctx.vandaag, schema: afhaalSchema(ctx.sjablonen)}),
       }, knop ? [knop] : [])
     }
     case 'afhaal_gemist': {

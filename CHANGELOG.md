@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.39] — 2026-11-03
+
+### Afhaalherinnering: vaker, en een afhaaltermijn
+
+- **Tot drie herinneringen,** bijvoorbeeld na 3, 7 en 14 dagen. Elke
+  herinnering gaat één keer, op zijn dag. Ging er een met de hand later, dan
+  schuift de volgende mee op: hij komt niet vlak na de vorige.
+- **Afhaaltermijn** ("Annuleren na … dagen"), voor de houdbaarheid. Daarna
+  gaat er geen herinnering meer, en vraagt de bestelling om annuleren: een
+  melding op Verkoop, de chip *Over de afhaaltermijn* in Bestellingen en een
+  rode regel met de knop *Annuleren* op de bestelling. Dat geldt ook voor een
+  klant die een moment koos en niet kwam.
+- **Annuleren blijft met de hand.** Een betaalde bestelling moet je in de
+  webshop terugbetalen, en dat kan de app niet. Het annuleervenster zegt dat
+  er nu ook bij als de bestelling betaald is maar nog geen factuur heeft.
+- **In de mail:** met `{annuleerregel}` staat de datum erin ("Kies je geen
+  moment, dan annuleren we je bestelling op 18-11-2026."), en de
+  standaardtekst neemt die regel op. Zonder afhaaltermijn blijft hij leeg.
+  Ook beschikbaar: `{annuleerdatum}`.
+- Bij de bestelling staan alle verstuurde herinneringen en de afhaaltermijn.
+
+---
+
 ## [1.13.38] — 2026-11-03
 
 ### Afhaalherinnering automatisch
