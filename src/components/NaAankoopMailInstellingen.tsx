@@ -6,23 +6,21 @@ import { tod } from '../utils/format'
 import { orderNummer } from '../utils/picking'
 import { resolveKlantSnapshot } from '../utils/klant'
 import { verzendMail } from '../utils/mailVerzenden'
-import { verkoopOverzicht } from '../utils/verkoopOverzicht'
-import type { VerkoopCtx } from '../utils/verkoopOverzicht'
 import {
-  NA_AANKOOP_STAPPEN, NA_AANKOOP_DAGEN_GRENS, naAankoopInstellingen, zetNaAankoopModus, naSoort, naAankoopTekst,
-  naAankoopOverzicht, bouwNaAankoopMail, taplijst as maakTaplijst, metAfmelding, zonderAfmelding, isEmailAdres,
-  plusDagen, sindsDag,
+  NA_AANKOOP_SOORT, NA_AANKOOP_DAGEN_GRENS, naAankoopInstellingen, zetNaAankoopModus, naAankoopTekst,
+  naAankoopOverzicht, bouwNaAankoopMail, metAfmelding, zonderAfmelding, isEmailAdres, plusDagen, sindsDag,
 } from '../utils/naAankoopMail'
 import type {
-  NaAankoopStap, NaAankoopModus, NaAankoopGrondslag, NaAankoopInst, NaAankoopCtx, NaAankoopRefs, MailAfmelding,
-  NaAankoopStand, NaAankoopMail,
+  NaAankoopModus, NaAankoopGrondslag, NaAankoopInst, NaAankoopCtx, NaAankoopRefs, MailAfmelding, NaAankoopStand,
+  NaAankoopMail,
 } from '../utils/naAankoopMail'
 
-// Instellingen → E-mail: de mails ná een webshopbestelling (utils/naAankoopMail.ts).
-// Standaard uit. De app verstuurt ze zelf na de periodieke webshopimport
-// (App.tsx, `verstuurNaAankoopMails`); dit blok kiest de stand, de grondslag,
-// de wachttijden en de teksten, houdt de afmeldlijst bij en laat met een droge
-// run zien wat er zou gebeuren. Een voorbeeld gaat alleen naar het proefadres.
+// Instellingen → Bedrijf: de mail ná een webshopbestelling, "Hoe smaakte het?"
+// (utils/naAankoopMail.ts). Standaard uit. De app verstuurt hem zelf na de
+// periodieke webshopimport (App.tsx, `verstuurNaAankoopMails`); dit blok kiest
+// de stand, de grondslag, de wachttijd en de tekst, houdt de afmeldlijst bij en
+// laat met een droge run zien wat er zou gebeuren. Een voorbeeld gaat alleen
+// naar het proefadres.
 
 interface NaAankoopMailInstellingenProps {
   inst: unknown
@@ -34,7 +32,6 @@ interface NaAankoopMailInstellingenProps {
   bestellingen: any[]
   klanten: any[]
   refs: NaAankoopRefs
-  verkoopCtx: VerkoopCtx | null
   breweryDetails: any
   smtpCreds: any
   wcCreds: any
@@ -42,18 +39,6 @@ interface NaAankoopMailInstellingenProps {
 }
 
 const INPUT = 'border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input bg-white'
-
-function Schakelaar({ aan, onChange, label }: { aan: boolean, onChange: (v: boolean) => void, label: string }) {
-  return (
-    <label className="flex items-center gap-3 cursor-pointer w-fit">
-      <div className="relative">
-        <input type="checkbox" checked={aan} className="sr-only peer" onChange={(e) => onChange(e.target.checked)} />
-        <div className="w-10 h-6 bg-gray-200 rounded-full peer t-toggle after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4"></div>
-      </div>
-      <span className="text-sm font-medium text-gray-700">{label}</span>
-    </label>
-  )
-}
 
 const STATUS_KLEUR: Record<NaAankoopStand['status'], string> = {
   verstuurd: 'text-green-700',
@@ -72,15 +57,9 @@ const standTekst = (s: NaAankoopStand): string => {
 export default function NaAankoopMailInstellingen(p: NaAankoopMailInstellingenProps) {
   const inst = naAankoopInstellingen(p.inst)
   const zet = (patch: Record<string, unknown>) => p.setInst((oud: any) => ({...(oud || {}), ...patch}))
-  const zetStap = (stap: NaAankoopStap, patch: Record<string, unknown>) =>
-    p.setInst((oud: any) => {
-      const o = oud || {}
-      const stappen = o.stappen || {}
-      return {...o, stappen: {...stappen, [stap]: {...inst.stappen[stap], ...(stappen[stap] || {}), ...patch}}}
-    })
   const [nieuwAdres, setNieuwAdres] = useState('')
   const [weerToestaan, setWeerToestaan] = useState('')
-  const [voorbeeld, setVoorbeeld] = useState<{orderId: number, stap: NaAankoopStap} | null>(null)
+  const [voorbeeldId, setVoorbeeldId] = useState<number | null>(null)
   const [testMelding, setTestMelding] = useState<{ok: boolean, tekst: string} | null>(null)
   const [testBezig, setTestBezig] = useState(false)
 
@@ -89,7 +68,6 @@ export default function NaAankoopMailInstellingen(p: NaAankoopMailInstellingenPr
   const proefAdres = inst.proef_adres || p.breweryDetails?.email || ''
   const lijst = useMemo(() => (p.bestellingen || []).map((b: any) => resolveKlantSnapshot(b, p.klanten || []) || b),
     [p.bestellingen, p.klanten])
-  const tap = useMemo(() => (p.verkoopCtx ? maakTaplijst(verkoopOverzicht(p.verkoopCtx)) : []), [p.verkoopCtx])
 
   // De droge run: in de stand Uit "alsof het de afgelopen 60 dagen aan stond".
   const vandaag = tod()
@@ -97,18 +75,18 @@ export default function NaAankoopMailInstellingen(p: NaAankoopMailInstellingenPr
   const runInst: NaAankoopInst = droog ? {...inst, modus: 'aan', sinds: plusDagen(vandaag, -60)} : inst
   const ctx: NaAankoopCtx & {brouwerij: string} = {
     inst: runInst, vandaag, bestellingen: lijst, afmeldingen: p.afmeldingen || [], sjablonen: p.mailTemplates,
-    refs: p.refs, taplijst: tap, afmeldAdres, storeUrl: p.wcCreds?.storeUrl || '', brouwerij,
+    refs: p.refs, afmeldAdres, storeUrl: p.wcCreds?.storeUrl || '', brouwerij,
   }
   const overzicht = naAankoopOverzicht(ctx, 15)
 
   // Een voorbeeld is altijd een proefmail: hij gaat naar het proefadres, nooit naar de klant.
   const voorbeeldMail: NaAankoopMail | null = useMemo(() => {
-    if (!voorbeeld) return null
-    const order = lijst.find((b: any) => b.id === voorbeeld.orderId)
+    if (voorbeeldId == null) return null
+    const order = lijst.find((b: any) => b.id === voorbeeldId)
     if (!order) return null
-    return bouwNaAankoopMail(voorbeeld.stap, order, {...ctx, inst: {...runInst, modus: 'proef', proef_adres: proefAdres}})
+    return bouwNaAankoopMail(order, {...ctx, inst: {...runInst, modus: 'proef', proef_adres: proefAdres}})
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voorbeeld, lijst, p.mailTemplates, p.refs, tap, proefAdres, inst.review_url, inst.taplijst_url, inst.afmeld_url])
+  }, [voorbeeldId, lijst, p.mailTemplates, p.refs, proefAdres, inst.review_url, inst.afmeld_url, inst.grondslag])
 
   const stuurVoorbeeld = async () => {
     if (!voorbeeldMail || !isEmailAdres(voorbeeldMail.to)) return
@@ -136,6 +114,12 @@ export default function NaAankoopMailInstellingen(p: NaAankoopMailInstellingenPr
     p.setAfmeldingen((oud: any) => metAfmelding(oud, nieuwAdres, vandaag, 'handmatig'))
     setNieuwAdres('')
   }
+
+  const tpl = p.mailTemplates?.[NA_AANKOOP_SOORT] || {}
+  const zetTpl = (veld: 'subject' | 'body', waarde: string) =>
+    p.setMailTemplates((oud: any) => ({...(oud || {}), [NA_AANKOOP_SOORT]: {...((oud || {})[NA_AANKOOP_SOORT] || {}), [veld]: waarde}}))
+  const eigenTekst = String(tpl.subject || '').trim() || String(tpl.body || '').trim()
+  const [min, max] = NA_AANKOOP_DAGEN_GRENS
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 break-inside-avoid" id="na-aankoop-mails">
@@ -175,80 +159,56 @@ export default function NaAankoopMailInstellingen(p: NaAankoopMailInstellingenPr
         </div>
       </div>
 
-      {/* De drie mails */}
-      <div className="flex flex-col gap-4 mb-4">
-        {NA_AANKOOP_STAPPEN.map((stap) => {
-          const s = inst.stappen[stap]
-          const soort = naSoort(stap)
-          const tpl = p.mailTemplates?.[soort] || {}
-          const [min, max] = NA_AANKOOP_DAGEN_GRENS[stap]
-          const zetTpl = (veld: 'subject' | 'body', waarde: string) =>
-            p.setMailTemplates((oud: any) => ({...(oud || {}), [soort]: {...((oud || {})[soort] || {}), [veld]: waarde}}))
-          const eigen = String(tpl.subject || '').trim() || String(tpl.body || '').trim()
-          return (
-            <div key={stap} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-              <div className="flex items-center justify-between mb-2 gap-2">
-                <h3 className="text-sm font-semibold text-gray-700">{t(`settings_mail_template_${soort}`)}</h3>
-                {eigen && (
-                  <button type="button" className="text-xs text-gray-500 hover:text-gray-700 underline"
-                    onClick={() => p.setMailTemplates((oud: any) => ({...(oud || {}), [soort]: {...((oud || {})[soort] || {}), subject: '', body: ''}}))}>
-                    {t('settings_mail_reset_default')}
-                  </button>
-                )}
-              </div>
-              <Schakelaar aan={s.aan} onChange={(v) => zetStap(stap, {aan: v})} label={t('na_aankoop_stap_aan')} />
-              <div className="flex flex-wrap items-end gap-3 mt-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('na_aankoop_dagen')}</label>
-                  <input type="number" min={min} max={max} value={s.dagen}
-                    onChange={(e) => zetStap(stap, {dagen: e.target.value === '' ? '' : Number(e.target.value)})}
-                    className="border border-gray-300 rounded px-3 py-1.5 text-sm w-24 t-input bg-white" />
-                </div>
-                {stap !== 'taplijst' ? (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('na_aankoop_vanaf')}</label>
-                    <select value={s.vanaf} onChange={(e) => zetStap(stap, {vanaf: e.target.value})}
-                      className="border border-gray-300 rounded px-3 py-1.5 text-sm t-input bg-white">
-                      <option value="bestelling">{t('na_aankoop_vanaf_bestelling')}</option>
-                      <option value="geleverd">{t('na_aankoop_vanaf_geleverd')}</option>
-                    </select>
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-500 pb-2">{t('na_aankoop_vanaf_laatste')}</p>
-                )}
-              </div>
-              <p className="text-xs text-gray-500 mt-2">{t(`na_aankoop_stap_${stap}_uitleg`)}</p>
-              <div className="flex flex-col gap-2 mt-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings_mail_subject')}</label>
-                  <input type="text" value={tpl.subject || ''} placeholder={naAankoopTekst({}, stap, 'subject')}
-                    onChange={(e) => zetTpl('subject', e.target.value)} className={INPUT} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings_mail_body')}</label>
-                  <textarea value={tpl.body || ''} placeholder={naAankoopTekst({}, stap, 'body')} rows={7}
-                    onChange={(e) => zetTpl('body', e.target.value)} className={`${INPUT} font-mono`} />
-                </div>
-                <p className="text-xs text-gray-400">{t(`settings_mail_vars_${soort}`)}</p>
-              </div>
-            </div>
-          )
-        })}
+      {/* De mail */}
+      <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 mb-4">
+        <div className="flex items-center justify-between mb-2 gap-2">
+          <h3 className="text-sm font-semibold text-gray-700">{t(`settings_mail_template_${NA_AANKOOP_SOORT}`)}</h3>
+          {eigenTekst && (
+            <button type="button" className="text-xs text-gray-500 hover:text-gray-700 underline"
+              onClick={() => p.setMailTemplates((oud: any) => ({...(oud || {}), [NA_AANKOOP_SOORT]: {...((oud || {})[NA_AANKOOP_SOORT] || {}), subject: '', body: ''}}))}>
+              {t('settings_mail_reset_default')}
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">{t('na_aankoop_dagen')}</label>
+            <input type="number" min={min} max={max} value={inst.dagen}
+              onChange={(e) => zet({dagen: e.target.value === '' ? '' : Number(e.target.value)})}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-24 t-input bg-white" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">{t('na_aankoop_vanaf')}</label>
+            <select value={inst.vanaf} onChange={(e) => zet({vanaf: e.target.value})}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm t-input bg-white">
+              <option value="bestelling">{t('na_aankoop_vanaf_bestelling')}</option>
+              <option value="geleverd">{t('na_aankoop_vanaf_geleverd')}</option>
+            </select>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 mt-2">{t('na_aankoop_stap_smaak_uitleg')}</p>
+        <div className="flex flex-col gap-2 mt-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings_mail_subject')}</label>
+            <input type="text" value={tpl.subject || ''} placeholder={naAankoopTekst({}, 'subject')}
+              onChange={(e) => zetTpl('subject', e.target.value)} className={INPUT} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings_mail_body')}</label>
+            <textarea value={tpl.body || ''} placeholder={naAankoopTekst({}, 'body')} rows={8}
+              onChange={(e) => zetTpl('body', e.target.value)} className={`${INPUT} font-mono`} />
+          </div>
+          <p className="text-xs text-gray-400">{t(`settings_mail_vars_${NA_AANKOOP_SOORT}`)}</p>
+        </div>
       </div>
 
       {/* Links */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">{t('na_aankoop_review_url')}</label>
           <input type="url" value={inst.review_url} placeholder="https://g.page/r/…/review"
             onChange={(e) => zet({review_url: e.target.value})} className={INPUT} />
           <p className="text-xs text-gray-400 mt-1">{t('na_aankoop_review_url_uitleg')}</p>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">{t('na_aankoop_taplijst_url')}</label>
-          <input type="url" value={inst.taplijst_url} placeholder={p.wcCreds?.storeUrl || 'https://…'}
-            onChange={(e) => zet({taplijst_url: e.target.value})} className={INPUT} />
-          <p className="text-xs text-gray-400 mt-1">{t('na_aankoop_taplijst_url_uitleg')}</p>
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">{t('na_aankoop_afmeld_url')}</label>
@@ -299,9 +259,6 @@ export default function NaAankoopMailInstellingen(p: NaAankoopMailInstellingenPr
         <p className="text-xs text-gray-500 mb-2">
           {droog ? t('na_aankoop_droge_run_uit').replace('{datum}', runInst.sinds) : t('na_aankoop_droge_run_aan')}
         </p>
-        {tap.length > 0 && (
-          <p className="text-xs text-gray-500 mb-2">{t('na_aankoop_taplijst_nu').replace('{bieren}', tap.map(b => b.naam).join(', '))}</p>
-        )}
         {overzicht.length === 0 ? (
           <p className="text-xs text-gray-400">{t('na_aankoop_geen_bestellingen')}</p>
         ) : (
@@ -310,25 +267,23 @@ export default function NaAankoopMailInstellingen(p: NaAankoopMailInstellingenPr
               <thead>
                 <tr className="text-left text-gray-500">
                   <th className="py-1 pr-3 font-medium">{t('na_aankoop_kolom_bestelling')}</th>
-                  {NA_AANKOOP_STAPPEN.map(s => <th key={s} className="py-1 pr-3 font-medium">{t(`na_aankoop_kolom_${s}`)}</th>)}
+                  <th className="py-1 pr-3 font-medium">{t('na_aankoop_kolom_smaak')}</th>
                 </tr>
               </thead>
               <tbody>
-                {overzicht.map(({bestelling: b, standen}) => (
+                {overzicht.map(({bestelling: b, stand}) => (
                   <tr key={b.id} className="border-t border-gray-200 align-top">
                     <td className="py-1.5 pr-3 text-gray-700 whitespace-nowrap">
                       {orderNummer(b)} · {b.datum}<br /><span className="text-gray-500">{b.klant_naam}</span>
                     </td>
-                    {NA_AANKOOP_STAPPEN.map(s => (
-                      <td key={s} className={`py-1.5 pr-3 ${STATUS_KLEUR[standen[s].status]}`}>
-                        {standTekst(standen[s])}
-                        <br />
-                        <button type="button" className="underline text-gray-500 hover:text-gray-700"
-                          onClick={() => { setVoorbeeld({orderId: b.id, stap: s}); setTestMelding(null) }}>
-                          {t('na_aankoop_voorbeeld')}
-                        </button>
-                      </td>
-                    ))}
+                    <td className={`py-1.5 pr-3 ${STATUS_KLEUR[stand.status]}`}>
+                      {standTekst(stand)}
+                      <br />
+                      <button type="button" className="underline text-gray-500 hover:text-gray-700"
+                        onClick={() => { setVoorbeeldId(b.id); setTestMelding(null) }}>
+                        {t('na_aankoop_voorbeeld')}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -346,7 +301,7 @@ export default function NaAankoopMailInstellingen(p: NaAankoopMailInstellingenPr
                   disabled={testBezig || !p.smtpCreds?.enabled || !isEmailAdres(voorbeeldMail.to)}>
                   {t('na_aankoop_voorbeeld_stuur')}
                 </Btn>
-                <Btn v="ghost" onClick={() => setVoorbeeld(null)}>{t('btn_sluiten')}</Btn>
+                <Btn v="ghost" onClick={() => setVoorbeeldId(null)}>{t('btn_sluiten')}</Btn>
               </div>
             </div>
             <p className="text-sm font-semibold text-gray-700 mb-1">{voorbeeldMail.subject}</p>

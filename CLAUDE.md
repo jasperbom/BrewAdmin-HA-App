@@ -503,15 +503,16 @@ BrewAdmin-HA-App/
 │   │   │                   # `afmelden` = afmeldregel in de voet + `List-Unsubscribe`-kop (`afmeldUrl`:
 │   │   │                   # alleen mailto/https, spiegel van `_list_unsubscribe` in server.py); bij https
 │   │   │                   # ook de one-click-kop (de afmeldpagina moet die POST zonder knop verwerken)
-│   │   ├── naAankoopMail.ts # Mails ná een webshopbestelling (standaard uit, `na_aankoop_mails`):
-│   │   │                   # serveertips (`producten[].serveertip`), "hoe smaakte het?" (Untappd per bier,
-│   │   │                   # na afhalen een reviewlink) en de taplijst (`taplijst` uit `verkoopOverzicht`).
-│   │   │                   # Modus uit/proef/aan (`zetNaAankoopModus`: `sinds` = het moment van wisselen,
+│   │   ├── naAankoopMail.ts # De mail ná een webshopbestelling, "Hoe smaakte het?" (standaard uit,
+│   │   │                   # `na_aankoop_mails`, sjabloon/stempel `na_smaak`): Untappd per bier, na afhalen
+│   │   │                   # een reviewlink; wachttijd `dagen` vanaf bestelling of levering (een oud
+│   │   │                   # `stappen.smaak` wordt nog gelezen). Serveertips- en taplijstmail zijn in
+│   │   │                   # 1.13.27 weggehaald. Modus uit/proef/aan (`zetNaAankoopModus`: `sinds` = het moment van wisselen,
 │   │   │                   # nooit een achterstand), grondslag soft opt-in (afgemeld/bezwaar = altijd) of
 │   │   │                   # toestemming (per bestelling het vinkje; intrekken via `wc_mail_vinkje_op` of de
 │   │   │                   # afmeldlijst stopt alles tot en met die dag) met het vinkje uit
 │   │   │                   # de checkout (`wcMailVinkje` → `wc_mail_vinkje`), afmeldlijst
-│   │   │                   # (`mail_afmeldingen`), `naAankoopStand` per bestelling en stap,
+│   │   │                   # (`mail_afmeldingen`), `naAankoopStand` per bestelling,
 │   │   │                   # `naAankoopPlan` (één per adres, rust, maximum), `bouwNaAankoopMail` (de
 │   │   │                   # afmeldzin volgt de grondslag: `mail_na_afmelden_tekst[_toestemming]`),
 │   │   │                   # `naAankoopOverzicht` (droge run). Versturen: App.tsx `verstuurNaAankoopMails`
@@ -833,11 +834,11 @@ op het oude gedrag), `receptGebruik.ts`/`receptLijst.ts`, `verkoopOverzicht.ts`
 `batchesLijst.ts`/`batchAgenda.ts`, `productPagina.ts`, `bestelling.ts`,
 `kassaCatalogus.ts` en de routes (`route.ts`: aliassen, recordId, historie).
 Testdata van de demo-brouwerij uit het opzet: `__tests__/demoBrouwerij.ts`.
-De na-aankoopmails: `naAankoopMail.test.ts` (standaard uit, modus en `sinds`, afmeldlijst, het
-vinkje uit de checkout in de import, bieren en taplijst van een bestelling, een testbestelling die
-alle drie de mails doorloopt met de juiste namen en links, wie níéts krijgt, rust/één per adres/
-maximum, de proefstand, de droge run, `{serveertips}` in de bevestiging, de afmeldlink in tekst,
-HTML en kop, i18n in vijf talen). In pytest: `TestNaAankoopMails` (rollen van de twee keys,
+De mail na een webshopbestelling: `naAankoopMail.test.ts` (standaard uit, modus en `sinds`, de
+oude opslag `stappen.smaak`, afmeldlijst, het vinkje uit de checkout in de import, de bieren van een
+bestelling, een testbestelling met de juiste namen en links, wie níéts krijgt, toestemming per
+bestelling en intrekken, rust/één per adres/maximum, de proefstand, de droge run, de afmeldlink in
+tekst, HTML en kop, i18n in vijf talen zonder restanten van serveertips/taplijst). In pytest: `TestNaAankoopMails` (rollen van de twee keys,
 `_list_unsubscribe` en de kop in `_build_email`).
 De Brewfather-koppeling: `bfTerugschrijven.test.ts` (het bericht: status, afronding,
 lege en onzinnige velden gaan niet mee; alleen gekoppelde, niet-verweesde, niet-gesloten
@@ -1515,8 +1516,8 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `btw_instellingen` | object | BTW-aangifte-instellingen: `periode` + `standaard_btw` (voorgesteld tarief bij nieuwe artikelen/verkoopregels, default 21% via `standaardBtwPct` in `utils/btw.ts`) |
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
 | `brewery_details` | object | Brouwerijnaam, adres, land (ISO-2), BTW-nr., KvK, PEPPOL-ID/-schema (e-factuur), website (klikbaar logo in mail), `mail_uitnodiging` (`{kop, tekst, knop, url}` — "Wist je dat?" met knop in de voet van elke klantmail, `utils/mailUitnodiging.ts`), `factuur_velden` (zichtbaarheid) en `factuur_template` (`{html, css}` — eigen factuurlayout, leeg = de ingebouwde standaard uit `utils/factuurTemplate.ts`) |
-| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`, `afhaal_gemist`, `annulering`, en de na-aankoopmails `na_serveertips`, `na_smaak`, `na_taplijst`) met `subject`/`body`; leeg = i18n-default. `bestelling` kent ook `{serveertips}` (staat die erin, dan gaat de losse serveertipsmail niet). `auto: true` = automatisch versturen bij de handeling van die mail, `auto_sinds` = wanneer dat aan ging (`zetMailAuto`/`autoMailReden` in `utils/orderMail.ts`; de "al betaald"-factuurmail volgt `factuur`). `annulering` kent `{creditregel}` (de factuur en de creditnota, leeg zonder factuur). `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}`, `afhaal_gemist` de mail voor een afhaalklant die niet kwam (`{afhaalmoment}` + `{afhaalregel}` met dezelfde link om een nieuw moment te kiezen; knop verschijnt via `afhaalmomentVerstreken`) — zie `utils/levering.ts` |
-| `na_aankoop_mails` | object | Mails ná een webshopbestelling (`utils/naAankoopMail.ts`): `{modus: uit\|proef\|aan, sinds, proef_adres, grondslag: soft_opt_in\|toestemming, vinkje_meta, stappen: {serveertips\|smaak\|taplijst: {aan, dagen, vanaf: bestelling\|geleverd}}, review_url, taplijst_url, afmeld_url}`. Standaard `uit`; `sinds` = het moment van de laatste modus-wissel (bestellingen van daarvóór krijgen niets). **Beheer-only**; wel in de Excel-backup |
+| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`, `afhaal_gemist`, `annulering`, en de mail na een webshopbestelling `na_smaak`) met `subject`/`body`; leeg = i18n-default. `auto: true` = automatisch versturen bij de handeling van die mail, `auto_sinds` = wanneer dat aan ging (`zetMailAuto`/`autoMailReden` in `utils/orderMail.ts`; de "al betaald"-factuurmail volgt `factuur`). `annulering` kent `{creditregel}` (de factuur en de creditnota, leeg zonder factuur). `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}`, `afhaal_gemist` de mail voor een afhaalklant die niet kwam (`{afhaalmoment}` + `{afhaalregel}` met dezelfde link om een nieuw moment te kiezen; knop verschijnt via `afhaalmomentVerstreken`) — zie `utils/levering.ts` |
+| `na_aankoop_mails` | object | De mail ná een webshopbestelling, "Hoe smaakte het?" (`utils/naAankoopMail.ts`): `{modus: uit\|proef\|aan, sinds, proef_adres, grondslag: soft_opt_in\|toestemming, vinkje_meta, dagen, vanaf: bestelling\|geleverd, review_url, afmeld_url}`. Een oud `stappen.smaak.{dagen,vanaf}` (uit de tijd van drie mails) wordt nog gelezen; `stappen.serveertips`/`taplijst` en `taplijst_url` worden genegeerd. Standaard `uit`; `sinds` = het moment van de laatste modus-wissel (bestellingen van daarvóór krijgen niets). **Beheer-only**; wel in de Excel-backup |
 | `mail_afmeldingen` | array | Wie geen na-aankoopmails meer wil: `{id, email (klein geschreven), datum, bron: handmatig\|mail\|webshop, notitie?}`. Bewust géén beheer-key: wie bestellingen afhandelt, legt een afmelding meteen vast. In de Excel-backup (sheet `MailAfmeldingen`) |
 | `gebruikers_rollen` | object | Rollen per HA-ingress-gebruiker (ERP 4.2): `{gebruikers: {naam: rol}, standaard_rol}` met rollen `beheer`/`boekhouding`/`productie`/`alleen_lezen` — server-side afgedwongen, alleen door `beheer` te wijzigen, lockout-guard |
 | `login_instellingen` | object | Styling van de loginpagina op de directe-toegangspoort: titel/ondertitel/knoptekst, accent-/achtergrondkleur (hex), achtergrondafbeelding (data-url), `logo_tonen`. Server rendert met strikte validatie (`_login_pagina`) — pre-auth, dus nooit ongefilterd |
@@ -1966,9 +1967,9 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   cijfers op de site staan (`op_site`) → één leeg bericht `{}`.
   **Nooit** klanten, bestellingen, prijzen, recepten of financiële data in het
   bericht zetten
-- **Na-aankoopmails** (`utils/naAankoopMail.ts`, standaard uit; Instellingen →
-  E-mailtemplates, `components/NaAankoopMailInstellingen.tsx`): na elke
-  automatische import (binnen de lease) stuurt App.tsx `verstuurNaAankoopMails`
+- **Mail na een webshopbestelling, "Hoe smaakte het?"** (`utils/naAankoopMail.ts`,
+  standaard uit; Instellingen → Bedrijf, `components/NaAankoopMailInstellingen.tsx`):
+  na elke automatische import (binnen de lease) stuurt App.tsx `verstuurNaAankoopMails`
   de mails die aan de beurt zijn — één voor één, stempel pas na succes, bij een
   fout stopt de ronde. Alleen webshopbestellingen van ná `sinds`, nooit naar een
   afgemeld adres, nooit zonder afmeldlink. Zonder open tabblad gaat er niets

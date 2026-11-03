@@ -1932,8 +1932,6 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     brouwerij: (breweryDetails as any)?.naam || appName || '',
     storeUrl: wcCreds?.storeUrl || '',
     bestelUrlSjabloon: wcCreds?.bestelUrl,
-    // {serveertips} in de bestelbevestiging (utils/naAankoopMail.ts).
-    refs: {producten, productArtikelen, artikelen, merchArtikelen},
   }
   const mailAfzender = {brewery: breweryDetails as any, logoDataUri: factuurLogo || logo, replyTo: (breweryDetails as any)?.email}
   const metKlantkaart = (order: any): any => resolveKlantSnapshot(order, klanten) || order
