@@ -59,6 +59,8 @@ BrewAdmin-HA-App/
 │   │   │                           # lot, lotvenster Ingrediënten), ItemKiezer, InkoopTotalen, Onderblad, Segment
 │   │   ├── InkoopInbox.tsx         # Facturen › Inkoop → status "Te verwerken": de wachtrij met doorgestuurde PDF-facturen
 │   │   ├── InkoopMailInstellingen.tsx # Instellingen → Koppelingen → Facturen per e-mail (`imap_creds`, test, status)
+│   │   ├── BrouwlogInstellingen.tsx # Instellingen → Koppelingen → Brouwlog (onder de telemetrie): aan/uit,
+│   │   │                           # voorbeeld, test verbinding, nu versturen, laatste stand (`website_brouwlog_status`)
 │   │   ├── RuimteklimaatInstellingen.tsx # Instellingen → Home Assistant → "Airco voor de tanks": de
 │   │   │                           # airco (koelen/verwarmen/beide), tanks, drempels en wat hij nu doet
 │   │   │                           # (`ruimteklimaat_status`)
@@ -83,7 +85,8 @@ BrewAdmin-HA-App/
 │   │   │                           # met `useEtiketBijwerken()?.open({productId, batchId?})`), AbvVastzetten,
 │   │   │                           # NieuweBatchBlad ("Wat brouw je?", overal via `useNieuweBatch()?.open(…)`),
 │   │   │                           # MetingBlad, AfvulSessieSectie (CCP 2/3), useProductKoppeling, FaseKop
-│   │   │                           # (bureau: compacte stappenbalk; telefoon: "Fase 4 van 6" met een lijst)
+│   │   │                           # (bureau: compacte stappenbalk; telefoon: "Fase 4 van 6" met een lijst),
+│   │   │                           # BrouwlogSectie (vinkje "Op de brouwlog", publieke notitie, wat er publiek komt)
 │   │   ├── brouwzaal/              # Brouwzaal: TankKaart (één knop = `volgendeStap`), LegeTank, AndereBatches
 │   │   │                           # (ook Vergisten/Conditioneren zonder bestaande tank), KomendeDagen
 │   │   ├── batches/                # Tab Batches: Lopend · Gesloten · Agenda (BatchesAgenda = de brouwagenda;
@@ -346,6 +349,11 @@ BrewAdmin-HA-App/
 │   │   │                   # houdbaarheidswaarschuwing. Het bericht zelf bouwt server.py
 │   │   │                   # (`_website_bericht`), ook voor het voorbeeld in de app.
 │   │   │                   # UI: components/WebsiteTelemetrie.tsx
+│   │   ├── brouwlog.ts     # Brouwlog (plugin Craftery Brouwerij 1.2.0+): opslagvorm `website_brouwlog`,
+│   │   │                   # redenen/foutcodes → i18n, en `brouwlogBatch` — de spiegel van `_brouwlog_batch`
+│   │   │                   # in server.py — voor de regel bij de batch (`brouwlogRegel`). Het bericht zelf
+│   │   │                   # bouwt de server; `__tests__/brouwlogContract.json` bewaakt in vitest én pytest
+│   │   │                   # dat beide per batch hetzelfde opleveren
 │   │   ├── wcTerugschrijven.ts # Orderstatus terug naar WooCommerce (completed/cancelled + privé-
 │   │   │                   # notitie); annuleren alleen zolang er niets is uitgeslagen (voorraad)
 │   │   ├── levering.ts     # Afhalen of verzenden per bestelling: uit de WooCommerce-verzendregel
@@ -869,7 +877,11 @@ schrijven, de import-lease van de app ongemoeid laten), de website-telemetrie
 (het bericht: schakelaars, lege tanks, sensorstatus, temperatuurleeftijd,
 contractgrenzen, geen vreemde velden; `_voorraad_per_locatie`; `_wc_request`
 zonder `api_pad` ongewijzigd; de loop verstuurt niets als hij uit staat of
-WooCommerce ontbreekt, en ruimt de site op bij uitzetten) en de tanktemperatuurbewaking (het oordeel
+WooCommerce ontbreekt, en ruimt de site op bij uitzetten), de brouwlog (`TestBrouwlog`: het
+contract per batch uit `src/utils/__tests__/brouwlogContract.json` — dezelfde verwachting als
+vitest in `brouwlog.test.ts` —, alleen aangevinkt en nooit Gepland, nooit verwachte waarden,
+fusten of interne gegevens, alle grenzen, 50 hoogste nummers, 64 kB, de hash en eens per dag,
+precies één lege lijst bij uitzetten, 429 slaat de ronde over, de endpoints en de rollen) en de tanktemperatuurbewaking (het oordeel
 zelf, het uitlezen van het werkelijke climate-setpoint én de
 alarmadministratie; tests bewaken dat de drempel-defaults en de
 setpoint-leeftijd in server.py en tankbewaking.ts gelijk blijven).
@@ -1458,7 +1470,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 |-----|------|--------|
 | `ingredienten` | array | Ingrediënten. `allergenen` (ontbrekend = niet beoordeeld, `[]` = geen) met `allergenen_bron` (`regel`/`claude`/`handmatig`), `allergenen_toelichting` en `allergenen_model` (bij `claude`) — gezet door *Allergenen opzoeken* of de matrix (`handmatigBeoordeeld`) |
 | `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
-| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). Brewfather: `brewfather_id`/`brewfather_batch_nummer`, `bf_verweesd` (datum waarop Brewfather de batch niet meer kende); bij lezen `bf_stand` (per veld de laatst overgenomen waarde, een schema als hash) en `bf_verschil` (waarden waarin Brewfather afwijkt van een hier aangepaste waarde) — `utils/bfBatchSync.ts`; bij schrijven `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht) en `bf_fout` (`{op, melding}` van de laatste mislukte poging) — `utils/bfTerugschrijven.ts` |
+| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). Brewfather: `brewfather_id`/`brewfather_batch_nummer`, `bf_verweesd` (datum waarop Brewfather de batch niet meer kende); bij lezen `bf_stand` (per veld de laatst overgenomen waarde, een schema als hash) en `bf_verschil` (waarden waarin Brewfather afwijkt van een hier aangepaste waarde) — `utils/bfBatchSync.ts`; bij schrijven `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht) en `bf_fout` (`{op, melding}` van de laatste mislukte poging) — `utils/bfTerugschrijven.ts`. Brouwlog: `brouwlog_publiek` (alleen een echte `true` telt: deze batch gaat naar /brouwlog/ van de webshop) en `brouwlog_notitie` (publieke tekst, max 600 tekens — los van `notities`/`batch_notities`, die intern blijven); eigen velden die Brewfather-sync, receptsync en "opnieuw toepassen" niet aanraken |
 | `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
 | `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull en `voorraad_gepusht`/`voorraad_gepusht_op` = de voorraad bij de laatste push — ook op `merch_artikelen` en de oude `artikelen`) |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
@@ -1510,6 +1522,8 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `wc_import_status` | object | Stand van de automatische WooCommerce-import. Server (`_wc_orders_tick`, interval = `woocommerce_creds.importInterval`): `nieuw` = webshoporders die nog niet als bestelling bestaan, `gemeld_ids` = waarvoor al een HA-melding ging, `laatste_check`/`laatste_fout`. Tabbladen: `bezig_tot`/`door` = import-lease, `laatste_import*`. Bewust **niet** beheer-only (elke schrijvende rol importeert) en niet in de backup (regenereert). De import zelf blijft in de app (`utils/wcOrderImport.ts`) |
 | `website_telemetrie` | object | Website-telemetrie naar de plugin Craftery Brouwerij: `{enabled, interval_min (15–240, default 60), onderdelen: {gisting, sensoren, hop_kg, mout_kg, liters_tank, liters_verpakt, batches_gebrouwen}}` — alles standaard uit, alleen een echte `true` telt. **Beheer-only**; wel in de Excel-backup |
 | `website_telemetrie_status` | object | Stand van de website-telemetrie, alleen door de server geschreven (`_website_verstuur`): `laatste_poging`, `laatst_gelukt`, `gelukt`, `fout` (`{code, http, oorzaak?}`), `antwoord` (begrensd plugin-antwoord: versie, ontvangen, vers, max_leeftijd, regels, plaatshouders), `op_site` (staan er cijfers op de site — stuurt het ene lege bericht bij uitzetten), `leeg`, `handmatig`. Beheer-only, de app leest hem met een gewone GET (geen useStore: die zou de key vanuit de client aanmaken). Niet in de backup (regenereert) |
+| `website_brouwlog` | object | Brouwlog naar de plugin Craftery Brouwerij 1.2.0+: `{enabled}` — standaard uit, alleen een echte `true` telt; welke batches meegaan staat per batch (`brouwlog_publiek`). **Beheer-only**; wel in de Excel-backup |
+| `website_brouwlog_status` | object | Stand van de brouwlog, alleen door de server geschreven (`_brouwlog_verstuur`): `laatste_poging`, `laatst_gelukt`, `gelukt`, `fout` (`{code, http, oorzaak?, wp_code?}`), `hash` (van het laatst gelukte bericht zonder `bron` — alleen bij een ander bericht of na 24 uur opnieuw), `op_site` (stuurt het ene lege bericht bij uitzetten), `leeg`, `verstuurd`, `handmatig`, `antwoord` (begrensd plugin-antwoord: versie, ontvangen, aantal, max, pagina, overgeslagen, weggevallen, batches `{nummer, bier, status}`). Beheer-only, gewone GET in de app. Niet in de backup en niet terug te zetten (regenereert) |
 | `inkoop_inbox_status` | object | Stand van het postvak, alleen door de server geschreven (`_inbox_ophalen`): `laatste_check`, `laatst_gelukt`, `handmatig`, `fout` (`{code, oorzaak?}`), `mailbox`, `uidvalidity` + `laatste_uid` (de waterlijn: wat al bekeken is), `laatste_ronde` (`{berichten, nieuw, dubbel, overgeslagen}`), `overgeslagen` (nieuwste eerst, max 20: `{ts, van, onderwerp, reden, naam?}`). Beheer-only schrijven, iedereen leest hem met een gewone GET (geen useStore). Niet in de backup en niet terug te zetten (regenereert). De waterlijn hoort bij de lijst: `/api/backups/restore` van `inkoop_inbox` laat hem los (`_inbox_waterlijn_vrijgeven`) en *Opnieuw doorlopen* doet dat op verzoek |
 | `tank_alarmen` | array | Temperatuurstoringen per tank/batch, geopend en gesloten door de server-tick `_tank_bewaking_tick` (soort `waarschuwing`/`alarm`/`sensor_stil`, reden, piekafwijking, hersteltijdstip). De app leest ze voor de banner en zet `bevestigd` bij wegklikken — nooit zelf openen of sluiten |
 | `carbonatie_sessies` | array | Carbonisatie-sessies per batch (CO₂-stone of kopdruk) |
@@ -1565,7 +1579,7 @@ Backup en restore gaan via Excel (`.xlsx`) — **niet** via JSON. De functies `e
 - **Bestandsstructuur:** 81 array-sheets (één per datasleutel, `bouwBackupWerkboek`; o.a. `BankTransacties` en `BankAfschriften` voor de bewaarde bankafschriften, `AccijnsAangiftes`, `BtwAangiftes`, `Journaal`; lijsten van losse waarden als rijen `{waarde}`) + één `Instellingen`-sheet voor objects (`INST_JSON_KEYS`, o.a. `bank_koppelingen` en `bank_saldi`), primitieven en logo's
 - **Geneste objecten** binnen array-items worden als JSON-string opgeslagen en bij import teruggeparsed
 - **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`, `imap_creds`) zitten **nooit** in de Excel-backup en alleen gemaskeerd in de download-ZIP van een serverbackup (zonder db-kopie, `_backup_to_zip`); de serverbackup op schijf en offsite bevat ze **alleen versleuteld** (ERP 5.8, zie "Security constraints"), zodat die volledig herstelbaar blijft zonder leesbare geheimen
-- **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`, `website_telemetrie_status`, `inkoop_inbox_status`, `ruimteklimaat_status`) staat bewust niet in de backup — die regenereert vanzelf
+- **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`, `website_telemetrie_status`, `website_brouwlog_status`, `inkoop_inbox_status`, `ruimteklimaat_status`) staat bewust niet in de backup — die regenereert vanzelf
 
 Wanneer je een nieuwe `useStore`-sleutel toevoegt, voeg deze dan ook toe aan `excelExport` (nieuw sheet of rij in Instellingen) én aan de import-callback in `doImport`.
 
@@ -1699,6 +1713,9 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 | POST | `/api/website/voorbeeld` | Het telemetriebericht dat er nu verstuurd zou worden (`{instellingen?}` → `{bericht, bytes, max_bytes}`), met dezelfde code als de echte verzending — beheer-only |
 | POST | `/api/website/test` | GET op de plugin-route (`/wp-json/wc-craftery/v1/brouwerij`): versie, laatst ontvangen, vers — verandert niets; beheer-only |
 | POST | `/api/website/verstuur` | Telemetrie nu versturen, buiten het interval (`{instellingen?}`); 409 als de koppeling of alle onderdelen uit staan, `te_snel` binnen 10 s na het vorige bericht. Beheer-only, audit `website_verstuur` |
+| POST | `/api/website/brouwlog/voorbeeld` | Het brouwlogbericht dat er nu verstuurd zou worden (`{instellingen?}` → `{bericht, bytes, max_bytes, aantal, max_batches, overgeslagen: [{batch_id, nummer, reden}], enabled}`), met dezelfde code als de echte verzending — beheer-only |
+| POST | `/api/website/brouwlog/test` | GET op `/wp-json/wc-craftery/v1/brouwlog`: versie, laatst ontvangen, aantal batches, pagina — verandert niets; beheer-only |
+| POST | `/api/website/brouwlog/verstuur` | De brouwlog nu versturen, ook zonder verandering (`{instellingen?}`); 409 als hij uit staat, `te_snel` binnen 10 s na het vorige brouwlogbericht. Beheer-only, audit `website_brouwlog_verstuur` |
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
 | POST | `/api/inbox/test` | Facturen per e-mail: met de ingevulde instellingen verbinden, inloggen en de map openen (alleen lezen); `{ok, berichten, mailbox}` of `{ok: false, fout: {code, oorzaak?}}`. Slaat niets op en haalt niets op. Sentinel-wachtwoord + gewijzigd adres → 400 `secret_opnieuw_invoeren`. Beheer-only |
 | POST | `/api/inbox/ophalen` | Het postvak nu ophalen, buiten het interval om (max. 45 s per ronde; de rest volgt vanzelf); 409 `uit` als de koppeling uit staat of niet ingevuld is, fout `te_snel` binnen 10 s na de vorige ronde, `bezig` als er al een loopt. Body `{"opnieuw": true}` (alleen een echte `true`) laat de waterlijn los en loopt de nieuwste 50 berichten weer door — na een teruggezette lijst, een verruimd afzenderfilter of een per ongeluk verwijderde factuur; wat al in de lijst staat komt er niet dubbel bij. `boekhouding` + `beheer`, audit `inbox_ophalen` |
@@ -1982,6 +1999,33 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   cijfers op de site staan (`op_site`) → één leeg bericht `{}`.
   **Nooit** klanten, bestellingen, prijzen, recepten of financiële data in het
   bericht zetten
+- **Brouwlog** (server: `_brouwlog_tick`, in dezelfde thread `website`; UI:
+  `components/BrouwlogInstellingen.tsx` + `components/batch/BrouwlogSectie.tsx`;
+  standaard uit, `website_brouwlog`): per batch die de brouwer aanvinkt
+  (`brouwlog_publiek`) een release note naar de plugin **Craftery Brouwerij
+  1.2.0+** op `{storeUrl}/wp-json/wc-craftery/v1/brouwlog`, zelfde sleutel en
+  `_wc_request(..., api_pad=WEBSITE_API_PATH)`. Altijd `{"bron", "alles": true,
+  "batches": [...]}`: de lijst vervangt de hele brouwlog, dus uitvinken = weg bij
+  het volgende bericht. Elke 15 minuten opbouwen met de pure functie
+  `_brouwlog_bericht(data)`; alleen versturen als de hash (zonder `bron`) afwijkt
+  van het laatst gelukte bericht, of dat 24 uur oud is. POST zonder herkansing,
+  eigen slot van 10 s (los van de telemetrie). Uitgezet met `op_site` → één
+  lege lijst, meteen. Per batch (`_brouwlog_batch`, spiegel `brouwlogBatch` in
+  `utils/brouwlog.ts`, contract in `__tests__/brouwlogContract.json`): nummer
+  (geheel getal, anders niet mee), bier (`batchTitel` zonder "#nummer"), status
+  (Brouwen/Vergisten/Conditioneren/Afgevuld+Gesloten; **Gepland nooit**),
+  brouwdatum (`datum`), afvuldatum (eerste afvulling of niet-afgebroken
+  afvulsessie), liters (`liter_vergist`, pas na de brouwdag of met een gemeten
+  `gist_volume_l` — bij het plannen is het de receptgrootte), flessen (alleen
+  verpakking `fles`; een afvulling van onbekende soort = niet zuiver = weglaten),
+  ABV/OG/FG alleen gemeten of vastgezet (nooit `verwacht_*`, nooit `abv_bron:
+  'recept'`), tank (vanaf Vergisten), notitie (`brouwlog_notitie`) en
+  `product_id` (alleen als alle gekoppelde artikelen naar één gepubliceerd
+  WooCommerce-product wijzen). De grenzen van het contract (50 hoogste nummers,
+  64 kB, tekstlengtes, bereiken, datums 2018…volgend jaar) haalt BrewAdmin zelf,
+  inclusief de tekstopschoning van WordPress (`%xx`, tags), zodat het voorbeeld
+  is wat er op de site komt. **Nooit** fusten, de taplijst, klanten,
+  bestellingen, prijzen, recepten, `notities`/`batch_notities` of HACCP-gegevens
 - **Mail na een webshopbestelling, "Hoe smaakte het?"** (`utils/naAankoopMail.ts`,
   standaard uit; Instellingen → Bedrijf, `components/NaAankoopMailInstellingen.tsx`):
   na elke automatische import (binnen de lease) stuurt App.tsx `verstuurNaAankoopMails`

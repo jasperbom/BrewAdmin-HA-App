@@ -68,6 +68,7 @@ export const BEHEER_KEYS: readonly string[] = [
   'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
   'imap_creds', 'mollie_creds',
   'website_telemetrie', 'website_telemetrie_status',
+  'website_brouwlog', 'website_brouwlog_status',
   'inkoop_inbox_status',
   'ruimteklimaat_status',
   'na_aankoop_mails',

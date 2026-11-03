@@ -1,0 +1,397 @@
+{
+  "uitleg": "Contract van de brouwlog: per batch wat er op de site komt (of waarom niet). pytest (_brouwlog_batch in server.py) en vitest (brouwlogBatch in utils/brouwlog.ts) lezen allebei dit bestand; ze moeten precies `verwacht` opleveren. Datums zonder tijdzone, zodat de uitkomst niet van de tijdzone van de testmachine afhangt.",
+  "jaar": 2026,
+  "data": {
+    "producten": [
+      {
+        "id": 1,
+        "naam": "Tripel A"
+      },
+      {
+        "id": 2,
+        "naam": "Kadeblond"
+      },
+      {
+        "id": 3,
+        "naam": "Stout"
+      }
+    ],
+    "recepten": [
+      {
+        "id": "rec1",
+        "naam": "Recept Saison",
+        "is_huidige": true
+      },
+      {
+        "id": "rec1__v2",
+        "parent_id": "rec1",
+        "naam": "Saison versie 2",
+        "is_huidige": false
+      }
+    ],
+    "product_artikelen": [
+      {
+        "id": 1,
+        "product_id": 1,
+        "verkoopprijs": 3.5,
+        "wc": {
+          "wc_id": 1234,
+          "status": "publish"
+        }
+      },
+      {
+        "id": 2,
+        "product_id": 1,
+        "wc": {
+          "wc_id": 1234
+        }
+      },
+      {
+        "id": 3,
+        "product_id": 2,
+        "wc": {
+          "wc_id": 50
+        }
+      },
+      {
+        "id": 4,
+        "product_id": 2,
+        "wc": {
+          "wc_id": 51
+        }
+      },
+      {
+        "id": 5,
+        "product_id": 3,
+        "wc": {
+          "wc_id": 60,
+          "status": "draft"
+        }
+      }
+    ],
+    "verpakkingen": [
+      {
+        "id": 1,
+        "naam": "Fles 33cL",
+        "type": "fles",
+        "inhoud_liter": 0.33
+      },
+      {
+        "id": 2,
+        "naam": "Fust 20L",
+        "type": "fust",
+        "inhoud_liter": 20
+      },
+      {
+        "id": 3,
+        "naam": "Krat",
+        "type": "krat"
+      }
+    ],
+    "tanks": [
+      {
+        "id": "t1",
+        "naam": "FV1"
+      },
+      {
+        "id": "t2",
+        "naam": "FV2"
+      },
+      {
+        "id": "t3",
+        "naam": "Heel lange tanknaam"
+      }
+    ],
+    "afvullingen": [
+      {
+        "id": 1,
+        "batch_id": 2,
+        "verpakking_id": 1,
+        "hoeveelheid": 200,
+        "aantal": 999,
+        "datum": "2026-10-01"
+      },
+      {
+        "id": 2,
+        "batch_id": 2,
+        "verpakking_id": 2,
+        "aantal": 2,
+        "datum": "2026-09-30"
+      },
+      {
+        "id": 3,
+        "batch_id": 2,
+        "verpakking_type": "fles",
+        "aantal": 40,
+        "datum": "2026-10-02"
+      },
+      {
+        "id": 4,
+        "batch_id": 2,
+        "verpakking_id": 3,
+        "aantal": 0,
+        "datum": "2026-10-03"
+      },
+      {
+        "id": 5,
+        "batch_id": 6,
+        "verpakking_id": 3,
+        "aantal": 12,
+        "datum": "2026-08-15"
+      },
+      {
+        "id": 6,
+        "batch_id": 6,
+        "verpakking_id": 1,
+        "aantal": 100,
+        "datum": "2026-08-14"
+      }
+    ],
+    "afvul_sessies": [
+      {
+        "id": 1,
+        "batch_id": 9,
+        "start": "2026-10-05T10:00:00",
+        "status": "afgesloten"
+      },
+      {
+        "id": 2,
+        "batch_id": 9,
+        "start": "2026-10-01T10:00:00",
+        "status": "afgebroken"
+      }
+    ],
+    "batches": [
+      {
+        "id": 126,
+        "batch_nummer": "126",
+        "naam": "Tripel A",
+        "status": "Vergisten",
+        "datum": "2026-10-24",
+        "tank": "t2",
+        "liter_vergist": 120,
+        "OG": 1.072,
+        "verwacht_og": 1.075,
+        "verwacht_fg": 1.01,
+        "verwacht_abv": 8.2,
+        "product_id": 1,
+        "notities": "Intern: gist van de buurman",
+        "brouwlog_publiek": true,
+        "brouwlog_notitie": "Eerste tripel in de nieuwe brouwerij.\r\nGist rustig op 19 graden."
+      },
+      {
+        "id": 2,
+        "batch_nummer": "#125",
+        "naam": "Kadeblond",
+        "status": "Afgevuld",
+        "datum": "2026-09-01",
+        "tank": "",
+        "tank_historie": [
+          {
+            "tank": "t1",
+            "from": "2026-09-01",
+            "to": "2026-09-10"
+          },
+          {
+            "tank": "t3",
+            "from": "2026-09-10"
+          }
+        ],
+        "liter_vergist": 118.45,
+        "OG": "1.0485",
+        "FG": 1.012,
+        "ABV": 6.456,
+        "abv_bron": "berekend",
+        "abv_definitief": true,
+        "product_id": 2,
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 3,
+        "batch_nummer": "127",
+        "naam": "Stout",
+        "status": "Gepland",
+        "datum": "2026-11-20",
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 4,
+        "batch_nummer": "",
+        "naam": "Zonder nummer",
+        "status": "Vergisten",
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 5,
+        "batch_nummer": "B-12",
+        "naam": "Raar nummer",
+        "status": "Vergisten"
+      },
+      {
+        "id": 6,
+        "batch_nummer": 129,
+        "naam": "Stout",
+        "status": "Verpakt",
+        "datum": "2026-08-01T09:00",
+        "tank": "t1",
+        "liter_vergist": 0,
+        "ABV": 5.5,
+        "abv_bron": "recept",
+        "abv_definitief": true,
+        "product_id": 3,
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 7,
+        "batch_nummer": "0131",
+        "naam": "Oude naam",
+        "status": "Brouwen",
+        "recept_id": "rec1__v2",
+        "datum": "2017-12-31",
+        "tank": "t1",
+        "liter_vergist": 500,
+        "OG": 1.05,
+        "brouwlog_publiek": true,
+        "brouwlog_notitie": "<b>Vet</b> gebrouwen%20vandaag\n\n\n\nTweede  alinea\t met tab "
+      },
+      {
+        "id": 12,
+        "batch_nummer": "132",
+        "naam": "#132 · Haverstout",
+        "status": "Brouwen",
+        "liter_vergist": 480,
+        "gist_volume_l": 480,
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 8,
+        "batch_nummer": 128,
+        "naam": "Kadeblond #128",
+        "status": "Conditioneren",
+        "datum": "2026-10-30",
+        "liter_vergist": "250",
+        "OG": 18,
+        "FG": "1,010",
+        "ABV": 25,
+        "tank": "t9",
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 9,
+        "batch_nummer": "130",
+        "naam": "Een heel erg lange naam voor een bier dat eigenlijk veel korter moet heten",
+        "status": "Gesloten",
+        "datum": "2026-02-30",
+        "brouwlog_publiek": true,
+        "brouwlog_notitie": "🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺"
+      },
+      {
+        "id": 10,
+        "batch_nummer": "133",
+        "naam": "Raar",
+        "status": "Onbekend",
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 11,
+        "batch_nummer": "134",
+        "naam": "",
+        "status": "Vergisten",
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 13,
+        "batch_nummer": "135",
+        "naam": "Toekomst",
+        "status": "Vergisten",
+        "datum": "2028-01-01",
+        "ABV": "6.5",
+        "brouwlog_notitie": "  \n  ",
+        "brouwlog_publiek": false
+      }
+    ]
+  },
+  "verwacht": {
+    "126": {
+      "nummer": 126,
+      "bier": "Tripel A",
+      "status": "vergisten",
+      "brouwdatum": "2026-10-24",
+      "liters": 120,
+      "og": 1.072,
+      "tank": "FV2",
+      "notitie": "Eerste tripel in de nieuwe brouwerij.\nGist rustig op 19 graden.",
+      "product_id": 1234
+    },
+    "2": {
+      "nummer": 125,
+      "bier": "Kadeblond",
+      "status": "afgevuld",
+      "brouwdatum": "2026-09-01",
+      "afvuldatum": "2026-09-30",
+      "liters": 118.5,
+      "flessen": 240,
+      "abv": 6.46,
+      "og": 1.049,
+      "fg": 1.012,
+      "tank": "Heel lange t"
+    },
+    "3": {
+      "reden": "gepland"
+    },
+    "4": {
+      "reden": "nummer"
+    },
+    "5": {
+      "reden": "nummer"
+    },
+    "6": {
+      "nummer": 129,
+      "bier": "Stout",
+      "status": "afgevuld",
+      "brouwdatum": "2026-08-01",
+      "afvuldatum": "2026-08-14",
+      "tank": "FV1"
+    },
+    "7": {
+      "nummer": 131,
+      "bier": "Recept Saison",
+      "status": "gebrouwen",
+      "og": 1.05,
+      "notitie": "Vet gebrouwenvandaag\n\nTweede alinea met tab"
+    },
+    "12": {
+      "nummer": 132,
+      "bier": "Haverstout",
+      "status": "gebrouwen",
+      "liters": 480
+    },
+    "8": {
+      "nummer": 128,
+      "bier": "Kadeblond",
+      "status": "conditioneren",
+      "brouwdatum": "2026-10-30",
+      "liters": 250,
+      "tank": "t9"
+    },
+    "9": {
+      "nummer": 130,
+      "bier": "Een heel erg lange naam voor een bier dat eigenlijk veel kor",
+      "status": "afgevuld",
+      "afvuldatum": "2026-10-05",
+      "notitie": "🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺"
+    },
+    "10": {
+      "reden": "status"
+    },
+    "11": {
+      "reden": "bier"
+    },
+    "13": {
+      "nummer": 135,
+      "bier": "Toekomst",
+      "status": "vergisten",
+      "abv": 6.5
+    }
+  }
+}

@@ -40,6 +40,7 @@ import { rolVanGebruiker, metGebruiker, normaliseerGebruiker } from '../utils/ro
 import { geheimOpnieuwNodig } from '../utils/geheimen'
 import Icon from '../components/ui/Icon'
 import WebsiteTelemetrie from '../components/WebsiteTelemetrie'
+import BrouwlogInstellingen from '../components/BrouwlogInstellingen'
 import InkoopMailInstellingen, { POSTVAK_KAART_ID } from '../components/InkoopMailInstellingen'
 import RuimteklimaatInstellingen from '../components/RuimteklimaatInstellingen'
 
@@ -496,7 +497,7 @@ const BackupCard = () => {
     const uit = new Set(['brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds', 'imap_creds', 'mollie_creds',
       'journaal', 'haccp_vrijgaven', 'haccp_sluitcontroles', 'haccp_etiketcontroles', 'haccp_afwijkingen', 'haccp_trace_oefeningen',
       // Server-beheerd (nummerreeks, afgeleide serverdata) — de server weigert ze ook
-      'nummer_reeksen', 'tank_setpoints', 'wc_import_status', 'website_telemetrie_status', 'inkoop_inbox_status', 'app_logo_icoon']);
+      'nummer_reeksen', 'tank_setpoints', 'wc_import_status', 'website_telemetrie_status', 'website_brouwlog_status', 'inkoop_inbox_status', 'app_logo_icoon']);
     return [..._allKeys].filter(k => !uit.has(k)).sort();
   }, []);
   const herstelSleutel = async () => {
@@ -591,7 +592,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, wcImportStatus={}, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, websiteTelemetrie={}, setWebsiteTelemetrie=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null, integriteitSetters={}, imapCreds=null, setImapCreds=()=>{}, navDoel=null, onNavDoelConsumed=()=>{}, naAankoop=null}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, wcImportStatus={}, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, websiteTelemetrie={}, setWebsiteTelemetrie=()=>{}, websiteBrouwlog={}, setWebsiteBrouwlog=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null, integriteitSetters={}, imapCreds=null, setImapCreds=()=>{}, navDoel=null, onNavDoelConsumed=()=>{}, naAankoop=null}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -2509,6 +2510,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       {/* Website-telemetrie: brouwerijcijfers naar de plugin Craftery
           Brouwerij op de webshop. De server verstuurt zelf (_website_tick). */}
       <WebsiteTelemetrie inst={websiteTelemetrie} setInst={setWebsiteTelemetrie} fmtTs={fmtTs}
+        wcIngesteld={!!(wcCreds?.enabled && String(wcCreds?.storeUrl || '').trim().startsWith('https://')
+          && wcCreds?.consumerKey && wcCreds?.consumerSecret)} />
+
+      {/* Brouwlog: per aangevinkte batch een release note op /brouwlog/ van
+          de webshop (plugin Craftery Brouwerij 1.2.0+). De server verstuurt
+          zelf (_brouwlog_tick); het vinkje staat op de batchpagina. */}
+      <BrouwlogInstellingen inst={websiteBrouwlog} setInst={setWebsiteBrouwlog} fmtTs={fmtTs} batches={bat || []}
         wcIngesteld={!!(wcCreds?.enabled && String(wcCreds?.storeUrl || '').trim().startsWith('https://')
           && wcCreds?.consumerKey && wcCreds?.consumerSecret)} />
 

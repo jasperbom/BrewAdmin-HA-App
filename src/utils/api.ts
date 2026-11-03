@@ -1161,6 +1161,25 @@ export const websiteVoorbeeld = (instellingen: any) => _websitePost('voorbeeld',
 export const websiteTest = () => _websitePost('test', {})
 export const websiteVerstuur = (instellingen: any) => _websitePost('verstuur', {instellingen})
 
+// ── Brouwlog (plugin Craftery Brouwerij 1.2.0+) ─────────────────────────────
+// Zelfde vorm als de telemetrie, eigen route (`/api/website/brouwlog/*`, alle
+// drie beheer-only). De server stelt het bericht samen, ook het voorbeeld.
+export const brouwlogVoorbeeld = (instellingen: any) => _websitePost('brouwlog/voorbeeld', {instellingen})
+export const brouwlogTest = () => _websitePost('brouwlog/test', {})
+export const brouwlogVerstuur = (instellingen: any) => _websitePost('brouwlog/verstuur', {instellingen})
+
+// `website_brouwlog_status` schrijft alleen de server: een gewone GET, geen useStore.
+export const brouwlogStatus = async (): Promise<any> => {
+  try {
+    const r = await fetch(API_BASE + 'website_brouwlog_status', {headers: {'Cache-Control': 'no-cache'}})
+    if (!r.ok) return {}
+    const d = await r.json()
+    return d && typeof d === 'object' && !Array.isArray(d) ? d : {}
+  } catch (e) {
+    return {}
+  }
+}
+
 export const bfFetch = (path: string, opts: RequestInit = {}) =>
   _fetchWithRetry(_BF_PROXY + path.replace(/^\//, ''), opts, 1)
 
