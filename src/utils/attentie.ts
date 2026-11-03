@@ -118,6 +118,9 @@ export interface AttentieBron {
   bestellingPicks: any[]
   /** `wc_import_status` — webshoporders die de server zag maar hier nog niet staan. */
   wcImportStatus?: any
+  /** Na hoeveel dagen zonder afhaalmoment de afhaalherinnering aan de beurt is
+      (`afhaalHerinneringDagen(mail_templates)`); zonder = de standaard. */
+  afhaalHerinneringDagen?: number
   btwPeriode: BtwPeriodeType
   btwAangiftes: any[]
   bankKoppelingen: Record<string, any>
@@ -427,8 +430,12 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
         // Afhaalbestellingen waarvoor de klant na een paar dagen nog geen
         // moment koos en die nog geen herinnering kregen (utils/levering →
         // afhaalHerinneringNodig). De chip "Geen afhaalmoment" toont ze allemaal.
+        // Staat de herinnering op automatisch, dan gaat hij bij de volgende
+        // import vanzelf en verdwijnt de post; blijft hij staan, dan ging er
+        // iets mis (geen e-mailadres, SMTP) of is de bestelling van vóór het
+        // aanzetten.
         id: 'afhaal_herinnering', sleutel: 'attentie_afhaal_herinnering', pagina: 'bestellingen', filter: 'geen_afhaalmoment',
-        aantal: telAfhaalHerinneringNodig(bron.bestellingen, bron.vandaagIso),
+        aantal: telAfhaalHerinneringNodig(bron.bestellingen, bron.vandaagIso, bron.afhaalHerinneringDagen),
       },
       // Het etiket klopt niet met wat er gebrouwen is: per product, de regel
       // opent het product.

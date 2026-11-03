@@ -11,9 +11,11 @@
  *
  * Automatisch versturen (`mail_templates[soort].auto`) hoort bij een
  * handeling: een nieuwe bestelling, markeer verzonden, de factuur maken,
- * afronden, annuleren. De afspraak-gemist-mail en de afhaalherinnering hebben
- * geen handeling (het afhaalmoment verstrijkt vanzelf, of de klant kiest er
- * gewoon geen) en blijven met de hand. De factuurmail voor
+ * afronden, annuleren. De afhaalherinnering hoort bij een wachttijd: na
+ * `afhaalHerinneringDagen` dagen zonder afhaalmoment, bij de automatische
+ * webshopimport in App.tsx (`afhaalHerinneringPlan`). De afspraak-gemist-mail
+ * heeft geen handeling (het afhaalmoment verstrijkt vanzelf) en blijft met de
+ * hand. De factuurmail voor
  * een al betaalde factuur deelt de instelling met de gewone factuurmail: per
  * factuur is er maar één van de twee.
  */
@@ -24,7 +26,7 @@ import { factuurMailBetaalVars } from './factuurMail'
 import { vervaldatumTekst } from './facturen'
 import {
   leveringMailVars, afhaalMailKnop, afhaalGemistMailVars, afhaalGemistMailKnop, verzendMailVars, bestelLink,
-  afhaalHerinneringMailVars,
+  afhaalHerinneringMailVars, wachtOpAfhaalmoment, dagenSindsBestelling, AFHAAL_HERINNERING_NA_DAGEN,
 } from './levering'
 import type { MailKnop } from './levering'
 
@@ -36,14 +38,15 @@ export type OrderMailSoort =
 export const ORDER_MAIL_SOORTEN: OrderMailSoort[] =
   ['bestelling', 'verzending', 'afhaal_herinnering', 'afhaal_gemist', 'annulering', 'pakbon', 'factuur', 'factuur_betaald']
 
-/** De handeling waarbij een mail automatisch verstuurd kan worden. */
-export type MailHandeling = 'nieuw' | 'verzonden' | 'factuur' | 'afgerond' | 'geannuleerd'
+/** De handeling waarbij een mail automatisch verstuurd kan worden; `wachttijd` =
+ * na een aantal dagen, bij de automatische webshopimport. */
+export type MailHandeling = 'nieuw' | 'verzonden' | 'factuur' | 'afgerond' | 'geannuleerd' | 'wachttijd'
 
 /** Bij welke handeling een mail automatisch kan; null = alleen met de hand. */
 export const MAIL_HANDELING: Record<OrderMailSoort, MailHandeling | null> = {
   bestelling: 'nieuw',
   verzending: 'verzonden',
-  afhaal_herinnering: null,
+  afhaal_herinnering: 'wachttijd',
   afhaal_gemist: null,
   annulering: 'geannuleerd',
   pakbon: 'afgerond',
@@ -63,6 +66,8 @@ export interface MailSjabloon {
   auto?: boolean
   /** Wanneer `auto` aan ging (ISO). Een bestelling van daarvóór krijgt geen automatische bevestiging. */
   auto_sinds?: string
+  /** Afhaalherinnering: na hoeveel dagen zonder afhaalmoment (`afhaalHerinneringDagen`). */
+  dagen?: number
 }
 export type MailSjablonen = Record<string, MailSjabloon | undefined> | null | undefined
 
@@ -97,13 +102,26 @@ export function zetMailAuto(
   return {...(sjablonen || {}), [sleutel]: bijgewerkt}
 }
 
-/** Waarom een mail bij deze handeling níét automatisch gaat (null = wel versturen). */
-export type AutoMailReden = 'uit' | 'al_verstuurd' | 'status' | 'van_voor_inschakelen' | 'geen_email' | 'geen_smtp'
+/** Een afhaalherinnering die later dan dit (dagen na de wachttijd) zou komen, gaat niet meer vanzelf. */
+export const AFHAAL_HERINNERING_MAX_TE_LAAT_DAGEN = 14
+/** Hooguit zoveel afhaalherinneringen per importronde; de rest volgt de volgende ronde. */
+export const AFHAAL_HERINNERING_MAX_PER_RONDE = 20
+
+/** Na hoeveel dagen zonder afhaalmoment de herinnering gaat (1–60, anders de standaard). */
+export function afhaalHerinneringDagen(sjablonen: MailSjablonen): number {
+  const n = Number(sjablonen?.afhaal_herinnering?.dagen)
+  return Number.isInteger(n) && n >= 1 && n <= 60 ? n : AFHAAL_HERINNERING_NA_DAGEN
+}
+
+/** Waarom een mail bij deze handeling níét automatisch gaat (null = wel versturen).
+ * `nog_niet`/`te_laat`: de wachttijd van de afhaalherinnering. */
+export type AutoMailReden =
+  | 'uit' | 'al_verstuurd' | 'status' | 'van_voor_inschakelen' | 'nog_niet' | 'te_laat' | 'geen_email' | 'geen_smtp'
 
 export function autoMailReden(
   soort: OrderMailSoort,
   order: any,
-  opts: {sjablonen: MailSjablonen, smtpAan: boolean, email?: string},
+  opts: {sjablonen: MailSjablonen, smtpAan: boolean, email?: string, vandaag?: string},
 ): AutoMailReden | null {
   if (!mailAutoAan(opts.sjablonen, soort)) return 'uit'
   if (order?.mails_verstuurd?.[autoSleutel(soort)]) return 'al_verstuurd'
@@ -112,9 +130,38 @@ export function autoMailReden(
     const sinds = String(opts.sjablonen?.bestelling?.auto_sinds || '').slice(0, 10)
     if (sinds && String(order?.datum || '').slice(0, 10) < sinds) return 'van_voor_inschakelen'
   }
+  if (soort === 'afhaal_herinnering') {
+    // Nog steeds afhalen zonder moment (de import ververst het moment), alleen
+    // voor bestellingen van na het aanzetten (geen achterstand in één keer),
+    // pas na de wachttijd en niet als hij weken te laat zou komen.
+    if (!wachtOpAfhaalmoment(order)) return 'status'
+    const sinds = String(opts.sjablonen?.afhaal_herinnering?.auto_sinds || '').slice(0, 10)
+    if (sinds && String(order?.datum || '').slice(0, 10) < sinds) return 'van_voor_inschakelen'
+    const n = dagenSindsBestelling(order, String(opts.vandaag || ''))
+    const dagen = afhaalHerinneringDagen(opts.sjablonen)
+    if (n === null || n < dagen) return 'nog_niet'
+    if (n > dagen + AFHAAL_HERINNERING_MAX_TE_LAAT_DAGEN) return 'te_laat'
+  }
   if (!String(opts.email ?? order?.klant_email ?? '').trim()) return 'geen_email'
   if (!opts.smtpAan) return 'geen_smtp'
   return null
+}
+
+/**
+ * De afhaalherinneringen die nu vanzelf mogen (App.tsx, na de automatische
+ * webshopimport): elke bestelling waarvoor `autoMailReden` niets tegen heeft,
+ * de oudste eerst, hooguit `AFHAAL_HERINNERING_MAX_PER_RONDE`. Geef de
+ * bestellingen mét de live klantkaart (e-mailadres) en na de import (het
+ * afhaalmoment is dan vers).
+ */
+export function afhaalHerinneringPlan<B>(
+  bestellingen: ReadonlyArray<B | null | undefined> | null | undefined,
+  opts: {sjablonen: MailSjablonen, smtpAan: boolean, vandaag: string},
+): B[] {
+  return (bestellingen || [])
+    .filter((b): b is B => !!b && autoMailReden('afhaal_herinnering', b, opts) === null)
+    .sort((a: any, b: any) => String(a?.datum || '').localeCompare(String(b?.datum || '')))
+    .slice(0, AFHAAL_HERINNERING_MAX_PER_RONDE)
 }
 
 /** Wat er op de bestelling verandert nadat een mail verstuurd is (met de hand

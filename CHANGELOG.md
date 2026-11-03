@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.38] — 2026-11-03
+
+### Afhaalherinnering automatisch
+
+De afhaalherinnering kan nu vanzelf: zet bij Instellingen → Bedrijf →
+E-mailtemplates → *Afhaalherinnering* *Automatisch versturen* aan.
+
+- **Wanneer:** bij de automatische webshopimport, als een afhaalklant na het
+  ingestelde aantal dagen (standaard 3, in te stellen van 1 tot 60) nog geen
+  afhaalmoment koos. Het moment uit de winkel is dan net ververst, dus wie
+  intussen koos krijgt niets.
+- **Eén keer per bestelling,** en alleen voor bestellingen die binnenkomen
+  nadat je het aanzet: er gaat geen achterstand in één keer de deur uit.
+  Oudere bestellingen vind je onder de chip *Geen afhaalmoment* en mail je met
+  de hand. Een herinnering die meer dan twee weken te laat zou komen, gaat niet
+  meer vanzelf.
+- **Zoals de andere automatische mails:** één voor één, het stempel pas na
+  verzenden, bij een fout stopt de ronde en staat de melding in het
+  synclog; zonder open tabblad gaat er niets.
+- Het aantal dagen geldt ook voor de melding op Verkoop.
+
+---
+
 ## [1.13.37] — 2026-11-03
 
 ### Afhaalherinnering: kies je afhaalmoment
@@ -25,7 +48,7 @@ langskomt.
   {afhaalregel}, {afhaallink}, {afhaallocatie}, {dagen}, {besteldatum} en
   {brouwerij}. Zonder eigen tekst geldt een neutrale standaardtekst in vijf
   talen.
-- Alleen met de hand: deze mail gaat nooit vanzelf.
+- Alleen met de hand: deze mail gaat nooit vanzelf (sinds 1.13.38 kan dat wel).
 
 ---
 

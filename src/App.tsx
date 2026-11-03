@@ -26,7 +26,7 @@ import { bfRichtingen, bfKoppelingAan, bfBatchesKoppelbaar, bfBatchesLezen, bfBa
 import { afgevuldeLiters } from './utils/batchesLijst'
 import { migreerInternGebruik } from './utils/internGebruik'
 import { findKlantVoorOrder, resolveKlantSnapshot } from './utils/klant'
-import { autoMailReden, bouwOrderMail, naMailVerstuurd, mailAuditTekst } from './utils/orderMail'
+import { autoMailReden, bouwOrderMail, naMailVerstuurd, mailAuditTekst, afhaalHerinneringPlan, afhaalHerinneringDagen } from './utils/orderMail'
 import { verzendMail } from './utils/mailVerzenden'
 import {
   naAankoopInstellingen, naAankoopPlan, bouwNaAankoopMail, naNaAankoopVerstuurd, naAankoopAuditTekst,
@@ -1809,6 +1809,51 @@ function App() {
       naAankoopBezig.current = false
     }
   }
+  // ── Afhaalherinnering (utils/orderMail.ts → afhaalHerinneringPlan): staat
+  // hij op automatisch, dan krijgt een afhaalklant die na de ingestelde dagen
+  // nog geen moment koos één keer de herinnering. Na de import, dus met het
+  // verse afhaalmoment uit de winkel; binnen de lease, één voor één, stempel
+  // pas na succes en bij een fout stopt de ronde — net als hierboven.
+  const afhaalHerinneringBezig = React.useRef(false)
+  const verstuurAfhaalHerinneringen = async (lijst: any[]) => {
+    const r = wcImportRefs.current
+    if (!r.smtpCreds?.enabled || afhaalHerinneringBezig.current) return
+    if (!rolMagKey(r.rol, 'bestellingen')) return
+    afhaalHerinneringBezig.current = true
+    try {
+      const vandaag = tod()
+      const bestellingenNu = (lijst || []).map((b: any) => resolveKlantSnapshot(b, r.klanten || []) || b)
+      const plan = afhaalHerinneringPlan(bestellingenNu, {sjablonen: r.mailTemplates, smtpAan: true, vandaag})
+      const ctx = {sjablonen: r.mailTemplates, brouwerij: r.breweryDetails?.naam || r.appName || '',
+        storeUrl: r.wcCreds?.storeUrl || '', bestelUrlSjabloon: r.wcCreds?.bestelUrl, vandaag}
+      for (const order of plan) {
+        const mail = bouwOrderMail('afhaal_herinnering', order, ctx)
+        try {
+          await verzendMail(mail, {brewery: r.breweryDetails, logoDataUri: r.factuurLogo || r.logo, replyTo: r.breweryDetails?.email})
+          setBestellingen((prev: any[]) => (prev || []).map((x: any) =>
+            x.id === order.id ? {...x, ...naMailVerstuurd(x, 'afhaal_herinnering', tod())} : x))
+          logAudit(wcImportRefs.current.auditLog, setAuditLog, {entiteit: 'Bestelling', entiteit_id: order.id, actie: 'gewijzigd',
+            omschrijving: mailAuditTekst('afhaal_herinnering', mail.to, true)})
+        } catch (e: any) {
+          const fout = e?.message || ''
+          logAudit(wcImportRefs.current.auditLog, setAuditLog, {entiteit: 'Bestelling', entiteit_id: order.id, actie: 'gewijzigd',
+            omschrijving: `${mailAuditTekst('afhaal_herinnering', mail.to, true)} mislukt: ${fout}`})
+          setWcSyncLog((prev: any[]) => [{id: Date.now(), ts: new Date().toISOString(), type: 'fout',
+            msg: t('mail_auto_mislukt').replace('{mail}', t('settings_mail_template_afhaal_herinnering'))
+              .replace('{email}', mail.to).replace('{fout}', fout), details: ''}, ...(prev || [])].slice(0, 100))
+          break
+        }
+      }
+    } finally {
+      afhaalHerinneringBezig.current = false
+    }
+  }
+  // De mails die na een import aan de beurt kunnen zijn, na elkaar (één
+  // SMTP-verbinding tegelijk).
+  const naImportMails = async (lijst: any[]) => {
+    await verstuurNaAankoopMails(lijst)
+    await verstuurAfhaalHerinneringen(lijst)
+  }
   // `opMelding`: aangeroepen omdat de server een order meldt die hier nog
   // ontbreekt — dan niet op het interval wachten (utils/wcOrderImport →
   // importLeaseVrij). Timers roepen hem zonder argument aan.
@@ -1867,11 +1912,11 @@ function App() {
         schoon.verwijderd.forEach((b: any) => logAudit(wcImportRefs.current.auditLog, setAuditLog, {
           entiteit: 'Bestelling', entiteit_id: b.id, actie: 'verwijderd',
           omschrijving: `Dubbele webshopimport opgeruimd (WC-${b.wc_order_nummer || b.wc_order_id})`}))
-        void verstuurNaAankoopMails(schoon.lijst)
+        void naImportMails(schoon.lijst)
         return schoon.lijst
       }
       const lijst = (res.nieuw.length || Object.keys(res.updates).length) ? pasImportToe(na ?? vers ?? [], res) : (na ?? vers ?? [])
-      void verstuurNaAankoopMails(lijst)
+      void naImportMails(lijst)
       return lijst
     } catch (e: any) {
       setWcSyncLog((prev: any[]) => [{id: Date.now(), ts: new Date().toISOString(), type: 'fout',
@@ -2475,6 +2520,7 @@ function App() {
       bankTransacties, bankAfschriften,
       beslissingen: adminRijen,
       vandaag, vandaagIso,
+      afhaalHerinneringDagen: afhaalHerinneringDagen(mailTemplates),
       // Product en voorraad: het etiket tegen de batch, afgevuld zonder
       // artikel, bier-THT, dubbele SKU (utils/productAandacht.ts).
       producten, verkoop: verkoopCtx,
@@ -2483,7 +2529,7 @@ function App() {
   }, [bat, batchTakenItems, batchTakenGroepen, haccpSchoonmaakTaken, haccpSchoonmaakLog, lots, bestellingen,
     bestellingPicks, wcImportStatus, btwPeriodeType, btwAangiftes, bankKoppelingen, verkoopFacturen, inkoopFacturen,
     inkoopInbox, accijnsAangiftes, acc, klanten, breweryDetails, bankTransacties, bankAfschriften, adminRijen,
-    vandaagIso, producten, verkoopCtx, recepten, bi, ing]);
+    vandaagIso, producten, verkoopCtx, recepten, bi, ing, mailTemplates]);
   // De badge op het tabblad Bestellingen: dezelfde posten als in de
   // Verkoop-badge (te picken + nieuwe webshoporders), geen eigen telling.
   const bestellingPosten = attentieVoorPagina(attentie.verkoop, 'bestellingen');

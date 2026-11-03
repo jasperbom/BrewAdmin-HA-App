@@ -379,10 +379,12 @@ export function afhaalHerinneringNodig(
   return n !== null && n >= dagen
 }
 
-/** Hoeveel afhaalbestellingen om de afhaalherinnering vragen (attentiepost op Verkoop). */
+/** Hoeveel afhaalbestellingen om de afhaalherinnering vragen (attentiepost op Verkoop).
+ * `dagen` = de ingestelde wachttijd (`afhaalHerinneringDagen` in orderMail.ts). */
 export const telAfhaalHerinneringNodig = (
   bestellingen: ReadonlyArray<any> | null | undefined, vandaag: string,
-): number => (bestellingen || []).filter(b => afhaalHerinneringNodig(b, vandaag)).length
+  dagen: number = AFHAAL_HERINNERING_NA_DAGEN,
+): number => (bestellingen || []).filter(b => afhaalHerinneringNodig(b, vandaag, dagen)).length
 
 /** Korte omschrijving voor een badge of tooltip: "Afhalen · Brouwerij · za 30 aug om 13:00". */
 export function leveringOmschrijving(b: Partial<LeveringVelden> | null | undefined): string {
