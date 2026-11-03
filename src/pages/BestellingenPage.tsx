@@ -35,7 +35,7 @@ import { qrDataUrl } from '../utils/qr'
 import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding } from '../utils/wcOrderImport'
 import { wcTerugschrijfPlan, wcSyncVelden, WcSyncDoel } from '../utils/wcTerugschrijven'
 import { afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, wachtOpAfhaalmoment, MailKnop,
-  afhaalHerinneringenVerstuurd, afhaalTermijnDatum, afhaalTermijnVoorbij } from '../utils/levering'
+  afhaalHerinneringenVerstuurd, afhaalTermijnDatum, afhaalTermijnVoorbij, afhaalMomentNaTermijn, afhaalLaatsteDag } from '../utils/levering'
 import {
   bouwOrderMail, bouwFactuurMail, mailAutoAan, autoMailReden, naMailVerstuurd, mailAuditTekst, afhaalSchema,
 } from '../utils/orderMail'
@@ -2330,15 +2330,23 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                 {!afhalen && selectedOrder.wc_verzendmethode && <div className="text-gray-600">{selectedOrder.wc_verzendmethode}</div>}
                 {afhalen && (() => {
                   const gemist = afhaalmomentVerstreken(selectedOrder)
-                  return (
+                  // Een afspraak ná de afhaaltermijn blijft staan, maar valt op.
+                  const naTermijn = afhaalMomentNaTermijn(selectedOrder, afhaalCtx.vandaag, afhaalCtx.schema)
+                  const laatsteDag = naTermijn ? afhaalLaatsteDag(selectedOrder, afhaalCtx.schema) : null
+                  return (<>
                     <div className="flex justify-between gap-3">
                       <span className="text-gray-500">{t('orders_afhaalmoment')}</span>
-                      <span className={`text-right ${gemist ? 'text-red-600' : selectedOrder.wc_afhaalmoment ? 'text-gray-800' : 'text-orange-600 italic'}`}>
+                      <span className={`text-right ${gemist ? 'text-red-600' : naTermijn ? 'text-orange-700' : selectedOrder.wc_afhaalmoment ? 'text-gray-800' : 'text-orange-600 italic'}`}>
                         {selectedOrder.wc_afhaalmoment ? afhaalmomentLabel(selectedOrder.wc_afhaalmoment) : t('orders_afhaalmoment_open')}
                         {gemist ? ` (${t('orders_afhaalmoment_verstreken')})` : ''}
                       </span>
                     </div>
-                  )
+                    {laatsteDag && (
+                      <div className="text-xs text-orange-800 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                        {t('orders_afhaal_na_termijn').replace('{datum}', fmtD(laatsteDag))}
+                      </div>
+                    )}
+                  </>)
                 })()}
                 {afhalen && (() => {
                   const data = afhaalHerinneringenVerstuurd(selectedOrder)

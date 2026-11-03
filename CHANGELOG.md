@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.42] — 2026-11-03
+
+### Afhaalafspraak na de afhaaltermijn
+
+- Kiest een klant een afhaalmoment dat ná de afhaaltermijn ligt, dan blijft
+  die afspraak staan: de bestelling vraagt niet om annuleren. Je ziet het wel:
+  het moment staat oranje op de bestelling met de regel "Dit afhaalmoment ligt
+  na de afhaaltermijn (tot en met …)", en de bestelling staat onder de nieuwe
+  chip *Afspraak na de termijn*. Vind je het te laat, mail de klant dan.
+- Komt de klant op dat moment niet, dan vraagt de bestelling de dag erna om
+  annuleren.
+- Een afhaalherinnering die je met de hand stuurt als de termijn al om is,
+  noemt geen datum meer (eerder stond daar een dag in het verleden).
+
+---
+
 ## [1.13.41] — 2026-11-03
 
 ### Afhaalherinnering: de laatste herinnering anders verwoord

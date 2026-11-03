@@ -5748,6 +5748,8 @@
   "orders_afhaal_termijn_tot": "Afhaaltermijn tot {datum}",
   "orders_afhaal_termijn_voorbij": "De afhaaltermijn is op {datum} verstreken en er is niets afgesproken. Annuleer de bestelling; is hij betaald, betaal de klant dan terug in de webshop.",
   "orders_filter_afhaal_termijn": "Over de afhaaltermijn",
+  "orders_filter_afhaal_na_termijn": "Afspraak na de termijn",
+  "orders_afhaal_na_termijn": "Dit afhaalmoment ligt na de afhaaltermijn (tot en met {datum}). De afspraak blijft staan; vind je het te laat, mail de klant dan.",
   "attentie_afhaal_termijn": "Afhaalbestellingen over de afhaaltermijn",
   "msg_order_cancel_betaald": "Deze bestelling is in de webshop betaald. Annuleren betaalt de klant niet terug: doe dat in de webshop.",
   "settings_mail_auto_handmatig": "Alleen met de hand: er is geen handeling, het afhaalmoment verstrijkt vanzelf.",

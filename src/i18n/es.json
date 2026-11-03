@@ -5748,6 +5748,8 @@
   "orders_afhaal_termijn_tot": "Plazo de recogida hasta el {datum}",
   "orders_afhaal_termijn_voorbij": "El plazo de recogida venció el {datum} y no se ha acordado nada. Cancela el pedido; si está pagado, reembolsa al cliente en la tienda.",
   "orders_filter_afhaal_termijn": "Plazo vencido",
+  "orders_filter_afhaal_na_termijn": "Cita tras el plazo",
+  "orders_afhaal_na_termijn": "Esta hora de recogida es posterior al plazo (hasta el {datum} incluido). La cita se mantiene; si te parece demasiado tarde, escribe al cliente.",
   "attentie_afhaal_termijn": "Pedidos para recoger con el plazo vencido",
   "msg_order_cancel_betaald": "Este pedido se pagó en la tienda. Cancelar no reembolsa al cliente: hazlo en la tienda.",
   "settings_mail_auto_handmatig": "Solo a mano: no hay ninguna acción, la hora de recogida simplemente pasa.",

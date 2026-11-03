@@ -5748,6 +5748,8 @@
   "orders_afhaal_termijn_tot": "Délai de retrait jusqu'au {datum}",
   "orders_afhaal_termijn_voorbij": "Le délai de retrait a expiré le {datum} et rien n'a été convenu. Annulez la commande ; si elle est payée, remboursez le client dans la boutique.",
   "orders_filter_afhaal_termijn": "Délai dépassé",
+  "orders_filter_afhaal_na_termijn": "Créneau après délai",
+  "orders_afhaal_na_termijn": "Ce créneau est après le délai de retrait (jusqu'au {datum} inclus). Le rendez-vous est maintenu ; si c'est trop tard pour vous, écrivez au client.",
   "attentie_afhaal_termijn": "Commandes à retirer dont le délai est dépassé",
   "msg_order_cancel_betaald": "Cette commande a été payée dans la boutique. L'annulation ne rembourse pas le client : faites-le dans la boutique.",
   "settings_mail_auto_handmatig": "Manuel uniquement : il n'y a pas d'action, le créneau de retrait passe de lui-même.",
