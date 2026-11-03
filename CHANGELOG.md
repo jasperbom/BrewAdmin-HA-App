@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.31] — 2026-11-03
+
+### Brouwlog: per batch het product in de webshop kiezen
+
+De koppeling tussen een batch en het bier in de webshop loopt niet meer via de
+naam, maar via het product zelf. Een batch heet in de brouwlog zoals het
+product waaraan hij gekoppeld is.
+
+- **Op de batchpagina**, in het blok "Brouwlog op de website", staat de keuze
+  **Product in de webshop**:
+  - **Automatisch** (standaard, vooringevuld met de beste gok): het product
+    waaronder je de batch hebt afgevuld (na een rebrand het nieuwe), in de
+    verpakking waarin het meeste ging; vóór het afvullen het product van de
+    batch.
+  - **Een product kiezen** uit de artikelen die in de webshop staan. De batch
+    heet dan ook zo.
+  - **Geen link naar de webshop**, bijvoorbeeld bij een eigen etiket.
+- **Een batch zonder product**, of met een product dat niet in de webshop staat
+  (een eigen etiket), houdt zijn eigen naam en krijgt **geen link**. De site
+  gaat dan niet meer zelf op naam zoeken.
+- BrewAdmin stuurt per batch het WooCommerce-product en de SKU van het
+  gekoppelde artikel mee, of "geen link". De huidige plugin Craftery Brouwerij
+  1.2.0 gebruikt alleen het product-ID en zoekt anders nog op naam, maar dan
+  op de productnaam. De SKU en "geen link" werken zodra plugin en thema ze
+  kennen (afgestemd met de site-kant).
+
+---
+
 ## [1.13.30] — 2026-11-03
 
 ### Brouwlog: gerebrande batches heten zoals ze verkocht worden

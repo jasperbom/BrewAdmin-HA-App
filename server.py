@@ -4506,7 +4506,7 @@ BROUWLOG_MAX_BYTES = 64 * 1024
 BROUWLOG_MIN_TUSSENPOOS_S = 10.0
 # Grenzen van het contract (plugin Craftery Brouwerij 1.2.0, brouwlog.php).
 _BROUWLOG_GRENZEN = {
-    'bron': 40, 'bier': 60, 'tank': 12, 'notitie': 600,
+    'bron': 40, 'bier': 60, 'tank': 12, 'notitie': 600, 'sku': 100,
     'nummer': (1, 999999), 'liters': (0.1, 10000.0), 'flessen': (1, 100000),
     'abv': (0.0, 20.0), 'sg': (0.98, 1.2), 'jaar_vanaf': 2018,
 }
@@ -4733,25 +4733,85 @@ def _brouwlog_tank(b: dict, status: str, tanks_per_id: dict) -> str:
     return _brouwlog_tekst(tank.get('naam') or tank.get('id') or tid, _BROUWLOG_GRENZEN['tank'])
 
 
-def _brouwlog_product_id(pid, artikelen: list) -> int | None:
-    """Het WooCommerce-product voor de link: alleen als alle gekoppelde
-    artikelen van dit product naar hetzelfde gepubliceerde product wijzen.
-    Twijfel = niets; de site zoekt het bier dan op naam."""
-    if pid is None or isinstance(pid, bool):
+def _brouwlog_wc_id(art: dict) -> int | None:
+    """Het WooCommerce-product-ID van een artikel, als het er een heeft."""
+    wc = art.get('wc') if isinstance(art.get('wc'), dict) else {}
+    wid = wc.get('wc_id')
+    if isinstance(wid, bool) or not isinstance(wid, (int, float)) or not math.isfinite(wid) \
+            or not float(wid).is_integer() or wid <= 0:
         return None
-    ids = set()
-    for art in artikelen:
-        if not isinstance(art, dict) or art.get('product_id') != pid:
-            continue
-        wc = art.get('wc') if isinstance(art.get('wc'), dict) else {}
-        wid = wc.get('wc_id')
-        if isinstance(wid, bool) or not isinstance(wid, (int, float)) \
-                or not math.isfinite(wid) or not float(wid).is_integer() or wid <= 0:
-            continue
-        if wc.get('status') not in (None, '', 'publish'):
-            continue  # concept of privé: geen link naar een pagina die niemand ziet
-        ids.add(int(wid))
-    return next(iter(ids)) if len(ids) == 1 else None
+    return int(wid)
+
+
+def _brouwlog_sku(art: dict) -> str:
+    """De SKU (artikelnummer) zoals de webshop hem kent."""
+    return _brouwlog_tekst(art.get('artikelnummer'), _BROUWLOG_GRENZEN['sku'])
+
+
+def _brouwlog_in_webshop(art) -> bool:
+    """Staat dit artikel in de webshop? Gekoppeld aan een WooCommerce-product,
+    of met een SKU die mee gaat in de voorraadpush (`wc_push` niet uit). Nooit
+    een concept of privéproduct: daar kan geen bezoeker heen."""
+    if not isinstance(art, dict):
+        return False
+    wc = art.get('wc') if isinstance(art.get('wc'), dict) else {}
+    if wc.get('status') not in (None, '', 'publish'):
+        return False
+    return _brouwlog_wc_id(art) is not None or (bool(_brouwlog_sku(art)) and art.get('wc_push') is not False)
+
+
+def _brouwlog_koppeling(b: dict, eigen: list, ctx: dict) -> tuple[dict | None, dict | None, str]:
+    """Aan welk product (de naam) en welk webshopartikel (de link) de batch in
+    de brouwlog hangt: (product, artikel, bron). Spiegel: `brouwlogKoppeling`
+    in utils/brouwlog.ts.
+
+    - `brouwlog_artikel` = een artikel-id: dat artikel, gekozen bij de batch;
+      de naam is die van zijn product ("de batch heet als het product").
+    - `brouwlog_artikel` = 'geen': geen link; de naam blijft die van het
+      product waaronder hij verkocht wordt.
+    - anders automatisch: het product waaronder de batch is afgevuld (na een
+      rebrand het nieuwe), daarvoor het product van de batch; als artikel de
+      beste gok: de verpakking waarin het meeste van dat product is afgevuld,
+      anders een fles, anders het eerste artikel in de webshop. Geen artikel in
+      de webshop (een eigen etiket) = geen link."""
+    artikelen = [a for a in ctx['artikelen'] if isinstance(a, dict)]
+    producten = ctx['producten']
+
+    def product_van(pid):
+        if pid is None or isinstance(pid, bool):
+            return None
+        return next((p for p in producten if isinstance(p, dict) and p.get('id') == pid), None)
+
+    # Vóór het afvullen: het product van de batch zelf.
+    verkocht = _brouwlog_verkocht_als(b, eigen, producten) or product_van(b.get('product_id'))
+    keuze = b.get('brouwlog_artikel')
+    if keuze == 'geen':
+        return verkocht, None, 'geen'
+    if isinstance(keuze, (int, float)) and not isinstance(keuze, bool) \
+            and math.isfinite(keuze) and float(keuze).is_integer():
+        art = next((a for a in artikelen if a.get('id') == int(keuze)), None)
+        if art is not None:
+            return product_van(art.get('product_id')) or verkocht, art, 'gekozen'
+
+    if verkocht is None:
+        return None, None, 'auto'
+    kandidaten = [a for a in artikelen if a.get('product_id') == verkocht.get('id') and _brouwlog_in_webshop(a)]
+    if not kandidaten:
+        return verkocht, None, 'auto'
+    # De verpakking waarin het meeste van dit product is afgevuld (stuks).
+    per_vp: dict = {}
+    for a in eigen:
+        if (a.get('product_id') or b.get('product_id')) == verkocht.get('id') and a.get('verpakking_id') not in (None, ''):
+            sleutel = str(a.get('verpakking_id'))
+            per_vp[sleutel] = per_vp.get(sleutel, 0.0) + max(0.0, _afv_aantal(a))
+    vaakst = None
+    for sleutel, stuks in per_vp.items():
+        if stuks > 0 and (vaakst is None or stuks > per_vp[vaakst]):
+            vaakst = sleutel
+    gok = next((a for a in kandidaten if vaakst is not None and str(a.get('verpakking_id')) == vaakst), None) \
+        or next((a for a in kandidaten if _brouwlog_verpakking_soort(a, ctx['verpakkingen']) == 'fles'), None) \
+        or kandidaten[0]
+    return verkocht, gok, 'auto'
 
 
 def _brouwlog_verkocht_als(b: dict, afvullingen: list, producten: list) -> dict | None:
@@ -4798,11 +4858,11 @@ def _brouwlog_batch(b: dict, ctx: dict) -> tuple[dict | None, str | None]:
         return None, 'status'
     bid = b.get('id')
     eigen = [a for a in ctx['afvullingen'] if isinstance(a, dict) and a.get('batch_id') == bid]
-    # De naam waaronder de batch verkocht wordt: na het afvullen die van het
-    # product van de afvullingen (een rebrand: gebrouwen als Rollbok,
-    # verkocht als Bokchain), daarvoor die van de batch zelf.
-    verkocht = _brouwlog_verkocht_als(b, eigen, ctx['producten'])
-    naam = verkocht.get('naam') if verkocht and verkocht.get('naam') else \
+    # De batch heet als het product waaraan hij gekoppeld is (na een rebrand:
+    # gebrouwen als Rollbok, verkocht als Bokchain); nergens aan gekoppeld =
+    # de naam van de batch zelf, zonder link.
+    product, artikel, bron = _brouwlog_koppeling(b, eigen, ctx)
+    naam = product.get('naam') if product and product.get('naam') else \
         _brouwlog_biernaam(b, ctx['producten'], ctx['recepten'])
     bier = _brouwlog_bier(naam, nummer)
     if not bier:
@@ -4845,11 +4905,19 @@ def _brouwlog_batch(b: dict, ctx: dict) -> tuple[dict | None, str | None]:
     notitie = _brouwlog_notitie(b.get('brouwlog_notitie'))
     if notitie:
         uit['notitie'] = notitie
-    # De link gaat naar het product waaronder hij verkocht wordt.
-    product_id = _brouwlog_product_id(verkocht.get('id') if verkocht else b.get('product_id'),
-                                      ctx['artikelen'])
-    if product_id is not None:
-        uit['product_id'] = product_id
+    # De link: het WooCommerce-product en/of de SKU van het gekoppelde
+    # artikel. Geen artikel (of bewust geen link) = `link: false`: de site
+    # zoekt dan ook niet op naam.
+    if artikel is not None and bron != 'geen':
+        wc = artikel.get('wc') if isinstance(artikel.get('wc'), dict) else {}
+        wc_id = _brouwlog_wc_id(artikel) if wc.get('status') in (None, '', 'publish') else None
+        if wc_id is not None:
+            uit['product_id'] = wc_id
+        sku = _brouwlog_sku(artikel)
+        if sku:
+            uit['sku'] = sku
+    if 'product_id' not in uit and 'sku' not in uit:
+        uit['link'] = False
     return uit, None
 
 

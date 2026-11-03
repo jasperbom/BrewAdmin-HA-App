@@ -6,7 +6,8 @@ import de from '../../i18n/de.json'
 import fr from '../../i18n/fr.json'
 import es from '../../i18n/es.json'
 import {
-  BROUWLOG_DEFAULT, brouwlogAangevinkt, brouwlogBatch, brouwlogRebrand, brouwlogVerkochtAls, brouwlogDatum, brouwlogFoutSleutel, brouwlogNotitie,
+  BROUWLOG_DEFAULT, brouwlogAangevinkt, brouwlogArtikelLabel, brouwlogArtikelOpties, brouwlogBatch, brouwlogInWebshop,
+  brouwlogKoppeling, brouwlogRebrand, brouwlogVerkochtAls, brouwlogDatum, brouwlogFoutSleutel, brouwlogNotitie,
   brouwlogNummer, brouwlogRedenSleutel, brouwlogRegel, brouwlogTekens, brouwlogTekst, normaliseerBrouwlogInst, rond,
 } from '../brouwlog'
 import type { BrouwlogBatch } from '../brouwlog'
@@ -41,7 +42,7 @@ describe('brouwlog — het contract (zelfde verwachting als pytest)', () => {
 
 describe('brouwlog — wat er nooit in komt', () => {
   const VELDEN = ['nummer', 'bier', 'status', 'brouwdatum', 'afvuldatum', 'liters', 'flessen', 'abv', 'og', 'fg',
-    'tank', 'notitie', 'product_id']
+    'tank', 'notitie', 'product_id', 'sku', 'link']
 
   it('alleen de velden van het contract', () => {
     for (const b of data.batches) {
@@ -55,7 +56,7 @@ describe('brouwlog — wat er nooit in komt', () => {
       id: 1, batch_nummer: '1', naam: 'X', status: 'Vergisten',
       verwacht_og: 1.06, verwacht_fg: 1.01, verwacht_abv: 6.6,
     }, ctx)
-    expect(uit.ok && uit.batch).toEqual({ nummer: 1, bier: 'X', status: 'vergisten' })
+    expect(uit.ok && uit.batch).toEqual({ nummer: 1, bier: 'X', status: 'vergisten', link: false })
   })
 
   it('interne notities nooit', () => {
@@ -141,6 +142,41 @@ describe('brouwlog — gerebrande batches', () => {
       expect(tabel.brouwlog_rebrand_uitleg, taal).toContain('{gebrouwen}')
       expect(tabel.brouwlog_rebrand_uitleg, taal).toContain('{verkocht}')
     }
+  })
+})
+
+describe('brouwlog — koppeling met het product in de webshop', () => {
+  it('automatisch: het afgevulde product, in de verpakking waarin het meeste ging', () => {
+    const k = brouwlogKoppeling(batch(2), ctx)
+    expect([k.bron, k.product?.naam, k.artikel?.id]).toEqual(['auto', 'Kadeblond', 8])
+  })
+
+  it('gekozen bij de batch: de batch heet als dat product', () => {
+    const k = brouwlogKoppeling(batch(140), ctx)
+    expect([k.bron, k.product?.naam, k.artikel?.artikelnummer]).toEqual(['gekozen', 'Bokchain', 'BCFL033'])
+    expect(brouwlogRebrand(batch(140), ctx)).toEqual({ gebrouwen: 'Tripel A', verkocht: 'Bokchain' })
+  })
+
+  it('bewust geen link, en een eigen etiket dat niet in de webshop staat', () => {
+    expect(brouwlogKoppeling(batch(141), ctx)).toMatchObject({ bron: 'geen', artikel: null })
+    expect(brouwlogKoppeling(batch(142), ctx)).toMatchObject({ bron: 'auto', artikel: null })
+    expect(brouwlogKoppeling(batch(142), ctx).product?.naam).toBe('Eigen etiket Bakkerij')
+  })
+
+  it('wat in de webshop staat', () => {
+    expect(brouwlogInWebshop({ wc: { wc_id: 5 } })).toBe(true)
+    expect(brouwlogInWebshop({ artikelnummer: 'X1' })).toBe(true)
+    expect(brouwlogInWebshop({ artikelnummer: 'X1', wc_push: false })).toBe(false)
+    expect(brouwlogInWebshop({ wc: { wc_id: 5, status: 'draft' } })).toBe(false)
+    expect(brouwlogInWebshop({})).toBe(false)
+  })
+
+  it('de keuzelijst: per product op naam, alleen artikelen in de webshop', () => {
+    const opties = brouwlogArtikelOpties(ctx)
+    expect(opties.map(o => o.product.naam)).toEqual(['Bokchain', 'Kadeblond', 'Tripel A'])
+    expect(opties.find(o => o.product.naam === 'Kadeblond')?.artikelen.map(a => a.id)).toEqual([3, 4, 8])
+    expect(brouwlogArtikelLabel(data.product_artikelen.find(a => a.id === 8))).toBe('Fles 33cL · KBFL033')
+    expect(brouwlogArtikelLabel({ wc: { wc_id: 50 } })).toBe('#50')
   })
 })
 

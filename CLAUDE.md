@@ -1470,7 +1470,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 |-----|------|--------|
 | `ingredienten` | array | Ingrediënten. `allergenen` (ontbrekend = niet beoordeeld, `[]` = geen) met `allergenen_bron` (`regel`/`claude`/`handmatig`), `allergenen_toelichting` en `allergenen_model` (bij `claude`) — gezet door *Allergenen opzoeken* of de matrix (`handmatigBeoordeeld`) |
 | `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
-| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). Brewfather: `brewfather_id`/`brewfather_batch_nummer`, `bf_verweesd` (datum waarop Brewfather de batch niet meer kende); bij lezen `bf_stand` (per veld de laatst overgenomen waarde, een schema als hash) en `bf_verschil` (waarden waarin Brewfather afwijkt van een hier aangepaste waarde) — `utils/bfBatchSync.ts`; bij schrijven `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht) en `bf_fout` (`{op, melding}` van de laatste mislukte poging) — `utils/bfTerugschrijven.ts`. Brouwlog: `brouwlog_publiek` (alleen een echte `true` telt: deze batch gaat naar /brouwlog/ van de webshop) en `brouwlog_notitie` (publieke tekst, max 600 tekens — los van `notities`/`batch_notities`, die intern blijven); eigen velden die Brewfather-sync, receptsync en "opnieuw toepassen" niet aanraken |
+| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). Brewfather: `brewfather_id`/`brewfather_batch_nummer`, `bf_verweesd` (datum waarop Brewfather de batch niet meer kende); bij lezen `bf_stand` (per veld de laatst overgenomen waarde, een schema als hash) en `bf_verschil` (waarden waarin Brewfather afwijkt van een hier aangepaste waarde) — `utils/bfBatchSync.ts`; bij schrijven `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht) en `bf_fout` (`{op, melding}` van de laatste mislukte poging) — `utils/bfTerugschrijven.ts`. Brouwlog: `brouwlog_publiek` (alleen een echte `true` telt: deze batch gaat naar /brouwlog/ van de webshop) `brouwlog_notitie` (publieke tekst, max 600 tekens — los van `notities`/`batch_notities`, die intern blijven) en `brouwlog_artikel` (het webshopartikel voor naam en link: een `product_artikelen`-id, `'geen'` = geen link, leeg = automatisch); eigen velden die Brewfather-sync, receptsync en "opnieuw toepassen" niet aanraken |
 | `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
 | `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull en `voorraad_gepusht`/`voorraad_gepusht_op` = de voorraad bij de laatste push — ook op `merch_artikelen` en de oude `artikelen`) |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
@@ -2012,9 +2012,11 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   eigen slot van 10 s (los van de telemetrie). Uitgezet met `op_site` → één
   lege lijst, meteen. Per batch (`_brouwlog_batch`, spiegel `brouwlogBatch` in
   `utils/brouwlog.ts`, contract in `__tests__/brouwlogContract.json`): nummer
-  (geheel getal, anders niet mee), bier (de naam waaronder de batch verkocht
-  wordt: na het afvullen het product van de afvullingen — na een rebrand dus het
-  nieuwe product, `_brouwlog_verkocht_als`; daarvoor `batchTitel`; zonder "#nummer"), status
+  (geheel getal, anders niet mee), bier (de batch heet als het product waaraan
+  hij gekoppeld is, `_brouwlog_koppeling`: het gekozen artikel
+  (`brouwlog_artikel`), anders het product waaronder hij is afgevuld — na een
+  rebrand het nieuwe, `_brouwlog_verkocht_als` —, anders dat van de batch;
+  nergens aan gekoppeld = `batchTitel`; zonder "#nummer"), status
   (Brouwen/Vergisten/Conditioneren/Afgevuld+Gesloten; **Gepland nooit**),
   brouwdatum (`datum`), afvuldatum (eerste afvulling of niet-afgebroken
   afvulsessie), liters (`liter_vergist`, pas na de brouwdag of met een gemeten
@@ -2022,8 +2024,12 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   verpakking `fles`; een afvulling van onbekende soort = niet zuiver = weglaten),
   ABV/OG/FG alleen gemeten of vastgezet (nooit `verwacht_*`, nooit `abv_bron:
   'recept'`), tank (vanaf Vergisten), notitie (`brouwlog_notitie`) en
-  `product_id` (van datzelfde verkochte product; alleen als alle gekoppelde
-  artikelen naar één gepubliceerd WooCommerce-product wijzen). De grenzen van het contract (50 hoogste nummers,
+  de link: `product_id` (WooCommerce-ID) en/of `sku` (artikelnummer) van het
+  gekoppelde artikel — automatisch de verpakking waarin het meeste is afgevuld,
+  anders een fles; alleen artikelen in de webshop (`wc_id`, of een SKU met
+  `wc_push` niet uit; nooit concept/privé) —, anders `link: false` (geen link,
+  de site zoekt dan ook niet op naam). `sku` en `link` gebruikt pas de plugin na
+  1.2.0; 1.2.0 gooit ze weg. De grenzen van het contract (50 hoogste nummers,
   64 kB, tekstlengtes, bereiken, datums 2018…volgend jaar) haalt BrewAdmin zelf,
   inclusief de tekstopschoning van WordPress (`%xx`, tags), zodat het voorbeeld
   is wat er op de site komt. **Nooit** fusten, de taplijst, klanten,
