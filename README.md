@@ -175,4 +175,5 @@ This app was built with Claude AI.
 
 ## Licence
 
-[AGPL-3.0](LICENSE)
+[AGPL-3.0](LICENSE). The name Craftery, the Craftery logo and the house style of
+Craftery Brewing are not covered by this licence; see [TRADEMARKS.md](TRADEMARKS.md).

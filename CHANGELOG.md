@@ -4,6 +4,40 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.35] — 2026-11-03
+
+### Meer mogelijkheden voor een eigen factuurlayout
+
+Een eigen layout (Instellingen → Bedrijf → Factuurlayout) kan nu meer:
+
+- **De stand van de factuur:** `status_klasse` (`open`, `vervallen`, `betaald`,
+  `credit`), de vlaggen `is_open`, `is_vervallen` en `is_credit`, en een label
+  (`status_label`: "te betalen", "vervallen" …). Vervallen = nog open en voorbij
+  de vervaldatum (dezelfde dagrekening als de te-laat-badge), of al in
+  herinnering of aanmaning.
+- **Datums voluit:** `vervaldatum_lang` en `betaald_op_lang` ("17 november
+  2026"), in de taal van de app; `heeft_betaald_op`, en `credit_van` (het
+  gecrediteerde factuurnummer, als dat bekend is).
+- **Gegevens in delen:** het adres van de afnemer apart van e-mail en
+  BTW-nummer (`klant_adres`, `klant_extra`), en van de brouwerij het adres,
+  contact en registratie (`brouwerij_adres`, `brouwerij_contact`,
+  `brouwerij_registratie`) en drie voetregels (`voet_regels`). Ze volgen de
+  schakelaars van de factuurvelden.
+- **Betaallink:** `betaallink` en `betaallink_tekst` naast de QR — alleen een
+  https-link, en nooit op een creditnota.
+- **Paginavoet op elke pagina:** `voet_css` en `factuurnummer_css` zijn veilig
+  binnen een `@page`-regel in de layout (`content: "{{{voet_css}}}"`).
+- **Lettertypes:** noemt de opmaak een lettertype dat de app zelf heeft (Space
+  Grotesk, Jost, IBM Plex Mono), dan gaat dat mee naar het printvenster en de
+  PDF-bijlage. Daardoor tonen ook de standaardfactuur bij het thema Craftery en
+  een eigen layout met die lettertypes nu echt die letters.
+
+De naam Craftery, het logo en de huisstijl van Craftery Brewing vallen niet
+onder de AGPL; dat staat nu in `TRADEMARKS.md` (aanvullende bepaling, artikel
+7(e)) en in de README.
+
+---
+
 ## [1.13.34] — 2026-11-03
 
 ### Brouwlog: per batch het product in de webshop kiezen

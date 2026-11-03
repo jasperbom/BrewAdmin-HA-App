@@ -11,6 +11,9 @@
  *   - Space Grotesk: alle tekst
  *   - Jost: alleen de grote koppen (zoals het logo, in de geest van Futura)
  *   - IBM Plex Mono: codes en nummers (`font-mono`, de "terminal" van de site)
+ *
+ * De naam Craftery, het logo en de huisstijl van Craftery Brewing vallen niet
+ * onder de AGPL (aanvullende bepaling, artikel 7(e)) — zie TRADEMARKS.md.
  */
 @font-face {
   font-family: 'Space Grotesk';
