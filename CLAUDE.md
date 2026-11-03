@@ -856,6 +856,8 @@ tekst, HTML en kop, i18n in vijf talen zonder restanten van serveertips/taplijst
 alleen in de Craftery-stijl, kop, terminalblok op de markering, knop met commandoregel, donkere modus
 en smalle schermen, de smaakmail van begin tot eind met dezelfde platte tekst). In pytest: `TestNaAankoopMails` (rollen van de twee keys,
 `_list_unsubscribe` en de kop in `_build_email`).
+`TestMailAfbeeldingen`: alle ingesloten afbeeldingen (logo, WhatsApp) als broertjes van de HTML in
+één `multipart/related` — nooit een related ín een related, anders toont Apple Mail een vraagteken.
 De Brewfather-koppeling: `bfTerugschrijven.test.ts` (het bericht: status, afronding,
 lege en onzinnige velden gaan niet mee; alleen gekoppelde, niet-verweesde, niet-gesloten
 batches met een nieuw bericht; wachten na een mislukte poging; 404 = verweesd; alleen

@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.13.31] — 2026-11-03
+## [1.13.32] — 2026-11-03
 
 ### Brouwlog: per batch het product in de webshop kiezen
 
@@ -32,7 +32,7 @@ product waaraan hij gekoppeld is.
 
 ---
 
-## [1.13.30] — 2026-11-03
+## [1.13.31] — 2026-11-03
 
 ### Brouwlog: gerebrande batches heten zoals ze verkocht worden
 
@@ -53,6 +53,18 @@ wordt.
   en hetzelfde thema.
 
 ---
+
+## [1.13.30] — 2026-11-03
+
+### WhatsApp-logo in de mail: geen vraagteken meer
+
+Had de brouwerij een logo én stond er een WhatsApp-link in de uitnodiging, dan
+toonde onder meer Apple Mail een vraagteken in plaats van het WhatsApp-logo.
+De server hing elke ingesloten afbeelding opnieuw aan het HTML-deel; bij de
+tweede kwam die daardoor in een extra laag terecht (een `multipart/related` ín
+een `multipart/related`), en daar zoekt een mailprogramma niet. Nu staan het
+logo en het WhatsApp-logo samen naast de HTML in één laag, zoals het hoort.
+Mails met maar één afbeelding waren al goed en blijven gelijk.
 
 ## [1.13.29] — 2026-11-03
 

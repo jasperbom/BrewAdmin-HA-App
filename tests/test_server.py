@@ -7024,3 +7024,51 @@ class TestNaAankoopMails:
         assert srv._build_email(self.CREDS, {**self.PAYLOAD, 'listUnsubscribePost': True}) is None
         assert srv._build_email(self.CREDS, {**self.PAYLOAD, 'listUnsubscribe': https,
                                              'listUnsubscribePost': 'ja'}) is None
+
+
+class TestMailAfbeeldingen:
+    """Ingesloten afbeeldingen (`inlineImages`): het brouwerijlogo en het
+    WhatsApp-logo van de uitnodiging. Ze horen allemaal als broertjes van de
+    HTML in één multipart/related te staan. Stond een tweede afbeelding in een
+    related ín een related, dan vond Apple Mail hem niet (een vraagteken)."""
+
+    CREDS = {'fromEmail': 'info@dekade.nl', 'fromName': 'De Kade'}
+    # Een geldige PNG van 1×1 pixel; de inhoud doet er hier niet toe.
+    PNG = base64.b64encode(
+        b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89'
+        b'\x00\x00\x00\rIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
+    ).decode()
+
+    def _payload(self, cids):
+        return {
+            'to': ['klant@example.com'], 'subject': 'Je bestelling', 'text': 'Hoi',
+            'html': '<p>Hoi</p>' + ''.join(f'<img src="cid:{c}">' for c in cids),
+            'inlineImages': [{'filename': f'{c}.png', 'contentBase64': self.PNG,
+                              'mimeType': 'image/png', 'contentId': c} for c in cids],
+        }
+
+    @staticmethod
+    def _related(msg):
+        return [p for p in msg.walk() if p.get_content_type() == 'multipart/related']
+
+    def test_twee_afbeeldingen_in_een_related_naast_de_html(self):
+        msg, _ = srv._build_email(self.CREDS, self._payload(['brewadmin-logo', 'whatsapp-logo']))
+        related = self._related(msg)
+        assert len(related) == 1, 'geen related in een related'
+        delen = list(related[0].iter_parts())
+        assert [d.get_content_type() for d in delen] == ['text/html', 'image/png', 'image/png']
+        assert [d['Content-ID'] for d in delen[1:]] == ['<brewadmin-logo>', '<whatsapp-logo>']
+        assert all(d.get_content_disposition() == 'inline' for d in delen[1:])
+        # De HTML is het hoofddeel van de related: daar zoekt een mailprogramma de cid's.
+        assert msg.get_body(preferencelist=('html',)) is delen[0]
+
+    def test_een_afbeelding_en_geen_afbeelding(self):
+        msg, _ = srv._build_email(self.CREDS, self._payload(['whatsapp-logo']))
+        delen = list(self._related(msg)[0].iter_parts())
+        assert [d.get_content_type() for d in delen] == ['text/html', 'image/png']
+        msg, _ = srv._build_email(self.CREDS, self._payload([]))
+        assert self._related(msg) == []
+
+    def test_afbeelding_zonder_html_blijft_geweigerd(self):
+        payload = {**self._payload(['whatsapp-logo']), 'html': ''}
+        assert srv._build_email(self.CREDS, payload) is None
