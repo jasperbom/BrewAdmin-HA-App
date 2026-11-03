@@ -5843,10 +5843,10 @@
   "na_aankoop_grondslag_soft_opt_in": "Bestaande klanten (soft opt-in)",
   "na_aankoop_grondslag_toestemming": "Alleen met toestemming",
   "na_aankoop_grondslag_soft_opt_in_uitleg": "Elke webshopklant, behalve wie zich afmeldde of in de checkout bezwaar maakte. Dat mag voor eigen, vergelijkbare producten, als de klant bij het bestellen te horen krijgt dat hij deze mails krijgt en ze makkelijk kan weigeren: zet dat in de checkout van je webshop.",
-  "na_aankoop_grondslag_toestemming_uitleg": "Alleen wie in de checkout het vinkje voor deze mails aanzette.",
+  "na_aankoop_grondslag_toestemming_uitleg": "Alleen bestellingen waarbij de klant in de checkout het vinkje voor deze mails aanzette, ook voor de serveertips. Meldt hij zich af (op de afmeldpagina of via de afmeldlijst), dan stopt alles voor dat adres; pas bij een nieuwe bestelling met het vinkje krijgt hij weer mail.",
   "na_aankoop_vinkje_meta": "Vinkje uit de checkout (order-meta)",
   "na_aankoop_vinkje_meta_uitleg_soft_opt_in": "Optioneel: de sleutel van het vinkje \"geen mails\" in de bestelling (meta_data). Staat het aan, dan krijgt dat adres geen na-aankoopmails meer. Leeg = niet lezen.",
-  "na_aankoop_vinkje_meta_uitleg_toestemming": "De sleutel van het vinkje \"ja, stuur me deze mails\" in de bestelling (meta_data). Alleen adressen met dat vinkje krijgen mail.",
+  "na_aankoop_vinkje_meta_uitleg_toestemming": "De sleutel van het vinkje \"ja, stuur me deze mails\" in de bestelling (meta_data). Alleen bestellingen met dat vinkje krijgen mail. Zet de afmeldpagina het op \"nee\", dan geldt dat als intrekken.",
   "na_aankoop_stap_aan": "Deze mail versturen",
   "na_aankoop_dagen": "Wachttijd (dagen)",
   "na_aankoop_vanaf": "Te tellen vanaf",
@@ -5908,5 +5908,6 @@
   "na_aankoop_reden_te_laat": "te laat, vervallen",
   "na_aankoop_reden_nieuwere_bestelling": "klant bestelde daarna opnieuw",
   "na_aankoop_reden_geen_inhoud": "niets om te sturen",
-  "na_aankoop_reden_rust": "kreeg net al een mail"
+  "na_aankoop_reden_rust": "kreeg net al een mail",
+  "na_aankoop_reden_ingetrokken": "toestemming ingetrokken"
 }

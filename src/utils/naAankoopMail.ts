@@ -365,7 +365,7 @@ export const geleverdOp = (order: any): string =>
 /** Waarom een mail (nog) niet gaat. */
 export type NaAankoopReden =
   | 'uit' | 'stap_uit' | 'geen_webshop' | 'van_voor_inschakelen' | 'geannuleerd' | 'geen_email'
-  | 'afgemeld' | 'bezwaar' | 'geen_toestemming' | 'geen_proef_adres' | 'geen_afmeldlink'
+  | 'afgemeld' | 'bezwaar' | 'geen_toestemming' | 'ingetrokken' | 'geen_proef_adres' | 'geen_afmeldlink'
   | 'in_bevestiging' | 'niet_betaald' | 'niet_geleverd' | 'nog_niet' | 'te_laat'
   | 'nieuwere_bestelling' | 'geen_inhoud' | 'rust'
 
@@ -450,6 +450,24 @@ export function afmeldLink(order: any, ctx: Pick<NaAankoopCtx, 'inst' | 'afmeldA
   return `mailto:${adres}?subject=${encodeURIComponent(onderwerp)}`
 }
 
+/**
+ * Bij `toestemming`: is de toestemming voor deze bestelling ingetrokken? Dat
+ * kan op twee manieren, allebei met een datum:
+ *  - de klant meldde zich af op de site: een bekende bestelling van hetzelfde
+ *    adres ging van ja naar nee (`wc_mail_vinkje: false` met
+ *    `wc_mail_vinkje_op`, gezet door de import);
+ *  - het adres staat op de afmeldlijst (`mail_afmeldingen.datum`).
+ * Een intrekking geldt voor alle bestellingen tot en met die dag; een latere
+ * bestelling waarbij de klant opnieuw het vinkje aanzette, telt weer.
+ */
+function toestemmingIngetrokken(order: any, zelfdeAdres: readonly any[], ctx: NaAankoopCtx): 'afgemeld' | 'ingetrokken' | null {
+  const besteld = dag(order?.datum)
+  const email = normEmail(order?.klant_email)
+  if ((ctx.afmeldingen || []).some(a => normEmail(a?.email) === email && dag(a?.datum) >= besteld)) return 'afgemeld'
+  if (zelfdeAdres.some(b => b?.wc_mail_vinkje === false && dag(b?.wc_mail_vinkje_op) >= besteld)) return 'ingetrokken'
+  return null
+}
+
 /** Waarom deze bestelling (nooit) een mail krijgt — los van de stap. */
 function ordeReden(order: any, ctx: NaAankoopCtx): NaAankoopReden | null {
   const inst = ctx.inst
@@ -460,10 +478,18 @@ function ordeReden(order: any, ctx: NaAankoopCtx): NaAankoopReden | null {
   if (isAfgebroken(order)) return 'geannuleerd'
   const email = normEmail(order?.klant_email)
   if (!isEmailAdres(email)) return 'geen_email'
-  if (isAfgemeld(email, ctx.afmeldingen)) return 'afgemeld'
   const zelfdeAdres = vanAdres(ctx, email)
-  if (inst.grondslag === 'soft_opt_in' && zelfdeAdres.some(b => b?.wc_mail_vinkje === true)) return 'bezwaar'
-  if (inst.grondslag === 'toestemming' && !zelfdeAdres.some(b => b?.wc_mail_vinkje === true)) return 'geen_toestemming'
+  if (inst.grondslag === 'soft_opt_in') {
+    // Wie zich afmeldde of in de checkout bezwaar maakte, krijgt nooit meer iets.
+    if (isAfgemeld(email, ctx.afmeldingen)) return 'afgemeld'
+    if (zelfdeAdres.some(b => b?.wc_mail_vinkje === true)) return 'bezwaar'
+  } else {
+    // Toestemming per bestelling: alleen met het vinkje bij déze bestelling,
+    // en niet als die daarna is ingetrokken.
+    if (order?.wc_mail_vinkje !== true) return 'geen_toestemming'
+    const ingetrokken = toestemmingIngetrokken(order, zelfdeAdres, ctx)
+    if (ingetrokken) return ingetrokken
+  }
   if (inst.modus === 'proef' && !isEmailAdres(inst.proef_adres)) return 'geen_proef_adres'
   if (!afmeldLink(order, ctx)) return 'geen_afmeldlink'
   return null

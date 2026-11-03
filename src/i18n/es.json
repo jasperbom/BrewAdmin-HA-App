@@ -5843,10 +5843,10 @@
   "na_aankoop_grondslag_soft_opt_in": "Clientes existentes (soft opt-in)",
   "na_aankoop_grondslag_toestemming": "Solo con consentimiento",
   "na_aankoop_grondslag_soft_opt_in_uitleg": "Cada cliente de la tienda, salvo quien se dio de baja o se opuso en el pago. Está permitido para productos propios y similares, si el cliente sabe al hacer el pedido que recibirá estos correos y puede rechazarlos fácilmente: indícalo en el pago de tu tienda.",
-  "na_aankoop_grondslag_toestemming_uitleg": "Solo quien marcó la casilla de estos correos en el pago.",
+  "na_aankoop_grondslag_toestemming_uitleg": "Solo los pedidos en los que el cliente marcó la casilla de estos correos en el pago, consejos para servir incluidos. Si se da de baja (en la página de baja o por la lista), todo se detiene para esa dirección; solo un pedido nuevo con la casilla marcada vuelve a traer correos.",
   "na_aankoop_vinkje_meta": "Casilla del pago (meta del pedido)",
   "na_aankoop_vinkje_meta_uitleg_soft_opt_in": "Opcional: la clave de la casilla «sin correos» en el pedido (meta_data). Si está marcada, esa dirección ya no recibe correos tras la compra. Vacío = no se lee.",
-  "na_aankoop_vinkje_meta_uitleg_toestemming": "La clave de la casilla «sí, enviadme estos correos» en el pedido (meta_data). Solo las direcciones con esa casilla reciben correo.",
+  "na_aankoop_vinkje_meta_uitleg_toestemming": "La clave de la casilla «sí, enviadme estos correos» en el pedido (meta_data). Solo los pedidos con esa casilla marcada reciben correo. Si la página de baja la pone en «no», cuenta como retirada del consentimiento.",
   "na_aankoop_stap_aan": "Enviar este correo",
   "na_aankoop_dagen": "Espera (días)",
   "na_aankoop_vanaf": "Contado desde",
@@ -5908,5 +5908,6 @@
   "na_aankoop_reden_te_laat": "demasiado tarde, descartado",
   "na_aankoop_reden_nieuwere_bestelling": "el cliente volvió a pedir",
   "na_aankoop_reden_geen_inhoud": "nada que enviar",
-  "na_aankoop_reden_rust": "acaba de recibir un correo"
+  "na_aankoop_reden_rust": "acaba de recibir un correo",
+  "na_aankoop_reden_ingetrokken": "consentimiento retirado"
 }

@@ -1355,6 +1355,12 @@ export interface Bestelling {
   // ververst). Zo'n order die hier nog openstaat vraagt om aandacht; zonder
   // picks annuleert de import hem zelf (utils/wcOrderImport → wcOrderUpdate).
   wc_status?: string
+  // Het vinkje "mail na je bestelling" uit de checkout (order-meta, sleutel in
+  // `na_aankoop_mails.vinkje_meta`): bezwaar bij soft opt-in, toestemming bij
+  // "alleen met toestemming". `wc_mail_vinkje_op` = de dag waarop het op een
+  // bekende bestelling veranderde (afmelden op de site). utils/naAankoopMail.ts
+  wc_mail_vinkje?: boolean
+  wc_mail_vinkje_op?: string
 }
 
 export interface GistMeting {
