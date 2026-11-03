@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.13.33] — 2026-11-03
+## [1.13.34] — 2026-11-03
 
 ### Brouwlog: per batch het product in de webshop kiezen
 
@@ -26,7 +26,9 @@ product waaraan hij gekoppeld is.
   gaat dan niet meer zelf op naam zoeken.
 - BrewAdmin stuurt per batch het WooCommerce-product en de SKU van het
   gekoppelde artikel mee, of "geen link". De SKU en "geen link" werken met de
-  plugin **Craftery Brouwerij 1.2.1** en het **Craftery-thema 6.9.6**. Met
+  plugin **Craftery Brouwerij 1.2.1** en het **Craftery-thema 6.9.6** (eerst de
+  plugin uploaden, dan het thema). Wijst BrewAdmin een product aan dat niet
+  zichtbaar in de winkel staat, dan komt er geen link in plaats van een gok. Met
   plugin 1.2.0 gebruikt de site alleen het product-ID en zoekt hij anders nog
   op naam, maar dan op de productnaam.
 

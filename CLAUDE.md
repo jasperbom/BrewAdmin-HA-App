@@ -2031,9 +2031,12 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   anders een fles; alleen artikelen in de webshop (`wc_id`, of een SKU met
   `wc_push` niet uit; nooit concept/privé) —, anders `link: false` (geen link,
   de site zoekt dan ook niet op naam). `sku` en `link` vragen plugin Craftery
-  Brouwerij 1.2.1 en thema 6.9.6 (het thema linkt dan: `link: false` → nooit,
-  anders `product_id` → `sku` → pas dan op naam); 1.2.0 gooit ze weg. In het
-  antwoord geeft 1.2.1 per batch ook `sku` en `link` terug. De grenzen van het contract (50 hoogste nummers,
+  Brouwerij 1.2.1 en thema 6.9.6. Het thema linkt dan: bij `link: false` nooit;
+  anders via `product_id`, dan via `sku` (variatie → hoofdproduct), alleen naar
+  een gepubliceerd, zichtbaar product. Wijst BrewAdmin een product aan dat niet
+  zichtbaar is, dan geen link; op naam zoeken alleen zonder `product_id` én
+  `sku`. 1.2.0 gooit beide weg. In het antwoord geeft 1.2.1 per batch altijd
+  `sku` ("" als hij ontbreekt) en `link` terug. De grenzen van het contract (50 hoogste nummers,
   64 kB, tekstlengtes, bereiken, datums 2018…volgend jaar) haalt BrewAdmin zelf,
   inclusief de tekstopschoning van WordPress (`%xx`, tags), zodat het voorbeeld
   is wat er op de site komt. **Nooit** fusten, de taplijst, klanten,
