@@ -5735,6 +5735,9 @@
   "settings_mail_auto_afgerond": "When the order is completed, with the packing slip attached.",
   "settings_mail_auto_geannuleerd": "When the order is cancelled.",
   "settings_mail_auto_volgt_factuur": "Automatic sending follows the setting of the invoice email.",
+  "settings_mail_auto_wachttijd": "During the webshop import, once per order: when the customer still has not chosen a pickup time after the number of days below. Only for orders that come in after you turn this on; older ones are under the No pickup time chip and you email those by hand.",
+  "settings_mail_afhaal_herinnering_dagen": "Remind after",
+  "settings_mail_afhaal_herinnering_dagen_hint": "days without a pickup time (1 to 60, empty = {n}). After that the order also asks for attention on Sales.",
   "settings_mail_auto_handmatig": "Manual only: there is no action, the pickup time simply passes.",
   "settings_mail_auto_geen_smtp": "No email server (SMTP) has been set up yet; without one nothing is sent automatically.",
   "order_afrond_auto_factuur": "The invoice will be emailed automatically to {email}",
@@ -5975,5 +5978,16 @@
   "factuur_stand_credit": "credit note",
   "settings_pakbon_template_title": "Packing slip layout",
   "settings_pakbon_template_desc": "The layout of the packing slip as a template, also for the packing slips printed with the pick list. Empty = the built-in default layout. If your own template contains an error, the app falls back to the default. Keep the CSS under a class of its own, otherwise the pick list changes too.",
-  "undo_pakbon_template_verwijderd": "Custom packing slip layout removed"
+  "undo_pakbon_template_verwijderd": "Custom packing slip layout removed",
+  "mail_afhaal_herinnering_subject_default": "Your order {nr} is ready for collection – {brouwerij}",
+  "mail_afhaal_herinnering_body_default": "Dear {naam},\n\nYour order is ready for collection, but you haven't chosen a time to come by yet.\n\nOrder number: {nr}\n\nYou ordered:\n{regels}\n\n{afhaalregel}\n\nQuestions or want to change something? Just reply to this email.\n\nKind regards,\n{brouwerij}",
+  "mail_afhaal_herinnering_kies": "Use the button below to choose when you'll come by{locatie} and we'll have it ready for you.",
+  "mail_afhaal_herinnering_contact": "Let us know when you would like to come by{locatie} and we'll have it ready for you.",
+  "settings_mail_template_afhaal_herinnering": "Pickup reminder (no pickup time chosen yet)",
+  "settings_mail_vars_afhaal_herinnering": "Variables: {naam}, {nr}, {regels}, {afhaalregel} (invitation to choose a time; the button is added below the email automatically), {afhaallink}, {afhaallocatie}, {dagen} (days since the order), {besteldatum}, {brouwerij}",
+  "mail_modal_title_afhaal_herinnering": "Email pickup reminder",
+  "order_mail_afhaal_herinnering": "Email pickup reminder",
+  "orders_afhaal_herinnering_op": "Pickup reminder sent on {datum}",
+  "orders_filter_geen_afhaalmoment": "No pickup time",
+  "attentie_afhaal_herinnering": "Pickup orders without a pickup time"
 }

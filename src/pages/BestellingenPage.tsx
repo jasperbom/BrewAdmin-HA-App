@@ -34,7 +34,7 @@ import { htmlToPdfBase64 } from '../utils/pdf'
 import { qrDataUrl } from '../utils/qr'
 import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding } from '../utils/wcOrderImport'
 import { wcTerugschrijfPlan, wcSyncVelden, WcSyncDoel } from '../utils/wcTerugschrijven'
-import { afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, MailKnop } from '../utils/levering'
+import { afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, wachtOpAfhaalmoment, MailKnop } from '../utils/levering'
 import {
   bouwOrderMail, bouwFactuurMail, mailAutoAan, autoMailReden, naMailVerstuurd, mailAuditTekst,
 } from '../utils/orderMail'
@@ -1932,6 +1932,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     brouwerij: (breweryDetails as any)?.naam || appName || '',
     storeUrl: wcCreds?.storeUrl || '',
     bestelUrlSjabloon: wcCreds?.bestelUrl,
+    vandaag: tod(),
   }
   const mailAfzender = {brewery: breweryDetails as any, logoDataUri: factuurLogo || logo, replyTo: (breweryDetails as any)?.email}
   const metKlantkaart = (order: any): any => resolveKlantSnapshot(order, klanten) || order
@@ -2051,6 +2052,14 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   const mailOrderAfhaalGemist = () => {
     if (!selectedOrder) return
     openMailVenster(t('mail_modal_title_afhaal_gemist'), bouwOrderMail('afhaal_gemist', metKlantkaart(selectedOrder), mailCtx))
+  }
+
+  // Afhaalherinnering: de afhaalklant koos nog geen moment. De mail heeft
+  // onderaan dezelfde knop "Kies je afhaalmoment" als de bestelbevestiging;
+  // het gekozen moment komt bij de volgende WooCommerce-import vanzelf mee.
+  const mailOrderAfhaalHerinnering = () => {
+    if (!selectedOrder) return
+    openMailVenster(t('mail_modal_title_afhaal_herinnering'), bouwOrderMail('afhaal_herinnering', metKlantkaart(selectedOrder), mailCtx))
   }
 
   // Annulering: direct na het annuleren of later opnieuw vanaf de orderknoppen.
@@ -2225,6 +2234,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     if ((status === 'verzonden' || status === 'afgerond') && selectedOrder.wc_levering !== 'afhalen') {
       acties.push(mailActie('mail_verzending', t('order_mail_verzending'), () => mailOrderVerzending()))
     }
+    // Afhaalklant koos nog geen moment: de afhaalherinnering met de kies-knop.
+    if (wachtOpAfhaalmoment(selectedOrder)) {
+      acties.push(mailActie('mail_afhaal_herinnering', t('order_mail_afhaal_herinnering'), mailOrderAfhaalHerinnering))
+    }
     // Afhaalklant niet komen opdagen: mail met de link om een nieuw moment te
     // kiezen. Alleen zolang het gekozen moment voorbij is en de order openstaat.
     if (afhaalmomentVerstreken(selectedOrder)) {
@@ -2324,6 +2337,9 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     </div>
                   )
                 })()}
+                {afhalen && selectedOrder.mails_verstuurd?.afhaal_herinnering && (
+                  <div className="text-xs text-gray-600">{t('orders_afhaal_herinnering_op').replace('{datum}', fmtD(selectedOrder.mails_verstuurd.afhaal_herinnering))}</div>
+                )}
                 {afhalen && selectedOrder.afhaal_gemist_datum && (
                   <div className="text-xs text-red-700">{t('orders_afhaal_gemist_op').replace('{datum}', fmtD(selectedOrder.afhaal_gemist_datum))}</div>
                 )}

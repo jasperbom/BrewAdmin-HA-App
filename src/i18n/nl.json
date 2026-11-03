@@ -5735,6 +5735,9 @@
   "settings_mail_auto_afgerond": "Bij het afronden van de bestelling, met de pakbon als bijlage.",
   "settings_mail_auto_geannuleerd": "Bij het annuleren van de bestelling.",
   "settings_mail_auto_volgt_factuur": "Automatisch versturen volgt de instelling bij de factuur-mail.",
+  "settings_mail_auto_wachttijd": "Bij de webshopimport, één keer per bestelling: als de klant na het aantal dagen hieronder nog geen afhaalmoment koos. Alleen voor bestellingen die binnenkomen nadat je dit aanzet; oudere vind je onder de chip Geen afhaalmoment en mail je met de hand.",
+  "settings_mail_afhaal_herinnering_dagen": "Herinneren na",
+  "settings_mail_afhaal_herinnering_dagen_hint": "dagen zonder afhaalmoment (1 tot 60, leeg = {n}). Daarna vraagt de bestelling ook om aandacht op Verkoop.",
   "settings_mail_auto_handmatig": "Alleen met de hand: er is geen handeling, het afhaalmoment verstrijkt vanzelf.",
   "settings_mail_auto_geen_smtp": "Er is nog geen e-mailserver (SMTP) ingesteld; zonder gaat er niets automatisch de deur uit.",
   "order_afrond_auto_factuur": "De factuur wordt automatisch gemaild naar {email}",
@@ -5975,5 +5978,16 @@
   "factuur_stand_credit": "creditnota",
   "settings_pakbon_template_title": "Pakbonlayout",
   "settings_pakbon_template_desc": "De layout van de pakbon als template, ook voor de pakbonnen die met de picklijst meegaan. Leeg = de ingebouwde standaardlayout. Bij een fout in je eigen template valt de app terug op de standaard. Houd de CSS onder een eigen klasse, anders verandert de picklijst mee.",
-  "undo_pakbon_template_verwijderd": "Eigen pakbonlayout verwijderd"
+  "undo_pakbon_template_verwijderd": "Eigen pakbonlayout verwijderd",
+  "mail_afhaal_herinnering_subject_default": "Je bestelling {nr} staat klaar om op te halen – {brouwerij}",
+  "mail_afhaal_herinnering_body_default": "Beste {naam},\n\nJe bestelling staat klaar om op te halen, maar je hebt nog geen moment gekozen waarop je langskomt.\n\nBestelnummer: {nr}\n\nDit heb je besteld:\n{regels}\n\n{afhaalregel}\n\nVragen of wil je iets aanpassen? Beantwoord gewoon deze mail.\n\nMet vriendelijke groet,\n{brouwerij}",
+  "mail_afhaal_herinnering_kies": "Kies via de knop hieronder wanneer je langskomt{locatie}, dan zetten we het voor je klaar.",
+  "mail_afhaal_herinnering_contact": "Laat ons even weten wanneer je langs wilt komen{locatie}, dan zetten we het voor je klaar.",
+  "settings_mail_template_afhaal_herinnering": "Afhaalherinnering (nog geen afhaalmoment gekozen)",
+  "settings_mail_vars_afhaal_herinnering": "Variabelen: {naam}, {nr}, {regels}, {afhaalregel} (uitnodiging om een moment te kiezen; de knop komt automatisch onder de mail), {afhaallink}, {afhaallocatie}, {dagen} (dagen sinds de bestelling), {besteldatum}, {brouwerij}",
+  "mail_modal_title_afhaal_herinnering": "Afhaalherinnering sturen",
+  "order_mail_afhaal_herinnering": "Mail afhaalherinnering",
+  "orders_afhaal_herinnering_op": "Afhaalherinnering gemaild op {datum}",
+  "orders_filter_geen_afhaalmoment": "Geen afhaalmoment",
+  "attentie_afhaal_herinnering": "Afhaalbestellingen zonder afhaalmoment"
 }

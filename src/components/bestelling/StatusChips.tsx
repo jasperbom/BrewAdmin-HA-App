@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { t } from '../../i18n'
-import { STATUS_FILTERS, type StatusFilter } from '../../utils/bestelling'
+import { STATUS_FILTERS, STATUS_FILTERS_ALLEEN_MET_INHOUD, type StatusFilter } from '../../utils/bestelling'
 
 interface StatusChipsProps {
   waarde: StatusFilter
@@ -26,6 +26,8 @@ const StatusChips: React.FC<StatusChipsProps> = ({ waarde, tellingen, onKies }) 
       {STATUS_FILTERS.map(s => {
         const aan = s === waarde
         const n = tellingen[s] || 0
+        // "Geen afhaalmoment" alleen als er zo'n bestelling is (of hij gekozen is).
+        if (!aan && n === 0 && STATUS_FILTERS_ALLEEN_MET_INHOUD.includes(s)) return null
         return (
           <button
             key={s}

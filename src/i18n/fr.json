@@ -5735,6 +5735,9 @@
   "settings_mail_auto_afgerond": "À la clôture de la commande, avec le bon de livraison en pièce jointe.",
   "settings_mail_auto_geannuleerd": "À l'annulation de la commande.",
   "settings_mail_auto_volgt_factuur": "L'envoi automatique suit le paramètre de l'e-mail de facture.",
+  "settings_mail_auto_wachttijd": "Lors de l'import de la boutique, une fois par commande : si le client n'a toujours pas choisi de créneau de retrait après le nombre de jours ci-dessous. Uniquement pour les commandes reçues après l'activation ; les plus anciennes se trouvent sous le filtre Sans créneau et s'envoient à la main.",
+  "settings_mail_afhaal_herinnering_dagen": "Rappeler après",
+  "settings_mail_afhaal_herinnering_dagen_hint": "jours sans créneau de retrait (1 à 60, vide = {n}). Ensuite, la commande est aussi signalée dans Ventes.",
   "settings_mail_auto_handmatig": "Manuel uniquement : il n'y a pas d'action, le créneau de retrait passe de lui-même.",
   "settings_mail_auto_geen_smtp": "Aucun serveur e-mail (SMTP) n'est encore configuré ; sans lui, rien n'est envoyé automatiquement.",
   "order_afrond_auto_factuur": "La facture sera envoyée automatiquement à {email}",
@@ -5975,5 +5978,16 @@
   "factuur_stand_credit": "avoir",
   "settings_pakbon_template_title": "Mise en page du bon de livraison",
   "settings_pakbon_template_desc": "La mise en page du bon de livraison comme modèle, aussi pour les bons imprimés avec la liste de préparation. Vide = la mise en page par défaut. En cas d'erreur dans ton modèle, l'application revient à la mise en page par défaut. Garde le CSS sous une classe à part, sinon la liste de préparation change aussi.",
-  "undo_pakbon_template_verwijderd": "Mise en page personnalisée du bon supprimée"
+  "undo_pakbon_template_verwijderd": "Mise en page personnalisée du bon supprimée",
+  "mail_afhaal_herinnering_subject_default": "Votre commande {nr} est prête à être retirée – {brouwerij}",
+  "mail_afhaal_herinnering_body_default": "Bonjour {naam},\n\nVotre commande est prête à être retirée, mais vous n'avez pas encore choisi quand vous passez.\n\nNuméro de commande : {nr}\n\nVotre commande :\n{regels}\n\n{afhaalregel}\n\nDes questions ou envie de modifier quelque chose ? Répondez simplement à cet e-mail.\n\nCordialement,\n{brouwerij}",
+  "mail_afhaal_herinnering_kies": "Choisissez via le bouton ci-dessous quand vous passez{locatie}, et nous la préparerons pour vous.",
+  "mail_afhaal_herinnering_contact": "Dites-nous quand vous souhaitez passer{locatie}, et nous la préparerons pour vous.",
+  "settings_mail_template_afhaal_herinnering": "Rappel de retrait (aucun créneau choisi)",
+  "settings_mail_vars_afhaal_herinnering": "Variables : {naam}, {nr}, {regels}, {afhaalregel} (invitation à choisir un créneau ; le bouton est ajouté automatiquement sous l'e-mail), {afhaallink}, {afhaallocatie}, {dagen} (jours depuis la commande), {besteldatum}, {brouwerij}",
+  "mail_modal_title_afhaal_herinnering": "Envoyer le rappel de retrait",
+  "order_mail_afhaal_herinnering": "Envoyer rappel de retrait",
+  "orders_afhaal_herinnering_op": "Rappel de retrait envoyé le {datum}",
+  "orders_filter_geen_afhaalmoment": "Sans créneau",
+  "attentie_afhaal_herinnering": "Commandes à retirer sans créneau"
 }
