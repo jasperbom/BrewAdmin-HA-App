@@ -4,6 +4,55 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.23] — 2026-11-03
+
+### Mails na een webshopbestelling (standaard uit)
+
+Nieuw onder Instellingen → E-mailtemplates: drie mails die een webshopklant
+vanzelf krijgt, elk apart aan of uit, met een eigen wachttijd en een eigen
+tekst (leeg = de standaardtekst, in vijf talen).
+
+| Mail | Wanneer (standaard) | Inhoud |
+|---|---|---|
+| Serveertips | direct na de betaalde bestelling | de serveertip van elk bier in de bestelling |
+| Hoe smaakte het? | 10 dagen na afhalen of verzenden | per bier de Untappd-link; na afhalen een reviewlink |
+| Nu op de taplijst | 30 dagen na de laatste bestelling | de actieve bieren met verkoopbare voorraad + knop naar de webshop |
+
+- **Drie standen.** *Uit* (standaard) verstuurt niets. *Proef* stuurt elke
+  mail naar je eigen proefadres, met [Proef] in het onderwerp en bovenaan
+  naar wie hij anders zou gaan. *Aan* stuurt naar de klant. Alleen
+  bestellingen van ná het aanzetten tellen mee: aanzetten stuurt nooit een
+  achterstand de deur uit, ook niet bij de wissel van proef naar aan.
+- **Wie krijgt ze?** *Bestaande klanten (soft opt-in)*: elke webshopklant,
+  behalve wie zich afmeldde of in de checkout bezwaar maakte. *Alleen met
+  toestemming*: alleen wie in de checkout een vinkje zette. Het vinkje leest
+  de import als order-meta (sleutel instelbaar, standaard niet gelezen) en
+  staat als `wc_mail_vinkje` op de bestelling.
+- **Afmelden in elke mail.** Onderaan een afmeldregel (in de HTML klein in de
+  voet, in de platte tekst als laatste regel) en als `List-Unsubscribe`-kop,
+  zodat het mailprogramma een afmeldknop toont. Standaard opent die een mail
+  met "Afmelden" naar het adres van de brouwerij; een eigen afmeldpagina met
+  `{winkel}`, `{id}` en `{sleutel}` kan ook. Zonder afmeldlink gaat er niets.
+  Afgemelde adressen staan in een eigen lijst (`mail_afmeldingen`), die elke
+  schrijvende rol mag bijwerken.
+- **Nooit te veel.** Elke mail één keer per bestelling (`mails_verstuurd`),
+  één mail per adres per ronde, twee dagen rust tussen twee mails aan
+  hetzelfde adres, hooguit tien per ronde, de taplijst niet als de klant
+  intussen opnieuw bestelde, en een mail die meer dan twee weken te laat zou
+  komen vervalt.
+- **Droge run.** Het blok laat per recente webshopbestelling zien wat elke
+  mail doet (verstuurd, aan de beurt, gepland op, of waarom niet) — in de
+  stand Uit alsof de mails de afgelopen 60 dagen aan stonden. Per mail een
+  voorbeeld, dat je naar je proefadres kunt sturen; de klant krijgt hem niet.
+- **Serveertips in de bestelbevestiging.** De bestelbevestiging kent nu ook
+  `{serveertips}`. Zet je die in je eigen sjabloon, dan gaat de losse
+  serveertipsmail niet (anders kreeg de klant de tips twee keer).
+- **Hoe het verstuurt.** Net als de automatische bevestiging verstuurt de app
+  de mails zelf, na de automatische webshopimport, zolang BrewAdmin ergens
+  open staat; binnen de importlease, dus nooit twee tabbladen tegelijk.
+
+---
+
 ## [1.13.22] — 2026-11-01
 
 ### Brewfather: per onderdeel uit, lezen of schrijven

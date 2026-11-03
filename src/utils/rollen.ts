@@ -70,6 +70,7 @@ export const BEHEER_KEYS: readonly string[] = [
   'website_telemetrie', 'website_telemetrie_status',
   'inkoop_inbox_status',
   'ruimteklimaat_status',
+  'na_aankoop_mails',
 ]
 
 export const FINANCIELE_KEYS: readonly string[] = [

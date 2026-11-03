@@ -754,6 +754,26 @@ def _valid_recipient_list(recipients) -> list[str] | None:
     return cleaned
 
 
+_LIST_UNSUB_MAILTO_RE = re.compile(r'^mailto:[^@?\s]+@[^@?\s]+\.[^@?\s]+(\?.*)?$', re.IGNORECASE)
+_LIST_UNSUB_HTTPS_RE  = re.compile(r'^https://[^/\s]+\.[^/\s]+', re.IGNORECASE)
+
+
+def _list_unsubscribe(waarde) -> str | None:
+    """De `List-Unsubscribe`-kop (RFC 2369) voor een afmeldlink: alleen
+    `mailto:` met een adres of `https:`, hooguit 500 tekens, zonder spaties,
+    hoekhaken, aanhalingstekens of stuurtekens — anders kan er een tweede kop
+    in de mail komen. Spiegel van `afmeldUrl` in utils/mailVerzenden.ts.
+    Geeft de kopwaarde (`<url>`) of None als de link niet deugt."""
+    if not isinstance(waarde, str):
+        return None
+    url = waarde.strip()
+    if not url or len(url) > 500 or re.search(r'[\s<>"\x00-\x1f\x7f]', url):
+        return None
+    if not (_LIST_UNSUB_MAILTO_RE.match(url) or _LIST_UNSUB_HTTPS_RE.match(url)):
+        return None
+    return f'<{url}>'
+
+
 def _build_email(creds: dict, payload: dict) -> tuple[email.message.EmailMessage, list[str]] | None:
     """Bouw een EmailMessage uit de request-payload. Returns (msg, recipients)
     of None bij invalide input."""
@@ -793,6 +813,14 @@ def _build_email(creds: dict, payload: dict) -> tuple[email.message.EmailMessage
         if not MAIL_EMAIL_RE.match(reply_to):
             return None
         msg['Reply-To'] = reply_to
+
+    # Afmeldlink als kop (na-aankoopmails): het mailprogramma toont dan een
+    # afmeldknop. Wie hem meestuurt maar een ongeldige waarde geeft, krijgt 400.
+    if payload.get('listUnsubscribe') is not None:
+        kop = _list_unsubscribe(payload.get('listUnsubscribe'))
+        if kop is None:
+            return None
+        msg['List-Unsubscribe'] = kop
 
     msg.set_content(text_body or ' ')
     if html_body:
@@ -2080,6 +2108,7 @@ _KEY_TYPES = {
         'locaties', 'verplaatsingen', 'btw_tarieven', 'tank_alarmen',
         'tank_setpoints',
         'ing_types', 'kosten_soorten', 'gn_codes',
+        'mail_afmeldingen',
     )},
     # objecten (instellingen/koppeltabellen)
     **{k: 'object' for k in (
@@ -2087,7 +2116,7 @@ _KEY_TYPES = {
         'brewery_details', 'mail_templates', 'factuur_counter',
         'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
         'wc_import_status', 'website_telemetrie', 'website_telemetrie_status',
-        'inkoop_inbox_status', 'ruimteklimaat_status',
+        'inkoop_inbox_status', 'ruimteklimaat_status', 'na_aankoop_mails',
         'coldcrash_instellingen', 'planning_instellingen',
         'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
         'haccp_instellingen',
@@ -3100,6 +3129,10 @@ _BEHEER_KEYS = frozenset((
     'inkoop_inbox_status',
     # Of de app de airco voor de tanks aanzette: alleen de server schrijft hem.
     'ruimteklimaat_status',
+    # Na-aankoopmails aan klanten (stand, wachttijden, links): alleen beheer.
+    # De afmeldlijst (`mail_afmeldingen`) is bewust géén beheer-key: wie
+    # bestellingen afhandelt, moet een afmelding meteen kunnen vastleggen.
+    'na_aankoop_mails',
 ))
 
 # Financiële vastlegging: alleen `boekhouding` (en `beheer`).

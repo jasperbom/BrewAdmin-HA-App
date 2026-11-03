@@ -52,6 +52,10 @@ export interface MailOpdracht {
    *  uitgezet in het mailvenster). Anders gaat hij mee zodra er een link is
    *  ingesteld (`brewery.mail_uitnodiging`, utils/mailUitnodiging.ts). */
   uitnodiging?: boolean
+  /** Afmeldregel onderaan (na-aankoopmails, utils/naAankoopMail.ts): klein in de
+   *  voet van de HTML, als laatste regel in de platte tekst, en als
+   *  `List-Unsubscribe`-kop zodat het mailprogramma een afmeldknop toont. */
+  afmelden?: {tekst: string, label: string, url: string} | null
 }
 
 export interface MailAfzender {
@@ -90,6 +94,18 @@ export function whatsappAlsInline(u: MailUitnodiging | null | undefined): MailIn
   return u?.whatsapp ? dataUriToInlineImage(WHATSAPP_LOGO_PNG, WHATSAPP_CID, 'whatsapp.png') : null
 }
 
+/**
+ * Een bruikbare afmeldlink: `mailto:` met een adres, of `https:`. Geen spaties,
+ * geen hoekhaken of stuurtekens — hij gaat ook als kop mee (de server keurt
+ * dezelfde vorm, `_list_unsubscribe` in server.py).
+ */
+export const afmeldUrl = (url: unknown): string => {
+  const s = String(url ?? '').trim()
+  if (!s || s.length > 500 || /[\s<>"\x00-\x1f\x7f]/.test(s)) return ''
+  if (/^mailto:[^@?\s]+@[^@?\s]+\.[^@?\s]+(\?.*)?$/i.test(s)) return s
+  return /^https:\/\/[^/\s]+\.[^/\s]+/i.test(s) ? s : ''
+}
+
 /** Een lijst ontvangers uit "a@x.nl, b@y.nl; c@z.nl". */
 export const ontvangers = (to: string): string[] =>
   String(to || '').split(/[,;]/).map(s => s.trim()).filter(Boolean)
@@ -121,16 +137,19 @@ export async function verzendMail(m: MailOpdracht, afzender: MailAfzender): Prom
   const knoppen = m.linkButtons || []
   const uitnodiging = m.uitnodiging === false ? null : mailUitnodiging(afzender.brewery)
   const waLogo = whatsappAlsInline(uitnodiging)
+  const afmelden = m.afmelden && afmeldUrl(m.afmelden.url) ? m.afmelden : null
   const text = m.text
     + knoppen.map(k => `\n\n${k.textLine}\n${k.url}`).join('')
     + (payUrl ? `\n\n${t('mollie_pay_line')}\n${payUrl}` : '')
     + (uitnodiging ? uitnodigingTekst(uitnodiging) : '')
+    + (afmelden ? `\n\n--\n${afmelden.tekst}\n${afmelden.label}: ${afmelden.url}` : '')
   const html = buildMailHtml(m.text, afzender.brewery || {}, {
     logoCid: logo ? LOGO_CID : undefined,
     linkButtons: knoppen.length ? knoppen : undefined,
     payButton: payUrl ? {url: payUrl, label: t('mollie_pay_button')} : undefined,
     uitnodiging,
     whatsappCid: waLogo ? WHATSAPP_CID : undefined,
+    afmelden: afmelden || undefined,
   })
   let attachments = m.attachments
   if (payUrl && m.regenerateAttachments) {
@@ -148,6 +167,7 @@ export async function verzendMail(m: MailOpdracht, afzender: MailAfzender): Prom
       replyTo: afzender.replyTo,
       attachments,
       inlineImages: logo || waLogo ? [logo, waLogo].filter((b): b is MailInlineImage => !!b) : undefined,
+      ...(afmelden ? {listUnsubscribe: afmelden.url} : {}),
     })
   } catch (e: any) {
     throw new MailFout('verzenden', String(e?.message || ''))

@@ -499,7 +499,19 @@ BrewAdmin-HA-App/
 │   │   │                   # factuur): `autoMailReden` (nooit twee keer — `mails_verstuurd` op de order —,
 │   │   │                   # bevestiging alleen voor bestellingen van na `auto_sinds`), `naMailVerstuurd`
 │   │   ├── mailVerzenden.ts # Eén mail de deur uit (`verzendMail`: Mollie-link, HTML met logo en knoppen,
-│   │   │                   # platte tekst, bijlagen, `MailFout`) — gedeeld door MailModal en de automaat
+│   │   │                   # platte tekst, bijlagen, `MailFout`) — gedeeld door MailModal en de automaat;
+│   │   │                   # `afmelden` = afmeldregel in de voet + `List-Unsubscribe`-kop (`afmeldUrl`:
+│   │   │                   # alleen mailto/https, spiegel van `_list_unsubscribe` in server.py)
+│   │   ├── naAankoopMail.ts # Mails ná een webshopbestelling (standaard uit, `na_aankoop_mails`):
+│   │   │                   # serveertips (`producten[].serveertip`), "hoe smaakte het?" (Untappd per bier,
+│   │   │                   # na afhalen een reviewlink) en de taplijst (`taplijst` uit `verkoopOverzicht`).
+│   │   │                   # Modus uit/proef/aan (`zetNaAankoopModus`: `sinds` = het moment van wisselen,
+│   │   │                   # nooit een achterstand), grondslag soft opt-in/toestemming met het vinkje uit
+│   │   │                   # de checkout (`wcMailVinkje` → `wc_mail_vinkje`), afmeldlijst
+│   │   │                   # (`mail_afmeldingen`), `naAankoopStand` per bestelling en stap,
+│   │   │                   # `naAankoopPlan` (één per adres, rust, maximum), `bouwNaAankoopMail`,
+│   │   │                   # `naAankoopOverzicht` (droge run). Versturen: App.tsx `verstuurNaAankoopMails`
+│   │   │                   # na de webshopimport, binnen de lease. UI: components/NaAankoopMailInstellingen.tsx
 │   │   ├── mailUitnodiging.ts # De uitnodiging in de voet van elke klantmail (WhatsApp-groep, nieuwsbrief) als
 │   │   │                   # "Wist je dat?" met een knop: `brewery_details.mail_uitnodiging` = `{kop, tekst, knop,
 │   │   │                   # url}`, leeg = i18n-standaard (een WhatsApp-link — `isWhatsAppLink`, op de hostnaam —
@@ -817,6 +829,12 @@ op het oude gedrag), `receptGebruik.ts`/`receptLijst.ts`, `verkoopOverzicht.ts`
 `batchesLijst.ts`/`batchAgenda.ts`, `productPagina.ts`, `bestelling.ts`,
 `kassaCatalogus.ts` en de routes (`route.ts`: aliassen, recordId, historie).
 Testdata van de demo-brouwerij uit het opzet: `__tests__/demoBrouwerij.ts`.
+De na-aankoopmails: `naAankoopMail.test.ts` (standaard uit, modus en `sinds`, afmeldlijst, het
+vinkje uit de checkout in de import, bieren en taplijst van een bestelling, een testbestelling die
+alle drie de mails doorloopt met de juiste namen en links, wie níéts krijgt, rust/één per adres/
+maximum, de proefstand, de droge run, `{serveertips}` in de bevestiging, de afmeldlink in tekst,
+HTML en kop, i18n in vijf talen). In pytest: `TestNaAankoopMails` (rollen van de twee keys,
+`_list_unsubscribe` en de kop in `_build_email`).
 De Brewfather-koppeling: `bfTerugschrijven.test.ts` (het bericht: status, afronding,
 lege en onzinnige velden gaan niet mee; alleen gekoppelde, niet-verweesde, niet-gesloten
 batches met een nieuw bericht; wachten na een mislukte poging; 404 = verweesd; alleen
@@ -1462,7 +1480,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `scan_correcties` | array | Het scangeheugen (`utils/scanGeheugen.ts`): `{tekst, soort, leverancier?, artikelcode?, naam?, kostensoort?, eenheid?}`, de nieuwste 500. Bij elk opslaan van een gescande factuur geleerd (per leverancier + artikelnummer, anders omschrijving); de oude `{tekst, soort}` blijft gelden als algemene correctie. Gaat vóór de indeling van het model |
 | `inkoop_inbox` | array | Facturen per e-mail: de PDF-bijlagen die de server-tick `_inbox_tick` uit het postvak (IMAP) haalde, met `status` `nieuw`/`verwerkt`/`genegeerd`. Item: `{id, ontvangen, mail_datum, van, van_naam, onderwerp, message_id, bijlage: {naam, bestand}, grootte, sha256, status, factuur_id?, afgehandeld?}`. De server voegt alleen nieuwe items toe (bestand `inbox_<sha256[:20]>.pdf` in de bijlagenmap); verwerken, negeren, terugzetten en verwijderen doet de app. Een PDF met een `sha256` die er al in staat (ook genegeerd/verwerkt) komt er nooit nog eens bij. Financiële key: alleen `boekhouding`/`beheer` schrijven. Wel in de Excel-backup |
 | `verkoop_facturen` | array | Verkoopfacturen. `verrekend_alt_id` = verrekend met de schuld aan een alt-rekening (ook nadat de factuur met de hand op betaald is gezet); `vorige_stand` = de stand daarvoor. De factuur van een bestelling draagt `bestelling_id` (opgebouwd door `bouwOrderFactuur` in `utils/orderFactuur.ts`); wordt een gefactureerde bestelling geannuleerd, dan komt er een creditnota met `credit_van_factuur_id` en hetzelfde `bestelling_id` |
-| `bestellingen` | array | WooCommerce-bestellingen. `factuur_id`/`factuur_nummer` = de verkoopfactuur; die kan er al zijn vóór `afgerond` — een betaalde order die nog niet is opgehaald of verzonden, vooraf gefactureerd (Bestellingen "Factuur maken", of Bank vanuit een PSP-uitbetaling). Afronden maakt dan geen tweede factuur, de orderregels liggen vast en annuleren maakt een creditnota. `mails_verstuurd: {soort: datum}` = welke mails de klant al kreeg (met de hand of automatisch; `factuur` dekt ook `factuur_betaald`) — een mail gaat nooit twee keer automatisch (`utils/orderMail.ts`) |
+| `bestellingen` | array | WooCommerce-bestellingen. `factuur_id`/`factuur_nummer` = de verkoopfactuur; die kan er al zijn vóór `afgerond` — een betaalde order die nog niet is opgehaald of verzonden, vooraf gefactureerd (Bestellingen "Factuur maken", of Bank vanuit een PSP-uitbetaling). Afronden maakt dan geen tweede factuur, de orderregels liggen vast en annuleren maakt een creditnota. `mails_verstuurd: {soort: datum}` = welke mails de klant al kreeg (met de hand of automatisch; `factuur` dekt ook `factuur_betaald`; de na-aankoopmails als `na_<stap>`, in de proefstand `na_<stap>_proef`) — een mail gaat nooit twee keer automatisch (`utils/orderMail.ts`, `utils/naAankoopMail.ts`). `wc_mail_vinkje` = het vinkje "mail na je bestelling" uit de checkout (alleen met `na_aankoop_mails.vinkje_meta`, bij elke import ververst) |
 | `bestelling_picks` | array | Pickregels per bestelling |
 | `afboekingen` | array | Biervoorraadbewegingen (vermis, vernietiging, overig). `bron_locatie_id` = waar het bier lág — bepaalt van welke locatie het afgaat én of er accijns verschuldigd wordt. Ontbreekt op records van vóór v1.12.52; die gelden als AGP |
 | `klanten` | array | Klanten |
@@ -1493,7 +1511,9 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `btw_instellingen` | object | BTW-aangifte-instellingen: `periode` + `standaard_btw` (voorgesteld tarief bij nieuwe artikelen/verkoopregels, default 21% via `standaardBtwPct` in `utils/btw.ts`) |
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
 | `brewery_details` | object | Brouwerijnaam, adres, land (ISO-2), BTW-nr., KvK, PEPPOL-ID/-schema (e-factuur), website (klikbaar logo in mail), `mail_uitnodiging` (`{kop, tekst, knop, url}` — "Wist je dat?" met knop in de voet van elke klantmail, `utils/mailUitnodiging.ts`), `factuur_velden` (zichtbaarheid) en `factuur_template` (`{html, css}` — eigen factuurlayout, leeg = de ingebouwde standaard uit `utils/factuurTemplate.ts`) |
-| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`, `afhaal_gemist`, `annulering`) met `subject`/`body`; leeg = i18n-default. `auto: true` = automatisch versturen bij de handeling van die mail, `auto_sinds` = wanneer dat aan ging (`zetMailAuto`/`autoMailReden` in `utils/orderMail.ts`; de "al betaald"-factuurmail volgt `factuur`). `annulering` kent `{creditregel}` (de factuur en de creditnota, leeg zonder factuur). `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}`, `afhaal_gemist` de mail voor een afhaalklant die niet kwam (`{afhaalmoment}` + `{afhaalregel}` met dezelfde link om een nieuw moment te kiezen; knop verschijnt via `afhaalmomentVerstreken`) — zie `utils/levering.ts` |
+| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`, `afhaal_gemist`, `annulering`, en de na-aankoopmails `na_serveertips`, `na_smaak`, `na_taplijst`) met `subject`/`body`; leeg = i18n-default. `bestelling` kent ook `{serveertips}` (staat die erin, dan gaat de losse serveertipsmail niet). `auto: true` = automatisch versturen bij de handeling van die mail, `auto_sinds` = wanneer dat aan ging (`zetMailAuto`/`autoMailReden` in `utils/orderMail.ts`; de "al betaald"-factuurmail volgt `factuur`). `annulering` kent `{creditregel}` (de factuur en de creditnota, leeg zonder factuur). `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}`, `afhaal_gemist` de mail voor een afhaalklant die niet kwam (`{afhaalmoment}` + `{afhaalregel}` met dezelfde link om een nieuw moment te kiezen; knop verschijnt via `afhaalmomentVerstreken`) — zie `utils/levering.ts` |
+| `na_aankoop_mails` | object | Mails ná een webshopbestelling (`utils/naAankoopMail.ts`): `{modus: uit\|proef\|aan, sinds, proef_adres, grondslag: soft_opt_in\|toestemming, vinkje_meta, stappen: {serveertips\|smaak\|taplijst: {aan, dagen, vanaf: bestelling\|geleverd}}, review_url, taplijst_url, afmeld_url}`. Standaard `uit`; `sinds` = het moment van de laatste modus-wissel (bestellingen van daarvóór krijgen niets). **Beheer-only**; wel in de Excel-backup |
+| `mail_afmeldingen` | array | Wie geen na-aankoopmails meer wil: `{id, email (klein geschreven), datum, bron: handmatig\|mail\|webshop, notitie?}`. Bewust géén beheer-key: wie bestellingen afhandelt, legt een afmelding meteen vast. In de Excel-backup (sheet `MailAfmeldingen`) |
 | `gebruikers_rollen` | object | Rollen per HA-ingress-gebruiker (ERP 4.2): `{gebruikers: {naam: rol}, standaard_rol}` met rollen `beheer`/`boekhouding`/`productie`/`alleen_lezen` — server-side afgedwongen, alleen door `beheer` te wijzigen, lockout-guard |
 | `login_instellingen` | object | Styling van de loginpagina op de directe-toegangspoort: titel/ondertitel/knoptekst, accent-/achtergrondkleur (hex), achtergrondafbeelding (data-url), `logo_tonen`. Server rendert met strikte validatie (`_login_pagina`) — pre-auth, dus nooit ongefilterd |
 | `factuur_counter` | object | *(legacy)* Doorlopend factuurnummer per jaar — vervangen door `nummer_reeksen`, alleen nog als migratie-seed gelezen |
@@ -1662,7 +1682,7 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
 | POST | `/api/inbox/test` | Facturen per e-mail: met de ingevulde instellingen verbinden, inloggen en de map openen (alleen lezen); `{ok, berichten, mailbox}` of `{ok: false, fout: {code, oorzaak?}}`. Slaat niets op en haalt niets op. Sentinel-wachtwoord + gewijzigd adres → 400 `secret_opnieuw_invoeren`. Beheer-only |
 | POST | `/api/inbox/ophalen` | Het postvak nu ophalen, buiten het interval om (max. 45 s per ronde; de rest volgt vanzelf); 409 `uit` als de koppeling uit staat of niet ingevuld is, fout `te_snel` binnen 10 s na de vorige ronde, `bezig` als er al een loopt. Body `{"opnieuw": true}` (alleen een echte `true`) laat de waterlijn los en loopt de nieuwste 50 berichten weer door — na een teruggezette lijst, een verruimd afzenderfilter of een per ongeluk verwijderde factuur; wat al in de lijst staat komt er niet dubbel bij. `boekhouding` + `beheer`, audit `inbox_ophalen` |
-| POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images) |
+| POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images, optioneel `listUnsubscribe` → kop `List-Unsubscribe`: alleen `mailto:` met adres of `https:`, ≤ 500 tekens, geen spaties/hoekhaken/stuurtekens — anders 400, `_list_unsubscribe`) |
 | POST | `/api/mollie/test` | Test een Mollie API-key (beheer-only, niets opslaan); key mag de sentinel zijn |
 | POST | `/api/mollie/payment` | Maak een Mollie **betaallink** (Payment Links API, `/v2/payment-links`) aan voor een factuur (boekhouding); `{amountCent, description, redirectUrl}` → `{checkoutUrl, id, expiresAt}`. Key wordt server-side toegevoegd. Bewust géén Payments API: die levert een kortlevende checkout die na verlopen naar de website doorstuurt |
 | GET | `/api/backups[/<datum>]` | Serverbackups (`/data/backups/JJJJ-MM-DD/`, dagelijks, elke key als `<key>.json` + db-kopie, 0600 in een 0700-map) opsommen of als ZIP downloaden — beheer-only. De download-ZIP bevat geen db-kopie en de credentials gemaskeerd (`__SECRET__`) |
@@ -1942,6 +1962,17 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   cijfers op de site staan (`op_site`) → één leeg bericht `{}`.
   **Nooit** klanten, bestellingen, prijzen, recepten of financiële data in het
   bericht zetten
+- **Na-aankoopmails** (`utils/naAankoopMail.ts`, standaard uit; Instellingen →
+  E-mailtemplates, `components/NaAankoopMailInstellingen.tsx`): na elke
+  automatische import (binnen de lease) stuurt App.tsx `verstuurNaAankoopMails`
+  de mails die aan de beurt zijn — één voor één, stempel pas na succes, bij een
+  fout stopt de ronde. Alleen webshopbestellingen van ná `sinds`, nooit naar een
+  afgemeld adres, nooit zonder afmeldlink. Zonder open tabblad gaat er niets
+  (net als de automatische bevestiging); een mail die meer dan
+  `NA_AANKOOP_MAX_TE_LAAT_DAGEN` te laat zou komen vervalt. Het vinkje uit de
+  checkout leest de import als order-meta (`mailVinkjeMeta` in
+  `importeerWcOrders`, ook op de bestellingenpagina); er wordt nooit iets naar
+  WooCommerce teruggeschreven
 - Afbeeldingen zijn verwijzingen, geen uploads: de WC REST API accepteert een
   media-`id` of een publieke `src`-URL. Base64 uit deze app kan er niet in —
   uploaden blijft WordPress-werk

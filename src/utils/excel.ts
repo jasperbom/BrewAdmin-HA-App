@@ -109,7 +109,7 @@ export const INST_JSON_KEYS = [
   'mail_templates', 'gebruikers_rollen', 'login_instellingen', 'factuur_counter',
   'ha_instellingen', 'notificatie_instellingen', 'coldcrash_instellingen',
   'planning_instellingen', 'website_telemetrie', 'brouwproces_instellingen',
-  'haccp_instellingen', 'bank_koppelingen', 'bank_saldi',
+  'haccp_instellingen', 'bank_koppelingen', 'bank_saldi', 'na_aankoop_mails',
 ] as const
 
 // Migratiehulp: oude backup-sheet 'Uitslagen' gebruikt de velden type_uitslag,
@@ -165,6 +165,8 @@ export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
     addSheet('Artikelen',             data.artikelen)
     addSheet('MerchArtikelen',     data.merch_artikelen)
     addSheet('MerchVoorraadLog',   data.merch_voorraad_log)
+    // Wie geen na-aankoopmails meer wil: bewijs van de afmelding, hoort in de backup.
+    addSheet('MailAfmeldingen',    data.mail_afmeldingen)
     addSheet('HygieneItems',          data.hygiene_items)
     addSheet('HygieneGroups',         data.hygiene_groups)
     addSheet('BrouwdagChecklist',     data.brouwdag_checklist)
@@ -368,6 +370,7 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
         artikelen:                    parse('Artikelen'),
         merch_artikelen:           parse('MerchArtikelen'),
         merch_voorraad_log:        parse('MerchVoorraadLog'),
+        mail_afmeldingen:          parse('MailAfmeldingen'),
         hygiene_items:                parse('HygieneItems'),
         hygiene_groups:               parse('HygieneGroups'),
         brouwdag_checklist:           parse('BrouwdagChecklist'),
@@ -443,6 +446,7 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
         coldcrash_instellingen: parseInst('coldcrash_instellingen'),
         planning_instellingen:  parseInst('planning_instellingen'),
         website_telemetrie:   parseInst('website_telemetrie'),
+        na_aankoop_mails:     parseInst('na_aankoop_mails'),
         brouwproces_instellingen: parseInst('brouwproces_instellingen'),
         haccp_instellingen:       parseInst('haccp_instellingen'),
         bank_koppelingen:     parseInst('bank_koppelingen'),

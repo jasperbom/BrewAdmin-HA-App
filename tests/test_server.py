@@ -6344,3 +6344,58 @@ class TestBrewfatherDoorgang:
         assert status == 502
         assert antwoord == {'error': 'brewfather_onbereikbaar'}
         assert 'Retry-After' not in koppen
+
+
+class TestNaAankoopMails:
+    """Na-aankoopmails (utils/naAankoopMail.ts): de instellingen zijn een
+    beheer-key, de afmeldlijst mag elke schrijvende rol bijwerken, en de
+    afmeldlink gaat alleen in een veilige vorm als `List-Unsubscribe`-kop mee."""
+
+    ADMIN = {'X-Remote-User-Name': 'admin'}
+    CONFIG = {'gebruikers': {'admin': 'beheer', 'piet': 'productie', 'lees': 'alleen_lezen'}}
+    CREDS = {'fromEmail': 'info@dekade.nl', 'fromName': 'De Kade'}
+    PAYLOAD = {'to': ['klant@example.com'], 'subject': 'Hoe smaakte het?', 'text': 'Hoi'}
+
+    def test_keys_en_rollen(self):
+        assert srv._KEY_TYPES['na_aankoop_mails'] == 'object'
+        assert srv._KEY_TYPES['mail_afmeldingen'] == 'array'
+        assert 'na_aankoop_mails' in srv._BEHEER_KEYS
+        assert 'mail_afmeldingen' not in srv._BEHEER_KEYS
+        assert 'mail_afmeldingen' not in srv._FINANCIELE_KEYS
+        assert srv._rol_mag_key('productie', 'mail_afmeldingen')
+        assert not srv._rol_mag_key('productie', 'na_aankoop_mails')
+        assert not srv._rol_mag_key('alleen_lezen', 'mail_afmeldingen')
+
+    def test_productie_legt_een_afmelding_vast_maar_zet_de_mails_niet_aan(self, app):
+        assert req(app, 'POST', '/api/data/gebruikers_rollen', body=self.CONFIG, headers=self.ADMIN)[0] == 200
+        try:
+            piet = {'X-Remote-User-Name': 'piet'}
+            afmelding = [{'id': 1, 'email': 'klant@example.com', 'datum': '2026-11-03', 'bron': 'mail'}]
+            assert req(app, 'POST', '/api/data/mail_afmeldingen', body=afmelding, headers=piet)[0] == 200
+            status, body, _ = req(app, 'POST', '/api/data/na_aankoop_mails', body={'modus': 'aan'}, headers=piet)
+            assert status == 403 and body['reden'] == 'rol'
+            status, _, _ = req(app, 'POST', '/api/data/mail_afmeldingen', body=[],
+                               headers={'X-Remote-User-Name': 'lees'})
+            assert status == 403
+            assert req(app, 'POST', '/api/data/mail_afmeldingen', body={'email': 'x'}, headers=self.ADMIN)[0] == 422
+        finally:
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={}, headers=self.ADMIN)[0] == 200
+            assert req(app, 'POST', '/api/data/mail_afmeldingen', body=[])[0] == 200
+
+    def test_list_unsubscribe_alleen_mailto_of_https(self):
+        assert srv._list_unsubscribe('mailto:info@dekade.nl?subject=Afmelden%20De%20Kade') == \
+            '<mailto:info@dekade.nl?subject=Afmelden%20De%20Kade>'
+        assert srv._list_unsubscribe('https://dekade.nl/?afmelden=3301&sleutel=wc_order_x') == \
+            '<https://dekade.nl/?afmelden=3301&sleutel=wc_order_x>'
+        for fout in ('http://dekade.nl/', 'javascript:alert(1)', 'mailto:geen-adres', '', None, 42,
+                     'https://dekade.nl/>\r\nBcc: x@y.nl', 'https://dekade.nl/ spatie', 'https://' + 'a' * 600 + '.nl'):
+            assert srv._list_unsubscribe(fout) is None, fout
+
+    def test_build_email_zet_de_kop(self):
+        msg, ontvangers = srv._build_email(self.CREDS, {**self.PAYLOAD, 'listUnsubscribe': 'mailto:info@dekade.nl?subject=Afmelden'})
+        assert ontvangers == ['klant@example.com']
+        assert msg['List-Unsubscribe'] == '<mailto:info@dekade.nl?subject=Afmelden>'
+        # Zonder veld geen kop; een ongeldige waarde weigert de hele mail (400).
+        msg, _ = srv._build_email(self.CREDS, dict(self.PAYLOAD))
+        assert msg['List-Unsubscribe'] is None
+        assert srv._build_email(self.CREDS, {**self.PAYLOAD, 'listUnsubscribe': 'https://x.nl/\nBcc: y@z.nl'}) is None

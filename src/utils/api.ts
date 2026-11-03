@@ -1228,6 +1228,8 @@ export interface MailSendBody {
   html?: string
   attachments?: MailAttachment[]
   inlineImages?: MailInlineImage[]
+  /** `List-Unsubscribe`-kop: een `mailto:`- of `https:`-link (na-aankoopmails). */
+  listUnsubscribe?: string
 }
 
 // Verstuur een mail via de opgeslagen SMTP-credentials. Throwt bij niet-OK
