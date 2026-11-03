@@ -5861,7 +5861,7 @@
   "na_aankoop_taplijst_url": "Button under the tap list email",
   "na_aankoop_taplijst_url_uitleg": "Empty = the web shop address.",
   "na_aankoop_afmeld_url": "Own unsubscribe page (optional)",
-  "na_aankoop_afmeld_url_uitleg": "With {winkel}, {id} and {sleutel} (the order key). Empty = the unsubscribe link opens an email saying \"Unsubscribe\" to {email}; then add that address to the list below yourself.",
+  "na_aankoop_afmeld_url_uitleg": "With {winkel}, {id} and {sleutel} (the order key). Empty = the unsubscribe link opens an email saying \"Unsubscribe\" to {email}; then add that address to the list below yourself. With an https page, Gmail and Apple Mail show an unsubscribe button that works instantly; that page must then handle a POST with \"List-Unsubscribe=One-Click\" without a button.",
   "na_aankoop_afmeldingen": "Unsubscribed",
   "na_aankoop_afmeldingen_uitleg": "These addresses get no more after-sale emails. Got an email saying \"Unsubscribe\"? Add the address here.",
   "na_aankoop_afmelding_adres": "email address",

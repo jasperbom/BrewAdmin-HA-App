@@ -6399,3 +6399,18 @@ class TestNaAankoopMails:
         msg, _ = srv._build_email(self.CREDS, dict(self.PAYLOAD))
         assert msg['List-Unsubscribe'] is None
         assert srv._build_email(self.CREDS, {**self.PAYLOAD, 'listUnsubscribe': 'https://x.nl/\nBcc: y@z.nl'}) is None
+
+    def test_one_click_alleen_bij_https(self):
+        https = 'https://dekade.nl/?afmelden=3301&sleutel=wc_order_x'
+        msg, _ = srv._build_email(self.CREDS, {**self.PAYLOAD, 'listUnsubscribe': https, 'listUnsubscribePost': True})
+        assert msg['List-Unsubscribe'] == f'<{https}>'
+        assert msg['List-Unsubscribe-Post'] == 'List-Unsubscribe=One-Click'
+        # Zonder het veld geen one-click-kop.
+        msg, _ = srv._build_email(self.CREDS, {**self.PAYLOAD, 'listUnsubscribe': https})
+        assert msg['List-Unsubscribe-Post'] is None
+        # Bij een mailto, zonder link of met een andere waarde dan true: geweigerd.
+        assert srv._build_email(self.CREDS, {**self.PAYLOAD, 'listUnsubscribe': 'mailto:info@dekade.nl',
+                                             'listUnsubscribePost': True}) is None
+        assert srv._build_email(self.CREDS, {**self.PAYLOAD, 'listUnsubscribePost': True}) is None
+        assert srv._build_email(self.CREDS, {**self.PAYLOAD, 'listUnsubscribe': https,
+                                             'listUnsubscribePost': 'ja'}) is None

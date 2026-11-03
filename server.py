@@ -821,6 +821,15 @@ def _build_email(creds: dict, payload: dict) -> tuple[email.message.EmailMessage
         if kop is None:
             return None
         msg['List-Unsubscribe'] = kop
+    # Afmelden met één klik (RFC 8058): de mailclient POST zelf
+    # `List-Unsubscribe=One-Click` naar de https-link. Alleen bij een
+    # https-link; met een mailto of zonder link weigeren we de mail (400).
+    if payload.get('listUnsubscribePost') is not None:
+        if payload.get('listUnsubscribePost') is not True:
+            return None
+        if not str(msg['List-Unsubscribe'] or '').startswith('<https://'):
+            return None
+        msg['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
 
     msg.set_content(text_body or ' ')
     if html_body:

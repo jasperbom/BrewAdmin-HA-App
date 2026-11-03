@@ -5861,7 +5861,7 @@
   "na_aankoop_taplijst_url": "Botón bajo el correo de grifo",
   "na_aankoop_taplijst_url_uitleg": "Vacío = la dirección de la tienda.",
   "na_aankoop_afmeld_url": "Página de baja propia (opcional)",
-  "na_aankoop_afmeld_url_uitleg": "Con {winkel}, {id} y {sleutel} (la clave del pedido). Vacío = el enlace de baja abre un correo «Darse de baja» a {email}; añade tú esa dirección a la lista de abajo.",
+  "na_aankoop_afmeld_url_uitleg": "Con {winkel}, {id} y {sleutel} (la clave del pedido). Vacío = el enlace de baja abre un correo «Darse de baja» a {email}; añade tú esa dirección a la lista de abajo. Con una página https, Gmail y Apple Mail muestran un botón de baja inmediata; esa página debe procesar entonces un POST con «List-Unsubscribe=One-Click» sin botón.",
   "na_aankoop_afmeldingen": "Dados de baja",
   "na_aankoop_afmeldingen_uitleg": "Estas direcciones ya no reciben correos tras la compra. ¿Recibiste un correo «Darse de baja»? Añade la dirección aquí.",
   "na_aankoop_afmelding_adres": "correo electrónico",

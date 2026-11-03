@@ -1230,6 +1230,8 @@ export interface MailSendBody {
   inlineImages?: MailInlineImage[]
   /** `List-Unsubscribe`-kop: een `mailto:`- of `https:`-link (na-aankoopmails). */
   listUnsubscribe?: string
+  /** `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058); alleen bij een https-link. */
+  listUnsubscribePost?: boolean
 }
 
 // Verstuur een mail via de opgeslagen SMTP-credentials. Throwt bij niet-OK

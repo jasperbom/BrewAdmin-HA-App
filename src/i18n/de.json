@@ -5861,7 +5861,7 @@
   "na_aankoop_taplijst_url": "Button unter der Ausschank-Mail",
   "na_aankoop_taplijst_url_uitleg": "Leer = die Adresse des Webshops.",
   "na_aankoop_afmeld_url": "Eigene Abmeldeseite (optional)",
-  "na_aankoop_afmeld_url_uitleg": "Mit {winkel}, {id} und {sleutel} (dem Bestellschlüssel). Leer = der Abmeldelink öffnet eine Mail mit „Abmelden“ an {email}; trage so eine Adresse dann selbst unten in die Liste ein.",
+  "na_aankoop_afmeld_url_uitleg": "Mit {winkel}, {id} und {sleutel} (dem Bestellschlüssel). Leer = der Abmeldelink öffnet eine Mail mit „Abmelden“ an {email}; trage so eine Adresse dann selbst unten in die Liste ein. Mit einer https-Seite zeigen Gmail und Apple Mail einen Abmeldebutton, der sofort abmeldet; die Seite muss dann einen POST mit „List-Unsubscribe=One-Click“ ohne Button verarbeiten.",
   "na_aankoop_afmeldingen": "Abgemeldet",
   "na_aankoop_afmeldingen_uitleg": "Diese Adressen bekommen keine Nachkauf-Mails mehr. Eine Mail mit „Abmelden“ bekommen? Trag die Adresse hier ein.",
   "na_aankoop_afmelding_adres": "E-Mail-Adresse",
