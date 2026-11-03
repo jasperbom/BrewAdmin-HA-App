@@ -5975,5 +5975,16 @@
   "factuur_stand_credit": "creditnota",
   "settings_pakbon_template_title": "Pakbonlayout",
   "settings_pakbon_template_desc": "De layout van de pakbon als template, ook voor de pakbonnen die met de picklijst meegaan. Leeg = de ingebouwde standaardlayout. Bij een fout in je eigen template valt de app terug op de standaard. Houd de CSS onder een eigen klasse, anders verandert de picklijst mee.",
-  "undo_pakbon_template_verwijderd": "Eigen pakbonlayout verwijderd"
+  "undo_pakbon_template_verwijderd": "Eigen pakbonlayout verwijderd",
+  "mail_afhaal_herinnering_subject_default": "Je bestelling {nr} staat klaar om op te halen – {brouwerij}",
+  "mail_afhaal_herinnering_body_default": "Beste {naam},\n\nJe bestelling staat klaar om op te halen, maar je hebt nog geen moment gekozen waarop je langskomt.\n\nBestelnummer: {nr}\n\nDit heb je besteld:\n{regels}\n\n{afhaalregel}\n\nVragen of wil je iets aanpassen? Beantwoord gewoon deze mail.\n\nMet vriendelijke groet,\n{brouwerij}",
+  "mail_afhaal_herinnering_kies": "Kies via de knop hieronder wanneer je langskomt{locatie}, dan zetten we het voor je klaar.",
+  "mail_afhaal_herinnering_contact": "Laat ons even weten wanneer je langs wilt komen{locatie}, dan zetten we het voor je klaar.",
+  "settings_mail_template_afhaal_herinnering": "Afhaalherinnering (nog geen afhaalmoment gekozen)",
+  "settings_mail_vars_afhaal_herinnering": "Variabelen: {naam}, {nr}, {regels}, {afhaalregel} (uitnodiging om een moment te kiezen; de knop komt automatisch onder de mail), {afhaallink}, {afhaallocatie}, {dagen} (dagen sinds de bestelling), {besteldatum}, {brouwerij}",
+  "mail_modal_title_afhaal_herinnering": "Afhaalherinnering sturen",
+  "order_mail_afhaal_herinnering": "Mail afhaalherinnering",
+  "orders_afhaal_herinnering_op": "Afhaalherinnering gemaild op {datum}",
+  "orders_filter_geen_afhaalmoment": "Geen afhaalmoment",
+  "attentie_afhaal_herinnering": "Afhaalbestellingen zonder afhaalmoment"
 }

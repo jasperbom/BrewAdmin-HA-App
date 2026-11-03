@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.37] — 2026-11-03
+
+### Afhaalherinnering: kies je afhaalmoment
+
+Een nieuwe mail voor een afhaalklant die nog geen moment koos waarop hij
+langskomt.
+
+- **Op de bestelling:** zolang een afhaalbestelling openstaat zonder
+  afhaalmoment (en niet "in overleg") staat er *Mail afhaalherinnering*. De
+  mail heeft onderaan dezelfde knop *Kies je afhaalmoment* als de
+  bestelbevestiging; het gekozen moment komt bij de volgende import vanzelf
+  mee. Bij de bestelling staat daarna "Afhaalherinnering gemaild op …".
+- **Terugvinden:** in Bestellingen de chip *Geen afhaalmoment* (alleen als er
+  zulke bestellingen zijn). Op Verkoop vraagt een afhaalbestelling die al
+  drie dagen zonder moment wacht en nog geen herinnering kreeg om aandacht —
+  één keer.
+- **Eigen tekst:** Instellingen → Bedrijf → E-mailtemplates →
+  *Afhaalherinnering*, met de variabelen {naam}, {nr}, {regels},
+  {afhaalregel}, {afhaallink}, {afhaallocatie}, {dagen}, {besteldatum} en
+  {brouwerij}. Zonder eigen tekst geldt een neutrale standaardtekst in vijf
+  talen.
+- Alleen met de hand: deze mail gaat nooit vanzelf.
+
+---
+
 ## [1.13.36] — 2026-11-03
 
 ### Eigen pakbonlayout

@@ -5975,5 +5975,16 @@
   "factuur_stand_credit": "Gutschrift",
   "settings_pakbon_template_title": "Lieferschein-Layout",
   "settings_pakbon_template_desc": "Das Layout des Lieferscheins als Vorlage, auch für die Lieferscheine, die mit der Pickliste gedruckt werden. Leer = das integrierte Standardlayout. Bei einem Fehler in deiner Vorlage nutzt die App das Standardlayout. Halte das CSS unter einer eigenen Klasse, sonst ändert sich die Pickliste mit.",
-  "undo_pakbon_template_verwijderd": "Eigenes Lieferschein-Layout entfernt"
+  "undo_pakbon_template_verwijderd": "Eigenes Lieferschein-Layout entfernt",
+  "mail_afhaal_herinnering_subject_default": "Ihre Bestellung {nr} liegt zur Abholung bereit – {brouwerij}",
+  "mail_afhaal_herinnering_body_default": "Hallo {naam},\n\nIhre Bestellung liegt zur Abholung bereit, aber Sie haben noch keinen Termin gewählt, an dem Sie vorbeikommen.\n\nBestellnummer: {nr}\n\nIhre Bestellung:\n{regels}\n\n{afhaalregel}\n\nFragen oder möchten Sie etwas ändern? Antworten Sie einfach auf diese E-Mail.\n\nMit freundlichen Grüßen,\n{brouwerij}",
+  "mail_afhaal_herinnering_kies": "Wählen Sie über den Button unten, wann Sie vorbeikommen{locatie}, dann legen wir alles für Sie bereit.",
+  "mail_afhaal_herinnering_contact": "Sagen Sie uns kurz Bescheid, wann Sie vorbeikommen möchten{locatie}, dann legen wir alles für Sie bereit.",
+  "settings_mail_template_afhaal_herinnering": "Abholerinnerung (noch kein Abholtermin gewählt)",
+  "settings_mail_vars_afhaal_herinnering": "Variablen: {naam}, {nr}, {regels}, {afhaalregel} (Einladung, einen Termin zu wählen; der Button kommt automatisch unter die Mail), {afhaallink}, {afhaallocatie}, {dagen} (Tage seit der Bestellung), {besteldatum}, {brouwerij}",
+  "mail_modal_title_afhaal_herinnering": "Abholerinnerung senden",
+  "order_mail_afhaal_herinnering": "Abholerinnerung senden",
+  "orders_afhaal_herinnering_op": "Abholerinnerung gesendet am {datum}",
+  "orders_filter_geen_afhaalmoment": "Kein Abholtermin",
+  "attentie_afhaal_herinnering": "Abholbestellungen ohne Abholtermin"
 }

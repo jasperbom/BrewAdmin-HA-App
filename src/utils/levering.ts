@@ -25,7 +25,10 @@
  * de **afspraak-gemist-mail** (`afhaalGemistMailVars` + `afhaalGemistMailKnop`):
  * het gemiste moment plus dezelfde knop om een nieuw moment te kiezen. `afhaalmomentVerstreken` zegt of een
  * afhaalorder die nog openstaat zo'n mail verdient (het gekozen moment ligt in
- * het verleden).
+ * het verleden). Kiest de klant helemaal geen moment, dan is er de
+ * **afhaalherinnering** (`wachtOpAfhaalmoment`, `afhaalHerinneringMailVars` en
+ * dezelfde kies-knop): de bestelling staat klaar, kies wanneer je komt.
+ * `afhaalHerinneringNodig` zegt wanneer zo'n bestelling om aandacht vraagt.
  *
  * Bewaart zelf niets; de velden staan op de bestelling en worden bij elke
  * import ververst (een klant kiest zijn moment vaak pas ná het bestellen).
@@ -328,6 +331,59 @@ export function afhaalmomentVerstreken(
   return !!d && d.getTime() < nu.getTime()
 }
 
+/**
+ * Een afhaalbestelling die nog openstaat en waarvoor de klant nog geen moment
+ * koos — ook niet "in overleg". Zo'n klant kan de afhaalherinnering krijgen.
+ */
+export function wachtOpAfhaalmoment(
+  bestelling: (Partial<LeveringVelden> & {status?: string, [k: string]: unknown}) | null | undefined,
+): boolean {
+  if (!bestelling || bestelling.wc_levering !== 'afhalen') return false
+  if (['afgerond', 'geannuleerd', 'verzonden'].includes(str(bestelling.status))) return false
+  return !str(bestelling.wc_afhaalmoment)
+}
+
+/** Na zoveel dagen zonder afhaalmoment vraagt een afhaalbestelling om aandacht. */
+export const AFHAAL_HERINNERING_NA_DAGEN = 3
+
+// 'JJJJ-MM-DD…' → hele dagen ertussen (UTC, dus een zomertijdwissel telt niet mee); null zonder datum.
+const dagenTussen = (van: unknown, tot: unknown): number | null => {
+  const dag = (x: unknown): number | null => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(str(x))
+    return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null
+  }
+  const a = dag(van)
+  const b = dag(tot)
+  return a === null || b === null ? null : Math.round((b - a) / 86400000)
+}
+
+/** Hoeveel dagen de bestelling al loopt (vanaf de besteldatum); null zonder datum. */
+export const dagenSindsBestelling = (
+  bestelling: {datum?: unknown} | null | undefined, vandaag: string,
+): number | null => dagenTussen(bestelling?.datum, vandaag)
+
+/**
+ * Vraagt deze afhaalbestelling om de afhaalherinnering? Nog geen moment
+ * gekozen, al minstens `AFHAAL_HERINNERING_NA_DAGEN` dagen besteld, en de
+ * klant kreeg de herinnering nog niet (`mails_verstuurd.afhaal_herinnering`).
+ * Eén keer: daarna staat hij alleen nog onder de chip "Geen afhaalmoment".
+ */
+export function afhaalHerinneringNodig(
+  bestelling: (Partial<LeveringVelden> & {status?: string, datum?: unknown, mails_verstuurd?: Record<string, unknown> | null, [k: string]: unknown}) | null | undefined,
+  vandaag: string,
+  dagen: number = AFHAAL_HERINNERING_NA_DAGEN,
+): boolean {
+  if (!wachtOpAfhaalmoment(bestelling)) return false
+  if (bestelling?.mails_verstuurd?.afhaal_herinnering) return false
+  const n = dagenSindsBestelling(bestelling, vandaag)
+  return n !== null && n >= dagen
+}
+
+/** Hoeveel afhaalbestellingen om de afhaalherinnering vragen (attentiepost op Verkoop). */
+export const telAfhaalHerinneringNodig = (
+  bestellingen: ReadonlyArray<any> | null | undefined, vandaag: string,
+): number => (bestellingen || []).filter(b => afhaalHerinneringNodig(b, vandaag)).length
+
 /** Korte omschrijving voor een badge of tooltip: "Afhalen · Brouwerij · za 30 aug om 13:00". */
 export function leveringOmschrijving(b: Partial<LeveringVelden> | null | undefined): string {
   if (!b?.wc_levering) return ''
@@ -457,6 +513,44 @@ export function afhaalGemistMailVars(
     .split('{locatie}').join(locatie)
     .split('{link}').join(link)
   return {afhaalmoment: moment, afhaallink: link, afhaallocatie: locatieNaam, afhaalregel}
+}
+
+export interface AfhaalHerinneringMailVars {
+  afhaallink: string
+  afhaallocatie: string
+  /** De alinea met de uitnodiging om een moment te kiezen (mét link, anders "laat het ons weten"). */
+  afhaalregel: string
+  /** Hoeveel dagen de bestelling al loopt ("5"); leeg zonder besteldatum. */
+  dagen: string
+  /** De besteldatum als dd-mm-jjjj. */
+  besteldatum: string
+}
+
+/**
+ * De variabelen voor de afhaalherinnering: de klant koos nog geen moment. De
+ * knop eronder is dezelfde als onder de bestelbevestiging (`afhaalMailKnop`:
+ * "Kies je afhaalmoment"). Zonder link vraagt de tekst de klant het te laten
+ * weten.
+ */
+export function afhaalHerinneringMailVars(
+  bestelling: (Partial<LeveringVelden> & {wc_order_id?: number | null, datum?: unknown}) | null | undefined,
+  opts: {storeUrl?: string, vandaag?: string} = {},
+): AfhaalHerinneringMailVars {
+  const b = bestelling || {}
+  const link = afhaalLink(opts.storeUrl, b.wc_order_id, b.wc_order_key)
+  const locatieNaam = str(b.wc_afhaal_locatie)
+  const locatie = locatieNaam ? t('mail_levering_bij_locatie').replace('{locatie}', locatieNaam) : ''
+  const afhaalregel = t(link ? 'mail_afhaal_herinnering_kies' : 'mail_afhaal_herinnering_contact')
+    .split('{locatie}').join(locatie)
+    .split('{link}').join(link)
+  const n = opts.vandaag ? dagenSindsBestelling(b, opts.vandaag) : null
+  return {
+    afhaallink: link,
+    afhaallocatie: locatieNaam,
+    afhaalregel,
+    dagen: n !== null && n >= 0 ? String(n) : '',
+    besteldatum: fmtDatum(b.datum),
+  }
 }
 
 export interface VerzendMailVars {

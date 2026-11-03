@@ -12,17 +12,22 @@ import { regelBedrag } from './orderRegel'
 import { statiegeldFactuurRegels, isWebshopOrder } from './statiegeld'
 import type { StatiegeldSoort, StatiegeldVerpakking } from './statiegeld'
 import { toCent, centNaarEuro } from './centen'
+import { wachtOpAfhaalmoment } from './levering'
 
 // ── Statussen ───────────────────────────────────────────────────────────────
 
 export type BestellingStatus = 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
 
-/** De chips boven de lijst: alles, "te picken" (zoals de attentie-badge) en elke status. */
-export type StatusFilter = 'alle' | 'te_picken' | BestellingStatus
+/** De chips boven de lijst: alles, "te picken" (zoals de attentie-badge), afhalen
+ * zonder afhaalmoment (`wachtOpAfhaalmoment`) en elke status. */
+export type StatusFilter = 'alle' | 'te_picken' | 'geen_afhaalmoment' | BestellingStatus
 
 export const STATUS_FILTERS: readonly StatusFilter[] = [
-  'alle', 'te_picken', 'nieuw', 'bevestigd', 'gepickt', 'verzonden', 'afgerond', 'geannuleerd',
+  'alle', 'te_picken', 'geen_afhaalmoment', 'nieuw', 'bevestigd', 'gepickt', 'verzonden', 'afgerond', 'geannuleerd',
 ]
+
+/** Chips die alleen verschijnen als er iets onder valt (of als ze gekozen zijn). */
+export const STATUS_FILTERS_ALLEEN_MET_INHOUD: readonly StatusFilter[] = ['geen_afhaalmoment']
 
 export const isStatusFilter = (v: unknown): v is StatusFilter =>
   typeof v === 'string' && (STATUS_FILTERS as readonly string[]).includes(v)
@@ -62,6 +67,9 @@ export interface BestellingLijstBron {
   klant_stad?: string | null
   factuur_nummer?: string | null
   pakbon_nummer?: string | null
+  /** Afhalen of verzenden en het gekozen afhaalmoment (utils/levering.ts). */
+  wc_levering?: string | null
+  wc_afhaalmoment?: string | null
   regels?: Array<BestellingRegelBron | null | undefined> | null
 }
 
@@ -123,8 +131,9 @@ export const statusTellingen = (
     if (!b) continue
     uit.alle++
     if (omTePicken.has(b.id)) uit.te_picken++
+    if (wachtOpAfhaalmoment(b as any)) uit.geen_afhaalmoment++
     const s = String(b.status || '')
-    if (isStatusFilter(s) && s !== 'alle' && s !== 'te_picken') uit[s]++
+    if (isStatusFilter(s) && s !== 'alle' && s !== 'te_picken' && s !== 'geen_afhaalmoment') uit[s]++
   }
   return uit
 }
@@ -138,6 +147,7 @@ export const pastBijStatus = (
   if (!b) return false
   if (filter === 'alle') return true
   if (filter === 'te_picken') return omTePicken.has(b.id)
+  if (filter === 'geen_afhaalmoment') return wachtOpAfhaalmoment(b as any)
   return b.status === filter
 }
 

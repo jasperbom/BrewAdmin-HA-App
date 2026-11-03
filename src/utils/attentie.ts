@@ -12,6 +12,7 @@
 
 import { telThtAlerts, thtAlertLots } from './calculations'
 import { telNieuweWebshopOrders, telWebshopAfgebroken } from './wcOrderImport'
+import { telAfhaalHerinneringNodig } from './levering'
 import type { BtwPeriodeType } from './btw'
 import { openstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './taken'
 import { telOpenstaandeBestellingen } from './picking'
@@ -421,6 +422,13 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
         // (utils/wcOrderImport → telWebshopAfgebroken): annuleren of afhandelen.
         id: 'webshop_afgebroken', sleutel: 'attentie_webshop_afgebroken', pagina: 'bestellingen',
         aantal: telWebshopAfgebroken(bron.bestellingen),
+      },
+      {
+        // Afhaalbestellingen waarvoor de klant na een paar dagen nog geen
+        // moment koos en die nog geen herinnering kregen (utils/levering →
+        // afhaalHerinneringNodig). De chip "Geen afhaalmoment" toont ze allemaal.
+        id: 'afhaal_herinnering', sleutel: 'attentie_afhaal_herinnering', pagina: 'bestellingen', filter: 'geen_afhaalmoment',
+        aantal: telAfhaalHerinneringNodig(bron.bestellingen, bron.vandaagIso),
       },
       // Het etiket klopt niet met wat er gebrouwen is: per product, de regel
       // opent het product.

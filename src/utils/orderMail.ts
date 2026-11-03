@@ -11,8 +11,9 @@
  *
  * Automatisch versturen (`mail_templates[soort].auto`) hoort bij een
  * handeling: een nieuwe bestelling, markeer verzonden, de factuur maken,
- * afronden, annuleren. De afspraak-gemist-mail heeft geen handeling (het
- * afhaalmoment verstrijkt vanzelf) en blijft met de hand. De factuurmail voor
+ * afronden, annuleren. De afspraak-gemist-mail en de afhaalherinnering hebben
+ * geen handeling (het afhaalmoment verstrijkt vanzelf, of de klant kiest er
+ * gewoon geen) en blijven met de hand. De factuurmail voor
  * een al betaalde factuur deelt de instelling met de gewone factuurmail: per
  * factuur is er maar één van de twee.
  */
@@ -23,15 +24,17 @@ import { factuurMailBetaalVars } from './factuurMail'
 import { vervaldatumTekst } from './facturen'
 import {
   leveringMailVars, afhaalMailKnop, afhaalGemistMailVars, afhaalGemistMailKnop, verzendMailVars, bestelLink,
+  afhaalHerinneringMailVars,
 } from './levering'
 import type { MailKnop } from './levering'
 
 export type OrderMailSoort =
-  | 'bestelling' | 'verzending' | 'afhaal_gemist' | 'annulering' | 'pakbon' | 'factuur' | 'factuur_betaald'
+  | 'bestelling' | 'verzending' | 'afhaal_herinnering' | 'afhaal_gemist' | 'annulering' | 'pakbon' | 'factuur'
+  | 'factuur_betaald'
 
 /** De sjablonen in de volgorde van de bestelling (Instellingen → E-mailtemplates). */
 export const ORDER_MAIL_SOORTEN: OrderMailSoort[] =
-  ['bestelling', 'verzending', 'afhaal_gemist', 'annulering', 'pakbon', 'factuur', 'factuur_betaald']
+  ['bestelling', 'verzending', 'afhaal_herinnering', 'afhaal_gemist', 'annulering', 'pakbon', 'factuur', 'factuur_betaald']
 
 /** De handeling waarbij een mail automatisch verstuurd kan worden. */
 export type MailHandeling = 'nieuw' | 'verzonden' | 'factuur' | 'afgerond' | 'geannuleerd'
@@ -40,6 +43,7 @@ export type MailHandeling = 'nieuw' | 'verzonden' | 'factuur' | 'afgerond' | 'ge
 export const MAIL_HANDELING: Record<OrderMailSoort, MailHandeling | null> = {
   bestelling: 'nieuw',
   verzending: 'verzonden',
+  afhaal_herinnering: null,
   afhaal_gemist: null,
   annulering: 'geannuleerd',
   pakbon: 'afgerond',
@@ -130,6 +134,7 @@ export function naMailVerstuurd(order: any, soort: OrderMailSoort, datum: string
 const AUDIT_NAAM: Record<OrderMailSoort, string> = {
   bestelling: 'Bevestigingsmail',
   verzending: 'Verzendbevestiging',
+  afhaal_herinnering: 'Afhaalherinnering',
   afhaal_gemist: 'Afspraak-gemist-mail',
   annulering: 'Annuleringsmail',
   pakbon: 'Pakbon',
@@ -149,6 +154,8 @@ export interface OrderMailContext {
   storeUrl?: string
   /** Eigen sjabloon voor de bestelpagina (`woocommerce_creds.bestelUrl`). */
   bestelUrlSjabloon?: string
+  /** Vandaag als 'JJJJ-MM-DD' ({dagen} in de afhaalherinnering); zonder blijft {dagen} leeg. */
+  vandaag?: string
 }
 
 /** Een mail zoals het mailvenster en de automaat hem versturen (zonder bijlagen). */
@@ -211,6 +218,15 @@ export function bouwOrderMail(
     }
     case 'verzending':
       return mail(soort, order, ctx, {...basis, regels: regelLijstVoorMail(order), ...verzendMailVars(order)})
+    case 'afhaal_herinnering': {
+      // Nog geen afhaalmoment gekozen: dezelfde kies-knop als onder de
+      // bestelbevestiging.
+      const knop = afhaalMailKnop(order, {storeUrl})
+      return mail(soort, order, ctx, {
+        ...basis, regels: regelLijstVoorMail(order),
+        ...afhaalHerinneringMailVars(order, {storeUrl, vandaag: ctx.vandaag}),
+      }, knop ? [knop] : [])
+    }
     case 'afhaal_gemist': {
       const knop = afhaalGemistMailKnop(order, {storeUrl})
       return mail(soort, order, ctx,
