@@ -4721,7 +4721,7 @@ class TestBrouwlog:
     CREDS = {'storeUrl': 'https://winkel.example', 'consumerKey': 'ck', 'consumerSecret': 'cs',
              'enabled': True}
     VELDEN = {'nummer', 'bier', 'status', 'brouwdatum', 'afvuldatum', 'liters', 'flessen', 'abv',
-              'og', 'fg', 'tank', 'notitie', 'product_id'}
+              'og', 'fg', 'tank', 'notitie', 'product_id', 'sku', 'link'}
 
     @staticmethod
     def _b(nummer, **extra):
@@ -4758,7 +4758,8 @@ class TestBrouwlog:
         bericht, overgeslagen = srv._brouwlog_samenstellen(data, 'BrewAdmin t', now)
         # Alleen aangevinkt (5 en 13 niet), Gepland en de onbruikbare nooit;
         # hoogste nummer eerst.
-        assert [b['nummer'] for b in bericht['batches']] == [132, 131, 130, 129, 128, 126, 125]
+        assert [b['nummer'] for b in bericht['batches']] == [143, 142, 141, 140, 139, 138, 132, 131, 130, 129,
+                                                             128, 126, 125, 124]
         assert {(o['batch_id'], o['reden']) for o in overgeslagen} == {
             (3, 'gepland'), (4, 'nummer'), (10, 'status'), (11, 'bier')}
         assert bericht['alles'] is True and set(bericht) == {'bron', 'alles', 'batches'}
@@ -4801,7 +4802,7 @@ class TestBrouwlog:
     def test_verwachte_waarden_nooit(self):
         # Ook niet als de gemeten waarde ontbreekt.
         uit = self._een(verwacht_og=1.06, verwacht_fg=1.01, verwacht_abv=6.6)
-        assert set(uit) == {'nummer', 'bier', 'status'}
+        assert set(uit) == {'nummer', 'bier', 'status', 'link'} and uit['link'] is False
         # Een ABV uit het recept telt ook vastgezet niet als meting.
         assert 'abv' not in self._een(ABV=6.6, abv_bron='recept', abv_definitief=True)
         assert self._een(ABV=6.6, abv_bron='lab', abv_definitief=True)['abv'] == 6.6
@@ -4872,16 +4873,85 @@ class TestBrouwlog:
         assert self._bericht([self._b(1, product_id=9, recept_id='r__v1')], **data)['batches'][0]['bier'] == 'Product'
         assert self._bericht([self._b(1, recept_id='r__v1')], **data)['batches'][0]['bier'] == 'Recept'
 
-    def test_productlink_alleen_zonder_twijfel(self):
-        def pid(*artikelen):
-            data = {'product_artikelen': [dict(a, product_id=5) for a in artikelen]}
-            return self._bericht([self._b(1, product_id=5)], **data)['batches'][0].get('product_id')
+    def test_koppeling_met_het_product_in_de_webshop(self):
+        vp = [{'id': 1, 'type': 'fles'}, {'id': 2, 'type': 'fust'}]
 
-        assert pid({'wc': {'wc_id': 77}}, {'wc': {'wc_id': 77, 'status': 'publish'}}, {}) == 77
-        assert pid({'wc': {'wc_id': 77}}, {'wc': {'wc_id': 78}}) is None
-        assert pid({'wc': {'wc_id': 77, 'status': 'draft'}}) is None
-        assert pid({'wc': {'wc_id': '77'}}) is None
-        assert pid() is None
+        def link(*artikelen, keuze=None, afvullingen=()):
+            data = {'producten': [{'id': 5, 'naam': 'Bokchain'}, {'id': 6, 'naam': 'Anders'}],
+                    'product_artikelen': [dict({'product_id': 5}, **a) for a in artikelen],
+                    'verpakkingen': vp, 'afvullingen': [dict(a, batch_id=1) for a in afvullingen]}
+            b = self._b(1, product_id=5, **({'brouwlog_artikel': keuze} if keuze is not None else {}))
+            uit = self._bericht([b], **data)['batches'][0]
+            return {k: uit[k] for k in ('bier', 'product_id', 'sku', 'link') if k in uit}
+
+        # Een gekoppeld WooCommerce-product en/of een SKU.
+        assert link({'id': 1, 'wc': {'wc_id': 77}}) == {'bier': 'Bokchain', 'product_id': 77}
+        assert link({'id': 1, 'artikelnummer': 'BCFL033'}) == {'bier': 'Bokchain', 'sku': 'BCFL033'}
+        assert link({'id': 1, 'artikelnummer': 'BCFL033', 'wc': {'wc_id': 77}}) == \
+            {'bier': 'Bokchain', 'product_id': 77, 'sku': 'BCFL033'}
+        # Niet in de webshop (geen product, concept, SKU zonder voorraadpush): geen link.
+        assert link() == {'bier': 'Bokchain', 'link': False}
+        assert link({'id': 1, 'wc': {'wc_id': 77, 'status': 'draft'}}) == {'bier': 'Bokchain', 'link': False}
+        assert link({'id': 1, 'artikelnummer': 'EE-1', 'wc_push': False}) == {'bier': 'Bokchain', 'link': False}
+        assert link({'id': 1, 'wc': {'wc_id': '77'}}) == {'bier': 'Bokchain', 'link': False}
+        # De beste gok: de verpakking waarin het meeste is afgevuld, anders een fles.
+        fust = {'id': 1, 'verpakking_id': 2, 'wc': {'wc_id': 70}}
+        fles = {'id': 2, 'verpakking_id': 1, 'wc': {'wc_id': 71}}
+        assert link(fust, fles)['product_id'] == 71
+        assert link(fust, fles, afvullingen=[{'verpakking_id': 2, 'aantal': 3},
+                                             {'verpakking_id': 1, 'aantal': 2}])['product_id'] == 70
+        # Zelf gekozen: het artikel, en de batch heet als zijn product.
+        anders = {'id': 3, 'product_id': 6, 'artikelnummer': 'AN-1'}
+        assert link(fles, anders, keuze=3) == {'bier': 'Anders', 'sku': 'AN-1'}
+        assert link(fles, keuze=3.0)['product_id'] == 71  # bestaat niet → automatisch
+        assert link(fles, keuze='geen') == {'bier': 'Bokchain', 'link': False}
+        assert link(fles, keuze=True)['product_id'] == 71
+        assert self._een(brouwlog_artikel='geen', naam='Eigen')['bier'] == 'Eigen'
+        # Nergens aan gekoppeld: de naam van de batch en geen link (niet op naam zoeken).
+        assert self._een(naam='Zonder product') == {'nummer': 1, 'bier': 'Zonder product',
+                                                     'status': 'vergisten', 'link': False}
+
+    def test_gerebrand_heet_zoals_hij_verkocht_wordt(self):
+        # #124 op craftery.nl: gebrouwen als Rollbok, helemaal gerebrand naar
+        # Bokchain. De brouwlog moet Bokchain tonen en naar Bokchain linken.
+        data = {
+            'producten': [{'id': 4, 'naam': 'Rollbok'}, {'id': 5, 'naam': 'Bokchain'}],
+            'product_artikelen': [{'product_id': 4, 'wc': {'wc_id': 70}},
+                                  {'product_id': 5, 'wc': {'wc_id': 80}}],
+            'afvullingen': [{'batch_id': 1, 'product_id': 5, 'aantal': 51, 'inhoud_per_eenheid': 0.33,
+                             'rebrand_van_product_id': 4}],
+        }
+
+        def een(**velden):
+            return self._bericht([self._b(1, status='Afgevuld', product_id=4, **velden)], **data)['batches'][0]
+
+        uit = een(product_ids=[5])
+        assert uit['bier'] == 'Bokchain' and uit['product_id'] == 80
+        assert 'Rollbok' not in json.dumps(uit)
+        # Vóór het afvullen heet hij nog zoals hij gebrouwen is.
+        voor = self._bericht([self._b(1, status='Vergisten', product_id=4)],
+                             **dict(data, afvullingen=[]))['batches'][0]
+        assert voor['bier'] == 'Rollbok' and voor['product_id'] == 70
+        # Een afvulling zonder eigen product hoort bij het product van de batch.
+        data['afvullingen'] = [{'batch_id': 1, 'aantal': 10}]
+        assert een()['bier'] == 'Rollbok'
+
+    def test_deels_gerebrand_de_meeste_liters_wint(self):
+        data = {'producten': [{'id': 4, 'naam': 'Rollbok'}, {'id': 5, 'naam': 'Bokchain'}]}
+
+        def bier(*afv):
+            return self._bericht([self._b(1, status='Afgevuld', product_id=4)],
+                                 afvullingen=[dict(a, batch_id=1) for a in afv], **data)['batches'][0]['bier']
+
+        assert bier({'product_id': 5, 'aantal': 30, 'inhoud_per_eenheid': 0.33},
+                    {'aantal': 1, 'inhoud_per_eenheid': 20}) == 'Rollbok'
+        assert bier({'product_id': 5, 'aantal': 70, 'inhoud_per_eenheid': 0.33},
+                    {'aantal': 1, 'inhoud_per_eenheid': 20}) == 'Bokchain'
+        # Zonder inhoud tellen de stuks; bij gelijkstand het eerst afgevulde.
+        assert bier({'product_id': 5, 'aantal': 3}, {'aantal': 2}) == 'Bokchain'
+        assert bier({'aantal': 2}, {'product_id': 5, 'aantal': 2}) == 'Rollbok'
+        # Een product dat niet (meer) bestaat: de naam van de batch.
+        assert bier({'product_id': 99, 'aantal': 5}) == 'Rollbok'
 
     def test_tank_alleen_als_het_bier_erin_ligt_of_lag(self):
         data = {'tanks': [{'id': 't1', 'naam': 'FV1'}, {'id': 't2', 'naam': 'BBT twee lang'}]}
@@ -5181,7 +5251,7 @@ class TestBrouwlog:
             self._seed(creds=self.CREDS)
             status, body, _ = req(app, 'POST', '/api/website/brouwlog/voorbeeld', body={})
             assert status == 200 and body['enabled'] is False
-            assert body['bericht']['alles'] is True and body['aantal'] == 7 and body['max_batches'] == 50
+            assert body['bericht']['alles'] is True and body['aantal'] == 14 and body['max_batches'] == 50
             assert body['max_bytes'] == 65536 and body['bytes'] == len(srv._website_json(body['bericht']))
             assert {(o['batch_id'], o['reden']) for o in body['overgeslagen']} == {
                 (3, 'gepland'), (4, 'nummer'), (10, 'status'), (11, 'bier')}

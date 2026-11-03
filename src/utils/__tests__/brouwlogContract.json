@@ -1,5 +1,5 @@
 {
-  "uitleg": "Contract van de brouwlog: per batch wat er op de site komt (of waarom niet). pytest (_brouwlog_batch in server.py) en vitest (brouwlogBatch in utils/brouwlog.ts) lezen allebei dit bestand; ze moeten precies `verwacht` opleveren. Datums zonder tijdzone, zodat de uitkomst niet van de tijdzone van de testmachine afhangt.",
+  "uitleg": "Contract van de brouwlog: per batch wat er op de site komt (of waarom niet). pytest (_brouwlog_batch in server.py) en vitest (brouwlogBatch in utils/brouwlog.ts) lezen allebei dit bestand; ze moeten precies `verwacht` opleveren. De batch heet als het product waaraan hij gekoppeld is (gekozen bij de batch, anders het product waaronder hij is afgevuld, anders dat van de batch); de link komt van het webshopartikel (product_id en/of sku), en zonder artikel staat er link: false. Datums zonder tijdzone, zodat de uitkomst niet van de tijdzone van de testmachine afhangt.",
   "jaar": 2026,
   "data": {
     "producten": [
@@ -14,6 +14,19 @@
       {
         "id": 3,
         "naam": "Stout"
+      },
+      {
+        "id": 4,
+        "naam": "Rollbok",
+        "status": "gearchiveerd"
+      },
+      {
+        "id": 5,
+        "naam": "Bokchain"
+      },
+      {
+        "id": 6,
+        "naam": "Eigen etiket Bakkerij"
       }
     ],
     "recepten": [
@@ -67,6 +80,40 @@
           "wc_id": 60,
           "status": "draft"
         }
+      },
+      {
+        "id": 6,
+        "product_id": 4,
+        "wc": {
+          "wc_id": 70,
+          "status": "draft"
+        }
+      },
+      {
+        "id": 7,
+        "product_id": 5,
+        "artikelnummer": "BCFL033",
+        "wc": {
+          "wc_id": 80,
+          "status": "publish"
+        }
+      },
+      {
+        "id": 8,
+        "product_id": 2,
+        "verpakking_id": 1,
+        "verpakking_naam": "Fles 33cL",
+        "artikelnummer": "KBFL033",
+        "wc": {
+          "wc_id": 52
+        }
+      },
+      {
+        "id": 9,
+        "product_id": 6,
+        "verpakking_id": 1,
+        "artikelnummer": "EE-BAK",
+        "wc_push": false
       }
     ],
     "verpakkingen": [
@@ -145,6 +192,46 @@
         "verpakking_id": 1,
         "aantal": 100,
         "datum": "2026-08-14"
+      },
+      {
+        "id": 7,
+        "batch_id": 124,
+        "product_id": 5,
+        "verpakking_id": 1,
+        "aantal": 51,
+        "inhoud_per_eenheid": 0.33,
+        "datum": "2026-10-01",
+        "rebrand_van_product_id": 4,
+        "rebrand_van_afvulling_id": 7,
+        "rebrand_datum": "2026-10-20"
+      },
+      {
+        "id": 8,
+        "batch_id": 138,
+        "verpakking_id": 2,
+        "aantal": 1,
+        "inhoud_per_eenheid": 20,
+        "datum": "2026-10-10"
+      },
+      {
+        "id": 9,
+        "batch_id": 138,
+        "product_id": 5,
+        "verpakking_id": 1,
+        "aantal": 20,
+        "inhoud_per_eenheid": 0.33,
+        "datum": "2026-10-10",
+        "rebrand_van_product_id": 1,
+        "rebrand_van_afvulling_id": 99
+      },
+      {
+        "id": 10,
+        "batch_id": 139,
+        "product_id": 5,
+        "verpakking_id": 1,
+        "aantal": 24,
+        "inhoud_per_eenheid": 0.33,
+        "datum": "2026-10-11"
       }
     ],
     "afvul_sessies": [
@@ -308,6 +395,75 @@
         "ABV": "6.5",
         "brouwlog_notitie": "  \n  ",
         "brouwlog_publiek": false
+      },
+      {
+        "id": 124,
+        "batch_nummer": "124",
+        "naam": "Rollbok",
+        "status": "Afgevuld",
+        "datum": "2026-09-01",
+        "tank": "t2",
+        "liter_vergist": 44,
+        "product_id": 4,
+        "product_ids": [
+          5
+        ],
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 138,
+        "batch_nummer": "138",
+        "naam": "Tripel A",
+        "status": "Afgevuld",
+        "datum": "2026-09-20",
+        "product_id": 1,
+        "product_ids": [
+          5
+        ],
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 139,
+        "batch_nummer": "139",
+        "naam": "",
+        "status": "Gesloten",
+        "recept_id": "rec1",
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 140,
+        "batch_nummer": "140",
+        "naam": "Tripel A",
+        "status": "Vergisten",
+        "product_id": 1,
+        "brouwlog_artikel": 7,
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 141,
+        "batch_nummer": "141",
+        "naam": "Bokchain",
+        "status": "Vergisten",
+        "product_id": 5,
+        "brouwlog_artikel": "geen",
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 142,
+        "batch_nummer": "142",
+        "naam": "Bakkersbier",
+        "status": "Vergisten",
+        "product_id": 6,
+        "brouwlog_publiek": true
+      },
+      {
+        "id": 143,
+        "batch_nummer": "143",
+        "naam": "Tripel A",
+        "status": "Vergisten",
+        "product_id": 1,
+        "brouwlog_artikel": 999,
+        "brouwlog_publiek": true
       }
     ]
   },
@@ -334,7 +490,9 @@
       "abv": 6.46,
       "og": 1.049,
       "fg": 1.012,
-      "tank": "Heel lange t"
+      "tank": "Heel lange t",
+      "product_id": 52,
+      "sku": "KBFL033"
     },
     "3": {
       "reden": "gepland"
@@ -351,20 +509,23 @@
       "status": "afgevuld",
       "brouwdatum": "2026-08-01",
       "afvuldatum": "2026-08-14",
-      "tank": "FV1"
+      "tank": "FV1",
+      "link": false
     },
     "7": {
       "nummer": 131,
       "bier": "Recept Saison",
       "status": "gebrouwen",
       "og": 1.05,
-      "notitie": "Vet gebrouwenvandaag\n\nTweede alinea met tab"
+      "notitie": "Vet gebrouwenvandaag\n\nTweede alinea met tab",
+      "link": false
     },
     "12": {
       "nummer": 132,
       "bier": "Haverstout",
       "status": "gebrouwen",
-      "liters": 480
+      "liters": 480,
+      "link": false
     },
     "8": {
       "nummer": 128,
@@ -372,14 +533,16 @@
       "status": "conditioneren",
       "brouwdatum": "2026-10-30",
       "liters": 250,
-      "tank": "t9"
+      "tank": "t9",
+      "link": false
     },
     "9": {
       "nummer": 130,
       "bier": "Een heel erg lange naam voor een bier dat eigenlijk veel kor",
       "status": "afgevuld",
       "afvuldatum": "2026-10-05",
-      "notitie": "🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺"
+      "notitie": "🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺🍺",
+      "link": false
     },
     "10": {
       "reden": "status"
@@ -391,7 +554,63 @@
       "nummer": 135,
       "bier": "Toekomst",
       "status": "vergisten",
-      "abv": 6.5
+      "abv": 6.5,
+      "link": false
+    },
+    "124": {
+      "nummer": 124,
+      "bier": "Bokchain",
+      "status": "afgevuld",
+      "brouwdatum": "2026-09-01",
+      "afvuldatum": "2026-10-01",
+      "liters": 44,
+      "flessen": 51,
+      "tank": "FV2",
+      "product_id": 80,
+      "sku": "BCFL033"
+    },
+    "138": {
+      "nummer": 138,
+      "bier": "Tripel A",
+      "status": "afgevuld",
+      "brouwdatum": "2026-09-20",
+      "afvuldatum": "2026-10-10",
+      "flessen": 20,
+      "product_id": 1234
+    },
+    "139": {
+      "nummer": 139,
+      "bier": "Bokchain",
+      "status": "afgevuld",
+      "afvuldatum": "2026-10-11",
+      "flessen": 24,
+      "product_id": 80,
+      "sku": "BCFL033"
+    },
+    "140": {
+      "nummer": 140,
+      "bier": "Bokchain",
+      "status": "vergisten",
+      "product_id": 80,
+      "sku": "BCFL033"
+    },
+    "141": {
+      "nummer": 141,
+      "bier": "Bokchain",
+      "status": "vergisten",
+      "link": false
+    },
+    "142": {
+      "nummer": 142,
+      "bier": "Eigen etiket Bakkerij",
+      "status": "vergisten",
+      "link": false
+    },
+    "143": {
+      "nummer": 143,
+      "bier": "Tripel A",
+      "status": "vergisten",
+      "product_id": 1234
     }
   }
 }

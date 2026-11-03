@@ -47,7 +47,12 @@ export interface BrouwlogBatch {
   fg?: number
   tank?: string
   notitie?: string
+  /** Het WooCommerce-product van het gekoppelde artikel. */
   product_id?: number
+  /** De SKU van het gekoppelde artikel (plugin 1.2.1+; 1.2.0 negeert hem). */
+  sku?: string
+  /** `false` = geen winkellink, ook niet op naam zoeken (plugin 1.2.1+). */
+  link?: false
 }
 
 /** Waarom een aangevinkte batch niet meegaat. De eerste vier komen uit
@@ -73,7 +78,7 @@ export interface BrouwlogCtx {
 
 // ── Grenzen van het contract (plugin Craftery Brouwerij 1.2.0) ────────────
 const GRENZEN = {
-  bier: 60, tank: 12, notitie: BROUWLOG_NOTITIE_MAX,
+  bier: 60, tank: 12, notitie: BROUWLOG_NOTITIE_MAX, sku: 100,
   nummer: [1, 999999], liters: [0.1, 10000], flessen: [1, 100000],
   abv: [0, 20], sg: [0.98, 1.2], jaarVanaf: 2018,
 } as const
@@ -211,6 +216,55 @@ const afvAantal = (a: Record<string, any>): number => {
   return Number.isFinite(v) ? v : 0
 }
 
+const afvInhoud = (a: Record<string, any>): number => {
+  const v = Number(a.inhoud_per_eenheid != null ? a.inhoud_per_eenheid : a.inhoud_liter)
+  return Number.isFinite(v) ? v : 0
+}
+
+/**
+ * Het product waaronder de batch is afgevuld en dus verkocht wordt. Na een
+ * rebrand is dat een ander product dan waaronder hij gebrouwen is: de rebrand
+ * hangt de afvullingen om (`product_id`, met `rebrand_van_product_id` als
+ * spoor), de batch zelf houdt zijn product. Een afvulling zonder product hoort
+ * bij het product van de batch. Meer producten: dat met de meeste liters, dan
+ * de meeste stuks, dan het eerst afgevulde. Spiegel van `_brouwlog_verkocht_als`.
+ */
+export const brouwlogVerkochtAls = (batch: unknown, ctx: BrouwlogCtx = {}): Record<string, any> | null => {
+  const b: Record<string, any> = heeft(batch) ? batch : {}
+  const stand = new Map<unknown, { liters: number; stuks: number }>()
+  for (const a of ctx.afvullingen || []) {
+    if (!heeft(a) || a.batch_id !== b.id) continue
+    const aantal = afvAantal(a)
+    if (aantal <= 0) continue
+    const pid = a.product_id || b.product_id
+    if (pid == null || typeof pid === 'boolean') continue
+    const nu = stand.get(pid) || { liters: 0, stuks: 0 }
+    stand.set(pid, { liters: nu.liters + aantal * Math.max(0, afvInhoud(a)), stuks: nu.stuks + aantal })
+  }
+  let beste: unknown = undefined
+  let besteGewicht = { liters: 0, stuks: 0 }
+  for (const [pid, g] of stand) {
+    if (beste === undefined || g.liters > besteGewicht.liters
+      || (g.liters === besteGewicht.liters && g.stuks > besteGewicht.stuks)) {
+      beste = pid
+      besteGewicht = g
+    }
+  }
+  if (beste === undefined) return null
+  return (ctx.producten || []).find(p => heeft(p) && p.id === beste) || null
+}
+
+/** Gerebrand? De naam waaronder de batch gebrouwen is en die waaronder hij
+ *  verkocht wordt, als die verschillen (voor de uitleg bij de batch); anders null. */
+export const brouwlogRebrand = (batch: unknown, ctx: BrouwlogCtx = {}): { gebrouwen: string; verkocht: string } | null => {
+  const b: Record<string, any> = heeft(batch) ? batch : {}
+  const verkocht = brouwlogKoppeling(b, ctx).product
+  if (!verkocht || !verkocht.naam) return null
+  const gebrouwen = batchTitel({ id: b.id, ...b }, { producten: ctx.producten as any, recepten: ctx.recepten as any }).titel
+  const v = brouwlogTekst(verkocht.naam, GRENZEN.bier), g = brouwlogTekst(gebrouwen, GRENZEN.bier)
+  return g && v && g !== v ? { gebrouwen: g, verkocht: v } : null
+}
+
 const verpakkingSoort = (a: Record<string, any>, vpPerId: Map<string, any>): string | null => {
   const vid = a.verpakking_id
   const vp = vid != null && vid !== '' ? vpPerId.get(String(vid)) : undefined
@@ -247,21 +301,93 @@ const tankNaam = (b: Record<string, any>, status: BrouwlogStatus, tanksPerId: Ma
   return brouwlogTekst((heeft(tank) && (tank.naam || tank.id)) || tid, GRENZEN.tank)
 }
 
-/** Het WooCommerce-product voor de link: alleen als alle gekoppelde artikelen
- *  van het product naar hetzelfde gepubliceerde product wijzen. */
-const productId = (b: Record<string, any>, artikelen: ReadonlyArray<any>): number | null => {
-  const pid = b.product_id
-  if (pid == null || typeof pid === 'boolean') return null
-  const ids = new Set<number>()
-  for (const art of artikelen) {
-    if (!heeft(art) || art.product_id !== pid) continue
-    const wc = heeft(art.wc) ? art.wc : {}
-    const wid = wc.wc_id
-    if (typeof wid !== 'number' || !Number.isInteger(wid) || wid <= 0) continue
-    if (!(wc.status == null || wc.status === '' || wc.status === 'publish')) continue
-    ids.add(wid)
+const wcIdVan = (art: Record<string, any>): number | null => {
+  const wid = heeft(art.wc) ? art.wc.wc_id : undefined
+  return typeof wid === 'number' && Number.isInteger(wid) && wid > 0 ? wid : null
+}
+
+const skuVan = (art: Record<string, any>): string => brouwlogTekst(art.artikelnummer, GRENZEN.sku)
+
+const openbaar = (art: Record<string, any>): boolean => {
+  const status = heeft(art.wc) ? art.wc.status : undefined
+  return status == null || status === '' || status === 'publish'
+}
+
+/** Staat dit artikel in de webshop? Gekoppeld aan een WooCommerce-product, of
+ *  met een SKU die mee gaat in de voorraadpush; nooit een concept of privé.
+ *  Spiegel van `_brouwlog_in_webshop`. */
+export const brouwlogInWebshop = (art: unknown): boolean =>
+  heeft(art) && openbaar(art) && (wcIdVan(art) != null || (!!skuVan(art) && art.wc_push !== false))
+
+export interface BrouwlogKoppeling {
+  /** Het product waar de batch naar heet; null = nergens aan gekoppeld. */
+  product: Record<string, any> | null
+  /** Het webshopartikel voor de link; null = geen link. */
+  artikel: Record<string, any> | null
+  /** `gekozen` bij de batch, bewust `geen` link, of `auto` (de beste gok). */
+  bron: 'gekozen' | 'geen' | 'auto'
+}
+
+/**
+ * Aan welk product (de naam) en welk webshopartikel (de link) de batch in de
+ * brouwlog hangt. Spiegel van `_brouwlog_koppeling` in server.py:
+ * `brouwlog_artikel` = een artikel-id (gekozen), `'geen'` (geen link), of
+ * leeg = automatisch: het product waaronder afgevuld (na een rebrand het
+ * nieuwe), anders dat van de batch; als artikel de verpakking waarin het
+ * meeste is afgevuld, anders een fles, anders het eerste in de webshop.
+ */
+export const brouwlogKoppeling = (batch: unknown, ctx: BrouwlogCtx = {}): BrouwlogKoppeling => {
+  const b: Record<string, any> = heeft(batch) ? batch : {}
+  const artikelen = (ctx.productArtikelen || []).filter(heeft)
+  const productVan = (pid: unknown) => pid == null || typeof pid === 'boolean'
+    ? null : (ctx.producten || []).find(p => heeft(p) && p.id === pid) || null
+  // Vóór het afvullen: het product van de batch zelf.
+  const verkocht = brouwlogVerkochtAls(b, ctx) || productVan(b.product_id)
+  const keuze = b.brouwlog_artikel
+  if (keuze === 'geen') return { product: verkocht, artikel: null, bron: 'geen' }
+  if (typeof keuze === 'number' && Number.isInteger(keuze)) {
+    const art = artikelen.find(a => a.id === keuze)
+    if (art) return { product: productVan(art.product_id) || verkocht, artikel: art, bron: 'gekozen' }
   }
-  return ids.size === 1 ? [...ids][0] : null
+  if (!verkocht) return { product: null, artikel: null, bron: 'auto' }
+  const kandidaten = artikelen.filter(a => a.product_id === verkocht.id && brouwlogInWebshop(a))
+  if (!kandidaten.length) return { product: verkocht, artikel: null, bron: 'auto' }
+  // De verpakking waarin het meeste van dit product is afgevuld (stuks).
+  const perVp = new Map<string, number>()
+  for (const a of ctx.afvullingen || []) {
+    if (!heeft(a) || a.batch_id !== b.id) continue
+    if ((a.product_id || b.product_id) !== verkocht.id || a.verpakking_id == null || a.verpakking_id === '') continue
+    const sleutel = String(a.verpakking_id)
+    perVp.set(sleutel, (perVp.get(sleutel) || 0) + Math.max(0, afvAantal(a)))
+  }
+  let vaakst: string | null = null
+  for (const [sleutel, stuks] of perVp) {
+    if (stuks > 0 && (vaakst == null || stuks > (perVp.get(vaakst) || 0))) vaakst = sleutel
+  }
+  const vpPerId = new Map<string, any>((ctx.verpakkingen || []).filter(heeft).map(v => [String(v.id), v]))
+  const gok = kandidaten.find(a => vaakst != null && String(a.verpakking_id) === vaakst)
+    || kandidaten.find(a => verpakkingSoort(a, vpPerId) === 'fles')
+    || kandidaten[0]
+  return { product: verkocht, artikel: gok, bron: 'auto' }
+}
+
+/** De keuzelijst bij de batch: per product de artikelen die in de webshop staan. */
+export const brouwlogArtikelOpties = (ctx: BrouwlogCtx = {}): Array<{ product: Record<string, any>; artikelen: Record<string, any>[] }> => {
+  const uit: Array<{ product: Record<string, any>; artikelen: Record<string, any>[] }> = []
+  for (const p of ctx.producten || []) {
+    if (!heeft(p)) continue
+    const artikelen = (ctx.productArtikelen || []).filter(a => heeft(a) && a.product_id === p.id && brouwlogInWebshop(a))
+    if (artikelen.length) uit.push({ product: p, artikelen })
+  }
+  return uit.sort((a, b) => String(a.product.naam || '').localeCompare(String(b.product.naam || ''), 'nl'))
+}
+
+/** "Fles 33cL · BCFL033" — hoe een artikel in de keuzelijst heet. */
+export const brouwlogArtikelLabel = (art: Record<string, any>): string => {
+  const sku = skuVan(art)
+  const wc = wcIdVan(art)
+  return [String(art.verpakking_naam || art.verpakking_type || art.omschrijving || '').trim(), sku || (wc != null ? `#${wc}` : '')]
+    .filter(Boolean).join(' · ')
 }
 
 /**
@@ -279,7 +405,13 @@ export const brouwlogBatch = (batch: unknown, ctx: BrouwlogCtx = {}): BrouwlogUi
   if (fase === 'Gepland') return { ok: false, reden: 'gepland' }
   const status = Object.prototype.hasOwnProperty.call(STATUS, fase) ? STATUS[fase] : null
   if (!status) return { ok: false, reden: 'status' }
-  const titel = batchTitel({ id: b.id, ...b }, { producten: ctx.producten as any, recepten: ctx.recepten as any }).titel
+  const eigen = (ctx.afvullingen || []).filter(a => heeft(a) && a.batch_id === b.id)
+  // De batch heet als het product waaraan hij gekoppeld is; nergens aan
+  // gekoppeld = de naam van de batch zelf, zonder link.
+  const koppeling = brouwlogKoppeling(b, ctx)
+  const titel = koppeling.product && koppeling.product.naam
+    ? String(koppeling.product.naam)
+    : batchTitel({ id: b.id, ...b }, { producten: ctx.producten as any, recepten: ctx.recepten as any }).titel
   const bier = bierZonderNummer(titel, nummer)
   if (!bier) return { ok: false, reden: 'bier' }
 
@@ -287,7 +419,6 @@ export const brouwlogBatch = (batch: unknown, ctx: BrouwlogCtx = {}): BrouwlogUi
   const uit: BrouwlogBatch = { nummer, bier, status }
   const brouwdatum = brouwlogDatum(b.datum, jaar)
   if (brouwdatum) uit.brouwdatum = brouwdatum
-  const eigen = (ctx.afvullingen || []).filter(a => heeft(a) && a.batch_id === b.id)
   const dagen = [
     ...eigen.map(a => brouwlogDatum(a.datum, jaar)),
     ...(ctx.afvulSessies || [])
@@ -318,8 +449,16 @@ export const brouwlogBatch = (batch: unknown, ctx: BrouwlogCtx = {}): BrouwlogUi
   if (tank) uit.tank = tank
   const notitie = brouwlogNotitie(b.brouwlog_notitie)
   if (notitie) uit.notitie = notitie
-  const pid = productId(b, ctx.productArtikelen || [])
-  if (pid != null) uit.product_id = pid
+  // De link: het WooCommerce-product en/of de SKU van het gekoppelde artikel.
+  // Geen artikel (of bewust geen link) = `link: false`: niet op naam zoeken.
+  const art = koppeling.bron !== 'geen' ? koppeling.artikel : null
+  if (art) {
+    const wc = openbaar(art) ? wcIdVan(art) : null
+    if (wc != null) uit.product_id = wc
+    const sku = skuVan(art)
+    if (sku) uit.sku = sku
+  }
+  if (uit.product_id == null && !uit.sku) uit.link = false
   return { ok: true, batch: uit }
 }
 

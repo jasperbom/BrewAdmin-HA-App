@@ -2,15 +2,20 @@ import React from 'react'
 import { t, getLang } from '../../i18n'
 import SectionHeader from '../ui/SectionHeader'
 import {
-  BROUWLOG_NOTITIE_MAX, BrouwlogBatch, BrouwlogCtx, brouwlogAangevinkt, brouwlogBatch, brouwlogNotitie, brouwlogRedenSleutel,
-  brouwlogRegel, brouwlogTekens,
+  BROUWLOG_NOTITIE_MAX, BrouwlogBatch, BrouwlogCtx, brouwlogAangevinkt, brouwlogArtikelLabel, brouwlogArtikelOpties,
+  brouwlogBatch, brouwlogKoppeling, brouwlogNotitie, brouwlogRedenSleutel, brouwlogRebrand, brouwlogRegel, brouwlogTekens,
 } from '../../utils/brouwlog'
 
 // Het blok "Brouwlog" op de batchpagina: het vinkje "Op de brouwlog", de
 // publieke notitie (een eigen veld, los van de interne notities) en wat er
 // publiek komt — uit dezelfde afleiding als het bericht van de server
 // (`brouwlogBatch` ↔ `_brouwlog_batch`). Versturen doet de server; wie de
-// batch mag bewerken, mag het vinkje en de notitie zetten.
+// batch mag bewerken, mag het vinkje, de notitie en het product zetten.
+//
+// "Product in de webshop" (`brouwlog_artikel`): de batch heet in de brouwlog
+// als dat product en linkt ernaar. Automatisch = de beste gok (het product
+// waaronder hij is afgevuld, in de verpakking waarin het meeste ging); "geen"
+// = geen link, ook als de site het bier op naam zou kunnen vinden.
 
 interface Props {
   batch: any
@@ -18,7 +23,7 @@ interface Props {
   /** Staat de brouwlog aan (Instellingen → WooCommerce koppeling)? */
   brouwlogAan: boolean
   magWijzigen: boolean
-  onWijzig: (patch: { brouwlog_publiek?: boolean; brouwlog_notitie?: string }) => void
+  onWijzig: (patch: { brouwlog_publiek?: boolean; brouwlog_notitie?: string; brouwlog_artikel?: number | 'geen' | null }) => void
   open: boolean
   onToggle: () => void
 }
@@ -31,6 +36,28 @@ const BrouwlogSectie: React.FC<Props> = ({ batch, ctx, brouwlogAan, magWijzigen,
   const publiek = uitkomst.ok ? (uitkomst as { batch: BrouwlogBatch }).batch : null
   const reden = uitkomst.ok ? null : (uitkomst as { reden: string }).reden
   const publiekeNotitie = brouwlogNotitie(notitie)
+  // Gerebrand: de brouwlog toont de naam waaronder de batch verkocht wordt.
+  const rebrand = brouwlogRebrand(batch, ctx)
+  // Het product in de webshop: wat er nu geldt, en wat automatisch zou gelden.
+  const koppeling = brouwlogKoppeling(batch, ctx)
+  const auto = brouwlogKoppeling({ ...(batch || {}), brouwlog_artikel: null }, ctx)
+  const opties = brouwlogArtikelOpties(ctx)
+  const keuzeWaarde = koppeling.bron === 'geen' ? 'geen'
+    : koppeling.bron === 'gekozen' && koppeling.artikel ? String(koppeling.artikel.id) : ''
+  const gekozenOntbreekt = koppeling.bron === 'gekozen' && koppeling.artikel
+    && !opties.some(o => o.artikelen.some(a => a.id === koppeling.artikel?.id))
+  const artikelTekst = (product: any, artikel: any) =>
+    [product?.naam, brouwlogArtikelLabel(artikel)].filter(Boolean).join(' · ')
+  const zetProduct = (waarde: string) =>
+    onWijzig({ brouwlog_artikel: waarde === '' ? null : waarde === 'geen' ? 'geen' : Number(waarde) })
+  const linkRegel = (() => {
+    if (!publiek) return ''
+    if (publiek.product_id != null || publiek.sku) {
+      return t('brouwlog_link_naar').replace('{naam}', String(koppeling.product?.naam || publiek.bier))
+        .replace('{artikel}', koppeling.artikel ? brouwlogArtikelLabel(koppeling.artikel) : '')
+    }
+    return koppeling.bron === 'geen' ? t('brouwlog_link_geen') : t('brouwlog_link_geen_auto').replace('{naam}', publiek.bier)
+  })()
 
   const zetNotitie = (waarde: string) => {
     // Hooguit 600 tekens zoals de site ze telt (een emoji is één teken).
@@ -80,6 +107,33 @@ const BrouwlogSectie: React.FC<Props> = ({ batch, ctx, brouwlogAan, magWijzigen,
             </div>
           </div>
 
+          <div>
+            <label htmlFor={`brouwlog-product-${batch?.id}`} className="block text-sm font-medium text-gray-700 mb-1">
+              {t('brouwlog_product_label')}
+            </label>
+            <select id={`brouwlog-product-${batch?.id}`} value={keuzeWaarde} disabled={!magWijzigen}
+              onChange={e => zetProduct(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm t-input disabled:opacity-60 min-h-tap sm:min-h-0">
+              <option value="">
+                {auto.artikel
+                  ? t('brouwlog_product_auto').replace('{keuze}', artikelTekst(auto.product, auto.artikel))
+                  : t('brouwlog_product_auto_geen')}
+              </option>
+              {opties.map(o => (
+                <optgroup key={String(o.product.id)} label={String(o.product.naam || '')}>
+                  {o.artikelen.map(a => (
+                    <option key={String(a.id)} value={String(a.id)}>{artikelTekst(o.product, a)}</option>
+                  ))}
+                </optgroup>
+              ))}
+              {gekozenOntbreekt && koppeling.artikel && (
+                <option value={String(koppeling.artikel.id)}>{artikelTekst(koppeling.product, koppeling.artikel)}</option>
+              )}
+              <option value="geen">{t('brouwlog_product_geen')}</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">{t('brouwlog_product_hint')}</p>
+          </div>
+
           <div className="border-t border-gray-100 pt-3">
             {publiek ? (
               <>
@@ -92,9 +146,12 @@ const BrouwlogSectie: React.FC<Props> = ({ batch, ctx, brouwlogAan, magWijzigen,
                 {publiekeNotitie && (
                   <p className="text-sm text-gray-700 whitespace-pre-wrap break-words border-l-2 border-gray-200 pl-3 mt-2">{publiekeNotitie}</p>
                 )}
-                <p className="text-xs text-gray-500 mt-2">
-                  {publiek.product_id != null ? t('brouwlog_productlink') : t('brouwlog_geen_productlink')}
-                </p>
+                {rebrand && (
+                  <p className="text-xs text-gray-600 mt-2">
+                    {t('brouwlog_rebrand_uitleg').replace('{gebrouwen}', rebrand.gebrouwen).split('{verkocht}').join(rebrand.verkocht)}
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 mt-2">{linkRegel}</p>
               </>
             ) : (
               <p className="text-sm px-3 py-2 rounded bg-orange-50 border border-orange-200 text-orange-800">
