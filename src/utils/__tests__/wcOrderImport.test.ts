@@ -3,7 +3,7 @@ import {
   haalWcOrders, wcOrderNaarBestelling, wcOrderUpdate, importeerWcOrders, pasImportToe,
   importAuditRegels, importMelding, telNieuweWebshopOrders, importLeaseVrij, wcBtwNummer,
   wcImportSelectie, verwijderDubbeleWcOrders, WC_PER_PAGE, WC_IMPORT_LEASE_MS,
-  teVerversenWcIds, haalBekendeWcOrders, telWebshopAfgebroken, wcOrderAfgebroken,
+  teVerversenWcIds, haalBekendeWcOrders, telWebshopAfgebroken, wcOrderAfgebroken, wcKlantNotitie,
 } from '../wcOrderImport'
 import { openBestellingReserveringen } from '../calculations'
 import { wcTerugschrijfPlan, wcSyncVelden } from '../wcTerugschrijven'
@@ -87,6 +87,21 @@ describe('wcOrderNaarBestelling', () => {
       meta_data: [{key: '_billing_house_number', value: '7'}, {key: '_billing_house_number_suffix', value: 'a'}]})
     expect(wcOrderNaarBestelling(plugin, refs, [], [], t)).toMatchObject({klant_straat: 'Dorp', klant_huisnummer: '7a'})
   })
+  it('huisnummer uit een veld van de blokcheckout; postcode en plaats van dezelfde kant', () => {
+    const blok = order(1, {billing: {...order(1).billing, address_1: 'Dorp'}, meta_data: [{key: '_wc_billing/craftery/huisnummer', value: '14'}]})
+    expect(wcOrderNaarBestelling(blok, refs, [], [], t)).toMatchObject({klant_straat: 'Dorp', klant_huisnummer: '14', klant_postcode: '1234AB', klant_stad: 'Zwartebroek'})
+    const verzend = order(1, {billing: {email: 'ans@example.com'},
+      shipping: {first_name: 'Ans', last_name: 'Bakker', address_1: 'Kerkweg 8', postcode: '3751AB', city: 'Bunschoten'}})
+    expect(wcOrderNaarBestelling(verzend, refs, [], [], t)).toMatchObject({
+      klant_naam: 'Ans Bakker', klant_straat: 'Kerkweg', klant_huisnummer: '8', klant_postcode: '3751AB', klant_stad: 'Bunschoten'})
+  })
+  it('de notitie van de klant komt in de opmerkingen', () => {
+    const nb = wcOrderNaarBestelling(order(1, {customer_note: '  Graag bij de buren\r\nafgeven  '}), refs, [], [], t)
+    expect(nb).toMatchObject({opmerkingen: 'Graag bij de buren\nafgeven', wc_notitie: 'Graag bij de buren\nafgeven'})
+    const zonder = wcOrderNaarBestelling(order(1, {customer_note: ''}), refs, [], [], t)
+    expect(zonder).not.toHaveProperty('opmerkingen')
+    expect(zonder).not.toHaveProperty('wc_notitie')
+  })
   it('naamloze klant krijgt de i18n-terugval', () => {
     expect(wcOrderNaarBestelling(order(1, {billing: {}}), refs, [], [], t).klant_naam).toBe('lbl_onbekend')
   })
@@ -114,6 +129,34 @@ describe('wcOrderUpdate', () => {
     expect(wcOrderUpdate({...oud, klant_straat: 'Dorp', klant_huisnummer: '7'}, plugin)).toBeNull()
     const audit = importAuditRegels({nieuw: [], updates: {5: {klant_straat: 'Dorp', klant_huisnummer: '7'}}, onbekendeRegels: 0})
     expect(audit[0].omschrijving).toContain('adres Dorp 7')
+  })
+  it('vult een huisnummer uit de blokcheckout aan, met een lege postcode', () => {
+    const blok = order(1, {billing: {...order(1).billing, address_1: 'Dorp'}, meta_data: [{key: '_wc_billing/craftery/huisnummer', value: '14'}]})
+    const oud = {...bestaand, klant_straat: 'Dorp', klant_huisnummer: '', klant_postcode: ''}
+    expect(wcOrderUpdate(oud, blok)).toEqual({klant_straat: 'Dorp', klant_huisnummer: '14', klant_postcode: '1234AB'})
+    expect(wcOrderUpdate({...oud, klant_huisnummer: '14', klant_postcode: '1234AB'}, blok)).toBeNull()
+  })
+  it('klantnotitie: aangevuld bij een oude order, gevolgd zolang hij niet zelf is aangepast', () => {
+    const metNotitie = order(1, {customer_note: 'Bel even aan'})
+    const upd = wcOrderUpdate(bestaand, metNotitie)
+    expect(upd).toEqual({wc_notitie: 'Bel even aan', opmerkingen: 'Bel even aan'})
+    const na = {...bestaand, ...upd}
+    expect(wcOrderUpdate(na, metNotitie)).toBeNull()
+    expect(wcOrderUpdate(na, order(1, {customer_note: 'Achterom'}))).toEqual({wc_notitie: 'Achterom', opmerkingen: 'Achterom'})
+    expect(wcOrderUpdate(na, order(1))).toEqual({wc_notitie: '', opmerkingen: ''})
+    // Eigen tekst blijft staan; de notitie komt erachter.
+    expect(wcOrderUpdate({...bestaand, opmerkingen: 'Factuur apart'}, metNotitie))
+      .toEqual({wc_notitie: 'Bel even aan', opmerkingen: 'Factuur apart\nBel even aan'})
+    // Een order zonder notitie geeft geen update (geen "bijgewerkt" voor elke order).
+    expect(wcOrderUpdate(bestaand, order(1, {customer_note: ''}))).toBeNull()
+    const audit = importAuditRegels({nieuw: [], updates: {5: {wc_notitie: 'Bel even aan', opmerkingen: 'Bel even aan'}}, onbekendeRegels: 0})
+    expect(audit[0].omschrijving).toContain('klantnotitie')
+    expect(audit[0].omschrijving).not.toContain('Bel even aan')
+  })
+  it('wcKlantNotitie ruimt op en negeert geen-tekst', () => {
+    expect(wcKlantNotitie({customer_note: 'a  b\n\n\n\nc '})).toBe('a b\n\nc')
+    expect(wcKlantNotitie({customer_note: null})).toBe('')
+    expect(wcKlantNotitie({})).toBe('')
   })
   it('een verdwenen veld wordt gewist, zodat de order daarna niet elke ronde "gewijzigd" is', () => {
     const afhaal = {...bestaand, wc_levering: 'afhalen', wc_afhaal_locatie: 'Brouwerij', wc_afhaalmoment: '2026-09-12 10:00'}

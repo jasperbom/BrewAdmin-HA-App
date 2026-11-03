@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.45] — 2026-11-03
+
+### Webshopbestellingen: huisnummer en notitie van de klant
+
+- **De notitie van de klant komt mee.** Wat de klant bij het afrekenen
+  schreef ("Graag bij de buren afgeven", WooCommerce `customer_note`) werd
+  niet geïmporteerd. Het staat nu in de opmerkingen van de bestelling: in het
+  orderdetail, op de pakbon en op de picklijst, met de regels zoals de klant
+  ze typte. Bestaande webshoporders krijgen hun notitie bij de volgende import.
+  Past de winkel de notitie aan, dan volgt de bestelling; eigen tekst in de
+  opmerkingen blijft staan en de notitie komt erachter. De notitie gaat niet
+  op de factuur.
+- **Huisnummer uit meer soorten checkout.** De import las alleen
+  `_billing_house_number` (PostNL, MyParcel). Nu ook:
+  - de extra adresvelden van de blokcheckout van een thema of plugin
+    (`_wc_billing/<naam>/huisnummer`, `…/house-number`, met toevoeging);
+  - andere veldnamen in de klassieke checkout (`billing_huisnummer`,
+    `billing_housenumber`, `…_toevoeging`, `…_straatnaam`);
+  - het verzendadres: is het factuuradres leeg, dan telt het verzendadres
+    (met postcode en plaats); heeft het factuuradres geen huisnummer en het
+    verzendadres van dezelfde straat of postcode wél, dan dat nummer. Een
+    ánder verzendadres vervangt het factuuradres nooit.
+- **Bestaande orders zonder huisnummer** worden bij de volgende import
+  aangevuld (zolang de straat nog is zoals hij uit de winkel kwam); een lege
+  postcode of plaats meteen mee. Een adres dat je zelf hebt aangepast blijft
+  staan.
+- Een huisnummer zonder straat valt niet meer weg op factuur, pakbon en
+  herinnering.
+
+---
+
 ## [1.13.44] — 2026-11-03
 
 ### Etiket bijwerken: "Zet dit op het etiket"

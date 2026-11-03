@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { splitsAdresRegel, wcAdres } from '../adres'
+import { splitsAdresRegel, wcAdres, wcAdresVolledig } from '../adres'
 import { resolveKlantSnapshot } from '../klant'
 
 describe('splitsAdresRegel', () => {
@@ -56,6 +56,46 @@ describe('wcAdres', () => {
   })
   it('lege order', () => {
     expect(wcAdres({})).toEqual({straat: '', huisnummer: ''})
+  })
+  it('extra adresvelden van de blokcheckout (_wc_billing/<namespace>/<veld>)', () => {
+    const o = order({address_1: 'Dorpsstraat'}, [
+      {key: '_wc_billing/craftery/huisnummer', value: '12'},
+      {key: '_wc_billing/craftery/toevoeging', value: 'B'},
+      {key: '_wc_shipping/craftery/huisnummer', value: '99'},
+    ])
+    expect(wcAdres(o)).toEqual({straat: 'Dorpsstraat', huisnummer: '12B'})
+    const metStreepje = order({address_1: 'Dorpsstraat'}, [{key: '_wc_billing/mijn-plugin/house-number', value: '7'}])
+    expect(wcAdres(metStreepje)).toEqual({straat: 'Dorpsstraat', huisnummer: '7'})
+  })
+  it('andere namen voor het huisnummer in een klassieke checkout', () => {
+    for (const key of ['_billing_huisnummer', '_billing_housenumber', 'billing_house_nr', '_billing_HouseNumber']) {
+      expect(wcAdres(order({address_1: 'Dorpsstraat'}, [{key, value: '5'}]))).toEqual({straat: 'Dorpsstraat', huisnummer: '5'})
+    }
+    const o = order({address_1: 'Dorpsstraat'}, [
+      {key: '_billing_huisnummer', value: 5}, {key: '_billing_huisnummer_toevoeging', value: 'a'}, {key: '_billing_straatnaam', value: 'Dorpsstraat'},
+    ])
+    expect(wcAdres(o)).toEqual({straat: 'Dorpsstraat', huisnummer: '5a'})
+  })
+  it('een vinkje of object telt niet als huisnummer', () => {
+    expect(wcAdres(order({address_1: 'Dorp 3'}, [{key: '_wc_billing/x/house_number', value: true}]))).toEqual({straat: 'Dorp', huisnummer: '3'})
+    expect(wcAdres(order({address_1: 'Dorp 3'}, [{key: '_billing_house_number', value: {a: 1}}]))).toEqual({straat: 'Dorp', huisnummer: '3'})
+  })
+  it('alleen het verzendadres ingevuld: dat adres, met postcode en plaats', () => {
+    const o = {billing: {first_name: 'Ans', email: 'a@b.nl'}, shipping: {address_1: 'Kerkweg 8', postcode: '3751 AB', city: 'Bunschoten'}}
+    expect(wcAdresVolledig(o)).toEqual({straat: 'Kerkweg', huisnummer: '8', postcode: '3751 AB', stad: 'Bunschoten', kant: 'shipping'})
+  })
+  it('nummer alleen aan de verzendkant van hetzelfde adres', () => {
+    const o = {billing: {address_1: 'Kerkweg', postcode: '3751AB', city: 'Bunschoten'},
+      shipping: {address_1: 'Kerkweg', postcode: '3751 ab', city: 'Bunschoten'},
+      meta_data: [{key: '_shipping_house_number', value: '8'}]}
+    expect(wcAdresVolledig(o)).toMatchObject({straat: 'Kerkweg', huisnummer: '8', postcode: '3751AB', kant: 'billing'})
+  })
+  it('een ander verzendadres neemt nooit de plaats van het factuuradres in', () => {
+    const o = {billing: {address_1: 'Kerkweg', postcode: '3751AB', city: 'Bunschoten'},
+      shipping: {address_1: 'Dorpsstraat 4', postcode: '1234CD', city: 'Elders'}}
+    expect(wcAdresVolledig(o)).toEqual({straat: 'Kerkweg', huisnummer: '', postcode: '3751AB', stad: 'Bunschoten', kant: 'billing'})
+    const compleet = {billing: {address_1: 'Kerkweg 2', postcode: '3751AB', city: 'Bunschoten'}, shipping: {address_1: 'Kerkweg 4', postcode: '3751AB'}}
+    expect(wcAdres(compleet)).toEqual({straat: 'Kerkweg', huisnummer: '2'})
   })
 })
 
