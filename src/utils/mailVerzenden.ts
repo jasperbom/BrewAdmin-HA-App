@@ -167,7 +167,11 @@ export async function verzendMail(m: MailOpdracht, afzender: MailAfzender): Prom
       replyTo: afzender.replyTo,
       attachments,
       inlineImages: logo || waLogo ? [logo, waLogo].filter((b): b is MailInlineImage => !!b) : undefined,
+      // Een https-afmeldpagina krijgt ook de one-click-kop (RFC 8058): Gmail en
+      // Apple Mail posten dan zelf naar die pagina. Die pagina moet een POST
+      // met `List-Unsubscribe=One-Click` meteen verwerken, zonder knop.
       ...(afmelden ? {listUnsubscribe: afmelden.url} : {}),
+      ...(afmelden && /^https:\/\//i.test(afmelden.url) ? {listUnsubscribePost: true} : {}),
     })
   } catch (e: any) {
     throw new MailFout('verzenden', String(e?.message || ''))

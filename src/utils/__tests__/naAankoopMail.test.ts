@@ -363,8 +363,21 @@ describe('de afmeldlink in de verzonden mail', () => {
     const body = api.mailSendApi.mock.calls[0][0]
     expect(body.to).toEqual(['Jasper.Test@Example.com'])
     expect(body.listUnsubscribe).toBe(m.afmelden.url)
+    // Een mailto-afmeldlink: geen one-click-kop (die kan alleen bij https).
+    expect(body.listUnsubscribePost).toBeUndefined()
     expect(body.text.endsWith(`Afmelden: ${m.afmelden.url}`)).toBe(true)
     expect(body.html).toContain(`href="${m.afmelden.url}"`)
+  })
+
+  it('een eigen https-afmeldpagina krijgt ook de one-click-kop', async () => {
+    const order = testOrder()
+    const inst = instAan({afmeld_url: '{winkel}/?afmelden={id}&sleutel={sleutel}'})
+    const m = bouwNaAankoopMail('smaak', order, ctxVoor([order], '2026-11-16', {inst}))
+    expect(m.afmelden.url).toBe('https://dekade.nl/?afmelden=3301&sleutel=wc_order_abc')
+    await verzendMail(m, {})
+    const body = api.mailSendApi.mock.calls[0][0]
+    expect(body.listUnsubscribe).toBe('https://dekade.nl/?afmelden=3301&sleutel=wc_order_abc')
+    expect(body.listUnsubscribePost).toBe(true)
   })
 
   it('een afmeldlink die niet deugt gaat niet mee (en dus ook niet als kop)', async () => {

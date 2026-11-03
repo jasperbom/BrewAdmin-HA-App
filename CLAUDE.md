@@ -501,7 +501,8 @@ BrewAdmin-HA-App/
 │   │   ├── mailVerzenden.ts # Eén mail de deur uit (`verzendMail`: Mollie-link, HTML met logo en knoppen,
 │   │   │                   # platte tekst, bijlagen, `MailFout`) — gedeeld door MailModal en de automaat;
 │   │   │                   # `afmelden` = afmeldregel in de voet + `List-Unsubscribe`-kop (`afmeldUrl`:
-│   │   │                   # alleen mailto/https, spiegel van `_list_unsubscribe` in server.py)
+│   │   │                   # alleen mailto/https, spiegel van `_list_unsubscribe` in server.py); bij https
+│   │   │                   # ook de one-click-kop (de afmeldpagina moet die POST zonder knop verwerken)
 │   │   ├── naAankoopMail.ts # Mails ná een webshopbestelling (standaard uit, `na_aankoop_mails`):
 │   │   │                   # serveertips (`producten[].serveertip`), "hoe smaakte het?" (Untappd per bier,
 │   │   │                   # na afhalen een reviewlink) en de taplijst (`taplijst` uit `verkoopOverzicht`).
@@ -1682,7 +1683,7 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 | POST | `/api/mail/test` | Test SMTP-credentials (login probe, niets opslaan) |
 | POST | `/api/inbox/test` | Facturen per e-mail: met de ingevulde instellingen verbinden, inloggen en de map openen (alleen lezen); `{ok, berichten, mailbox}` of `{ok: false, fout: {code, oorzaak?}}`. Slaat niets op en haalt niets op. Sentinel-wachtwoord + gewijzigd adres → 400 `secret_opnieuw_invoeren`. Beheer-only |
 | POST | `/api/inbox/ophalen` | Het postvak nu ophalen, buiten het interval om (max. 45 s per ronde; de rest volgt vanzelf); 409 `uit` als de koppeling uit staat of niet ingevuld is, fout `te_snel` binnen 10 s na de vorige ronde, `bezig` als er al een loopt. Body `{"opnieuw": true}` (alleen een echte `true`) laat de waterlijn los en loopt de nieuwste 50 berichten weer door — na een teruggezette lijst, een verruimd afzenderfilter of een per ongeluk verwijderde factuur; wat al in de lijst staat komt er niet dubbel bij. `boekhouding` + `beheer`, audit `inbox_ophalen` |
-| POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images, optioneel `listUnsubscribe` → kop `List-Unsubscribe`: alleen `mailto:` met adres of `https:`, ≤ 500 tekens, geen spaties/hoekhaken/stuurtekens — anders 400, `_list_unsubscribe`) |
+| POST | `/api/mail/send` | Verstuur HTML+text-mail via opgeslagen SMTP-creds (max 20 MB, max 50 recipients, max 15 MB bijlagen, optionele CID-inline images, optioneel `listUnsubscribe` → kop `List-Unsubscribe`: alleen `mailto:` met adres of `https:`, ≤ 500 tekens, geen spaties/hoekhaken/stuurtekens — anders 400, `_list_unsubscribe`; `listUnsubscribePost: true` → `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058), alleen bij een https-link, anders 400) |
 | POST | `/api/mollie/test` | Test een Mollie API-key (beheer-only, niets opslaan); key mag de sentinel zijn |
 | POST | `/api/mollie/payment` | Maak een Mollie **betaallink** (Payment Links API, `/v2/payment-links`) aan voor een factuur (boekhouding); `{amountCent, description, redirectUrl}` → `{checkoutUrl, id, expiresAt}`. Key wordt server-side toegevoegd. Bewust géén Payments API: die levert een kortlevende checkout die na verlopen naar de website doorstuurt |
 | GET | `/api/backups[/<datum>]` | Serverbackups (`/data/backups/JJJJ-MM-DD/`, dagelijks, elke key als `<key>.json` + db-kopie, 0600 in een 0700-map) opsommen of als ZIP downloaden — beheer-only. De download-ZIP bevat geen db-kopie en de credentials gemaskeerd (`__SECRET__`) |

@@ -5861,7 +5861,7 @@
   "na_aankoop_taplijst_url": "Bouton sous l’e-mail de la carte",
   "na_aankoop_taplijst_url_uitleg": "Vide = l’adresse de la boutique.",
   "na_aankoop_afmeld_url": "Page de désinscription propre (facultatif)",
-  "na_aankoop_afmeld_url_uitleg": "Avec {winkel}, {id} et {sleutel} (la clé de commande). Vide = le lien de désinscription ouvre un e-mail « Désinscription » vers {email} ; ajoute alors toi-même cette adresse à la liste ci-dessous.",
+  "na_aankoop_afmeld_url_uitleg": "Avec {winkel}, {id} et {sleutel} (la clé de commande). Vide = le lien de désinscription ouvre un e-mail « Désinscription » vers {email} ; ajoute alors toi-même cette adresse à la liste ci-dessous. Avec une page https, Gmail et Apple Mail affichent un bouton de désinscription immédiate ; cette page doit alors traiter un POST avec « List-Unsubscribe=One-Click » sans bouton.",
   "na_aankoop_afmeldingen": "Désinscrits",
   "na_aankoop_afmeldingen_uitleg": "Ces adresses ne reçoivent plus d’e-mails après achat. Tu as reçu un e-mail « Désinscription » ? Ajoute l’adresse ici.",
   "na_aankoop_afmelding_adres": "adresse e-mail",

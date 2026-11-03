@@ -5861,7 +5861,7 @@
   "na_aankoop_taplijst_url": "Knop onder de taplijstmail",
   "na_aankoop_taplijst_url_uitleg": "Leeg = het adres van de webshop.",
   "na_aankoop_afmeld_url": "Eigen afmeldpagina (optioneel)",
-  "na_aankoop_afmeld_url_uitleg": "Met {winkel}, {id} en {sleutel} (de ordersleutel). Leeg = de afmeldlink opent een mail met \"Afmelden\" aan {email}; zet zo'n adres dan zelf op de afmeldlijst hieronder.",
+  "na_aankoop_afmeld_url_uitleg": "Met {winkel}, {id} en {sleutel} (de ordersleutel). Leeg = de afmeldlink opent een mail met \"Afmelden\" aan {email}; zet zo'n adres dan zelf op de afmeldlijst hieronder. Met een https-pagina tonen Gmail en Apple Mail een afmeldknop die meteen afmeldt; die pagina moet dan een POST met \"List-Unsubscribe=One-Click\" zonder knop verwerken.",
   "na_aankoop_afmeldingen": "Afgemeld",
   "na_aankoop_afmeldingen_uitleg": "Deze adressen krijgen geen na-aankoopmails meer. Kreeg je een mail met \"Afmelden\"? Zet het adres hier.",
   "na_aankoop_afmelding_adres": "e-mailadres",

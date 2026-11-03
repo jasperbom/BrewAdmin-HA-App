@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.24] — 2026-11-03
+
+### Na-aankoopmails: afmelden met één klik
+
+Staat er een eigen https-afmeldpagina bij de na-aankoopmails, dan gaat ook de
+kop `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058) mee. Gmail
+en Apple Mail tonen dan een afmeldknop die meteen afmeldt: de mailclient POST
+`List-Unsubscribe=One-Click` naar die pagina, die de afmelding zonder knop
+moet verwerken. Bij de standaard (een mail met "Afmelden") gaat die kop niet
+mee. De server weigert de kop zonder https-afmeldlink.
+
+---
+
 ## [1.13.23] — 2026-11-03
 
 ### Mails na een webshopbestelling (standaard uit)
