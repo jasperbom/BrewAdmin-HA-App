@@ -18,7 +18,7 @@ import {
 } from '../utils/factuurTemplate'
 import { betalingstermijnVoor, vervaldatumTekst, isoDag } from '../utils/facturen'
 import { toonMelding } from './ui/AppMelding'
-import { metHuisstijl } from '../utils/huisstijl'
+import { metHuisstijl, metAppLettertypen } from '../utils/huisstijl'
 
 // Basisopmaak van elk document dat deze app uitprint. Gedeeld met het
 // batchdossier (`BatchRapportExport.tsx`), zodat een pakbon, een factuur en een
@@ -571,10 +571,11 @@ function buildFactuurBody(
 }
 
 // CSS van het factuurdocument: de eigen stijl als die is ingesteld, anders de
-// standaard (met de Craftery-laag bij dat thema). Pakbon en herinnering
-// blijven de gedeelde CSS bovenaan gebruiken.
+// standaard (met de Craftery-laag bij dat thema). Lettertypes van de app die
+// de opmaak noemt gaan mee (@font-face). Pakbon en herinnering blijven de
+// gedeelde CSS bovenaan gebruiken.
 function factuurCss(brewery: any): string {
-  return eigenFactuurTemplate(brewery).css || metHuisstijl(FACTUUR_CSS_DEFAULT)
+  return metAppLettertypen(eigenFactuurTemplate(brewery).css || metHuisstijl(FACTUUR_CSS_DEFAULT))
 }
 
 // Geeft volledige standalone HTML terug (voor ZIP-export)

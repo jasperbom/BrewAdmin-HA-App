@@ -11,12 +11,16 @@
  * Alle labels komen als contextwaarde binnen (`{{lbl_…}}`), nooit als letterlijke
  * tekst in de template: een eigen layout blijft daardoor meertalig.
  *
+ * De huisstijl van één brouwerij is zo'n eigen layout — gegevens in haar eigen
+ * installatie, nooit een ingebouwde layout in deze (openbare) code. Wat zo'n
+ * layout nodig heeft, komt hier als algemeen veld bij.
+ *
  * Zie `template.ts` voor de ondersteunde tags.
  */
 
-import { t } from '../i18n'
+import { t, getLang } from '../i18n'
 import { fmtQty, fmtEuroDoc, fmtDatumDoc } from './format'
-import { betalingstermijnVoor, vervaldatumVerkoopFactuur, isoDag } from './facturen'
+import { betalingstermijnVoor, vervaldatumVerkoopFactuur, isoDag, dagenTeLaat } from './facturen'
 import type { TemplateContext } from './template'
 
 /** Standaard-CSS van het factuurdocument. */
@@ -186,7 +190,52 @@ export const FACTUUR_TEMPLATE_VELDEN: readonly string[] = [
   'toon_betaalblok', 'iban', 'factuurdatum', 'vervaldatum', 'betalingstermijn',
   'toon_voldaanblok', 'voldaan_regel', 'betaald_op', 'betaald_via',
   'qr', 'opmerking',
+  // Voor een eigen layout: de stand, datums voluit, gegevens in delen, de
+  // betaallink, en CSS-veilige tekst voor een paginavoet (`@page`).
+  'is_open', 'is_vervallen', 'is_credit', 'status_klasse', 'status_label',
+  'vervaldatum_lang', 'betaald_op_lang', 'heeft_betaald_op', 'credit_van',
+  'klant_adres[].regel', 'klant_extra[].regel',
+  'brouwerij_adres[].regel', 'brouwerij_contact', 'brouwerij_registratie', 'voet_regels[].regel',
+  'betaallink', 'betaallink_tekst', 'voet_css', 'factuurnummer_css',
 ]
+
+// ── Hulpjes voor de extra velden ──────────────────────────────────────────
+
+/**
+ * Tekst veilig binnen een CSS-string ("…") in een `<style>`-blok, voor een
+ * paginavoet via `@page { @bottom-left { content: "…" } }`: backslash en
+ * aanhalingsteken ge-escapet, een regelovergang wordt `\A `, `<` en `>` worden
+ * hex-escapes (zo sluit niets het `<style>`-blok) en stuurtekens vallen weg.
+ * Zo'n waarde gaat ongeëscaped de template in (`{{{voet_css}}}`).
+ */
+export const cssTekst = (waarde: unknown): string => String(waarde ?? '')
+  // eslint-disable-next-line no-control-regex
+  .replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, '')
+  .replace(/\\/g, '\\\\')
+  .replace(/"/g, '\\"')
+  .replace(/</g, '\\3C ')
+  .replace(/>/g, '\\3E ')
+  .replace(/\n/g, '\\A ')
+
+const LOCALES: Record<string, string> = {nl: 'nl-NL', en: 'en-GB', de: 'de-DE', fr: 'fr-FR', es: 'es-ES'}
+
+/** 'JJJJ-MM-DD' voluit in de taal van de app ("24 maart 2026"); leeg als het geen datum is. */
+export const langeDatum = (iso: unknown, lang: string = getLang()): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? ''))
+  if (!m) return ''
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString(LOCALES[lang] || LOCALES.nl, {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'})
+}
+
+/** Een webadres als leesbare tekst: zonder `https://` en zonder slash aan het eind. */
+export const linkTekst = (url: unknown): string =>
+  String(url ?? '').replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+
+const metPunt = (delen: string[]): string => delen.filter(Boolean).join(' · ')
+
+/** De stand van een verkoopfactuur voor het document. */
+export type FactuurStand = 'open' | 'betaald' | 'vervallen' | 'credit'
 
 // ── Context ───────────────────────────────────────────────────────────────
 
@@ -199,6 +248,8 @@ export interface FactuurTemplateBronnen {
   appName: string
   factuurLogo?: string | null
   payInfo?: {url: string, qrDataUrl?: string} | null
+  /** Vandaag als 'JJJJ-MM-DD' (voor "vervallen"); standaard de huidige dag. */
+  vandaag?: string
 }
 
 /** Vult het BTW-overzicht aan uit de regels als het niet is opgeslagen.
@@ -231,6 +282,25 @@ const brouwerijRegels = (brewery: any): string[] => {
     fv.email !== false ? (brewery?.email || '') : '',
     fv.telefoon !== false ? (brewery?.telefoon || '') : '',
   ].filter(Boolean)
+}
+
+/**
+ * Dezelfde brouwerijgegevens in groepjes, met dezelfde schakelaars: het adres,
+ * e-mail, telefoon, website, KvK, BTW-nummer en IBAN.
+ */
+const brouwerijDelen = (brewery: any) => {
+  const fv = brewery?.factuur_velden || {}
+  const straat = [brewery?.straat, brewery?.huisnummer].filter(Boolean).join(' ')
+  const plaats = [brewery?.postcode, brewery?.stad].filter(Boolean).join(' ')
+  return {
+    adres: fv.adres !== false ? [straat, plaats].filter(Boolean) : [],
+    email: fv.email !== false ? String(brewery?.email || '') : '',
+    telefoon: fv.telefoon !== false ? String(brewery?.telefoon || '') : '',
+    web: linkTekst(brewery?.website),
+    kvk: fv.kvk_nummer !== false && brewery?.kvk_nummer ? `${t('lbl_kvk_kort')} ${brewery.kvk_nummer}` : '',
+    btw: fv.btw_nummer !== false && brewery?.btw_nummer ? `${t('lbl_btw')} ${brewery.btw_nummer}` : '',
+    iban: fv.iban !== false && brewery?.iban ? `${t('lbl_iban')} ${brewery.iban}` : '',
+  }
 }
 
 /** Adresregels van de afnemer; de eerste regel is de kop van het adresblok.
@@ -266,10 +336,12 @@ export const bouwFactuurContext = (bronnen: FactuurTemplateBronnen): TemplateCon
   // klantkaart → brouwerij). Een lege of 0-termijn is geen "vandaag betalen"
   // maar ontbrekend: dan geldt de standaard, net als voor de te-laat-badge.
   const betalingstermijn = betalingstermijnVoor(null, [], brewery)
+  const vandaag = bronnen.vandaag || isoDag(new Date())
   // Dagrekening in UTC, zoals `vervaldatumVerkoopFactuur` — een zomertijd-
   // wissel binnen de termijn verschuift de datum dan niet.
-  const vervaldatum = fmtDatumDoc(vervaldatumVerkoopFactuur(
-    {datum: factuur?.datum || order?.datum || isoDag(new Date())}, [], {betalingstermijn}))
+  const vervalBron = {datum: factuur?.datum || order?.datum || vandaag}
+  const vervaldatumIso = vervaldatumVerkoopFactuur(vervalBron, [], {betalingstermijn})
+  const vervaldatum = fmtDatumDoc(vervaldatumIso)
   const leveringsdatum = (order?.verzend_datum || order?.datum)
     ? fmtDatumDoc(order.verzend_datum || order.datum)
     : ''
@@ -310,6 +382,34 @@ export const bouwFactuurContext = (bronnen: FactuurTemplateBronnen): TemplateCon
   const info = brouwerijRegels(brewery)
   const overzicht = btwOverzichtVan(factuur)
   const naam = brewery?.naam || appName || ''
+
+  // Stand: vervallen = nog open en voorbij de vervaldatum (dezelfde
+  // dagrekening als de te-laat-badge), of al in herinnering of aanmaning.
+  const inHerinnering = ['herinnering', 'tweede_herinnering', 'aanmaning'].includes(String(factuur?.status || ''))
+  const isVervallen = !isCredit && !isBetaald
+    && (inHerinnering || dagenTeLaat(vervalBron, [], {betalingstermijn}, vandaag) > 0)
+  const stand: FactuurStand = isCredit ? 'credit' : isBetaald ? 'betaald' : isVervallen ? 'vervallen' : 'open'
+
+  // Het adresblok van de afnemer in twee delen: adres, en e-mail + BTW-nummer
+  // (dezelfde regels als `klantRegels`, die het in één lijst geeft).
+  const klantBtw = order?.klant_btw_nummer ? `${t('lbl_btw')}: ${order.klant_btw_nummer}` : ''
+  const klantEmail = String(order?.klant_email || '')
+  const klantAdres = klant.rest.filter(r => r !== klantBtw && r !== klantEmail)
+  const klantExtra = [klantEmail, order?.klant_btw_nummer ? `${t('lbl_btw')} ${order.klant_btw_nummer}` : '']
+    .filter(Boolean)
+
+  const delen = brouwerijDelen(brewery)
+  const voetRegels = [
+    metPunt([naam, ...delen.adres]),
+    metPunt([delen.email, delen.telefoon, delen.web]),
+    metPunt([delen.kvk, delen.btw, delen.iban]),
+  ].filter(Boolean)
+
+  // Een creditnota krijgt geen betaal-QR: daar valt niets te betalen. Alleen
+  // een https-link wordt een klikbare link op het document.
+  const qr = (payInfo?.qrDataUrl && !isCredit) ? payInfo.qrDataUrl : ''
+  const betaallink = qr && /^https:\/\//i.test(String(payInfo?.url || '')) ? String(payInfo?.url) : ''
+  const betaaldIso = isBetaald ? String(factuur?.wc_betaald_datum || factuur?.betaald_datum || '') : ''
 
   return {
     // Kop
@@ -355,9 +455,28 @@ export const bouwFactuurContext = (bronnen: FactuurTemplateBronnen): TemplateCon
     voldaan_regel: voldaanRegel,
     betaald_op: betaaldOp,
     betaald_via: betaaldVia,
-    // Een creditnota krijgt geen betaal-QR: daar valt niets te betalen.
-    qr: (payInfo?.qrDataUrl && !isCredit) ? payInfo.qrDataUrl : '',
+    qr,
     opmerking: order?.opmerkingen || '',
+    // Voor een eigen layout (zie FACTUUR_TEMPLATE_VELDEN).
+    is_open: stand === 'open',
+    is_vervallen: stand === 'vervallen',
+    is_credit: isCredit,
+    status_klasse: stand,
+    status_label: t(`factuur_stand_${stand}`),
+    vervaldatum_lang: langeDatum(vervaldatumIso) || vervaldatum,
+    betaald_op_lang: langeDatum(betaaldIso) || (betaaldOp !== '—' ? betaaldOp : ''),
+    heeft_betaald_op: !!betaaldOp && betaaldOp !== '—',
+    credit_van: isCredit ? String(factuur?.credit_van_factuurnummer || '').trim() : '',
+    klant_adres: klantAdres.map(regel => ({regel})),
+    klant_extra: klantExtra.map(regel => ({regel})),
+    brouwerij_adres: delen.adres.map(regel => ({regel})),
+    brouwerij_contact: metPunt([delen.email, delen.telefoon]),
+    brouwerij_registratie: metPunt([delen.kvk, delen.btw]),
+    voet_regels: voetRegels.map(regel => ({regel})),
+    betaallink,
+    betaallink_tekst: linkTekst(betaallink),
+    voet_css: cssTekst(voetRegels.join('\n')),
+    factuurnummer_css: cssTekst(factuurnummer),
     // Labels — zo blijft ook een eigen layout meertalig.
     lbl_betaald: t('factuur_paid'),
     lbl_factuuradres: t('lbl_factuuradres'),

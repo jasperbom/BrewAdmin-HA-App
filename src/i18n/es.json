@@ -5968,5 +5968,9 @@
   "mail_na_kop_commando": "cat que-tal-estaba.md",
   "mail_na_blok_commando": "untappd checkin",
   "mail_na_blok_slot": "→ exit 0",
-  "mail_na_review_commando": "git commit -m \"reseña\""
+  "mail_na_review_commando": "git commit -m \"reseña\"",
+  "factuur_stand_open": "pendiente",
+  "factuur_stand_betaald": "pagada",
+  "factuur_stand_vervallen": "vencida",
+  "factuur_stand_credit": "factura rectificativa"
 }

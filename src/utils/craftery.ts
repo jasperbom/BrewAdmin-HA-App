@@ -7,6 +7,9 @@
 // bestand doet dus één ding: heen en weer vertalen. Er wordt hier niets
 // bewaard en niets bedacht.
 //
+// De naam Craftery valt niet onder de AGPL (aanvullende bepaling, artikel
+// 7(e)) — zie TRADEMARKS.md.
+//
 // De sleutels komen één-op-één uit het thema (`inc/woocommerce.php`,
 // `inc/helpers.php`, `inc/delivery.php`, versie 5.28.x). Wijzigt het thema, dan
 // wijzigt deze tabel mee — de app schrijft nooit een meta-sleutel die hier niet

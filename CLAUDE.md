@@ -493,7 +493,12 @@ BrewAdmin-HA-App/
 │   │   │                   # (`statiegeldVanOrder`) — anders valt de afdracht te laag uit
 │   │   ├── btwCategorie.ts # BTW-categoriecodes (UNCL5305) voor e-facturatie: afleiding uit tarief + land + BTW-nummer, VATEX-codes, EU-landenlijst, landkeuzelijst
 │   │   ├── template.ts     # Mustache-subset renderer ({{waarde}}, {{{ruw}}}, {{#sectie}}, {{^omgekeerd}}) — documentlayouts als data
-│   │   ├── factuurTemplate.ts # Standaard factuurlayout + contextbouwer; eigen layout via brewery_details.factuur_template, bij een fout stille terugval
+│   │   ├── factuurTemplate.ts # Standaard factuurlayout + contextbouwer; eigen layout via brewery_details.factuur_template, bij een fout stille terugval.
+│   │   │                   # Velden voor een eigen layout: stand (`status_klasse`, `is_open`/`is_vervallen`/
+│   │   │                   # `is_credit`, `status_label`), datums voluit (`langeDatum`), adres/contact/registratie
+│   │   │                   # in delen, `voet_regels`, `betaallink` (alleen https) en CSS-veilige tekst voor een
+│   │   │                   # `@page`-voet (`voet_css`, `factuurnummer_css` via `cssTekst`). Lettertypes van de app
+│   │   │                   # die de opmaak noemt gaan mee (`metAppLettertypen` in huisstijl.ts)
 │   │   ├── factuurMail.ts  # Welke mailtekst bij een verkoopfactuur: `factuur` (open) of `factuur_betaald`
 │   │   │                   # (al voldaan — webshoporder betaald in WooCommerce, kassa, vinkje) + de
 │   │   │                   # betaalvariabelen {betaalregel}/{betaaldatum}/{betaalwijze}; gedeeld door
@@ -791,7 +796,9 @@ gemiddeld verlies, verpakking, kostprijs per liter), de afgeleide brouwkosten
 (gemeten batches → inkoopfacturen → handmatig, schaling naar batchgrootte), de
 verpakkingskosten (prijs per eenheid uit de onderdelen, mix uit de eigen
 afvullingen), de
-templaterenderer + factuurlayout, de Excel-backup-round-trip, de
+templaterenderer + factuurlayout (en de velden voor een eigen layout, `factuurVelden.test.ts`:
+stand, datums voluit, gegevens in delen, betaallink, CSS-veilige paginavoet, lettertypes van de
+app), de Excel-backup-round-trip, de
 tanktemperatuurbewaking (incl. het werkelijke setpoint van
 de koeling) en de HACCP-beheerspunten
 (risicoclassificatie, stabiliteit, vrijgave-oordeel, sluitcontrole,
@@ -1160,6 +1167,14 @@ pytest bewaakt dat ze gelijk zijn). Waar het staat:
 - **Vormen (craftery.css):** paginatabs als één blok met inktrand in mono (`.pagina-tabs`, actieve tab
   `data-aan`), de actieve telefoonchip en werkruimte (`.pagina-chips`, `.rail-knop`), kaarten in kaartkleur,
   en een inktrand met harde schaduw alleen voor een tank die aandacht vraagt (`.tank-kaart[data-aandacht]`)
+- **Geen nieuw Craftery-ontwerp in de code (blijvend).** Er is één repo, en die is openbaar (AGPL).
+  De naam Craftery, het logo en de huisstijl van Craftery Brewing vallen niet onder de AGPL
+  (`TRADEMARKS.md`, artikel 7(e)). Wat hierboven en hieronder staat is al gepubliceerd en blijft;
+  nieuw ontwerp in die huisstijl (zoals de Craftery-factuur) staat alleen in de gegevens van
+  Craftery's eigen installatie — de factuur als eigen layout in `brewery_details.factuur_template`.
+  Heeft zo'n ontwerp iets nodig, dan komt er een algemeen veld of mechanisme bij dat elke brouwerij
+  kan gebruiken (de velden in `bouwFactuurContext`, `metAppLettertypen`); nooit de vormgeving, de
+  teksten of de commandoregels van Craftery zelf
 - **Mails en documenten volgen het thema** (`huisstijlIsCraftery` in `utils/huisstijl.ts`, leest
   `html[data-thema]`): bij Craftery de laag `CRAFTERY_DOC_CSS` over `FACTUUR_CSS_DEFAULT`/`DOC_CSS`
   (`metHuisstijl`; een eigen factuurlayout gaat voor) en de mailstijl `craftery`

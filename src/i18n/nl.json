@@ -5968,5 +5968,9 @@
   "mail_na_kop_commando": "cat hoe-smaakte-het.md",
   "mail_na_blok_commando": "untappd checkin",
   "mail_na_blok_slot": "→ exit 0",
-  "mail_na_review_commando": "git commit -m \"review\""
+  "mail_na_review_commando": "git commit -m \"review\"",
+  "factuur_stand_open": "te betalen",
+  "factuur_stand_betaald": "betaald",
+  "factuur_stand_vervallen": "vervallen",
+  "factuur_stand_credit": "creditnota"
 }

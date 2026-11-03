@@ -5968,5 +5968,9 @@
   "mail_na_kop_commando": "cat how-did-you-like-it.md",
   "mail_na_blok_commando": "untappd checkin",
   "mail_na_blok_slot": "→ exit 0",
-  "mail_na_review_commando": "git commit -m \"review\""
+  "mail_na_review_commando": "git commit -m \"review\"",
+  "factuur_stand_open": "payment due",
+  "factuur_stand_betaald": "paid",
+  "factuur_stand_vervallen": "overdue",
+  "factuur_stand_credit": "credit note"
 }

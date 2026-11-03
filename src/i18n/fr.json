@@ -5968,5 +5968,9 @@
   "mail_na_kop_commando": "cat c-etait-bon.md",
   "mail_na_blok_commando": "untappd checkin",
   "mail_na_blok_slot": "→ exit 0",
-  "mail_na_review_commando": "git commit -m \"avis\""
+  "mail_na_review_commando": "git commit -m \"avis\"",
+  "factuur_stand_open": "à payer",
+  "factuur_stand_betaald": "payée",
+  "factuur_stand_vervallen": "en retard",
+  "factuur_stand_credit": "avoir"
 }

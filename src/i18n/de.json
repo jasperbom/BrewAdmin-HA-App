@@ -5968,5 +5968,9 @@
   "mail_na_kop_commando": "cat wie-hat-es-geschmeckt.md",
   "mail_na_blok_commando": "untappd checkin",
   "mail_na_blok_slot": "→ exit 0",
-  "mail_na_review_commando": "git commit -m \"bewertung\""
+  "mail_na_review_commando": "git commit -m \"bewertung\"",
+  "factuur_stand_open": "zu zahlen",
+  "factuur_stand_betaald": "bezahlt",
+  "factuur_stand_vervallen": "überfällig",
+  "factuur_stand_credit": "Gutschrift"
 }
