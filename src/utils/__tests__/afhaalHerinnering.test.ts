@@ -3,6 +3,7 @@ import {
   wachtOpAfhaalmoment, afhaalHerinneringNodig, telAfhaalHerinneringNodig, afhaalHerinneringMailVars,
   dagenSindsBestelling, AFHAAL_HERINNERING_NA_DAGEN, AFHAAL_OVERLEG,
   afhaalHerinneringStand, afhaalHerinneringenVerstuurd, afhaalTermijnDatum, afhaalTermijnVoorbij, telAfhaalTermijnVoorbij,
+  afhaalHerinneringRol,
 } from '../levering'
 import type { AfhaalSchema } from '../levering'
 import {
@@ -350,17 +351,53 @@ describe('de afhaaltermijn: daarna annuleren', () => {
     expect(telAfhaalHerinneringNodig([afhaal], '2026-11-17', schema)).toBe(1)
   })
 
-  it('de mail noemt de datum met {annuleerregel}; zonder termijn blijft hij weg', () => {
-    const sjablonen = {afhaal_herinnering: {dagen: [3, 7], annuleren_na: 21}}
-    const m = bouwOrderMail('afhaal_herinnering', afhaal, {...ctx, sjablonen})
-    expect(m.text).toContain('Kies je geen moment, dan annuleren we je bestelling op 18-11-2026.')
-    expect(m.text).not.toMatch(/\{[a-z_]+\}/)
-    expect(m.text).not.toMatch(/\n{3,}/)
+  it('de mail noemt de termijn per herinnering: de eerste niet, een volgende vriendelijk, de laatste met annuleren', () => {
+    // Besteld wo 28-10, termijn 21 dagen: annuleren op wo 18-11, klaar t/m di 17-11.
+    const sjablonen = {afhaal_herinnering: {dagen: [3, 7, 14], annuleren_na: 21}}
+    const na = (b: Record<string, any>, datum: string) => ({...b, ...naMailVerstuurd(b, 'afhaal_herinnering', datum)})
+    const sch = afhaalSchema(sjablonen)
+    const een = na(afhaal, '2026-10-31')
+    const twee = na(een, '2026-11-04')
+    expect([afhaal, een, twee].map(b => afhaalHerinneringRol(b, sch))).toEqual(['eerste', 'tussen', 'laatste'])
+    // Voorbij het schema (met de hand nog een keer): ook de laatste.
+    expect(afhaalHerinneringRol(na(twee, '2026-11-12'), sch)).toBe('laatste')
+
+    const eerste = bouwOrderMail('afhaal_herinnering', afhaal, {...ctx, sjablonen, vandaag: '2026-10-31'})
+    expect(eerste.text).not.toMatch(/vast|annuleren/)
+    expect(eerste.text).not.toMatch(/\n{3,}/)
+
+    const tweede = bouwOrderMail('afhaal_herinnering', een, {...ctx, sjablonen, vandaag: '2026-11-04'})
+    expect(tweede.text).toContain('We houden je bestelling graag nog 14 dagen voor je vast, tot en met dinsdag 17 november.')
+    expect(tweede.text).not.toContain('annuleren')
+
+    const laatste = bouwOrderMail('afhaal_herinnering', twee, {...ctx, sjablonen, vandaag: '2026-11-11'})
+    expect(laatste.text).toContain('We houden je bestelling nog tot en met dinsdag 17 november voor je vast. '
+      + 'Daarna zullen we je bestelling annuleren, zodat we er iemand anders blij mee kunnen maken.')
+    for (const m of [eerste, tweede, laatste]) expect(m.text).not.toMatch(/\{[a-z_]+\}/)
+  })
+
+  it('één herinnering met een termijn: die ene zegt dat we daarna annuleren', () => {
+    const sjablonen = {afhaal_herinnering: {dagen: [3], annuleren_na: 10}}
+    expect(afhaalHerinneringRol(afhaal, afhaalSchema(sjablonen))).toBe('laatste')
+    const m = bouwOrderMail('afhaal_herinnering', afhaal, {...ctx, sjablonen, vandaag: '2026-10-31'})
+    expect(m.text).toContain('tot en met vrijdag 6 november voor je vast. Daarna zullen we je bestelling annuleren')
+  })
+
+  it('zonder termijn geen regel; de variabelen los', () => {
     const zonder = bouwOrderMail('afhaal_herinnering', afhaal, ctx)
-    expect(zonder.text).not.toContain('annuleren')
+    expect(zonder.text).not.toMatch(/vast|annuleren/)
     expect(zonder.text).not.toMatch(/\n{3,}/)
-    const vars = afhaalHerinneringMailVars(afhaal, {schema: afhaalSchema(sjablonen)})
-    expect(vars.annuleerdatum).toBe('18-11-2026')
+    const schema = afhaalSchema({afhaal_herinnering: {dagen: [3, 7], annuleren_na: 21}})
+    const vars = afhaalHerinneringMailVars({...afhaal, afhaal_herinneringen: ['2026-10-31']}, {schema, vandaag: '2026-11-16'})
+    expect(vars).toMatchObject({annuleerdatum: '18-11-2026', vasthoudtot: 'dinsdag 17 november', dagen_over: '2'})
+    // Zonder vandaag (voorbeeld) of met nog maar één dag: de zin zonder aantal dagen.
+    const zonderVandaag = afhaalHerinneringMailVars({...afhaal, afhaal_herinneringen: ['2026-10-31']}, {schema: {dagen: [3, 7, 14], annulerenNa: 21}})
+    expect(zonderVandaag.dagen_over).toBe('')
+    expect(zonderVandaag.annuleerregel).toBe('We houden je bestelling graag voor je vast tot en met dinsdag 17 november.')
+    const kort = afhaalHerinneringMailVars({...afhaal, afhaal_herinneringen: ['2026-10-31']},
+      {schema: {dagen: [3, 7, 14], annulerenNa: 21}, vandaag: '2026-11-17'})
+    expect(kort.annuleerregel).toBe('We houden je bestelling graag voor je vast tot en met dinsdag 17 november.')
+    expect(afhaalHerinneringMailVars(afhaal, {schema}).vasthoudtot).toBe('dinsdag 17 november')
   })
 
   it('de chip "Over de afhaaltermijn" en de attentiepost wijzen dezelfde bestellingen aan', () => {
