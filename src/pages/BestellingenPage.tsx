@@ -156,6 +156,8 @@ interface BestellingenPageProps {
       Eenmalig signaal — de pagina consumeert en wist het via onNavDoelConsumed. */
   navDoel?: AttentieDoel | null
   onNavDoelConsumed?: () => void
+  /** Order-meta van het vinkje "mail na je bestelling" (utils/naAankoopMail.ts); leeg = niet lezen. */
+  mailVinkjeMeta?: string
 }
 
 // Een orderregel die met "Verwijderen" uit beeld gaat: vijf seconden terugweg
@@ -190,6 +192,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
   merchVoorraadLog=[], setMerchVoorraadLog=()=>{},
   navDoel=null, onNavDoelConsumed=()=>{},
   verkoopCtx: verkoopCtxProp = null,
+  mailVinkjeMeta = '',
 }) => {
   // De geopende bestelling. De route is de bron (App.tsx): een bestelling
   // openen of sluiten wijzigt de URL, zodat de terugknop van het toestel, een
@@ -551,7 +554,7 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
       // Met de picks: een order die in de winkel geannuleerd is en hier nog
       // niet gepickt, annuleert de import zelf (utils/wcOrderImport).
       const r = await importeerWcOrders({wcGet, refs, bestellingen: bestellingen || [], klanten: klanten || [], wcCreds, t,
-        bestellingPicks: bestellingPicks || []})
+        bestellingPicks: bestellingPicks || [], mailVinkjeMeta})
       if (r.nieuw.length || Object.keys(r.updates).length) {
         setBestellingen((prev: any[]) => pasImportToe(prev, r))
         importAuditRegels(r).forEach(a => logAudit(auditLog, setAuditLog, {entiteit: 'Bestelling', ...a}))
@@ -1929,6 +1932,8 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     brouwerij: (breweryDetails as any)?.naam || appName || '',
     storeUrl: wcCreds?.storeUrl || '',
     bestelUrlSjabloon: wcCreds?.bestelUrl,
+    // {serveertips} in de bestelbevestiging (utils/naAankoopMail.ts).
+    refs: {producten, productArtikelen, artikelen, merchArtikelen},
   }
   const mailAfzender = {brewery: breweryDetails as any, logoDataUri: factuurLogo || logo, replyTo: (breweryDetails as any)?.email}
   const metKlantkaart = (order: any): any => resolveKlantSnapshot(order, klanten) || order

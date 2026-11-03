@@ -160,6 +160,8 @@ export function buildMailHtml(
     whatsappCid?: string
     /** De stijl; zonder volgt hij het gekozen thema (`mailStijlVoorThema`). */
     stijl?: MailStijlNaam
+    /** Afmeldregel, klein onder de kaart (na-aankoopmails). */
+    afmelden?: {tekst: string, label: string, url: string}
   } = {},
 ): string {
   const S = MAIL_STIJLEN[opts.stijl || mailStijlVoorThema()]
@@ -264,9 +266,14 @@ export function buildMailHtml(
       ? `<tr><td style="padding:18px 32px 26px;border-top:1px solid ${S.lijn};">${signature || kolom(RECHTS, uitnodigingBlok)}</td></tr>`
       : ''
 
-  const footer = opts.footerNote
+  const voetRegel = (inhoud: string): string =>
+    `<tr><td style="text-align:center;font-family:${S.klein};font-size:11px;color:${S.gedempt};padding:14px 0;">${inhoud}</td></tr>`
+  const afmeldRegel = opts.afmelden
+    ? voetRegel(`${esc(opts.afmelden.tekst)} <a href="${esc(opts.afmelden.url)}" target="_blank" rel="noopener noreferrer" style="color:${S.gedempt};text-decoration:underline;">${esc(opts.afmelden.label)}</a>`)
+    : ''
+  const footer = opts.footerNote || afmeldRegel
     ? `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;">
-         <tr><td style="text-align:center;font-family:${S.klein};font-size:11px;color:${S.gedempt};padding:14px 0;">${esc(opts.footerNote)}</td></tr>
+         ${opts.footerNote ? voetRegel(esc(opts.footerNote)) : ''}${afmeldRegel}
        </table>`
     : ''
 

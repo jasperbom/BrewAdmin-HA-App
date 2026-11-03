@@ -34,6 +34,7 @@ import {
   wcOrderStatus, WC_NIET_BETAALD_STATUSSEN, WC_AFGEBROKEN_STATUSSEN,
 } from './wcImport'
 import { wcLeveringVelden, leveringVeldenGewijzigd, leveringOmschrijving, LEVERING_KEYS, leesWcPaginas, WcPaginas, WcLinkContext } from './levering'
+import { wcMailVinkje } from './naAankoopMail'
 
 // Maximaal 10 pagina's van 100 orders per import; genoeg voor een eerste
 // volledige haal en tegelijk een rem op een winkel met jaren historie.
@@ -70,6 +71,11 @@ export interface WcImportInvoer {
    * niet of er al bier voor klaarligt, en dan blijft het bij een signaal.
    */
   bestellingPicks?: any[]
+  /**
+   * Order-meta van het vinkje "mail na je bestelling" uit de checkout
+   * (`na_aankoop_mails.vinkje_meta`, utils/naAankoopMail.ts). Leeg = niet lezen.
+   */
+  mailVinkjeMeta?: string
 }
 
 export interface WcImportResultaat {
@@ -184,9 +190,20 @@ export async function haalWcPaginas(wcGet: WcGet): Promise<WcPaginas | null> {
   }
 }
 
+/**
+ * Het vinkje "mail na je bestelling" uit de checkout als `wc_mail_vinkje`
+ * (utils/naAankoopMail → `wcMailVinkje`). Alleen met een ingestelde
+ * meta-sleutel en als de order hem heeft; anders niets.
+ */
+const mailVinkjeVeld = (o: any, link: {mailVinkjeMeta?: string}): {wc_mail_vinkje?: boolean} => {
+  const v = wcMailVinkje(o, link.mailVinkjeMeta)
+  return v == null ? {} : {wc_mail_vinkje: v}
+}
+
 /** Eén WooCommerce-order → een nieuwe BrewAdmin-bestelling (status `nieuw`). */
 export function wcOrderNaarBestelling(
-  o: any, refs: WcRefs, bestaand: any[], klanten: any[], t: Vertaal, vandaag: string = tod(), link: WcLinkContext = {},
+  o: any, refs: WcRefs, bestaand: any[], klanten: any[], t: Vertaal, vandaag: string = tod(),
+  link: WcLinkContext & {mailVinkjeMeta?: string} = {},
 ): any {
   // Productregels + verzendkosten + toeslagen, met autoritatieve
   // WooCommerce-bedragen. Zie utils/wcImport.ts.
@@ -222,6 +239,7 @@ export function wcOrderNaarBestelling(
     wc_order_nummer: String(o?.number || o?.id),
     // Webshopstatus alleen als hij om aandacht vraagt (zie wcOrderUpdate).
     ...(WC_NIET_BETAALD_STATUSSEN.includes(wcOrderStatus(o)) ? {wc_status: wcOrderStatus(o)} : {}),
+    ...mailVinkjeVeld(o, link),
   }
   // Koppel direct aan een bestaande klantkaart (e-mail, of uniek op naam)
   // zodat de order niet eerst als "ongekoppeld" binnenkomt.
@@ -262,7 +280,9 @@ function adresHerstel(bestaand: any, o: any): Record<string, string> | null {
  * betaling (`failed`) kan de klant nog opnieuw doen: alleen het signaal.
  * Geeft `null` als er niets veranderd is.
  */
-export function wcOrderUpdate(bestaand: any, o: any, link: WcLinkContext = {}, opts: {heeftPicks?: boolean} = {}): Record<string, any> | null {
+export function wcOrderUpdate(
+  bestaand: any, o: any, link: WcLinkContext & {mailVinkjeMeta?: string} = {}, opts: {heeftPicks?: boolean} = {},
+): Record<string, any> | null {
   // Onze eigen `completed` (terugschrijven) telt niet als betaling.
   const velden = betaalVeldenNaEigenSync(bestaand, o, wcBetaalVelden(o))
   const levering = wcLeveringVelden(o, link)
@@ -278,6 +298,12 @@ export function wcOrderUpdate(bestaand: any, o: any, link: WcLinkContext = {}, o
     ...(betaalVeldenGewijzigd(bestaand, velden) ? {...leeg(BETAAL_KEYS), ...velden} : {}),
     ...(leveringVeldenGewijzigd(bestaand, levering) ? {...leeg(LEVERING_KEYS), ...levering} : {}),
     ...(adresHerstel(bestaand, o) || {}),
+  }
+  // Het vinkje uit de checkout: een afmeldpagina op de site kan het later nog
+  // zetten, dus ook bij een bekende order. Alleen als de order het veld heeft.
+  const vinkje = mailVinkjeVeld(o, link)
+  if (vinkje.wc_mail_vinkje != null && vinkje.wc_mail_vinkje !== bestaand?.wc_mail_vinkje) {
+    upd.wc_mail_vinkje = vinkje.wc_mail_vinkje
   }
   // Webshopstatus: alleen bewaren zodra het ertoe doet (of als hij er al
   // stond, zodat een mislukte order die alsnog betaald wordt weer schoon is);
@@ -302,8 +328,9 @@ export async function importeerWcOrders(invoer: WcImportInvoer): Promise<WcImpor
   const bekend = teVerversen.length ? await haalBekendeWcOrders(invoer.wcGet, teVerversen) : []
   // De winkelpagina's voor de bestellink per order; één klein verzoek per
   // import, en bij een bestaande order alleen een update als de link wijzigt.
-  const link: WcLinkContext = {storeUrl: invoer.wcCreds?.storeUrl || '',
-    paginas: orders.length || bekend.length ? await haalWcPaginas(invoer.wcGet) : null}
+  const link: WcLinkContext & {mailVinkjeMeta?: string} = {storeUrl: invoer.wcCreds?.storeUrl || '',
+    paginas: orders.length || bekend.length ? await haalWcPaginas(invoer.wcGet) : null,
+    mailVinkjeMeta: invoer.mailVinkjeMeta}
   const opWcId = new Map<any, any>()
   for (const b of bestellingen) if (b?.wc_order_id != null) opWcId.set(b.wc_order_id, b)
   const metPicks = Array.isArray(invoer.bestellingPicks)
