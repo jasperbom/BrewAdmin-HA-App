@@ -5744,7 +5744,7 @@
   "settings_mail_afhaal_termijn_vervalt": "A reminder on or after the pickup deadline is not sent: by then it is time to cancel.",
   "mail_afhaal_termijn_tussen": "We're happy to hold your order for another {n} days, up to and including {datum}.",
   "mail_afhaal_termijn_tussen_kort": "We're happy to hold your order for you up to and including {datum}.",
-  "mail_afhaal_termijn_laatste": "This is our last reminder: we'll hold your order for you up to and including {datum}. After that we'll cancel it, so the beer doesn't sit around too long.",
+  "mail_afhaal_termijn_laatste": "We'll hold your order for you up to and including {datum}. After that we'll cancel your order, so we can make someone else happy with it.",
   "orders_afhaal_termijn_tot": "Pickup deadline {datum}",
   "orders_afhaal_termijn_voorbij": "The pickup deadline passed on {datum} and nothing has been arranged. Cancel the order; if it was paid, refund the customer in the webshop.",
   "orders_filter_afhaal_termijn": "Past pickup deadline",

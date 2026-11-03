@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.41] — 2026-11-03
+
+### Afhaalherinnering: de laatste herinnering anders verwoord
+
+De termijnregel in de laatste herinnering luidt nu: "We houden je bestelling
+nog tot en met dinsdag 17 november voor je vast. Daarna zullen we je
+bestelling annuleren, zodat we er iemand anders blij mee kunnen maken."
+
+---
+
 ## [1.13.40] — 2026-11-03
 
 ### Afhaalherinnering: de termijn per herinnering

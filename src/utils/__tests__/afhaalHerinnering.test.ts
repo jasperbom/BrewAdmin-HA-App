@@ -371,8 +371,8 @@ describe('de afhaaltermijn: daarna annuleren', () => {
     expect(tweede.text).not.toContain('annuleren')
 
     const laatste = bouwOrderMail('afhaal_herinnering', twee, {...ctx, sjablonen, vandaag: '2026-11-11'})
-    expect(laatste.text).toContain('Dit is onze laatste herinnering: we houden je bestelling nog voor je vast tot en met dinsdag 17 november. '
-      + 'Daarna annuleren we hem, zodat het bier niet te lang blijft staan.')
+    expect(laatste.text).toContain('We houden je bestelling nog tot en met dinsdag 17 november voor je vast. '
+      + 'Daarna zullen we je bestelling annuleren, zodat we er iemand anders blij mee kunnen maken.')
     for (const m of [eerste, tweede, laatste]) expect(m.text).not.toMatch(/\{[a-z_]+\}/)
   })
 
@@ -380,7 +380,7 @@ describe('de afhaaltermijn: daarna annuleren', () => {
     const sjablonen = {afhaal_herinnering: {dagen: [3], annuleren_na: 10}}
     expect(afhaalHerinneringRol(afhaal, afhaalSchema(sjablonen))).toBe('laatste')
     const m = bouwOrderMail('afhaal_herinnering', afhaal, {...ctx, sjablonen, vandaag: '2026-10-31'})
-    expect(m.text).toContain('tot en met vrijdag 6 november. Daarna annuleren we hem')
+    expect(m.text).toContain('tot en met vrijdag 6 november voor je vast. Daarna zullen we je bestelling annuleren')
   })
 
   it('zonder termijn geen regel; de variabelen los', () => {

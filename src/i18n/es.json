@@ -5744,7 +5744,7 @@
   "settings_mail_afhaal_termijn_vervalt": "Un recordatorio el día del plazo de recogida o después no se envía: entonces toca cancelar.",
   "mail_afhaal_termijn_tussen": "Te guardamos el pedido con gusto {n} días más, hasta el {datum} incluido.",
   "mail_afhaal_termijn_tussen_kort": "Te guardamos el pedido con gusto hasta el {datum} incluido.",
-  "mail_afhaal_termijn_laatste": "Este es nuestro último recordatorio: te guardamos el pedido hasta el {datum} incluido. Después lo cancelaremos, para que la cerveza no espere demasiado.",
+  "mail_afhaal_termijn_laatste": "Te guardamos el pedido hasta el {datum} incluido. Después cancelaremos tu pedido, para poder alegrarle el día a otra persona.",
   "orders_afhaal_termijn_tot": "Plazo de recogida hasta el {datum}",
   "orders_afhaal_termijn_voorbij": "El plazo de recogida venció el {datum} y no se ha acordado nada. Cancela el pedido; si está pagado, reembolsa al cliente en la tienda.",
   "orders_filter_afhaal_termijn": "Plazo vencido",

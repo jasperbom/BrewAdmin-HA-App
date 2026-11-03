@@ -5744,7 +5744,7 @@
   "settings_mail_afhaal_termijn_vervalt": "Een herinnering op of na de afhaaltermijn gaat niet: dan is het tijd om te annuleren.",
   "mail_afhaal_termijn_tussen": "We houden je bestelling graag nog {n} dagen voor je vast, tot en met {datum}.",
   "mail_afhaal_termijn_tussen_kort": "We houden je bestelling graag voor je vast tot en met {datum}.",
-  "mail_afhaal_termijn_laatste": "Dit is onze laatste herinnering: we houden je bestelling nog voor je vast tot en met {datum}. Daarna annuleren we hem, zodat het bier niet te lang blijft staan.",
+  "mail_afhaal_termijn_laatste": "We houden je bestelling nog tot en met {datum} voor je vast. Daarna zullen we je bestelling annuleren, zodat we er iemand anders blij mee kunnen maken.",
   "orders_afhaal_termijn_tot": "Afhaaltermijn tot {datum}",
   "orders_afhaal_termijn_voorbij": "De afhaaltermijn is op {datum} verstreken en er is niets afgesproken. Annuleer de bestelling; is hij betaald, betaal de klant dan terug in de webshop.",
   "orders_filter_afhaal_termijn": "Over de afhaaltermijn",

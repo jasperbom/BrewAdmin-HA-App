@@ -5744,7 +5744,7 @@
   "settings_mail_afhaal_termijn_vervalt": "Un rappel le jour du délai de retrait ou après n'est pas envoyé : il est alors temps d'annuler.",
   "mail_afhaal_termijn_tussen": "Nous gardons volontiers votre commande encore {n} jours, jusqu'au {datum} inclus.",
   "mail_afhaal_termijn_tussen_kort": "Nous gardons volontiers votre commande jusqu'au {datum} inclus.",
-  "mail_afhaal_termijn_laatste": "Ceci est notre dernier rappel : nous gardons votre commande jusqu'au {datum} inclus. Ensuite, nous l'annulerons, pour que la bière n'attende pas trop longtemps.",
+  "mail_afhaal_termijn_laatste": "Nous gardons votre commande jusqu'au {datum} inclus. Ensuite, nous annulerons votre commande, afin de pouvoir faire plaisir à quelqu'un d'autre.",
   "orders_afhaal_termijn_tot": "Délai de retrait jusqu'au {datum}",
   "orders_afhaal_termijn_voorbij": "Le délai de retrait a expiré le {datum} et rien n'a été convenu. Annulez la commande ; si elle est payée, remboursez le client dans la boutique.",
   "orders_filter_afhaal_termijn": "Délai dépassé",

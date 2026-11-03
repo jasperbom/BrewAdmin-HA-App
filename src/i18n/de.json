@@ -5744,7 +5744,7 @@
   "settings_mail_afhaal_termijn_vervalt": "Eine Erinnerung am oder nach dem Ende der Abholfrist wird nicht gesendet: dann ist es Zeit zu stornieren.",
   "mail_afhaal_termijn_tussen": "Wir halten Ihre Bestellung gern noch {n} Tage für Sie bereit, bis einschließlich {datum}.",
   "mail_afhaal_termijn_tussen_kort": "Wir halten Ihre Bestellung gern bis einschließlich {datum} für Sie bereit.",
-  "mail_afhaal_termijn_laatste": "Dies ist unsere letzte Erinnerung: Wir halten Ihre Bestellung noch bis einschließlich {datum} für Sie bereit. Danach stornieren wir sie, damit das Bier nicht zu lange steht.",
+  "mail_afhaal_termijn_laatste": "Wir halten Ihre Bestellung noch bis einschließlich {datum} für Sie bereit. Danach stornieren wir Ihre Bestellung, damit wir jemand anderem damit eine Freude machen können.",
   "orders_afhaal_termijn_tot": "Abholfrist bis {datum}",
   "orders_afhaal_termijn_voorbij": "Die Abholfrist ist am {datum} abgelaufen und nichts wurde vereinbart. Stornieren Sie die Bestellung; ist sie bezahlt, erstatten Sie den Betrag im Webshop.",
   "orders_filter_afhaal_termijn": "Abholfrist abgelaufen",
