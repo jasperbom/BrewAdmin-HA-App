@@ -5909,5 +5909,6 @@
   "na_aankoop_reden_nieuwere_bestelling": "el cliente volvió a pedir",
   "na_aankoop_reden_geen_inhoud": "nada que enviar",
   "na_aankoop_reden_rust": "acaba de recibir un correo",
-  "na_aankoop_reden_ingetrokken": "consentimiento retirado"
+  "na_aankoop_reden_ingetrokken": "consentimiento retirado",
+  "mail_na_afmelden_tekst_toestemming": "Recibes este correo porque al hacer tu pedido indicaste que querías recibirlo. ¿Prefieres no recibir más correos como este?"
 }

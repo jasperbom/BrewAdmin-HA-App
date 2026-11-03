@@ -354,6 +354,32 @@ describe('alleen met toestemming: per bestelling, en intrekken stopt alles tot d
   })
 })
 
+describe('de afmeldzin onderaan volgt de grondslag', () => {
+  it('bij toestemming: je gaf het zelf aan bij je bestelling; bij soft opt-in: je bestelde bij ons', () => {
+    const order = testOrder({wc_mail_vinkje: true})
+    const toestemming = bouwNaAankoopMail('smaak', order,
+      ctxVoor([order], '2026-11-16', {inst: instAan({grondslag: 'toestemming', vinkje_meta: '_craftery_wel_mail'})}))
+    expect(toestemming.afmelden.tekst).toBe(
+      'Je krijgt deze mail omdat je bij je bestelling hebt aangegeven dat je hem wilt ontvangen. Liever geen mails meer zoals deze?')
+    const soft = bouwNaAankoopMail('smaak', order, ctxVoor([order], '2026-11-16'))
+    expect(soft.afmelden.tekst).toBe('Je krijgt deze mail omdat je bij Brouwerij De Kade hebt besteld. Liever geen mails meer zoals deze?')
+  })
+})
+
+describe('alleen mail 2: de andere twee los uit', () => {
+  it('met serveertips en taplijst uit gaat alleen "hoe smaakte het?"', () => {
+    const inst = instAan({grondslag: 'toestemming', vinkje_meta: '_craftery_wel_mail',
+      stappen: {serveertips: {aan: false}, taplijst: {aan: false}}})
+    let order = testOrder({wc_mail_vinkje: true, status: 'afgerond', verzend_datum: '2026-11-03'})
+    expect(naAankoopPlan(ctxVoor([order], '2026-11-03', {inst}))).toEqual([])
+    expect(naAankoopPlan(ctxVoor([order], '2026-11-13', {inst})).map(x => x.stap)).toEqual(['smaak'])
+    order = {...order, ...naNaAankoopVerstuurd(order, 'na_smaak', '2026-11-13')}
+    expect(naAankoopPlan(ctxVoor([order], '2026-12-05', {inst}))).toEqual([])
+    expect(naAankoopStand(order, 'taplijst', ctxVoor([order], '2026-12-05', {inst})))
+      .toEqual({status: 'overgeslagen', reden: 'stap_uit'})
+  })
+})
+
 describe('de ronde: rust, één per adres, een maximum', () => {
   it('kreeg het adres net een mail, dan wacht de volgende een paar dagen', () => {
     const oud = testOrder({id: 90, wc_order_id: 3290, datum: '2026-11-02', mails_verstuurd: {na_serveertips: '2026-11-02'}})

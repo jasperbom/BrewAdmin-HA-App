@@ -5909,5 +5909,6 @@
   "na_aankoop_reden_nieuwere_bestelling": "Kunde hat danach wieder bestellt",
   "na_aankoop_reden_geen_inhoud": "nichts zu senden",
   "na_aankoop_reden_rust": "hat gerade eine Mail bekommen",
-  "na_aankoop_reden_ingetrokken": "Einwilligung widerrufen"
+  "na_aankoop_reden_ingetrokken": "Einwilligung widerrufen",
+  "mail_na_afmelden_tekst_toestemming": "Du bekommst diese Mail, weil du bei deiner Bestellung angegeben hast, dass du sie erhalten möchtest. Lieber keine solchen Mails mehr?"
 }

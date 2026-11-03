@@ -5909,5 +5909,6 @@
   "na_aankoop_reden_nieuwere_bestelling": "klant bestelde daarna opnieuw",
   "na_aankoop_reden_geen_inhoud": "niets om te sturen",
   "na_aankoop_reden_rust": "kreeg net al een mail",
-  "na_aankoop_reden_ingetrokken": "toestemming ingetrokken"
+  "na_aankoop_reden_ingetrokken": "toestemming ingetrokken",
+  "mail_na_afmelden_tekst_toestemming": "Je krijgt deze mail omdat je bij je bestelling hebt aangegeven dat je hem wilt ontvangen. Liever geen mails meer zoals deze?"
 }
