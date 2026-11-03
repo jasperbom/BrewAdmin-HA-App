@@ -12,7 +12,7 @@
 import { mailSendApi, mollieCreatePayment } from './api'
 import type { MailAttachment, MailInlineImage } from './api'
 import { buildMailHtml, dataUriToInlineImage } from './mailTemplate'
-import type { MailBrewery } from './mailTemplate'
+import type { MailBrewery, MailKop, MailBlok } from './mailTemplate'
 import type { MailKnop } from './levering'
 import { mailUitnodiging, uitnodigingTekst } from './mailUitnodiging'
 import type { MailUitnodiging } from './mailUitnodiging'
@@ -56,6 +56,13 @@ export interface MailOpdracht {
    *  voet van de HTML, als laatste regel in de platte tekst, en als
    *  `List-Unsubscribe`-kop zodat het mailprogramma een afmeldknop toont. */
   afmelden?: {tekst: string, label: string, url: string} | null
+  /** De tekst voor de HTML-versie, als die afwijkt van de platte tekst: met
+   *  `MAIL_BLOK_MARKER` op de plek van `terminal` (de smaakmail). */
+  htmlTekst?: string
+  /** Kop boven de tekst in de HTML (commandoregel + titel). */
+  kop?: MailKop | null
+  /** Blok met regels in de HTML, op de plek van de markering in `htmlTekst`. */
+  terminal?: MailBlok | null
 }
 
 export interface MailAfzender {
@@ -143,13 +150,15 @@ export async function verzendMail(m: MailOpdracht, afzender: MailAfzender): Prom
     + (payUrl ? `\n\n${t('mollie_pay_line')}\n${payUrl}` : '')
     + (uitnodiging ? uitnodigingTekst(uitnodiging) : '')
     + (afmelden ? `\n\n--\n${afmelden.tekst}\n${afmelden.label}: ${afmelden.url}` : '')
-  const html = buildMailHtml(m.text, afzender.brewery || {}, {
+  const html = buildMailHtml(m.htmlTekst ?? m.text, afzender.brewery || {}, {
     logoCid: logo ? LOGO_CID : undefined,
     linkButtons: knoppen.length ? knoppen : undefined,
     payButton: payUrl ? {url: payUrl, label: t('mollie_pay_button')} : undefined,
     uitnodiging,
     whatsappCid: waLogo ? WHATSAPP_CID : undefined,
     afmelden: afmelden || undefined,
+    kop: m.kop || undefined,
+    terminal: m.terminal || undefined,
   })
   let attachments = m.attachments
   if (payUrl && m.regenerateAttachments) {

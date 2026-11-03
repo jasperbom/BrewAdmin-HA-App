@@ -346,6 +346,8 @@ export interface MailKnop {
   url: string
   label: string
   textLine: string
+  /** Mono-regel onder de knop in de Craftery-stijl, zonder `$` (utils/mailTemplate.ts). */
+  commando?: string
 }
 
 /**

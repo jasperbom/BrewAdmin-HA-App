@@ -165,7 +165,8 @@ describe('de testbestelling: "Hoe smaakte het?" met de juiste namen en links', (
     expect(m.text).toContain('Kadeblond: https://untappd.com/b/kade-kadeblond/1')
     expect(m.text).toContain('Havenstout: https://untappd.com/b/kade-havenstout/2')
     expect(m.text).toContain('Je haalde je bestelling bij ons op.')
-    expect(m.linkButtons).toEqual([{url: 'https://g.page/r/kade/review', label: 'Schrijf een review', textLine: 'Schrijf een review:'}])
+    expect(m.linkButtons).toEqual([{url: 'https://g.page/r/kade/review', label: 'Schrijf een review', textLine: 'Schrijf een review:',
+      commando: 'git commit -m "review"'}])
     expect(m.afmelden.url).toBe('mailto:info@dekade.nl?subject=Afmelden%20Brouwerij%20De%20Kade')
     order = {...order, ...naNaAankoopVerstuurd(order, 'na_smaak', '2026-11-16')}
     ctx = ctxVoor([order], '2026-11-17')

@@ -5889,5 +5889,21 @@
   "na_aankoop_reden_geen_inhoud": "rien à envoyer",
   "na_aankoop_reden_rust": "vient de recevoir un e-mail",
   "na_aankoop_reden_ingetrokken": "consentement retiré",
-  "mail_na_afmelden_tekst_toestemming": "Tu reçois cet e-mail parce que tu as indiqué lors de ta commande que tu souhaitais le recevoir. Tu préfères ne plus recevoir ce genre d’e-mails ?"
+  "mail_na_afmelden_tekst_toestemming": "Tu reçois cet e-mail parce que tu as indiqué lors de ta commande que tu souhaitais le recevoir. Tu préfères ne plus recevoir ce genre d’e-mails ?",
+  "mail_opmaak_titel": "Mise en page des e-mails",
+  "mail_opmaak_uitleg": "L’apparence des e-mails aux clients : confirmation de commande, expédition, facture et l’e-mail après une commande en ligne.",
+  "mail_opmaak_stijl": "Style",
+  "mail_opmaak_stijl_thema": "Suit le thème",
+  "mail_opmaak_stijl_standaard": "Standard",
+  "mail_opmaak_stijl_craftery": "Craftery",
+  "mail_opmaak_stijl_thema_uitleg": "Si l’application utilise le thème Craftery, les e-mails prennent le style Craftery ; sinon le style standard.",
+  "mail_opmaak_stijl_standaard_uitleg": "Fond blanc avec une ligne ambre en haut et un bouton ambre.",
+  "mail_opmaak_stijl_craftery_uitleg": "Le style de la boutique Craftery : papier, carte avec bordure encre, boutons ambre avec une ligne de commande dessous et une barre noire avec l’adresse web.",
+  "mail_opmaak_lettertypen": "Dossier des polices (style Craftery)",
+  "mail_opmaak_lettertypen_uitleg": "Facultatif : un dossier https avec jost-700-800.woff2, space-grotesk-400-700.woff2 et ibm-plex-mono-400/500/600.woff2. Apple Mail et iOS les chargent (le serveur doit envoyer « Access-Control-Allow-Origin ») ; Gmail et Outlook utilisent une police proche. Vide = seulement cette police de secours.",
+  "mail_opmaak_lettertypen_fout": "Pas de dossier https utilisable : les polices ne sont pas chargées.",
+  "mail_na_kop_commando": "cat c-etait-bon.md",
+  "mail_na_blok_commando": "untappd checkin",
+  "mail_na_blok_slot": "→ exit 0",
+  "mail_na_review_commando": "git commit -m \"avis\""
 }

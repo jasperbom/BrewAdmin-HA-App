@@ -5889,5 +5889,21 @@
   "na_aankoop_reden_geen_inhoud": "niets om te sturen",
   "na_aankoop_reden_rust": "kreeg net al een mail",
   "na_aankoop_reden_ingetrokken": "toestemming ingetrokken",
-  "mail_na_afmelden_tekst_toestemming": "Je krijgt deze mail omdat je bij je bestelling hebt aangegeven dat je hem wilt ontvangen. Liever geen mails meer zoals deze?"
+  "mail_na_afmelden_tekst_toestemming": "Je krijgt deze mail omdat je bij je bestelling hebt aangegeven dat je hem wilt ontvangen. Liever geen mails meer zoals deze?",
+  "mail_opmaak_titel": "Opmaak van de mails",
+  "mail_opmaak_uitleg": "Hoe de mails aan klanten eruitzien: bestelbevestiging, verzending, factuur en de mail na een webshopbestelling.",
+  "mail_opmaak_stijl": "Stijl",
+  "mail_opmaak_stijl_thema": "Volgt het thema",
+  "mail_opmaak_stijl_standaard": "Standaard",
+  "mail_opmaak_stijl_craftery": "Craftery",
+  "mail_opmaak_stijl_thema_uitleg": "Staat de app op het thema Craftery, dan krijgen de mails de Craftery-stijl; anders de standaardstijl.",
+  "mail_opmaak_stijl_standaard_uitleg": "Wit vlak met een amber rand bovenaan en een amber knop.",
+  "mail_opmaak_stijl_craftery_uitleg": "De stijl van de Craftery-webshop: papier, kaart met inktrand, amber knoppen met een commandoregel eronder en een zwarte balk met het webadres.",
+  "mail_opmaak_lettertypen": "Map met lettertypes (Craftery-stijl)",
+  "mail_opmaak_lettertypen_uitleg": "Optioneel: een https-map met jost-700-800.woff2, space-grotesk-400-700.woff2 en ibm-plex-mono-400/500/600.woff2. Apple Mail en iOS laden ze (de server moet \"Access-Control-Allow-Origin\" meesturen); Gmail en Outlook gebruiken een vergelijkbare letter. Leeg = alleen die terugval.",
+  "mail_opmaak_lettertypen_fout": "Geen bruikbare https-map: de lettertypes worden niet geladen.",
+  "mail_na_kop_commando": "cat hoe-smaakte-het.md",
+  "mail_na_blok_commando": "untappd checkin",
+  "mail_na_blok_slot": "→ exit 0",
+  "mail_na_review_commando": "git commit -m \"review\""
 }

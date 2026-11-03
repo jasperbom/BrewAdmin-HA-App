@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.28] — 2026-11-03
+
+### Mails in de stijl van de webshop (Craftery, thema v6)
+
+De Craftery-mailstijl is gelijkgetrokken met het ontwerp van de webshop:
+
+- **Kaart:** inktrand, ronde hoeken (24 px) en een harde amber schaduw.
+- **Knoppen:** amber pil met inkt-tekst (Space Grotesk 600, 17 px) en een
+  commandoregel in mono eronder. De pil is een tabelcel, dus ook Outlook toont
+  een amber vlak (zonder ronde hoeken).
+- **"Hoe smaakte het?":**
+  - bovenaan `$ cat hoe-smaakte-het.md` met het onderwerp als kop in Jost;
+  - de bieren als donkere terminaltabel, met per bier de Untappd-link in amber,
+    gestippelde regels en een groene `→ exit 0`;
+  - de reviewknop met `$ git commit -m "review"` eronder.
+  - De platte tekst, de afmeldlink en List-Unsubscribe zijn ongewijzigd.
+- **Alle mails** zijn licht, ook in donkere modus (`color-scheme`), en krijgen
+  op een telefoon kleinere marges en een knop over de hele breedte.
+
+Nieuw onder Instellingen → Bedrijf → **Opmaak van de mails**:
+- **Stijl:** *Volgt het thema* (standaard, zoals tot nu toe), *Standaard* of
+  *Craftery*. Craftery is dus nooit vanzelf de stijl voor iedereen.
+- **Map met lettertypes:** een https-map met de woff2-bestanden van Jost, Space
+  Grotesk en IBM Plex Mono. Apple Mail en iOS laden die als de server
+  `Access-Control-Allow-Origin` meestuurt; Gmail en Outlook vallen terug op
+  Futura/Helvetica/Menlo. Leeg = alleen die terugval.
+
+---
+
 ## [1.13.27] — 2026-11-03
 
 ### Alleen nog de mail "Hoe smaakte het?"

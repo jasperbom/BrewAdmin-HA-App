@@ -36,6 +36,8 @@ import type { SkuRefData } from './sku'
 import { bestelLink } from './levering'
 import type { MailKnop } from './levering'
 import { uitnodigingUrl } from './mailUitnodiging'
+import { MAIL_BLOK_MARKER } from './mailTemplate'
+import type { MailKop, MailBlok } from './mailTemplate'
 import { WC_NIET_BETAALD_STATUSSEN } from './wcImport'
 
 // ── Instellingen ────────────────────────────────────────────────────────────
@@ -490,7 +492,15 @@ export interface NaAankoopMail {
   linkButtons: MailKnop[]
   /** De afmeldlink (ook als `List-Unsubscribe`-kop). */
   afmelden: {tekst: string, label: string, url: string}
+  /** De HTML-versie: de tekst met de markering op de plek van de Untappd-links,
+   *  een kop (commandoregel + het onderwerp) en de bieren als blok. */
+  htmlTekst: string
+  kop: MailKop
+  terminal: MailBlok | null
 }
+
+/** Een link zonder https:// en www., zoals hij in het blok staat. */
+const kaleLink = (url: string): string => url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
 
 export interface NaAankoopMailCtx extends NaAankoopCtx {
   brouwerij: string
@@ -519,20 +529,41 @@ export function bouwNaAankoopMail(order: any, ctx: NaAankoopMailCtx): NaAankoopM
   const knoppen: MailKnop[] = []
   if (review && afgehaald) {
     const label = t('mail_na_review_knop')
-    knoppen.push({url: review, label, textLine: `${label}:`})
+    knoppen.push({url: review, label, textLine: `${label}:`, commando: t('mail_na_review_commando')})
   }
+  // De HTML-versie: dezelfde tekst, maar op de plek van de Untappd-regels de
+  // inleidende zin en daaronder het blok met de bieren (utils/mailTemplate.ts).
+  const metUntappd = bieren.filter(b => b.untappd)
+  const htmlVars = metUntappd.length
+    ? {...vars, untappd: `${t('mail_na_untappd_intro')}\n\n${MAIL_BLOK_MARKER}`}
+    : vars
+  const terminal: MailBlok | null = metUntappd.length
+    ? {
+        commando: t('mail_na_blok_commando'),
+        regels: metUntappd.map(b => ({label: b.naam, waarde: kaleLink(b.untappd), url: b.untappd})),
+        slot: t('mail_na_blok_slot'),
+      }
+    : null
   const proef = ctx.inst.modus === 'proef'
   const klantAdres = str(order?.klant_email)
-  let subject = vulMailIn(naAankoopTekst(ctx.sjablonen, 'subject'), vars)
-  let text = vulMailIn(naAankoopTekst(ctx.sjablonen, 'body'), vars)
+  const onderwerp = vulMailIn(naAankoopTekst(ctx.sjablonen, 'subject'), vars)
+  const body = naAankoopTekst(ctx.sjablonen, 'body')
+  let subject = onderwerp
+  let text = vulMailIn(body, vars)
+  let htmlTekst = vulMailIn(body, htmlVars)
   if (proef) {
+    const kop = t('mail_na_proef_kop').replace('{email}', klantAdres)
     subject = `[${t('na_aankoop_proef_label')}] ${subject}`
-    text = `${t('mail_na_proef_kop').replace('{email}', klantAdres)}\n\n${text}`
+    text = `${kop}\n\n${text}`
+    htmlTekst = `${kop}\n\n${htmlTekst}`
   }
   return {
     to: proef ? ctx.inst.proef_adres : klantAdres,
     subject,
     text,
+    htmlTekst,
+    kop: {commando: t('mail_na_kop_commando'), titel: onderwerp},
+    terminal,
     linkButtons: knoppen,
     afmelden: {
       // Waarom de klant deze mail krijgt hangt af van de grondslag: bij

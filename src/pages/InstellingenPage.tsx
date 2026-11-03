@@ -4,6 +4,7 @@ import { landOpties } from '../utils/btwCategorie'
 import { BESTEL_URL_STANDAARD } from '../utils/levering'
 import { ORDER_MAIL_SOORTEN, MAIL_HANDELING, mailAutoAan, zetMailAuto } from '../utils/orderMail'
 import NaAankoopMailInstellingen from '../components/NaAankoopMailInstellingen'
+import MailOpmaakInstellingen from '../components/MailOpmaakInstellingen'
 import { uitnodigingUrl, uitnodigingStandaard, isWhatsAppLink } from '../utils/mailUitnodiging'
 import { peppolSchemaVoor } from '../utils/ubl'
 import { controleerTemplate } from '../utils/template'
@@ -2118,6 +2119,9 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           <p className="text-xs text-gray-400">{t('settings_mail_templates_vars_hint')}</p>
         </div>
       </div>
+
+      {/* Opmaak van alle mails aan klanten (utils/mailTemplate.ts): stijl en lettertypes. */}
+      <MailOpmaakInstellingen breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} />
 
       {/* Na-aankoopmails (utils/naAankoopMail.ts): standaard uit. */}
       {naAankoop && (
