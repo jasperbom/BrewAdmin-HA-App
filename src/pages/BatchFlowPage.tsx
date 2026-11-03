@@ -56,6 +56,8 @@ import Sel from '../components/ui/Sel'
 import Blad from '../components/ui/Blad'
 import SectionHeader from '../components/ui/SectionHeader'
 import BatchNotitiesSection from '../components/batch/BatchNotitiesSection'
+import BrouwlogSectie from '../components/batch/BrouwlogSectie'
+import { brouwlogAangevinkt } from '../utils/brouwlog'
 import VernietigingSection from '../components/batch/VernietigingSection'
 import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
 import MetingLog from '../components/batch/MetingLog'
@@ -208,6 +210,10 @@ interface BatchFlowPageProps {
   /** De Brewfather-batches van de laatste sync (App.tsx); null = nog niet opgehaald. */
   bfBatchLijst?: any[] | null,
   vernieuwBfBatches?: () => Promise<{ok: boolean, fout?: string}>,
+  /** De brouwlog op de webshop (utils/brouwlog.ts): `aan` = de functie staat
+   *  aan, `zichtbaar` = er is een webshop gekoppeld (anders geen blok, tenzij
+   *  de batch al iets voor de brouwlog heeft). */
+  brouwlog?: { aan: boolean; zichtbaar: boolean },
 }
 
 interface ChecklistItem {
@@ -492,6 +498,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   ccpMetingen, setCcpMetingen,
   navDoel = null, onNavDoelConsumed = () => {},
   bfAan = false, bfRichting = BF_RICHTING_STANDAARD, bfBatchLijst = null, vernieuwBfBatches,
+  brouwlog = { aan: false, zichtbaar: false },
 }) => {
   // De geopende batch. De route is de bron (App.tsx, `#/productie/batches/<id>`):
   // `setSel` opent of sluit een batch via onOpenBatch — een history-entry, dus
@@ -525,6 +532,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // volgt hij de default (open = niet-afgerond).
   const [openStappen, setOpenStappen] = useState<Record<string, boolean>>({})
   const [notitiesOpen, setNotitiesOpen] = useState(false)
+  const [brouwlogOpen, setBrouwlogOpen] = useState(false)
   // Inklapbaar batch-gegevens-bewerkblok (naam/stijl/liters/product/gn-code),
   // het logboek en de recept-opnieuw-picker in de detail — overgenomen van de
   // oude Batches-pagina.
@@ -4529,6 +4537,15 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       {/* Batch-gegevens bewerken (naam/stijl/liters/product/GN-code) —
           ingeklapt onder de fase (SPEC E); ⋯ → Gegevens bewerken klapt hem open. */}
       {renderBatchGegevens()}
+
+      {/* Brouwlog: het vinkje "Op de brouwlog", de publieke notitie en wat er
+          publiek komt. Alleen als er een webshop is (of de batch al iets voor
+          de brouwlog heeft); versturen doet de server (_brouwlog_tick). */}
+      {(brouwlog.zichtbaar || brouwlogAangevinkt(selB) || !!selB.brouwlog_notitie) && (
+        <BrouwlogSectie batch={selB} brouwlogAan={brouwlog.aan} magWijzigen={magBatchSchrijven}
+          ctx={{producten, recepten, productArtikelen, afvullingen: av, afvulSessies, verpakkingen, tanks}}
+          onWijzig={updateBatch} open={brouwlogOpen} onToggle={() => setBrouwlogOpen(o => !o)} />
+      )}
 
       {/* Notities (gedeeld component met de batchpagina) */}
       <BatchNotitiesSection

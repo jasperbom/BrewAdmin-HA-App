@@ -4708,6 +4708,546 @@ class TestWebsiteTelemetrie:
         assert srv._app_versie() == versie.group(1)
 
 
+class TestBrouwlog:
+    """Brouwlog: per aangevinkte batch een release note naar de plugin
+    Craftery Brouwerij 1.2.0 (`wc-craftery/v1/brouwlog`). Het bericht is een
+    pure functie; de tick verstuurt alleen bij een verandering (of eens per
+    dag), en ruimt de site op als hij uitgaat. Het contract per batch deelt
+    deze suite met vitest (src/utils/__tests__/brouwlogContract.json)."""
+
+    CONTRACT = json.loads((Path(srv.__file__).parent / 'src' / 'utils' / '__tests__'
+                           / 'brouwlogContract.json').read_text(encoding='utf-8'))
+    NU = datetime.datetime(2026, 11, 3, 15, 0, tzinfo=datetime.timezone.utc).timestamp()
+    CREDS = {'storeUrl': 'https://winkel.example', 'consumerKey': 'ck', 'consumerSecret': 'cs',
+             'enabled': True}
+    VELDEN = {'nummer', 'bier', 'status', 'brouwdatum', 'afvuldatum', 'liters', 'flessen', 'abv',
+              'og', 'fg', 'tank', 'notitie', 'product_id'}
+
+    @staticmethod
+    def _b(nummer, **extra):
+        b = {'id': nummer, 'batch_nummer': str(nummer), 'naam': f'Bier {nummer}', 'status': 'Vergisten',
+             'brouwlog_publiek': True}
+        b.update(extra)
+        return b
+
+    def _bericht(self, batches, **data):
+        return srv._brouwlog_bericht({'batches': batches, **data}, bron='BrewAdmin 1.13.29', now=self.NU)
+
+    def _een(self, **velden):
+        """De ene batch uit het bericht (of None als hij niet meegaat)."""
+        batches = self._bericht([self._b(1, **velden)])['batches']
+        return batches[0] if batches else None
+
+    # ── Het contract: hetzelfde als de regel bij de batch in de app ─────────
+    def test_contract_zelfde_als_de_app(self):
+        data = self.CONTRACT['data']
+        now = datetime.datetime(self.CONTRACT['jaar'], 6, 1, tzinfo=datetime.timezone.utc).timestamp()
+        ctx = srv._brouwlog_ctx(data, now)
+        assert {str(b['id']) for b in data['batches']} == set(self.CONTRACT['verwacht'])
+        for b in data['batches']:
+            verwacht = self.CONTRACT['verwacht'][str(b['id'])]
+            regel, reden = srv._brouwlog_batch(b, ctx)
+            if 'reden' in verwacht:
+                assert (regel, reden) == (None, verwacht['reden']), b['id']
+            else:
+                assert reden is None and regel == verwacht, b['id']
+
+    def test_contract_als_bericht(self):
+        data = self.CONTRACT['data']
+        now = datetime.datetime(self.CONTRACT['jaar'], 6, 1, tzinfo=datetime.timezone.utc).timestamp()
+        bericht, overgeslagen = srv._brouwlog_samenstellen(data, 'BrewAdmin t', now)
+        # Alleen aangevinkt (5 en 13 niet), Gepland en de onbruikbare nooit;
+        # hoogste nummer eerst.
+        assert [b['nummer'] for b in bericht['batches']] == [132, 131, 130, 129, 128, 126, 125]
+        assert {(o['batch_id'], o['reden']) for o in overgeslagen} == {
+            (3, 'gepland'), (4, 'nummer'), (10, 'status'), (11, 'bier')}
+        assert bericht['alles'] is True and set(bericht) == {'bron', 'alles', 'batches'}
+
+    # ── Instellingen ──────────────────────────────────────────────────────
+    def test_instellingen_standaard_uit(self):
+        assert srv._brouwlog_instellingen(None) == {'enabled': False}
+        assert srv._brouwlog_instellingen({'enabled': 'ja'}) == {'enabled': False}
+        assert srv._brouwlog_instellingen({'enabled': 1}) == {'enabled': False}
+        assert srv._brouwlog_instellingen({'enabled': True}) == {'enabled': True}
+
+    # ── Wat er mee gaat ───────────────────────────────────────────────────
+    def test_niets_aangevinkt_is_een_lege_lijst(self):
+        b = self._bericht([self._b(1, brouwlog_publiek=False), self._b(2, brouwlog_publiek='true'),
+                           self._b(3, brouwlog_publiek=1), {k: v for k, v in self._b(4).items()
+                                                          if k != 'brouwlog_publiek'}])
+        assert b == {'bron': 'BrewAdmin 1.13.29', 'alles': True, 'batches': []}
+        assert self._bericht([]) == b
+        assert srv._brouwlog_bericht({}, bron='x', now=self.NU) == {'bron': 'x', 'alles': True, 'batches': []}
+
+    def test_alleen_aangevinkt_en_gepland_nooit(self):
+        b = self._bericht([self._b(1), self._b(2, status='Gepland'), self._b(3, brouwlog_publiek=False)])
+        assert [x['nummer'] for x in b['batches']] == [1]
+
+    def test_zonder_bruikbaar_nummer_niet_mee(self):
+        for nr in ('', None, 'B-12', '12a', '0', '1000000', '1.5', True, 12.5):
+            assert self._een(batch_nummer=nr) is None, nr
+        for nr, verwacht in (('#126', 126), (' 126 ', 126), (126, 126), (126.0, 126), ('0126', 126)):
+            assert self._een(batch_nummer=nr)['nummer'] == verwacht
+
+    def test_statusvertaling(self):
+        for fase, site in (('Brouwen', 'gebrouwen'), ('Vergisten', 'vergisten'),
+                           ('Conditioneren', 'conditioneren'), ('Afgevuld', 'afgevuld'),
+                           ('Gesloten', 'afgevuld'), ('Verpakt', 'afgevuld'),
+                           ('Vergisting', 'vergisten'), ('Lagering', 'conditioneren')):
+            assert self._een(status=fase)['status'] == site
+        for fase in ('Gepland', '', None, 'Iets anders'):
+            assert self._een(status=fase) is None
+
+    def test_verwachte_waarden_nooit(self):
+        # Ook niet als de gemeten waarde ontbreekt.
+        uit = self._een(verwacht_og=1.06, verwacht_fg=1.01, verwacht_abv=6.6)
+        assert set(uit) == {'nummer', 'bier', 'status'}
+        # Een ABV uit het recept telt ook vastgezet niet als meting.
+        assert 'abv' not in self._een(ABV=6.6, abv_bron='recept', abv_definitief=True)
+        assert self._een(ABV=6.6, abv_bron='lab', abv_definitief=True)['abv'] == 6.6
+        assert self._een(ABV=6.6)['abv'] == 6.6
+        assert 'abv' not in self._een(ABV=0)
+
+    def test_liters_pas_na_de_brouwdag(self):
+        # Bij het plannen staat liter_vergist al op de batchgrootte van het recept.
+        assert 'liters' not in self._een(status='Brouwen', liter_vergist=500)
+        assert self._een(status='Brouwen', liter_vergist=480, gist_volume_l=480)['liters'] == 480
+        assert self._een(status='Vergisten', liter_vergist=480)['liters'] == 480
+
+    def test_fusten_tellen_nooit_mee_in_de_flessen(self):
+        vp = [{'id': 1, 'type': 'fles'}, {'id': 2, 'type': 'fust'}, {'id': 3, 'type': 'blik'},
+              {'id': 4, 'type': 'krat'}]
+
+        def flessen(*afv):
+            uit = self._bericht([self._b(1, status='Afgevuld')], verpakkingen=vp,
+                                afvullingen=[dict(a, batch_id=1) for a in afv])['batches'][0]
+            return uit.get('flessen')
+
+        assert flessen({'verpakking_id': 2, 'aantal': 4}) is None
+        assert flessen({'verpakking_id': 2, 'aantal': 4}, {'verpakking_id': 1, 'aantal': 120}) == 120
+        assert flessen({'verpakking_id': 3, 'aantal': 24}, {'verpakking_id': 1, 'hoeveelheid': 50, 'aantal': 9}) == 50
+        assert flessen({'verpakking_type': 'fles', 'aantal': 10}) == 10
+        # Niet zuiver te scheiden (een eigen soort of alleen een naam): niets.
+        assert flessen({'verpakking_id': 4, 'aantal': 5}, {'verpakking_id': 1, 'aantal': 120}) is None
+        assert flessen({'verpakking_type': 'Fust 20L', 'aantal': 2}, {'verpakking_id': 1, 'aantal': 120}) is None
+        # Een lege afvulling telt niet als twijfel.
+        assert flessen({'verpakking_id': 4, 'aantal': 0}, {'verpakking_id': 1, 'aantal': 120}) == 120
+        tekst = json.dumps(self._bericht([self._b(1, status='Afgevuld')], verpakkingen=vp,
+                                         afvullingen=[{'batch_id': 1, 'verpakking_id': 2, 'aantal': 4}]))
+        assert 'fust' not in tekst.lower()
+
+    def test_interne_gegevens_nooit(self):
+        b = self._b(1, notities='GEHEIM-1', allergeen_notities='GEHEIM-2', kostprijs=12.3,
+                    electra_kosten=9, recept_id='r1', brewfather_id='GEHEIM-3', product_id=5)
+        data = {
+            'batch_notities': [{'batch_id': 1, 'tekst': 'GEHEIM-4'}],
+            'klanten': [{'naam': 'GEHEIM-5'}], 'bestellingen': [{'totaal': 'GEHEIM-6'}],
+            'recepten': [{'id': 'r1', 'naam': 'Receptnaam', 'ingredienten': 'GEHEIM-7'}],
+            'producten': [{'id': 5, 'naam': 'Tripel A', 'prijs': 'GEHEIM-8'}],
+            'product_artikelen': [{'product_id': 5, 'verkoopprijs': 'GEHEIM-9', 'wc': {'wc_id': 77}}],
+        }
+        bericht = self._bericht([b], **data)
+        tekst = json.dumps(bericht)
+        assert 'GEHEIM' not in tekst
+        assert bericht['batches'] == [{'nummer': 1, 'bier': 'Tripel A', 'status': 'vergisten',
+                                       'product_id': 77}]
+
+    def test_nooit_andere_velden(self):
+        data = self.CONTRACT['data']
+        batches = [dict(b, brouwlog_publiek=True, extra='x', fusten=3) for b in data['batches']]
+        bericht = srv._brouwlog_bericht(dict(data, batches=batches), bron='b', now=self.NU)
+        assert set(bericht) == {'bron', 'alles', 'batches'}
+        for b in bericht['batches']:
+            assert set(b) <= self.VELDEN
+            assert {'nummer', 'bier', 'status'} <= set(b)
+
+    def test_naam_zonder_batchnummer(self):
+        for naam in ('Tripel A #1', '#1 Tripel A', '#1 · Tripel A', 'Tripel A (#1)', 'Tripel A - #001'):
+            assert self._een(naam=naam)['bier'] == 'Tripel A', naam
+        # Een ander nummer blijft staan.
+        assert self._een(naam='Tripel #12')['bier'] == 'Tripel #12'
+        # De productnaam gaat voor de receptnaam, die voor de eigen naam.
+        data = {'producten': [{'id': 9, 'naam': 'Product'}],
+                'recepten': [{'id': 'r', 'naam': 'Recept'}, {'id': 'r__v1', 'naam': 'Versie', 'is_huidige': False}]}
+        assert self._bericht([self._b(1, product_id=9, recept_id='r__v1')], **data)['batches'][0]['bier'] == 'Product'
+        assert self._bericht([self._b(1, recept_id='r__v1')], **data)['batches'][0]['bier'] == 'Recept'
+
+    def test_productlink_alleen_zonder_twijfel(self):
+        def pid(*artikelen):
+            data = {'product_artikelen': [dict(a, product_id=5) for a in artikelen]}
+            return self._bericht([self._b(1, product_id=5)], **data)['batches'][0].get('product_id')
+
+        assert pid({'wc': {'wc_id': 77}}, {'wc': {'wc_id': 77, 'status': 'publish'}}, {}) == 77
+        assert pid({'wc': {'wc_id': 77}}, {'wc': {'wc_id': 78}}) is None
+        assert pid({'wc': {'wc_id': 77, 'status': 'draft'}}) is None
+        assert pid({'wc': {'wc_id': '77'}}) is None
+        assert pid() is None
+
+    def test_tank_alleen_als_het_bier_erin_ligt_of_lag(self):
+        data = {'tanks': [{'id': 't1', 'naam': 'FV1'}, {'id': 't2', 'naam': 'BBT twee lang'}]}
+
+        def tank(**velden):
+            return self._bericht([self._b(1, **velden)], **data)['batches'][0].get('tank')
+
+        assert tank(status='Vergisten', tank='t1') == 'FV1'
+        assert tank(status='Brouwen', tank='t1') is None
+        assert tank(status='Afgevuld', tank='', tank_historie=[{'tank': 't1'}, {'tank': 't2'}]) == 'BBT twee lan'
+        assert tank(status='Afgevuld') is None
+
+    def test_afvuldatum_eerste_afvulling_of_sessie(self):
+        data = {'afvullingen': [{'batch_id': 1, 'datum': '2026-10-12', 'aantal': 1},
+                                {'batch_id': 1, 'datum': '2026-10-10', 'aantal': 1},
+                                {'batch_id': 2, 'datum': '2026-01-01', 'aantal': 1}],
+                'afvul_sessies': [{'batch_id': 1, 'start': '2026-10-09T08:00:00', 'status': 'afgebroken'},
+                                  {'batch_id': 1, 'start': '2026-10-11T08:00:00', 'status': 'afgesloten'}]}
+        uit = self._bericht([self._b(1, status='Afgevuld')], **data)['batches'][0]
+        assert uit['afvuldatum'] == '2026-10-10'
+        assert 'afvuldatum' not in self._een(status='Conditioneren')
+
+    def test_grenzen_van_het_contract(self):
+        assert self._een(liter_vergist=0.04).get('liters') is None
+        assert self._een(liter_vergist=0.06)['liters'] == 0.1
+        assert self._een(liter_vergist=10000.04)['liters'] == 10000
+        assert self._een(liter_vergist=10000.06).get('liters') is None
+        assert self._een(liter_vergist='120,5').get('liters') is None
+        assert self._een(liter_vergist=118.45)['liters'] == 118.5
+        assert self._een(ABV=20.004)['abv'] == 20
+        assert self._een(ABV=20.006).get('abv') is None
+        assert self._een(ABV=6.455)['abv'] == 6.46
+        assert self._een(OG=0.9795)['og'] == 0.98
+        assert self._een(OG=1.2004)['og'] == 1.2
+        assert self._een(OG=1.2006).get('og') is None
+        assert self._een(OG=18).get('og') is None  # °Plato is geen soortelijk gewicht
+        assert self._een(FG='1.0105')['fg'] == 1.011
+        assert self._een(FG=float('nan')).get('fg') is None
+        assert self._een(tank='t', status='Vergisten').get('tank') == 't'
+        assert self._bericht([self._b(1, status='Vergisten', tank='x')],
+                             tanks=[{'id': 'x', 'naam': 'Dertien tekens'}])['batches'][0]['tank'] == 'Dertien teke'
+        assert self._een(naam='x' * 61)['bier'] == 'x' * 60
+        assert self._een(naam='<b>Tripel</b>  A\t%41')['bier'] == 'Tripel A'
+        assert self._een(naam='<script></script>') is None
+        assert self._een(batch_nummer='999999')['nummer'] == 999999
+        assert srv._brouwlog_bericht({}, bron='y' * 50, now=self.NU)['bron'] == 'y' * 40
+        # Datums: JJJJ-MM-DD, niet vóór 2018 en niet na volgend jaar.
+        assert self._een(datum='2026-10-24T09:00')['brouwdatum'] == '2026-10-24'
+        assert self._een(datum='2017-12-31').get('brouwdatum') is None
+        assert self._een(datum='2027-12-31')['brouwdatum'] == '2027-12-31'
+        assert self._een(datum='2028-01-01').get('brouwdatum') is None
+        assert self._een(datum='2026-02-30').get('brouwdatum') is None
+        assert self._een(datum='24-10-2026').get('brouwdatum') is None
+
+    def test_notitie_platte_tekst_hooguit_600(self):
+        assert self._een(brouwlog_notitie='a\r\nb\n\n\n\nc  ')['notitie'] == 'a\nb\n\nc'
+        assert self._een(brouwlog_notitie='<b>Vet</b> en 50%20 %%4141klaar')['notitie'] == 'Vet en 50 klaar'
+        assert self._een(brouwlog_notitie='x' * 601)['notitie'] == 'x' * 600
+        assert self._een(brouwlog_notitie='\U0001F37A' * 601)['notitie'] == '\U0001F37A' * 600
+        assert 'notitie' not in self._een(brouwlog_notitie='  \n ')
+        assert 'notitie' not in self._een(brouwlog_notitie=['geen tekst'])
+
+    def test_max_50_de_hoogste_nummers(self):
+        batches = [self._b(n) for n in range(1, 61)]
+        bericht, overgeslagen = srv._brouwlog_samenstellen({'batches': batches}, 'b', self.NU)
+        assert [b['nummer'] for b in bericht['batches']] == list(range(60, 10, -1))
+        assert sorted(o['batch_id'] for o in overgeslagen if o['reden'] == 'te_veel') == list(range(1, 11))
+
+    def test_hetzelfde_nummer_maar_een_keer(self):
+        a, b = self._b(5, naam='Eerste'), dict(self._b(5, naam='Tweede'), id=99)
+        bericht, overgeslagen = srv._brouwlog_samenstellen({'batches': [a, b]}, 'b', self.NU)
+        assert [x['bier'] for x in bericht['batches']] == ['Eerste']
+        assert overgeslagen == [{'batch_id': 99, 'nummer': '5', 'reden': 'dubbel'}]
+
+    def test_hooguit_64_kb(self):
+        batches = [self._b(n, brouwlog_notitie='\U0001F37A' * 600) for n in range(1, 51)]
+        bericht, overgeslagen = srv._brouwlog_samenstellen({'batches': batches}, 'b', self.NU)
+        assert len(srv._website_json(bericht)) <= srv.BROUWLOG_MAX_BYTES
+        nummers = [b['nummer'] for b in bericht['batches']]
+        assert nummers[0] == 50 and len(nummers) < 50
+        assert sorted(o['batch_id'] for o in overgeslagen) == list(range(1, 51 - len(nummers)))
+        assert {o['reden'] for o in overgeslagen} == {'te_groot'}
+
+    # ── Alleen versturen als er iets veranderd is ─────────────────────────
+    def test_hash_en_eens_per_dag(self):
+        bericht = self._bericht([self._b(1, brouwlog_notitie='Eerste versie')])
+        iso = datetime.datetime.fromtimestamp(self.NU, datetime.timezone.utc).isoformat(timespec='seconds')
+        status = {'hash': srv._brouwlog_hash(bericht), 'laatst_gelukt': iso}
+        assert srv._brouwlog_moet_versturen(bericht, status, self.NU + 60) is False
+        # Een nieuwe versie van de app (bron) is geen reden.
+        assert srv._brouwlog_moet_versturen(dict(bericht, bron='BrewAdmin 9.9.9'), status, self.NU + 60) is False
+        anders = self._bericht([self._b(1, brouwlog_notitie='Tweede versie')])
+        assert srv._brouwlog_moet_versturen(anders, status, self.NU + 60) is True
+        assert srv._brouwlog_moet_versturen(bericht, status, self.NU + 24 * 3600) is True
+        assert srv._brouwlog_moet_versturen(bericht, {}, self.NU) is True
+        assert srv._brouwlog_moet_versturen(bericht, dict(status, laatst_gelukt=None), self.NU) is True
+
+    def test_antwoord_begrensd(self):
+        a = srv._brouwlog_antwoord(json.dumps({
+            'ok': True, 'versie': '1.2.0', 'ontvangen': '2026-11-03T15:18:12+00:00', 'aantal': 5, 'max': 50,
+            'pagina': 'https://www.craftery.nl/brouwlog/',
+            'overgeslagen': [{'index': 4, 'nummer': '127', 'reden': 'bier'}] * 80,
+            'weggevallen': [1, 'x', True, 2.0],
+            'batches': [{'nummer': 126, 'bier': '<b>Tripel</b> A', 'status': 'vergisten', 'notitie': 'lang'},
+                        {'nummer': 'x'}],
+        }).encode())
+        assert a['versie'] == '1.2.0' and a['aantal'] == 5 and a['max'] == 50
+        assert a['pagina'] == 'https://www.craftery.nl/brouwlog/'
+        assert len(a['overgeslagen']) == 50 and a['overgeslagen'][0] == {'index': 4, 'nummer': '127', 'reden': 'bier'}
+        assert a['weggevallen'] == [1, 2]
+        assert a['batches'] == [{'nummer': 126, 'bier': 'Tripel A', 'status': 'vergisten'}]
+        for pagina in ('javascript:alert(1)', 'https://x/<script>', None, 5):
+            assert srv._brouwlog_antwoord(json.dumps({'pagina': pagina}).encode())['pagina'] is None
+        assert srv._brouwlog_antwoord(b'[]') == {} and srv._brouwlog_antwoord(b'<html>') == {}
+
+    # ── De loop ───────────────────────────────────────────────────────────
+    @staticmethod
+    def _wis(key):
+        conn = srv._db()
+        with conn:
+            conn.execute('DELETE FROM kv WHERE key=?', (key,))
+            conn.execute('DELETE FROM versies WHERE key=?', (key,))
+
+    @classmethod
+    def _seed(cls, inst=None, creds=None, status=None):
+        for k in ('website_brouwlog', 'woocommerce_creds', 'website_brouwlog_status'):
+            cls._wis(k)
+        if inst is not None:
+            srv._write_json('website_brouwlog', inst)
+        if creds is not None:
+            srv._write_json('woocommerce_creds', creds)
+        if status is not None:
+            srv._write_json('website_brouwlog_status', status)
+        srv._brouwlog_laatste_ronde = 0.0
+        srv._brouwlog_laatste_verzending = 0.0
+
+    def _nep_winkel(self, monkeypatch, status=200, antwoord=None, batches=None):
+        """Een nep-webshop en een vast bericht (`batches` is een lijst die de
+        test kan wijzigen). Nooit de echte webshop."""
+        verzonden = []
+        lijst = batches if batches is not None else [{'nummer': 126, 'bier': 'Tripel A', 'status': 'vergisten'}]
+
+        def fake(creds, method, subpath, body=None, herkansing=True, api_pad=srv.WC_API_PATH):
+            verzonden.append({'method': method, 'subpath': subpath, 'api_pad': api_pad,
+                              'herkansing': herkansing, 'body': json.loads(body) if body else None})
+            if antwoord is not None:
+                return status, json.dumps(antwoord).encode()
+            mee = json.loads(body)['batches'] if body else []
+            return status, json.dumps({'ok': True, 'overgeslagen': [], 'weggevallen': [], 'versie': '1.2.0',
+                                       'ontvangen': '2026-11-03T15:18:12+00:00', 'aantal': len(mee),
+                                       'max': 50, 'pagina': 'https://winkel.example/brouwlog/',
+                                       'batches': mee}).encode()
+
+        monkeypatch.setattr(srv, '_wc_request', fake)
+        monkeypatch.setattr(srv, '_brouwlog_bericht_nu',
+                            lambda: {'bron': 'BrewAdmin t', 'alles': True, 'batches': [dict(b) for b in lijst]})
+        return verzonden
+
+    def _volgende(self):
+        # Het lokale slot van 10 seconden; in een test zitten er geen 10 s tussen.
+        srv._brouwlog_laatste_verzending = 0.0
+
+    def test_loop_stil_als_hij_uit_staat_of_zonder_woocommerce(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch)
+        try:
+            for inst, creds in (({'enabled': False}, self.CREDS), (None, self.CREDS),
+                                ({'enabled': 'ja'}, self.CREDS), ({'enabled': True}, None),
+                                ({'enabled': True}, dict(self.CREDS, consumerSecret='')),
+                                ({'enabled': True}, dict(self.CREDS, storeUrl='http://winkel.example')),
+                                ({'enabled': True}, dict(self.CREDS, enabled=False))):
+                self._seed(inst=inst, creds=creds)
+                assert srv._brouwlog_tick(force=True) is None
+            assert verzonden == []
+            assert srv._read_json('website_brouwlog_status') is None
+        finally:
+            self._seed()
+
+    def test_loop_alleen_bij_een_verandering(self, app, monkeypatch):
+        lijst = [{'nummer': 126, 'bier': 'Tripel A', 'status': 'vergisten'}]
+        verzonden = self._nep_winkel(monkeypatch, batches=lijst)
+        try:
+            self._seed(inst={'enabled': True}, creds=self.CREDS)
+            uitkomst = srv._brouwlog_tick(now=self.NU)
+            assert uitkomst['ok'] is True and len(verzonden) == 1
+            v = verzonden[0]
+            assert v['method'] == 'POST' and v['subpath'] == 'brouwlog'
+            assert v['api_pad'] == '/wp-json/wc-craftery/v1' and v['herkansing'] is False
+            assert v['body']['alles'] is True and v['body']['batches'] == lijst
+            st = srv._read_json('website_brouwlog_status')
+            assert st['gelukt'] is True and st['op_site'] is True and st['fout'] is None
+            assert st['hash'] == srv._brouwlog_hash(v['body']) and st['antwoord']['aantal'] == 1
+            # Binnen het kwartier: de tick bouwt niet eens een bericht.
+            self._volgende()
+            assert srv._brouwlog_tick(now=self.NU + 5 * 60) is None and len(verzonden) == 1
+            # Een kwartier later, niets veranderd: niets.
+            self._volgende()
+            assert srv._brouwlog_tick(now=self.NU + 16 * 60) is None and len(verzonden) == 1
+            # Notitie veranderd: wel.
+            lijst[0]['notitie'] = 'Gist rustig op 19 graden.'
+            self._volgende()
+            assert srv._brouwlog_tick(force=True)['ok'] is True and len(verzonden) == 2
+            # Een dag na het laatst gelukte bericht: voor de zekerheid nog eens.
+            self._volgende()
+            assert srv._brouwlog_tick(force=True) is None and len(verzonden) == 2
+            self._volgende()
+            assert srv._brouwlog_tick(now=time.time() + 24 * 3600 + 60)['ok'] is True
+            assert len(verzonden) == 3
+        finally:
+            self._seed()
+
+    def test_aan_zonder_batches_een_keer_leeg(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch, batches=[])
+        try:
+            self._seed(inst={'enabled': True}, creds=self.CREDS)
+            srv._brouwlog_tick(force=True)
+            self._volgende()
+            srv._brouwlog_tick(force=True)
+            self._volgende()
+            srv._brouwlog_tick(force=True)
+            assert [v['body'] for v in verzonden] == [{'bron': 'BrewAdmin t', 'alles': True, 'batches': []}]
+            assert srv._read_json('website_brouwlog_status')['op_site'] is False
+        finally:
+            self._seed()
+
+    def test_uitzetten_stuurt_precies_een_leeg_bericht(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch)
+        try:
+            self._seed(inst={'enabled': True}, creds=self.CREDS)
+            srv._brouwlog_tick(force=True)
+            assert len(verzonden) == 1 and srv._read_json('website_brouwlog_status')['op_site'] is True
+            # Uitgezet: meteen (niet pas na een kwartier) één lege lijst.
+            srv._write_json('website_brouwlog', {'enabled': False})
+            self._volgende()
+            assert srv._brouwlog_tick(now=srv._brouwlog_laatste_ronde + 60)['ok'] is True
+            assert len(verzonden) == 2
+            assert verzonden[1]['body']['alles'] is True and verzonden[1]['body']['batches'] == []
+            assert srv._read_json('website_brouwlog_status')['op_site'] is False
+            # Daarna blijft hij stil.
+            for _ in range(3):
+                self._volgende()
+                assert srv._brouwlog_tick(force=True) is None
+            assert len(verzonden) == 2
+        finally:
+            self._seed()
+
+    def test_uitzetten_zonder_iets_op_de_site_stuurt_niets(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch)
+        try:
+            self._seed(inst={'enabled': False}, creds=self.CREDS, status={'op_site': False, 'gelukt': True})
+            assert srv._brouwlog_tick(force=True) is None and verzonden == []
+        finally:
+            self._seed()
+
+    def test_te_snel_slaat_de_ronde_over(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch, status=429, antwoord={'code': 'crfb_te_snel'})
+        try:
+            self._seed(inst={'enabled': True}, creds=self.CREDS)
+            uitkomst = srv._brouwlog_tick(force=True)
+            assert uitkomst['ok'] is False and uitkomst['fout']['code'] == 'te_snel'
+            assert len(verzonden) == 1  # geen herkansing
+            st = srv._read_json('website_brouwlog_status')
+            assert st['gelukt'] is False and 'hash' not in st and 'laatst_gelukt' not in st
+            # De volgende ronde probeert het gewoon weer.
+            self._volgende()
+            srv._brouwlog_tick(force=True)
+            assert len(verzonden) == 2
+        finally:
+            self._seed()
+
+    def test_mislukt_legt_de_reden_vast(self, app, monkeypatch):
+        self._nep_winkel(monkeypatch, status=404, antwoord={'code': 'rest_no_route'})
+        try:
+            self._seed(inst={'enabled': True}, creds=self.CREDS)
+            uitkomst = srv._brouwlog_tick(force=True)
+            assert uitkomst['fout']['code'] == 'plugin' and uitkomst['fout']['wp_code'] == 'rest_no_route'
+            assert srv._read_json('website_brouwlog_status')['fout']['code'] == 'plugin'
+        finally:
+            self._seed()
+
+    def test_los_van_de_telemetrie(self, app, monkeypatch):
+        # Eigen slot van tien seconden: de telemetrie die net verstuurde houdt
+        # de brouwlog niet tegen.
+        verzonden = self._nep_winkel(monkeypatch)
+        try:
+            self._seed(inst={'enabled': True}, creds=self.CREDS)
+            srv._website_laatste_verzending = time.time()
+            assert srv._brouwlog_tick(force=True)['ok'] is True and len(verzonden) == 1
+        finally:
+            srv._website_laatste_verzending = 0.0
+            self._seed()
+
+    # ── Endpoints ─────────────────────────────────────────────────────────
+    def test_endpoints_voorbeeld_en_versturen(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch)
+        monkeypatch.setattr(srv, '_brouwlog_gegevens', lambda: self.CONTRACT['data'])
+        try:
+            self._seed(creds=self.CREDS)
+            status, body, _ = req(app, 'POST', '/api/website/brouwlog/voorbeeld', body={})
+            assert status == 200 and body['enabled'] is False
+            assert body['bericht']['alles'] is True and body['aantal'] == 7 and body['max_batches'] == 50
+            assert body['max_bytes'] == 65536 and body['bytes'] == len(srv._website_json(body['bericht']))
+            assert {(o['batch_id'], o['reden']) for o in body['overgeslagen']} == {
+                (3, 'gepland'), (4, 'nummer'), (10, 'status'), (11, 'bier')}
+            # Versturen terwijl hij uit staat → 409, niets verstuurd.
+            status, body, _ = req(app, 'POST', '/api/website/brouwlog/verstuur', body={})
+            assert status == 409 and verzonden == []
+            # Met de schakelaar van het scherm: meteen, ook zonder verandering.
+            status, body, _ = req(app, 'POST', '/api/website/brouwlog/verstuur',
+                                  body={'instellingen': {'enabled': True}})
+            assert status == 200 and body['ok'] is True and len(verzonden) == 1
+            assert verzonden[0]['body']['alles'] is True
+            # Nog eens binnen tien seconden → de app houdt hem zelf tegen.
+            status, body, _ = req(app, 'POST', '/api/website/brouwlog/verstuur',
+                                  body={'instellingen': {'enabled': True}})
+            assert body['ok'] is False and body['fout']['code'] == 'te_snel' and len(verzonden) == 1
+            assert req(app, 'POST', '/api/website/brouwlog/voorbeeld', body=b'[1]')[0] == 400
+            assert req(app, 'POST', '/api/website/brouwlog/verstuur', body={'instellingen': 'aan'})[0] == 400
+            regels = [json.loads(r) for f in srv.AUDIT_DIR.glob('audit_*.jsonl')
+                      for r in f.read_text(encoding='utf-8').splitlines() if r.strip()]
+            assert any(r.get('actie') == 'website_brouwlog_verstuur' and r.get('ok') is True for r in regels)
+        finally:
+            self._seed()
+
+    def test_endpoint_test_leest_alleen(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch, antwoord={
+            'versie': '1.2.0', 'ontvangen': None, 'aantal': 0, 'max': 50,
+            'pagina': 'https://winkel.example/brouwlog/', 'batches': []})
+        try:
+            self._seed(creds=self.CREDS)
+            status, body, _ = req(app, 'POST', '/api/website/brouwlog/test', body={})
+            assert status == 200 and body['ok'] is True
+            assert body['antwoord']['versie'] == '1.2.0' and body['antwoord']['aantal'] == 0
+            assert body['antwoord']['pagina'] == 'https://winkel.example/brouwlog/'
+            assert [(v['method'], v['subpath']) for v in verzonden] == [('GET', 'brouwlog')]
+            assert srv._read_json('website_brouwlog_status') is None
+            self._seed()
+            status, body, _ = req(app, 'POST', '/api/website/brouwlog/test', body={})
+            assert body['ok'] is False and body['fout']['code'] == 'geen_wc'
+        finally:
+            self._seed()
+
+    def test_alleen_beheer(self, app, monkeypatch):
+        verzonden = self._nep_winkel(monkeypatch)
+        admin = {'X-Remote-User-Name': 'admin'}
+        assert req(app, 'POST', '/api/data/gebruikers_rollen',
+                   body={'gebruikers': {'admin': 'beheer', 'piet': 'productie'}}, headers=admin)[0] == 200
+        try:
+            self._seed(creds=self.CREDS)
+            piet = {'X-Remote-User-Name': 'piet'}
+            for pad in ('/api/website/brouwlog/voorbeeld', '/api/website/brouwlog/test',
+                        '/api/website/brouwlog/verstuur'):
+                assert req(app, 'POST', pad, body={'instellingen': {'enabled': True}}, headers=piet)[0] == 403
+            for key in ('website_brouwlog', 'website_brouwlog_status'):
+                assert req(app, 'POST', f'/api/data/{key}', body={'enabled': True}, headers=piet)[0] == 403
+                assert req(app, 'POST', f'/api/data/{key}', body=[], headers=admin)[0] == 422
+            assert verzonden == []
+        finally:
+            assert req(app, 'POST', '/api/data/gebruikers_rollen', body={}, headers=admin)[0] == 200
+            self._seed()
+
+    def test_status_niet_terug_te_zetten(self):
+        assert 'website_brouwlog_status' in srv._NIET_TERUGZETBAAR
+        assert 'website_brouwlog' not in srv._NIET_TERUGZETBAAR
+        assert {'website_brouwlog', 'website_brouwlog_status'} <= srv._BEHEER_KEYS
+
+
 # ── Versleutelde credentials in de serverbackup (ERP-plan 5.8) ───────────────
 
 class TestBackupVersleuteling:

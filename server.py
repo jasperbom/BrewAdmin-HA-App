@@ -11,6 +11,7 @@ The server strips any prefix and looks for /api/data/<key> anywhere in the path.
 """
 import base64
 import datetime
+import decimal
 import email.message
 import email.policy
 import email.utils
@@ -148,6 +149,12 @@ WEBSITE_SUBPATH       = 'brouwerij'
 WEBSITE_VOORBEELD_PATH = '/api/website/voorbeeld'
 WEBSITE_TEST_PATH      = '/api/website/test'
 WEBSITE_VERSTUUR_PATH  = '/api/website/verstuur'
+# Brouwlog: per aangevinkte batch een release note op de webshop (zie
+# _brouwlog_tick). Zelfde plugin, sleutel en namespace; een eigen route.
+BROUWLOG_SUBPATH        = 'brouwlog'
+BROUWLOG_VOORBEELD_PATH = '/api/website/brouwlog/voorbeeld'
+BROUWLOG_TEST_PATH      = '/api/website/brouwlog/test'
+BROUWLOG_VERSTUUR_PATH  = '/api/website/brouwlog/verstuur'
 
 UPLOAD_PREFIX            = '/api/upload/'
 FILE_PREFIX              = '/api/file/'
@@ -2125,6 +2132,7 @@ _KEY_TYPES = {
         'brewery_details', 'mail_templates', 'factuur_counter',
         'nummer_reeksen', 'ha_instellingen', 'notificatie_instellingen',
         'wc_import_status', 'website_telemetrie', 'website_telemetrie_status',
+        'website_brouwlog', 'website_brouwlog_status',
         'inkoop_inbox_status', 'ruimteklimaat_status', 'na_aankoop_mails',
         'coldcrash_instellingen', 'planning_instellingen',
         'brouwproces_instellingen', 'bank_koppelingen', 'bank_saldi',
@@ -3132,8 +3140,11 @@ _BEHEER_KEYS = frozenset((
     'brewfather_creds', 'woocommerce_creds', 'claude_creds', 'smtp_creds',
     'imap_creds', 'mollie_creds',
     # Wat er publiek op de webshop komt: alleen beheer. De status schrijft
-    # alleen de server; zo kan ook geen andere rol hem vervalsen.
+    # alleen de server; zo kan ook geen andere rol hem vervalsen. Het vinkje
+    # per batch (`brouwlog_publiek`) staat op de batch zelf: wie de batch mag
+    # bewerken, mag het zetten — versturen doet de server.
     'website_telemetrie', 'website_telemetrie_status',
+    'website_brouwlog', 'website_brouwlog_status',
     # Stand van het postvak met inkoopfacturen: alleen de server schrijft hem.
     'inkoop_inbox_status',
     # Of de app de airco voor de tanks aanzette: alleen de server schrijft hem.
@@ -4447,17 +4458,601 @@ def _website_tick(now: float | None = None, force: bool = False) -> dict | None:
 
 
 def _website_loop(interval: float = 60.0) -> None:
-    """Achtergrondloop: elke minuut kijken of de telemetrie aan de beurt is;
-    het ingestelde interval zit in de tick zelf, zodat een gewijzigde
+    """Achtergrondloop: elke minuut kijken of de telemetrie en de brouwlog aan
+    de beurt zijn; het interval zit in elke tick zelf, zodat een gewijzigde
     instelling zonder herstart meetelt. Eerste ronde zo'n twee minuten na de
-    start."""
+    start. Een fout in de ene houdt de andere niet tegen."""
     time.sleep(120)
     while True:
         try:
             _website_tick()
         except Exception as exc:
             _log('website', f'error: {exc}', level=logging.ERROR)
+        try:
+            _brouwlog_tick()
+        except Exception as exc:
+            _log('website', f'brouwlog error: {exc}', level=logging.ERROR)
         time.sleep(interval)
+
+
+# ── Brouwlog: per aangevinkte batch een release note op de webshop ──────────
+# De plugin Craftery Brouwerij (1.2.0+) bewaart per batch een korte release
+# note; het Craftery-thema (6.8.0+) zet die op /brouwlog/. De server stuurt de
+# batches die de brouwer per batch aanvinkt (`brouwlog_publiek`), met een eigen
+# publieke notitie (`brouwlog_notitie`) — los van `notities` en
+# `batch_notities`, die intern blijven.
+#
+# Altijd de hele lijst met "alles": true: wat er niet in staat, verdwijnt van de
+# site. Een uitgevinkte batch is dus bij het volgende bericht weg en de site kan
+# niet uit de pas lopen. Alleen versturen als het bericht anders is dan het
+# laatst gelukte (hash zonder `bron`), en voor de zekerheid eens per dag.
+#
+# Optioneel en standaard uit (`website_brouwlog.enabled`). Publiek, dus alleen:
+# nummer, bier, status, brouw- en afvuldatum, liters, flessen, gemeten
+# ABV/OG/FG, tank, de notitie en het WooCommerce-product voor de link. Nooit
+# fusten, de taplijst, klanten, bestellingen, prijzen, recepten, interne
+# notities of verwachte waarden. Wat de app niet zeker weet, gaat niet mee.
+#
+# Elke afleiding hier heeft een spiegel in utils/brouwlog.ts (de regel bij de
+# batch in de app); src/utils/__tests__/brouwlogContract.json bewaakt in
+# pytest én vitest dat beide hetzelfde opleveren.
+
+BROUWLOG_RONDE_S = 15 * 60
+BROUWLOG_HERHAAL_S = 24 * 3600
+BROUWLOG_MAX_BATCHES = 50
+BROUWLOG_MAX_BYTES = 64 * 1024
+# De plugin weigert een tweede brouwlogbericht binnen 10 seconden (429); een
+# eigen slot, los van de telemetrie.
+BROUWLOG_MIN_TUSSENPOOS_S = 10.0
+# Grenzen van het contract (plugin Craftery Brouwerij 1.2.0, brouwlog.php).
+_BROUWLOG_GRENZEN = {
+    'bron': 40, 'bier': 60, 'tank': 12, 'notitie': 600,
+    'nummer': (1, 999999), 'liters': (0.1, 10000.0), 'flessen': (1, 100000),
+    'abv': (0.0, 20.0), 'sg': (0.98, 1.2), 'jaar_vanaf': 2018,
+}
+# Fase van de batch → status op de site. Gepland gaat nooit mee.
+_BROUWLOG_STATUS = {'Brouwen': 'gebrouwen', 'Vergisten': 'vergisten',
+                    'Conditioneren': 'conditioneren', 'Afgevuld': 'afgevuld',
+                    'Gesloten': 'afgevuld'}
+# Oude statusnamen tellen als hun huidige fase (normaliseerStatus in
+# utils/volgendeStap.ts).
+_BROUWLOG_OUDE_STATUS = {'Verpakt': 'Afgevuld', 'Vergisting': 'Vergisten',
+                         'Lagering': 'Conditioneren'}
+# Vanaf deze statussen ligt of lag het bier in een tank; bij Brouwen is de tank
+# alleen gereserveerd (geclaimd wordt hij pas bij Vergisten).
+_BROUWLOG_TANK_STATUS = ('vergisten', 'conditioneren', 'afgevuld')
+_BROUWLOG_VERPAKKING = ('fles', 'blik', 'fust')
+_BROUWLOG_OCTET = re.compile(r'%[a-f0-9]{2}', re.I)
+# Stuurtekens (C0, DEL, C1) en witruimte: dezelfde tekenklassen als in
+# utils/brouwlog.ts, zodat Python en JavaScript precies hetzelfde wegpoetsen.
+_BROUWLOG_STUUR = re.compile('[\x00-\x1f\x7f-\x9f]')
+_BROUWLOG_STUUR_BEHALVE_ENTER = re.compile('[\x00-\x09\x0b-\x1f\x7f-\x9f]')
+_BROUWLOG_WIT = re.compile('[ \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+')
+_BROUWLOG_GETAL = re.compile(r'-?[0-9]+(?:\.[0-9]+)?')
+
+_brouwlog_lock = threading.Lock()
+_brouwlog_laatste_ronde: float = 0.0
+_brouwlog_laatste_verzending: float = 0.0
+
+
+def _brouwlog_instellingen(ruw) -> dict:
+    """`website_brouwlog`, gevalideerd: alleen een echte `true` zet hem aan."""
+    r = ruw if isinstance(ruw, dict) else {}
+    return {'enabled': r.get('enabled') is True}
+
+
+def _brouwlog_zonder_octetten(s: str) -> str:
+    """WordPress (sanitize_text_field) haalt `%xx` weg, ook een die pas na het
+    weghalen ontstaat. Hier vooraf, zodat het voorbeeld klopt met de site."""
+    m = _BROUWLOG_OCTET.search(s)
+    while m:
+        s = s.replace(m.group(0), '')
+        m = _BROUWLOG_OCTET.search(s)
+    return s
+
+
+def _brouwlog_tekst(waarde, maximum: int) -> str:
+    """Eén regel tekst zoals de plugin hem bewaart (crfb_schoon_tekst): geen
+    HTML of losse `<`, geen stuurtekens of `%xx`, witruimte samengevoegd,
+    hooguit `maximum` tekens. Wat hier uitkomt laat de plugin ongemoeid."""
+    if waarde is None or isinstance(waarde, (bool, list, dict)):
+        return ''
+    s = re.sub(r'<[^>]*>', '', str(waarde)).replace('<', '')
+    s = _BROUWLOG_STUUR.sub(' ', s)
+    s = _brouwlog_zonder_octetten(s)
+    s = _BROUWLOG_WIT.sub(' ', s).strip(' ')
+    return s[:maximum].rstrip(' ')
+
+
+def _brouwlog_notitie(waarde) -> str:
+    """De publieke notitie zoals de plugin hem bewaart (crfb_brouwlog_notitie):
+    platte tekst, een enter blijft een nieuwe regel, hooguit één witregel
+    achter elkaar, hooguit 600 tekens."""
+    if not isinstance(waarde, str):
+        return ''
+    s = waarde.replace('\r\n', '\n').replace('\r', '\n')
+    s = re.sub(r'<[^>]*>', '', s).replace('<', '')
+    s = _BROUWLOG_STUUR_BEHALVE_ENTER.sub(' ', s)
+    s = _brouwlog_zonder_octetten(s)
+    s = '\n'.join(_BROUWLOG_WIT.sub(' ', r).strip(' ') for r in s.split('\n'))
+    s = re.sub(r'\n{3,}', '\n\n', s).strip('\n')
+    return s[:_BROUWLOG_GRENZEN['notitie']].rstrip(' \n')
+
+
+def _brouwlog_rond(waarde: float, decimalen: int):
+    """Half naar boven afronden op de decimale schrijfwijze van het getal —
+    dezelfde uitkomst als `rond()` in utils/brouwlog.ts. Een geheel getal
+    wordt een int in de JSON."""
+    d = decimal.Decimal(repr(float(waarde))).quantize(
+        decimal.Decimal(1).scaleb(-decimalen), rounding=decimal.ROUND_HALF_UP)
+    v = float(d)
+    return int(v) if v.is_integer() else v
+
+
+def _brouwlog_getal(waarde, grenzen: tuple, decimalen: int):
+    """Een getal (of een tekst als "1.072") afgerond en binnen de grenzen van
+    het contract, anders None."""
+    if isinstance(waarde, bool) or waarde is None:
+        return None
+    if isinstance(waarde, str):
+        if not _BROUWLOG_GETAL.fullmatch(waarde.strip()):
+            return None
+        v = float(waarde)
+    elif isinstance(waarde, (int, float)):
+        v = float(waarde)
+    else:
+        return None
+    if not math.isfinite(v):
+        return None
+    r = _brouwlog_rond(v, decimalen)
+    laag, hoog = grenzen
+    return r if laag <= r <= hoog else None
+
+
+def _brouwlog_nummer(waarde) -> int | None:
+    """Het batchnummer als geheel getal 1…999999 ("126" en "#126" mogen),
+    anders None."""
+    if isinstance(waarde, bool) or waarde is None:
+        return None
+    if isinstance(waarde, (int, float)):
+        if not math.isfinite(waarde) or not float(waarde).is_integer():
+            return None
+        n = int(waarde)
+    else:
+        s = str(waarde).strip().lstrip('#').strip()
+        if not re.fullmatch(r'[0-9]{1,6}', s):
+            return None
+        n = int(s)
+    laag, hoog = _BROUWLOG_GRENZEN['nummer']
+    return n if laag <= n <= hoog else None
+
+
+def _brouwlog_datum(waarde, jaar_nu: int) -> str | None:
+    """JJJJ-MM-DD (een tijd erachter mag), niet vóór 2018 en niet na volgend
+    jaar — de regel van de plugin (crfb_brouwlog_datum)."""
+    if not isinstance(waarde, str):
+        return None
+    m = re.match(r'([0-9]{4})-([0-9]{2})-([0-9]{2})', waarde.strip())
+    if not m:
+        return None
+    try:
+        d = datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
+    if d.year < _BROUWLOG_GRENZEN['jaar_vanaf'] or d.year > jaar_nu + 1:
+        return None
+    return d.isoformat()
+
+
+def _brouwlog_lokale_dag(iso) -> str | None:
+    """De dag van een tijdstip zoals de app hem ziet: met Z of een offset in
+    lokale tijd (de start van een afvulsessie is `toISOString()`), anders de
+    datum zoals hij er staat."""
+    if not isinstance(iso, str) or not iso.strip():
+        return None
+    s = iso.strip()
+    if 'T' in s and (s.endswith('Z') or re.search(r'[+-][0-9]{2}:?[0-9]{2}$', s)):
+        ts = _iso_naar_epoch(s)
+        return datetime.datetime.fromtimestamp(ts).date().isoformat() if ts is not None else None
+    return s[:10]
+
+
+def _brouwlog_biernaam(b: dict, producten: list, recepten: list) -> str:
+    """batchTitel() in utils/productKeten.ts: de productnaam, dan de naam van
+    het (hoofd)recept, dan de eigen naam van de batch."""
+    pid = b.get('product_id')
+    prod = None
+    if pid is not None and not isinstance(pid, bool):
+        prod = next((p for p in producten if isinstance(p, dict) and p.get('id') == pid), None)
+    recept = None
+    rid = b.get('recept_id')
+    if rid:
+        m = re.match(r'^(.+?)__v.+$', str(rid))  # receptHoofdId
+        hoofd = m.group(1) if m else str(rid)
+        recept = next((r for r in recepten if isinstance(r, dict) and r.get('id') == hoofd
+                       and r.get('is_huidige') is not False), None) \
+            or next((r for r in recepten if isinstance(r, dict) and r.get('id') == rid), None)
+    naam = (prod or {}).get('naam') or (recept or {}).get('naam') or b.get('naam') or ''
+    return str(naam)
+
+
+def _brouwlog_bier(naam: str, nummer: int) -> str:
+    """De biernaam zonder het batchnummer ("Tripel A #126" → "Tripel A"): het
+    nummer staat op de site al apart."""
+    s = _brouwlog_tekst(naam, 400)
+    n = str(nummer)
+    zonder = re.sub(r'\( *# *0*' + n + r' *\)|# *0*' + n + r'(?![0-9])', ' ', s)
+    if zonder != s:
+        s = re.sub(r'^[ \-–—·|:,]+|[ \-–—·|:,]+$', '', zonder)
+    return _brouwlog_tekst(s, _BROUWLOG_GRENZEN['bier'])
+
+
+def _brouwlog_verpakking_soort(a: dict, vp_per_id: dict) -> str | None:
+    """'fles', 'blik' of 'fust' — uit de verpakking, anders uit de afvulling.
+    None als de app het niet weet (een eigen soort, alleen een naam)."""
+    vid = a.get('verpakking_id')
+    vp = vp_per_id.get(str(vid)) if vid not in (None, '') else None
+    soort = str((vp or {}).get('type') or a.get('verpakking_type') or '').strip().lower()
+    return soort if soort in _BROUWLOG_VERPAKKING else None
+
+
+def _brouwlog_flessen(afvullingen: list, vp_per_id: dict) -> int | None:
+    """Het aantal flessen uit de afvullingen van de batch. Fusten en blikken
+    tellen niet mee. Staat er een afvulling bij waarvan de app de soort niet
+    kent, dan is het niet zuiver te scheiden en gaat het aantal niet mee."""
+    totaal = 0.0
+    for a in afvullingen:
+        aantal = _afv_aantal(a)
+        if aantal <= 0:
+            continue
+        soort = _brouwlog_verpakking_soort(a, vp_per_id)
+        if soort is None:
+            return None
+        if soort == 'fles':
+            totaal += aantal
+    if totaal <= 0:
+        return None
+    n = int(_brouwlog_rond(totaal, 0))
+    laag, hoog = _BROUWLOG_GRENZEN['flessen']
+    return n if laag <= n <= hoog else None
+
+
+def _brouwlog_tank(b: dict, status: str, tanks_per_id: dict) -> str:
+    """De korte tanknaam (zoals op de tankkaart) zolang het bier in een tank
+    ligt of lag: de huidige tank, anders de laatste uit de tankhistorie."""
+    if status not in _BROUWLOG_TANK_STATUS:
+        return ''
+    tid = b.get('tank')
+    if tid in (None, ''):
+        hist = b.get('tank_historie') if isinstance(b.get('tank_historie'), list) else []
+        hist = [h for h in hist if isinstance(h, dict) and h.get('tank') not in (None, '')]
+        tid = hist[-1]['tank'] if hist else None
+    if tid in (None, ''):
+        return ''
+    tank = tanks_per_id.get(str(tid)) or {}
+    return _brouwlog_tekst(tank.get('naam') or tank.get('id') or tid, _BROUWLOG_GRENZEN['tank'])
+
+
+def _brouwlog_product_id(b: dict, artikelen: list) -> int | None:
+    """Het WooCommerce-product voor de link: alleen als alle gekoppelde
+    artikelen van het product van de batch naar hetzelfde gepubliceerde
+    product wijzen. Twijfel = niets; de site zoekt het bier dan op naam."""
+    pid = b.get('product_id')
+    if pid is None or isinstance(pid, bool):
+        return None
+    ids = set()
+    for art in artikelen:
+        if not isinstance(art, dict) or art.get('product_id') != pid:
+            continue
+        wc = art.get('wc') if isinstance(art.get('wc'), dict) else {}
+        wid = wc.get('wc_id')
+        if isinstance(wid, bool) or not isinstance(wid, (int, float)) \
+                or not math.isfinite(wid) or not float(wid).is_integer() or wid <= 0:
+            continue
+        if wc.get('status') not in (None, '', 'publish'):
+            continue  # concept of privé: geen link naar een pagina die niemand ziet
+        ids.add(int(wid))
+    return next(iter(ids)) if len(ids) == 1 else None
+
+
+def _brouwlog_batch(b: dict, ctx: dict) -> tuple[dict | None, str | None]:
+    """Eén aangevinkte batch zoals hij op de site komt, of (None, reden):
+    `nummer` (geen bruikbaar batchnummer), `gepland` (nog niet gebrouwen),
+    `status` (een fase die de site niet kent) of `bier` (geen naam). Spiegel:
+    `brouwlogBatch` in utils/brouwlog.ts."""
+    nummer = _brouwlog_nummer(b.get('batch_nummer'))
+    if nummer is None:
+        return None, 'nummer'
+    fase = str(b.get('status') or '')
+    fase = _BROUWLOG_OUDE_STATUS.get(fase, fase)
+    if fase == 'Gepland':
+        return None, 'gepland'
+    status = _BROUWLOG_STATUS.get(fase)
+    if status is None:
+        return None, 'status'
+    bier = _brouwlog_bier(_brouwlog_biernaam(b, ctx['producten'], ctx['recepten']), nummer)
+    if not bier:
+        return None, 'bier'
+
+    jaar = ctx['jaar']
+    bid = b.get('id')
+    uit: dict = {'nummer': nummer, 'bier': bier, 'status': status}
+    brouwdatum = _brouwlog_datum(b.get('datum'), jaar)
+    if brouwdatum:
+        uit['brouwdatum'] = brouwdatum
+    eigen = [a for a in ctx['afvullingen'] if isinstance(a, dict) and a.get('batch_id') == bid]
+    dagen = [d for d in (_brouwlog_datum(a.get('datum'), jaar) for a in eigen) if d]
+    dagen += [d for d in (_brouwlog_datum(_brouwlog_lokale_dag(s.get('start')), jaar)
+                          for s in ctx['sessies'] if isinstance(s, dict)
+                          and s.get('batch_id') == bid and s.get('status') != 'afgebroken') if d]
+    if dagen:
+        uit['afvuldatum'] = min(dagen)
+    # `liter_vergist` staat bij het plannen al op de batchgrootte van het
+    # recept; een meting is het pas na de brouwdag of met een gemeten
+    # gistvolume.
+    gemeten = status != 'gebrouwen' or _brouwlog_getal(b.get('gist_volume_l'), (0.1, 10000.0), 1) is not None
+    liters = _brouwlog_getal(b.get('liter_vergist'), _BROUWLOG_GRENZEN['liters'], 1) if gemeten else None
+    if liters is not None:
+        uit['liters'] = liters
+    flessen = _brouwlog_flessen(eigen, ctx['verpakkingen'])
+    if flessen is not None:
+        uit['flessen'] = flessen
+    # Alleen gemeten of vastgezette waarden; nooit verwacht_abv/_og/_fg, en ook
+    # geen ABV die uit het recept komt (`abv_bron: 'recept'`, ook vastgezet).
+    if b.get('abv_bron') != 'recept':
+        abv = _brouwlog_getal(b.get('ABV'), _BROUWLOG_GRENZEN['abv'], 2)
+        if abv is not None and abv > 0:
+            uit['abv'] = abv
+    for veld, sleutel in (('OG', 'og'), ('FG', 'fg')):
+        sg = _brouwlog_getal(b.get(veld), _BROUWLOG_GRENZEN['sg'], 3)
+        if sg is not None:
+            uit[sleutel] = sg
+    tank = _brouwlog_tank(b, status, ctx['tanks'])
+    if tank:
+        uit['tank'] = tank
+    notitie = _brouwlog_notitie(b.get('brouwlog_notitie'))
+    if notitie:
+        uit['notitie'] = notitie
+    product_id = _brouwlog_product_id(b, ctx['artikelen'])
+    if product_id is not None:
+        uit['product_id'] = product_id
+    return uit, None
+
+
+def _brouwlog_ctx(data: dict, now: float) -> dict:
+    """Wat _brouwlog_batch uit de administratie leest, één keer opgezocht."""
+    def lijst(key: str) -> list:
+        v = data.get(key)
+        return v if isinstance(v, list) else []
+
+    return {
+        'producten': lijst('producten'), 'recepten': lijst('recepten'),
+        'artikelen': lijst('product_artikelen'), 'afvullingen': lijst('afvullingen'),
+        'sessies': lijst('afvul_sessies'),
+        'verpakkingen': {str(v.get('id')): v for v in lijst('verpakkingen') if isinstance(v, dict)},
+        'tanks': {str(t.get('id')): t for t in lijst('tanks') if isinstance(t, dict)},
+        'jaar': datetime.datetime.fromtimestamp(now, datetime.timezone.utc).year,
+    }
+
+
+def _brouwlog_samenstellen(data: dict, bron: str, now: float) -> tuple[dict, list]:
+    """(bericht, overgeslagen). Alleen batches met `brouwlog_publiek: true`;
+    de 50 hoogste nummers, binnen 64 kB. `overgeslagen` noemt per aangevinkte
+    batch die niet meegaat waarom: de redenen van _brouwlog_batch, `dubbel`
+    (hetzelfde nummer als een andere batch), `te_veel` (buiten de 50) of
+    `te_groot` (paste niet in 64 kB)."""
+    ctx = _brouwlog_ctx(data, now)
+    kandidaten: list = []
+    overgeslagen: list = []
+
+    def sla_over(b: dict, reden: str) -> None:
+        overgeslagen.append({'batch_id': b.get('id'),
+                             'nummer': _brouwlog_tekst(b.get('batch_nummer'), 20),
+                             'reden': reden})
+
+    batches_data = data.get('batches') if isinstance(data.get('batches'), list) else []
+    for b in batches_data:
+        if not isinstance(b, dict) or b.get('brouwlog_publiek') is not True:
+            continue
+        regel, reden = _brouwlog_batch(b, ctx)
+        if regel is None:
+            sla_over(b, reden or 'onbekend')
+        else:
+            kandidaten.append((regel, b))
+    # Hoogste nummer eerst (de plugin houdt er 50, de hoogste); bij hetzelfde
+    # nummer telt de eerste — de plugin bewaart per nummer één batch.
+    kandidaten.sort(key=lambda kb: -kb[0]['nummer'])
+    gezien: set = set()
+    batches: list = []
+    for regel, b in kandidaten:
+        if regel['nummer'] in gezien:
+            sla_over(b, 'dubbel')
+        elif len(batches) >= BROUWLOG_MAX_BATCHES:
+            sla_over(b, 'te_veel')
+        else:
+            gezien.add(regel['nummer'])
+            batches.append((regel, b))
+    bericht = {'bron': _brouwlog_tekst(bron, _BROUWLOG_GRENZEN['bron']), 'alles': True,
+               'batches': [r for r, _ in batches]}
+    # Vangnet voor de 64 kB van de plugin: de laagste nummers vallen af.
+    while len(_website_json(bericht)) > BROUWLOG_MAX_BYTES and batches:
+        _r, b = batches.pop()
+        sla_over(b, 'te_groot')
+        bericht['batches'] = [r for r, _ in batches]
+    return bericht, overgeslagen
+
+
+def _brouwlog_bericht(data: dict, bron: str | None = None, now: float | None = None) -> dict:
+    """Het brouwlogbericht — pure functie, data in, dict uit: altijd
+    `{"bron", "alles": true, "batches": [...]}`. `data` bevat de gelezen keys
+    (batches, producten, recepten, product_artikelen, afvullingen,
+    afvul_sessies, verpakkingen, tanks). Het voorbeeld in de app gebruikt
+    dezelfde functie, dus wat je ziet is wat er verstuurd wordt."""
+    now = time.time() if now is None else now
+    if bron is None:
+        bron = f'BrewAdmin {_app_versie()}'.strip()
+    return _brouwlog_samenstellen(data, bron, now)[0]
+
+
+def _brouwlog_leeg(bron: str | None = None) -> dict:
+    """Het bericht dat de brouwlog op de site leegmaakt."""
+    if bron is None:
+        bron = f'BrewAdmin {_app_versie()}'.strip()
+    return {'bron': _brouwlog_tekst(bron, _BROUWLOG_GRENZEN['bron']), 'alles': True, 'batches': []}
+
+
+def _brouwlog_hash(bericht: dict) -> str:
+    """Vingerafdruk van het bericht zonder `bron`: een nieuwe versie van de app
+    is geen reden om opnieuw te sturen."""
+    zonder = {k: v for k, v in bericht.items() if k != 'bron'}
+    return hashlib.sha256(json.dumps(zonder, sort_keys=True, ensure_ascii=False,
+                                     separators=(',', ':')).encode('utf-8')).hexdigest()
+
+
+def _brouwlog_moet_versturen(bericht: dict, status: dict, now: float) -> bool:
+    """Anders dan het laatst gelukte bericht, of dat is een dag oud."""
+    if not isinstance(status, dict) or status.get('hash') != _brouwlog_hash(bericht):
+        return True
+    gelukt = _iso_naar_epoch(status.get('laatst_gelukt'))
+    return gelukt is None or now - gelukt >= BROUWLOG_HERHAAL_S
+
+
+def _brouwlog_gegevens() -> dict:
+    """Leest alle keys die het bericht nodig heeft (onder het datalock)."""
+    keys = ('batches', 'producten', 'recepten', 'product_artikelen', 'afvullingen',
+            'afvul_sessies', 'verpakkingen', 'tanks')
+    with _data_lock:
+        return {k: _read_json(k, []) for k in keys}
+
+
+def _brouwlog_bericht_nu() -> dict:
+    return _brouwlog_bericht(_brouwlog_gegevens())
+
+
+def _brouwlog_antwoord(ruw: bytes) -> dict:
+    """Het deel van het plugin-antwoord dat de app toont, begrensd: het komt
+    van buiten."""
+    try:
+        d = json.loads(ruw or b'{}')
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(d, dict):
+        return {}
+
+    def geheel(v) -> int | None:
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            return None
+        return int(v)
+
+    def rij(v) -> list:
+        return (v if isinstance(v, list) else [])[:BROUWLOG_MAX_BATCHES]
+
+    pagina = d.get('pagina').strip() if isinstance(d.get('pagina'), str) else ''
+    if len(pagina) > 300 or not re.fullmatch(r'https?://[^\s<>"\']+', pagina):
+        pagina = None
+    overgeslagen = [{'index': geheel(o.get('index')),
+                     'nummer': _brouwlog_tekst(o.get('nummer'), 20),
+                     'reden': _brouwlog_tekst(o.get('reden'), 20)}
+                    for o in rij(d.get('overgeslagen')) if isinstance(o, dict)]
+    batches = [{'nummer': geheel(x.get('nummer')),
+                'bier': _brouwlog_tekst(x.get('bier'), _BROUWLOG_GRENZEN['bier']),
+                'status': _brouwlog_tekst(x.get('status'), 20)}
+               for x in rij(d.get('batches')) if isinstance(x, dict) and geheel(x.get('nummer')) is not None]
+    return {
+        'versie': _brouwlog_tekst(d.get('versie') or '', 20),
+        'ontvangen': _brouwlog_tekst(d.get('ontvangen') or '', 40) or None,
+        'aantal': geheel(d.get('aantal')),
+        'max': geheel(d.get('max')),
+        'pagina': pagina,
+        'overgeslagen': overgeslagen,
+        'weggevallen': [n for n in (geheel(x) for x in rij(d.get('weggevallen'))) if n is not None],
+        'batches': batches,
+    }
+
+
+def _brouwlog_status_bij(velden: dict) -> dict:
+    """Werk `website_brouwlog_status` bij (alleen de server schrijft hier)."""
+    with _data_lock:
+        st = _read_json('website_brouwlog_status', {}) or {}
+        if not isinstance(st, dict):
+            st = {}
+        st.update(velden)
+        _write_json('website_brouwlog_status', st)
+    return st
+
+
+def _brouwlog_verstuur(creds: dict, bericht: dict, handmatig: bool = False) -> dict:
+    """POST het bericht — zonder herkansing: de volgende ronde komt vanzelf.
+    Legt de uitkomst vast in `website_brouwlog_status`, met de hash van een
+    gelukt bericht. Twee berichten binnen 10 seconden weigert de plugin; dat
+    houden we hier al tegen."""
+    global _brouwlog_laatste_verzending
+    with _brouwlog_lock:
+        nu = time.time()
+        if nu - _brouwlog_laatste_verzending < BROUWLOG_MIN_TUSSENPOOS_S:
+            return {'ok': False, 'fout': {'code': 'te_snel', 'http': None}}
+        _brouwlog_laatste_verzending = nu
+        status, ruw = _wc_request(creds, 'POST', BROUWLOG_SUBPATH, _website_json(bericht),
+                                  herkansing=False, api_pad=WEBSITE_API_PATH)
+    iso = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+    aantal = len(bericht.get('batches') or [])
+    velden: dict = {'laatste_poging': iso, 'handmatig': handmatig, 'leeg': aantal == 0,
+                    'verstuurd': aantal}
+    if 200 <= status < 300:
+        antwoord = _brouwlog_antwoord(ruw)
+        op_site = antwoord.get('aantal') if antwoord.get('aantal') is not None else aantal
+        velden.update({'gelukt': True, 'laatst_gelukt': iso, 'fout': None, 'antwoord': antwoord,
+                       'op_site': op_site > 0, 'hash': _brouwlog_hash(bericht)})
+        _log('website', f'brouwlog verstuurd: {aantal} batches, {op_site} op de site')
+        uitkomst = {'ok': True, 'antwoord': antwoord}
+    else:
+        fout = _website_fout(status, ruw)
+        velden.update({'gelukt': False, 'fout': fout})
+        # Een leeg bericht dat de site definitief weigert (sleutel, rechten,
+        # plugin weg): niet blijven herhalen, er is niets meer weg te halen.
+        if aantal == 0 and fout['code'] in ('sleutel', 'rechten', 'plugin'):
+            velden['op_site'] = False
+        _log('website', f"brouwlog versturen mislukt: {fout['code']}"
+             f"{' (' + fout['oorzaak'] + ')' if fout.get('oorzaak') else ''} — HTTP {status}",
+             level=logging.WARNING)
+        uitkomst = {'ok': False, 'fout': fout}
+    _brouwlog_status_bij(velden)
+    return uitkomst
+
+
+def _brouwlog_tick(now: float | None = None, force: bool = False) -> dict | None:
+    """Eén ronde (elke 15 minuten; `force` slaat die wachttijd over — voor
+    tests). Aan en WooCommerce gekoppeld: het bericht opbouwen en alleen
+    versturen als het anders is dan het laatst gelukte, of dat een dag oud is.
+    Uitgezet terwijl er batches op de site staan: één keer de lege lijst,
+    meteen. Verder stil: niets te doen is geen logregel."""
+    global _brouwlog_laatste_ronde
+    now = time.time() if now is None else now
+    with _data_lock:
+        inst = _brouwlog_instellingen(_read_json('website_brouwlog', {}))
+        wc_raw = _read_json('woocommerce_creds', {}) or {}
+        status = _read_json('website_brouwlog_status', {}) or {}
+    if not isinstance(status, dict):
+        status = {}
+    creds = _load_wc_creds()
+    if not creds:
+        return None
+    wacht = not force and now - _brouwlog_laatste_ronde < BROUWLOG_RONDE_S
+    if not inst['enabled']:
+        if not status.get('op_site'):
+            return None
+        # De eerste poging meteen; een mislukte pas na een ronde opnieuw.
+        if status.get('leeg') and status.get('gelukt') is False and wacht:
+            return None
+        _brouwlog_laatste_ronde = now
+        return _brouwlog_verstuur(creds, _brouwlog_leeg())
+    if not (isinstance(wc_raw, dict) and wc_raw.get('enabled')) or wacht:
+        return None
+    _brouwlog_laatste_ronde = now
+    bericht = _brouwlog_bericht_nu()
+    if not _brouwlog_moet_versturen(bericht, status, now):
+        return None
+    return _brouwlog_verstuur(creds, bericht)
 
 
 # ── Facturen per e-mail (IMAP) ──────────────────────────────────────────────
@@ -6719,7 +7314,7 @@ def _backup_to_zip(date_str: str) -> bytes | None:
 _NIET_TERUGZETBAAR = frozenset((
     'nummer_reeksen', 'tank_setpoints', 'wc_import_status',
     'website_telemetrie_status', 'inkoop_inbox_status', 'app_logo_icoon',
-    'ruimteklimaat_status',
+    'ruimteklimaat_status', 'website_brouwlog_status',
 ))
 
 
@@ -7187,6 +7782,7 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
                 MAIL_TEST_PATH, BF_TEST_PATH, WC_TEST_PATH, MOLLIE_TEST_PATH,
                 BACKUPS_TRIGGER_PATH, BACKUPS_RESTORE_PATH,
                 WEBSITE_VOORBEELD_PATH, WEBSITE_TEST_PATH, WEBSITE_VERSTUUR_PATH,
+                BROUWLOG_VOORBEELD_PATH, BROUWLOG_TEST_PATH, BROUWLOG_VERSTUUR_PATH,
                 INBOX_TEST_PATH)):
             self._rol_geweigerd(rol)
             return
@@ -7212,6 +7808,19 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
 
         if WC_PUT_PREFIX in path:
             self._wc_proxy_put()
+            return
+
+        # Brouwlog (beheer): voorbeeld, verbindingstest, nu versturen
+        if BROUWLOG_VOORBEELD_PATH in path:
+            self._brouwlog_voorbeeld()
+            return
+
+        if BROUWLOG_TEST_PATH in path:
+            self._brouwlog_test()
+            return
+
+        if BROUWLOG_VERSTUUR_PATH in path:
+            self._brouwlog_nu_versturen()
             return
 
         # Website-telemetrie (beheer): voorbeeld, verbindingstest, nu versturen
@@ -7652,6 +8261,86 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
         _audit_write('website_verstuur', 'website_telemetrie', ip=self.client_address[0],
                      gebruiker=self._ingress_user(), ok=uitkomst.get('ok'),
                      bytes=len(_website_json(bericht)))
+        self._json(200, {**uitkomst, 'bericht': bericht})
+
+    # ── Brouwlog (beheer) ──────────────────────────────────────────────────
+
+    def _brouwlog_body_instellingen(self) -> dict | None:
+        """Instellingen voor voorbeeld/versturen: die van het scherm als de app
+        ze meestuurt (een schakelaar die net is omgezet), anders de opgeslagen.
+        None = het antwoord is al verstuurd (fout in de invoer)."""
+        raw = self._read_body(max_len=4096)
+        if raw is None:
+            return None
+        body: dict = {}
+        if raw.strip():
+            try:
+                body = json.loads(raw)
+            except (ValueError, UnicodeDecodeError):
+                self._json(400, {'error': 'invalid json'})
+                return None
+            if not isinstance(body, dict):
+                self._json(400, {'error': 'invalid json'})
+                return None
+        ruw = body.get('instellingen')
+        if ruw is None:
+            with _data_lock:
+                ruw = _read_json('website_brouwlog', {})
+        elif not isinstance(ruw, dict):
+            self._json(400, {'error': 'invalid instellingen'})
+            return None
+        return _brouwlog_instellingen(ruw)
+
+    def _brouwlog_voorbeeld(self):
+        """POST /api/website/brouwlog/voorbeeld — het bericht dat er nu
+        verstuurd zou worden (door dezelfde code als de echte verzending), met
+        per aangevinkte batch die niet meegaat de reden."""
+        inst = self._brouwlog_body_instellingen()
+        if inst is None:
+            return
+        bericht, overgeslagen = _brouwlog_samenstellen(
+            _brouwlog_gegevens(), f'BrewAdmin {_app_versie()}'.strip(), time.time())
+        self._json(200, {'bericht': bericht, 'bytes': len(_website_json(bericht)),
+                         'max_bytes': BROUWLOG_MAX_BYTES, 'aantal': len(bericht['batches']),
+                         'max_batches': BROUWLOG_MAX_BATCHES, 'overgeslagen': overgeslagen,
+                         'enabled': inst['enabled']})
+
+    def _brouwlog_test(self):
+        """POST /api/website/brouwlog/test — GET op de brouwlogroute: versie,
+        laatst ontvangen, aantal batches en de pagina. Verandert niets."""
+        if self._read_body(max_len=4096) is None:
+            return
+        creds = _load_wc_creds()
+        if not creds:
+            self._json(200, {'ok': False, 'fout': {'code': 'geen_wc', 'http': None}})
+            return
+        status, ruw = _wc_request(creds, 'GET', BROUWLOG_SUBPATH, api_pad=WEBSITE_API_PATH)
+        if 200 <= status < 300:
+            self._json(200, {'ok': True, 'antwoord': _brouwlog_antwoord(ruw)})
+        else:
+            fout = _website_fout(status, ruw)
+            _log('website', f"brouwlog verbindingstest mislukt: {fout['code']} — HTTP {status}",
+                 level=logging.WARNING)
+            self._json(200, {'ok': False, 'fout': fout})
+
+    def _brouwlog_nu_versturen(self):
+        """POST /api/website/brouwlog/verstuur — meteen versturen, ook als er
+        niets veranderd is. Alleen als de brouwlog aan staat."""
+        inst = self._brouwlog_body_instellingen()
+        if inst is None:
+            return
+        if not inst['enabled']:
+            self._json(409, {'error': 'uit'})
+            return
+        creds = _load_wc_creds()
+        if not creds:
+            self._json(200, {'ok': False, 'fout': {'code': 'geen_wc', 'http': None}})
+            return
+        bericht = _brouwlog_bericht_nu()
+        uitkomst = _brouwlog_verstuur(creds, bericht, handmatig=True)
+        _audit_write('website_brouwlog_verstuur', 'website_brouwlog', ip=self.client_address[0],
+                     gebruiker=self._ingress_user(), ok=uitkomst.get('ok'),
+                     batches=len(bericht['batches']), bytes=len(_website_json(bericht)))
         self._json(200, {**uitkomst, 'bericht': bericht})
 
     # ── Bijlagen (file uploads) ────────────────────────────────────────────

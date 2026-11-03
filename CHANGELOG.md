@@ -4,6 +4,40 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.29] — 2026-11-03
+
+### Brouwlog: per batch een release note op je webshop
+
+BrewAdmin kan nu per batch een korte release note naar je webshop sturen, voor
+de pagina **/brouwlog/**. Het is optioneel en staat standaard **uit**; er komt
+niets op de site zonder dat je het per batch aanvinkt.
+
+- **Aanzetten:** Instellingen → Koppelingen → WooCommerce koppeling, blok
+  **Brouwlog**: aan/uit, *Voorbeeld* (het exacte bericht met het aantal batches
+  en de grootte), *Test verbinding* (plugin-versie, laatst ontvangen, aantal
+  batches op de site en de link naar de pagina), *Nu versturen*, en de laatste
+  stand met wat de site eventueel oversloeg en waarom.
+- **Per batch:** op de batchpagina het blok **Brouwlog op de website** met het
+  vinkje *Op de brouwlog*, een eigen publieke notitie (max. 600 tekens, los van
+  de interne notities) en een regel met wat er publiek komt, bijvoorbeeld
+  "#126 · Tripel A · vergisten · gebrouwen 24-10-2026 · 120 L · OG 1.072 · FV2".
+  Gaat een batch niet mee (geen batchnummer, nog Gepland), dan staat er waarom.
+- **Wat er publiek komt:** batchnummer, bier, status, brouw- en afvuldatum,
+  liters, flessen, gemeten ABV/OG/FG, tank, je notitie en een link naar het
+  bier in de winkel. Alleen gemeten of vastgezette waarden, nooit verwachte.
+  **Nooit** fusten, de taplijst, klanten, bestellingen, prijzen, recepten of
+  interne notities.
+- **Versturen doet de server**, ook als de app dicht is: elke 15 minuten de
+  hele lijst als er iets veranderd is, en voor de zekerheid eens per dag. Een
+  uitgevinkte batch verdwijnt bij het volgende bericht van de site; de brouwlog
+  uitzetten haalt alles meteen weg.
+- **Nodig op de webshop:** de WordPress-plugin **Craftery Brouwerij 1.2.0** of
+  nieuwer (dezelfde API-sleutel als de WooCommerce-koppeling, met
+  schrijfrechten, van een beheerder of winkelmanager) en voor de pagina zelf het
+  **Craftery-thema 6.8.0** of nieuwer.
+
+---
+
 ## [1.13.28] — 2026-11-03
 
 ### Mails in de stijl van de webshop (Craftery, thema v6)

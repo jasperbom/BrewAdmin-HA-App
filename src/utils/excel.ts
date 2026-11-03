@@ -110,6 +110,7 @@ export const INST_JSON_KEYS = [
   'ha_instellingen', 'notificatie_instellingen', 'coldcrash_instellingen',
   'planning_instellingen', 'website_telemetrie', 'brouwproces_instellingen',
   'haccp_instellingen', 'bank_koppelingen', 'bank_saldi', 'na_aankoop_mails',
+  'website_brouwlog',
 ] as const
 
 // Migratiehulp: oude backup-sheet 'Uitslagen' gebruikt de velden type_uitslag,
@@ -446,6 +447,7 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
         coldcrash_instellingen: parseInst('coldcrash_instellingen'),
         planning_instellingen:  parseInst('planning_instellingen'),
         website_telemetrie:   parseInst('website_telemetrie'),
+        website_brouwlog:     parseInst('website_brouwlog'),
         na_aankoop_mails:     parseInst('na_aankoop_mails'),
         brouwproces_instellingen: parseInst('brouwproces_instellingen'),
         haccp_instellingen:       parseInst('haccp_instellingen'),
