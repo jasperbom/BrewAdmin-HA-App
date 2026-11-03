@@ -503,11 +503,16 @@ BrewAdmin-HA-App/
 │   │   │                   # `afmelden` = afmeldregel in de voet + `List-Unsubscribe`-kop (`afmeldUrl`:
 │   │   │                   # alleen mailto/https, spiegel van `_list_unsubscribe` in server.py); bij https
 │   │   │                   # ook de one-click-kop (de afmeldpagina moet die POST zonder knop verwerken)
+│   │   ├── mailTemplate.ts # De HTML van elke klantmail (`buildMailHtml`): stijl standaard of craftery
+│   │   │                   # (`mailStijlVoor`: instelling, anders het thema), lettertypes uit een ingestelde
+│   │   │                   # map (`mailLettertypenUrl`), kop, blok op `MAIL_BLOK_MARKER`, knoppen met `commando`
 │   │   ├── naAankoopMail.ts # De mail ná een webshopbestelling, "Hoe smaakte het?" (standaard uit,
 │   │   │                   # `na_aankoop_mails`, sjabloon/stempel `na_smaak`): Untappd per bier, na afhalen
 │   │   │                   # een reviewlink; wachttijd `dagen` vanaf bestelling of levering (een oud
 │   │   │                   # `stappen.smaak` wordt nog gelezen). Serveertips- en taplijstmail zijn in
-│   │   │                   # 1.13.27 weggehaald. Modus uit/proef/aan (`zetNaAankoopModus`: `sinds` = het moment van wisselen,
+│   │   │                   # 1.13.27 weggehaald. De HTML krijgt een kop (`cat hoe-smaakte-het.md`), de
+│   │   │                   # bieren als blok (`htmlTekst` met `MAIL_BLOK_MARKER`) en de reviewknop een
+│   │   │                   # commandoregel; de platte tekst blijft gelijk. Modus uit/proef/aan (`zetNaAankoopModus`: `sinds` = het moment van wisselen,
 │   │   │                   # nooit een achterstand), grondslag soft opt-in (afgemeld/bezwaar = altijd) of
 │   │   │                   # toestemming (per bestelling het vinkje; intrekken via `wc_mail_vinkje_op` of de
 │   │   │                   # afmeldlijst stopt alles tot en met die dag) met het vinkje uit
@@ -838,7 +843,10 @@ De mail na een webshopbestelling: `naAankoopMail.test.ts` (standaard uit, modus 
 oude opslag `stappen.smaak`, afmeldlijst, het vinkje uit de checkout in de import, de bieren van een
 bestelling, een testbestelling met de juiste namen en links, wie níéts krijgt, toestemming per
 bestelling en intrekken, rust/één per adres/maximum, de proefstand, de droge run, de afmeldlink in
-tekst, HTML en kop, i18n in vijf talen zonder restanten van serveertips/taplijst). In pytest: `TestNaAankoopMails` (rollen van de twee keys,
+tekst, HTML en kop, i18n in vijf talen zonder restanten van serveertips/taplijst). De opmaak:
+`mailOpmaak.test.ts` (stijlkeuze — Craftery nooit als standaard —, de lettertypemap alleen https en
+alleen in de Craftery-stijl, kop, terminalblok op de markering, knop met commandoregel, donkere modus
+en smalle schermen, de smaakmail van begin tot eind met dezelfde platte tekst). In pytest: `TestNaAankoopMails` (rollen van de twee keys,
 `_list_unsubscribe` en de kop in `_build_email`).
 De Brewfather-koppeling: `bfTerugschrijven.test.ts` (het bericht: status, afronding,
 lege en onzinnige velden gaan niet mee; alleen gekoppelde, niet-verweesde, niet-gesloten
@@ -1141,9 +1149,16 @@ pytest bewaakt dat ze gelijk zijn). Waar het staat:
 - **Mails en documenten volgen het thema** (`huisstijlIsCraftery` in `utils/huisstijl.ts`, leest
   `html[data-thema]`): bij Craftery de laag `CRAFTERY_DOC_CSS` over `FACTUUR_CSS_DEFAULT`/`DOC_CSS`
   (`metHuisstijl`; een eigen factuurlayout gaat voor) en de mailstijl `craftery`
-  (`MAIL_STIJLEN` in `utils/mailTemplate.ts`: inktband met het webadres, kaart met inktrand,
-  amber pilknoppen met inkt, ondertekening in mono). Anders de standaardstijl met dezelfde opbouw
-  (ook de "Wist je dat?"-uitnodiging rechts in de voet)
+  (`MAIL_STIJLEN` in `utils/mailTemplate.ts`, naar thema v6 van de webshop: inktband met het
+  webadres, kaart met inktrand, ronde hoeken en harde amber schaduw, amber pilknop als tabelcel
+  met een mono commandoregel eronder, kop met `$ commando` + titel in Jost, het blok met regels als
+  terminaltabel met "→ exit 0", ondertekening in mono). Anders de standaardstijl met dezelfde
+  opbouw (ook de "Wist je dat?"-uitnodiging rechts in de voet). De mailstijl kan ook los van het
+  thema gekozen worden (`brewery_details.mail_stijl.stijl`: `thema`/`standaard`/`craftery`,
+  Instellingen → Bedrijf → Opmaak van de mails, `components/MailOpmaakInstellingen.tsx`); de
+  lettertypes laden alleen uit een ingestelde https-map (`mail_stijl.lettertypen_url`,
+  `mailLettertypenUrl`) — nooit een vast adres in de code. Elke mail is licht (`color-scheme`)
+  en heeft een media query voor smalle schermen (`.ba-pad`, `.ba-knop`, `.ba-blok-*`)
 - **Loginpagina (directe poort):** standaard `_LOGIN_ACCENT_STANDAARD`/`_LOGIN_ACHTERGROND_STANDAARD`;
   de knoptekst volgt het accent (`_tekst_op_kleur`: inkt op een licht accent zoals amber)
 
@@ -1515,7 +1530,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `accijns_instellingen` | object | Accijnstarieven |
 | `btw_instellingen` | object | BTW-aangifte-instellingen: `periode` + `standaard_btw` (voorgesteld tarief bij nieuwe artikelen/verkoopregels, default 21% via `standaardBtwPct` in `utils/btw.ts`) |
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
-| `brewery_details` | object | Brouwerijnaam, adres, land (ISO-2), BTW-nr., KvK, PEPPOL-ID/-schema (e-factuur), website (klikbaar logo in mail), `mail_uitnodiging` (`{kop, tekst, knop, url}` — "Wist je dat?" met knop in de voet van elke klantmail, `utils/mailUitnodiging.ts`), `factuur_velden` (zichtbaarheid) en `factuur_template` (`{html, css}` — eigen factuurlayout, leeg = de ingebouwde standaard uit `utils/factuurTemplate.ts`) |
+| `brewery_details` | object | Brouwerijnaam, adres, land (ISO-2), BTW-nr., KvK, PEPPOL-ID/-schema (e-factuur), website (klikbaar logo in mail), `mail_stijl` (`{stijl: thema\|standaard\|craftery, lettertypen_url}` — de opmaak van de klantmails, `utils/mailTemplate.ts`), `mail_uitnodiging` (`{kop, tekst, knop, url}` — "Wist je dat?" met knop in de voet van elke klantmail, `utils/mailUitnodiging.ts`), `factuur_velden` (zichtbaarheid) en `factuur_template` (`{html, css}` — eigen factuurlayout, leeg = de ingebouwde standaard uit `utils/factuurTemplate.ts`) |
 | `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`, `afhaal_gemist`, `annulering`, en de mail na een webshopbestelling `na_smaak`) met `subject`/`body`; leeg = i18n-default. `auto: true` = automatisch versturen bij de handeling van die mail, `auto_sinds` = wanneer dat aan ging (`zetMailAuto`/`autoMailReden` in `utils/orderMail.ts`; de "al betaald"-factuurmail volgt `factuur`). `annulering` kent `{creditregel}` (de factuur en de creditnota, leeg zonder factuur). `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}`, `afhaal_gemist` de mail voor een afhaalklant die niet kwam (`{afhaalmoment}` + `{afhaalregel}` met dezelfde link om een nieuw moment te kiezen; knop verschijnt via `afhaalmomentVerstreken`) — zie `utils/levering.ts` |
 | `na_aankoop_mails` | object | De mail ná een webshopbestelling, "Hoe smaakte het?" (`utils/naAankoopMail.ts`): `{modus: uit\|proef\|aan, sinds, proef_adres, grondslag: soft_opt_in\|toestemming, vinkje_meta, dagen, vanaf: bestelling\|geleverd, review_url, afmeld_url}`. Een oud `stappen.smaak.{dagen,vanaf}` (uit de tijd van drie mails) wordt nog gelezen; `stappen.serveertips`/`taplijst` en `taplijst_url` worden genegeerd. Standaard `uit`; `sinds` = het moment van de laatste modus-wissel (bestellingen van daarvóór krijgen niets). **Beheer-only**; wel in de Excel-backup |
 | `mail_afmeldingen` | array | Wie geen na-aankoopmails meer wil: `{id, email (klein geschreven), datum, bron: handmatig\|mail\|webshop, notitie?}`. Bewust géén beheer-key: wie bestellingen afhandelt, legt een afmelding meteen vast. In de Excel-backup (sheet `MailAfmeldingen`) |

@@ -24,6 +24,8 @@ export const CRAFTERY_KLEUR = {
   amberDonker: '#8A5A12',
   /** Dunne scheidingslijn op de kaart. */
   lijn: '#E4DCCD',
+  /** "→ exit 0" onder de terminaltabellen. */
+  groen: '#7FC27F',
 } as const
 
 /**

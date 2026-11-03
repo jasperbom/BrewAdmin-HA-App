@@ -5889,5 +5889,21 @@
   "na_aankoop_reden_geen_inhoud": "nada que enviar",
   "na_aankoop_reden_rust": "acaba de recibir un correo",
   "na_aankoop_reden_ingetrokken": "consentimiento retirado",
-  "mail_na_afmelden_tekst_toestemming": "Recibes este correo porque al hacer tu pedido indicaste que querías recibirlo. ¿Prefieres no recibir más correos como este?"
+  "mail_na_afmelden_tekst_toestemming": "Recibes este correo porque al hacer tu pedido indicaste que querías recibirlo. ¿Prefieres no recibir más correos como este?",
+  "mail_opmaak_titel": "Diseño de los correos",
+  "mail_opmaak_uitleg": "Cómo se ven los correos a los clientes: confirmación de pedido, envío, factura y el correo tras un pedido online.",
+  "mail_opmaak_stijl": "Estilo",
+  "mail_opmaak_stijl_thema": "Sigue el tema",
+  "mail_opmaak_stijl_standaard": "Estándar",
+  "mail_opmaak_stijl_craftery": "Craftery",
+  "mail_opmaak_stijl_thema_uitleg": "Si la app usa el tema Craftery, los correos llevan el estilo Craftery; si no, el estilo estándar.",
+  "mail_opmaak_stijl_standaard_uitleg": "Fondo blanco con una línea ámbar arriba y un botón ámbar.",
+  "mail_opmaak_stijl_craftery_uitleg": "El estilo de la tienda Craftery: papel, tarjeta con borde de tinta, botones ámbar con una línea de comando debajo y una barra negra con la dirección web.",
+  "mail_opmaak_lettertypen": "Carpeta de fuentes (estilo Craftery)",
+  "mail_opmaak_lettertypen_uitleg": "Opcional: una carpeta https con jost-700-800.woff2, space-grotesk-400-700.woff2 e ibm-plex-mono-400/500/600.woff2. Apple Mail e iOS las cargan (el servidor debe enviar «Access-Control-Allow-Origin»); Gmail y Outlook usan una letra parecida. Vacío = solo esa alternativa.",
+  "mail_opmaak_lettertypen_fout": "No es una carpeta https válida: las fuentes no se cargan.",
+  "mail_na_kop_commando": "cat que-tal-estaba.md",
+  "mail_na_blok_commando": "untappd checkin",
+  "mail_na_blok_slot": "→ exit 0",
+  "mail_na_review_commando": "git commit -m \"reseña\""
 }

@@ -5889,5 +5889,21 @@
   "na_aankoop_reden_geen_inhoud": "nichts zu senden",
   "na_aankoop_reden_rust": "hat gerade eine Mail bekommen",
   "na_aankoop_reden_ingetrokken": "Einwilligung widerrufen",
-  "mail_na_afmelden_tekst_toestemming": "Du bekommst diese Mail, weil du bei deiner Bestellung angegeben hast, dass du sie erhalten möchtest. Lieber keine solchen Mails mehr?"
+  "mail_na_afmelden_tekst_toestemming": "Du bekommst diese Mail, weil du bei deiner Bestellung angegeben hast, dass du sie erhalten möchtest. Lieber keine solchen Mails mehr?",
+  "mail_opmaak_titel": "Gestaltung der Mails",
+  "mail_opmaak_uitleg": "Wie die Mails an Kunden aussehen: Bestellbestätigung, Versand, Rechnung und die Mail nach einer Webshop-Bestellung.",
+  "mail_opmaak_stijl": "Stil",
+  "mail_opmaak_stijl_thema": "Folgt dem Thema",
+  "mail_opmaak_stijl_standaard": "Standard",
+  "mail_opmaak_stijl_craftery": "Craftery",
+  "mail_opmaak_stijl_thema_uitleg": "Steht die App auf dem Thema Craftery, bekommen die Mails den Craftery-Stil; sonst den Standardstil.",
+  "mail_opmaak_stijl_standaard_uitleg": "Weiße Fläche mit einem Bernsteinrand oben und einem bernsteinfarbenen Button.",
+  "mail_opmaak_stijl_craftery_uitleg": "Der Stil des Craftery-Webshops: Papier, Karte mit Tintenrand, bernsteinfarbene Buttons mit einer Befehlszeile darunter und ein schwarzer Balken mit der Webadresse.",
+  "mail_opmaak_lettertypen": "Ordner mit Schriften (Craftery-Stil)",
+  "mail_opmaak_lettertypen_uitleg": "Optional: ein https-Ordner mit jost-700-800.woff2, space-grotesk-400-700.woff2 und ibm-plex-mono-400/500/600.woff2. Apple Mail und iOS laden sie (der Server muss „Access-Control-Allow-Origin“ mitsenden); Gmail und Outlook nehmen eine ähnliche Schrift. Leer = nur dieser Ersatz.",
+  "mail_opmaak_lettertypen_fout": "Kein brauchbarer https-Ordner: die Schriften werden nicht geladen.",
+  "mail_na_kop_commando": "cat wie-hat-es-geschmeckt.md",
+  "mail_na_blok_commando": "untappd checkin",
+  "mail_na_blok_slot": "→ exit 0",
+  "mail_na_review_commando": "git commit -m \"bewertung\""
 }

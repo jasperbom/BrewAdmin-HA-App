@@ -5889,5 +5889,21 @@
   "na_aankoop_reden_geen_inhoud": "nothing to send",
   "na_aankoop_reden_rust": "just got an email",
   "na_aankoop_reden_ingetrokken": "consent withdrawn",
-  "mail_na_afmelden_tekst_toestemming": "You receive this email because you said you wanted it when you placed your order. Rather not get emails like this?"
+  "mail_na_afmelden_tekst_toestemming": "You receive this email because you said you wanted it when you placed your order. Rather not get emails like this?",
+  "mail_opmaak_titel": "Email layout",
+  "mail_opmaak_uitleg": "What the emails to customers look like: order confirmation, shipping, invoice and the email after a web shop order.",
+  "mail_opmaak_stijl": "Style",
+  "mail_opmaak_stijl_thema": "Follows the theme",
+  "mail_opmaak_stijl_standaard": "Standard",
+  "mail_opmaak_stijl_craftery": "Craftery",
+  "mail_opmaak_stijl_thema_uitleg": "If the app uses the Craftery theme, the emails get the Craftery style; otherwise the standard style.",
+  "mail_opmaak_stijl_standaard_uitleg": "White card with an amber line at the top and an amber button.",
+  "mail_opmaak_stijl_craftery_uitleg": "The style of the Craftery web shop: paper, a card with an ink border, amber buttons with a command line below and a black bar with the web address.",
+  "mail_opmaak_lettertypen": "Font folder (Craftery style)",
+  "mail_opmaak_lettertypen_uitleg": "Optional: an https folder with jost-700-800.woff2, space-grotesk-400-700.woff2 and ibm-plex-mono-400/500/600.woff2. Apple Mail and iOS load them (the server must send \"Access-Control-Allow-Origin\"); Gmail and Outlook use a similar typeface. Empty = only that fallback.",
+  "mail_opmaak_lettertypen_fout": "Not a usable https folder: the fonts are not loaded.",
+  "mail_na_kop_commando": "cat how-did-you-like-it.md",
+  "mail_na_blok_commando": "untappd checkin",
+  "mail_na_blok_slot": "→ exit 0",
+  "mail_na_review_commando": "git commit -m \"review\""
 }
