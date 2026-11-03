@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ---
 
-## [1.13.32] — 2026-11-03
+## [1.13.33] — 2026-11-03
 
 ### Brouwlog: per batch het product in de webshop kiezen
 
@@ -25,10 +25,10 @@ product waaraan hij gekoppeld is.
   (een eigen etiket), houdt zijn eigen naam en krijgt **geen link**. De site
   gaat dan niet meer zelf op naam zoeken.
 - BrewAdmin stuurt per batch het WooCommerce-product en de SKU van het
-  gekoppelde artikel mee, of "geen link". De huidige plugin Craftery Brouwerij
-  1.2.0 gebruikt alleen het product-ID en zoekt anders nog op naam, maar dan
-  op de productnaam. De SKU en "geen link" werken zodra plugin en thema ze
-  kennen (afgestemd met de site-kant).
+  gekoppelde artikel mee, of "geen link". De SKU en "geen link" werken met de
+  plugin **Craftery Brouwerij 1.2.1** en het **Craftery-thema 6.9.6**. Met
+  plugin 1.2.0 gebruikt de site alleen het product-ID en zoekt hij anders nog
+  op naam, maar dan op de productnaam.
 
 ---
 

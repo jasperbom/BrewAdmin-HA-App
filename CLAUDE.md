@@ -2030,8 +2030,10 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   gekoppelde artikel — automatisch de verpakking waarin het meeste is afgevuld,
   anders een fles; alleen artikelen in de webshop (`wc_id`, of een SKU met
   `wc_push` niet uit; nooit concept/privé) —, anders `link: false` (geen link,
-  de site zoekt dan ook niet op naam). `sku` en `link` gebruikt pas de plugin na
-  1.2.0; 1.2.0 gooit ze weg. De grenzen van het contract (50 hoogste nummers,
+  de site zoekt dan ook niet op naam). `sku` en `link` vragen plugin Craftery
+  Brouwerij 1.2.1 en thema 6.9.6 (het thema linkt dan: `link: false` → nooit,
+  anders `product_id` → `sku` → pas dan op naam); 1.2.0 gooit ze weg. In het
+  antwoord geeft 1.2.1 per batch ook `sku` en `link` terug. De grenzen van het contract (50 hoogste nummers,
   64 kB, tekstlengtes, bereiken, datums 2018…volgend jaar) haalt BrewAdmin zelf,
   inclusief de tekstopschoning van WordPress (`%xx`, tags), zodat het voorbeeld
   is wat er op de site komt. **Nooit** fusten, de taplijst, klanten,
