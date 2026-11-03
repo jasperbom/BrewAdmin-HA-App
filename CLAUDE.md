@@ -512,7 +512,8 @@ BrewAdmin-HA-App/
 │   │   │                   # afmeldlijst stopt alles tot en met die dag) met het vinkje uit
 │   │   │                   # de checkout (`wcMailVinkje` → `wc_mail_vinkje`), afmeldlijst
 │   │   │                   # (`mail_afmeldingen`), `naAankoopStand` per bestelling en stap,
-│   │   │                   # `naAankoopPlan` (één per adres, rust, maximum), `bouwNaAankoopMail`,
+│   │   │                   # `naAankoopPlan` (één per adres, rust, maximum), `bouwNaAankoopMail` (de
+│   │   │                   # afmeldzin volgt de grondslag: `mail_na_afmelden_tekst[_toestemming]`),
 │   │   │                   # `naAankoopOverzicht` (droge run). Versturen: App.tsx `verstuurNaAankoopMails`
 │   │   │                   # na de webshopimport, binnen de lease. UI: components/NaAankoopMailInstellingen.tsx
 │   │   ├── mailUitnodiging.ts # De uitnodiging in de voet van elke klantmail (WhatsApp-groep, nieuwsbrief) als

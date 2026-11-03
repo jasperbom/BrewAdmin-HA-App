@@ -5909,5 +5909,6 @@
   "na_aankoop_reden_nieuwere_bestelling": "customer ordered again since",
   "na_aankoop_reden_geen_inhoud": "nothing to send",
   "na_aankoop_reden_rust": "just got an email",
-  "na_aankoop_reden_ingetrokken": "consent withdrawn"
+  "na_aankoop_reden_ingetrokken": "consent withdrawn",
+  "mail_na_afmelden_tekst_toestemming": "You receive this email because you said you wanted it when you placed your order. Rather not get emails like this?"
 }

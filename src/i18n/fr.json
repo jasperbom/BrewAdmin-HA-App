@@ -5909,5 +5909,6 @@
   "na_aankoop_reden_nieuwere_bestelling": "le client a recommandé depuis",
   "na_aankoop_reden_geen_inhoud": "rien à envoyer",
   "na_aankoop_reden_rust": "vient de recevoir un e-mail",
-  "na_aankoop_reden_ingetrokken": "consentement retiré"
+  "na_aankoop_reden_ingetrokken": "consentement retiré",
+  "mail_na_afmelden_tekst_toestemming": "Tu reçois cet e-mail parce que tu as indiqué lors de ta commande que tu souhaitais le recevoir. Tu préfères ne plus recevoir ce genre d’e-mails ?"
 }

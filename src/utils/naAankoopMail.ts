@@ -673,7 +673,11 @@ export function bouwNaAankoopMail(stap: NaAankoopStap, order: any, ctx: NaAankoo
     text,
     linkButtons: knoppen,
     afmelden: {
-      tekst: t('mail_na_afmelden_tekst').replace('{brouwerij}', ctx.brouwerij),
+      // Waarom de klant deze mail krijgt hangt af van de grondslag: bij
+      // toestemming gaf hij die zelf bij de bestelling, bij soft opt-in is hij
+      // bestaande klant.
+      tekst: t(ctx.inst.grondslag === 'toestemming' ? 'mail_na_afmelden_tekst_toestemming' : 'mail_na_afmelden_tekst')
+        .replace('{brouwerij}', ctx.brouwerij),
       label: t('mail_na_afmelden_label'),
       url: afmeldLink(order, ctx, ctx.brouwerij),
     },

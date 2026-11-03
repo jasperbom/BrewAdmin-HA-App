@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.26] — 2026-11-03
+
+### Na-aankoopmails: afmeldzin past bij "alleen met toestemming"
+
+De zin boven de afmeldlink volgt nu de grondslag. Bij *Alleen met toestemming*:
+"Je krijgt deze mail omdat je bij je bestelling hebt aangegeven dat je hem wilt
+ontvangen." Bij *Bestaande klanten (soft opt-in)* blijft het "Je krijgt deze
+mail omdat je bij {brouwerij} hebt besteld." In vijf talen.
+
+---
+
 ## [1.13.25] — 2026-11-03
 
 ### Na-aankoopmails: "alleen met toestemming" per bestelling
