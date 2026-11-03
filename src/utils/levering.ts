@@ -619,9 +619,39 @@ export interface AfhaalHerinneringMailVars {
   besteldatum: string
   /** De dag waarop de afhaaltermijn afloopt (dd-mm-jjjj); leeg zonder termijn. */
   annuleerdatum: string
-  /** "Kies je geen moment, dan annuleren we je bestelling op …"; leeg zonder termijn. */
+  /** De laatste dag dat de bestelling klaarstaat, voluit ("zaterdag 21 november"); leeg zonder termijn. */
+  vasthoudtot: string
+  /** Hoeveel dagen de bestelling nog klaarstaat, vandaag meegeteld ("7"); leeg zonder termijn of zonder vandaag. */
+  dagen_over: string
+  /** De termijn in de mail, per herinnering (`afhaalHerinneringRol`): de eerste niets, een volgende
+   * "we houden je bestelling graag voor je vast tot en met …", de laatste "… daarna annuleren we hem";
+   * leeg zonder termijn. */
   annuleerregel: string
 }
+
+/** Welke herinnering er nu gaat, voor de termijnregel: de eerste noemt de termijn nog niet, een
+ * volgende houdt de bestelling vriendelijk vast, de laatste (ook als er maar één is) zegt dat we
+ * daarna annuleren. Een herinnering voorbij het schema telt als de laatste. */
+export type AfhaalHerinneringRol = 'eerste' | 'tussen' | 'laatste'
+
+export function afhaalHerinneringRol(
+  bestelling: AfhaalBestelling, schema: AfhaalSchema = AFHAAL_SCHEMA_STANDAARD,
+): AfhaalHerinneringRol {
+  const stap = afhaalHerinneringenVerstuurd(bestelling).length
+  if (stap >= Math.max(1, schema.dagen.length) - 1) return 'laatste'
+  return stap === 0 ? 'eerste' : 'tussen'
+}
+
+// 'JJJJ-MM-DD' + n dagen → 'JJJJ-MM-DD' (UTC, dus geen zomertijdgedoe).
+const plusDagen = (iso: string, n: number): string => {
+  const [j, m, d] = iso.split('-').map(Number)
+  return new Date(Date.UTC(j, m - 1, d + n)).toISOString().slice(0, 10)
+}
+
+// 'JJJJ-MM-DD' → "zaterdag 21 november" in de taal van de mail.
+const dagVoluit = (iso: string, lang: string = getLang()): string =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString(LOCALES[lang] || LOCALES.nl,
+    {weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC'})
 
 /**
  * De variabelen voor de afhaalherinnering: de klant koos nog geen moment. De
@@ -630,7 +660,7 @@ export interface AfhaalHerinneringMailVars {
  * weten.
  */
 export function afhaalHerinneringMailVars(
-  bestelling: (Partial<LeveringVelden> & {wc_order_id?: number | null, datum?: unknown}) | null | undefined,
+  bestelling: (NonNullable<AfhaalBestelling> & {wc_order_id?: number | null}) | null | undefined,
   opts: {storeUrl?: string, vandaag?: string, schema?: AfhaalSchema} = {},
 ): AfhaalHerinneringMailVars {
   const b = bestelling || {}
@@ -641,7 +671,17 @@ export function afhaalHerinneringMailVars(
     .split('{locatie}').join(locatie)
     .split('{link}').join(link)
   const n = opts.vandaag ? dagenSindsBestelling(b, opts.vandaag) : null
-  const termijn = afhaalTermijnDatum(b, opts.schema)
+  const schema = opts.schema || AFHAAL_SCHEMA_STANDAARD
+  const termijn = afhaalTermijnDatum(b, schema)
+  // De termijn loopt tot en met de dag vóór het annuleren.
+  const vasthoudtot = termijn ? dagVoluit(plusDagen(termijn, -1)) : ''
+  const over = termijn && opts.vandaag ? dagenTussen(opts.vandaag, termijn) : null
+  const rol = afhaalHerinneringRol(b, schema)
+  const annuleerregel = !termijn || rol === 'eerste' ? ''
+    : rol === 'laatste' ? t('mail_afhaal_termijn_laatste').split('{datum}').join(vasthoudtot)
+      : over !== null && over > 1
+        ? t('mail_afhaal_termijn_tussen').split('{n}').join(String(over)).split('{datum}').join(vasthoudtot)
+        : t('mail_afhaal_termijn_tussen_kort').split('{datum}').join(vasthoudtot)
   return {
     afhaallink: link,
     afhaallocatie: locatieNaam,
@@ -649,7 +689,9 @@ export function afhaalHerinneringMailVars(
     dagen: n !== null && n >= 0 ? String(n) : '',
     besteldatum: fmtDatum(b.datum),
     annuleerdatum: termijn ? fmtDatum(termijn) : '',
-    annuleerregel: termijn ? t('mail_afhaal_herinnering_annuleer').split('{datum}').join(fmtDatum(termijn)) : '',
+    vasthoudtot,
+    dagen_over: over !== null && over >= 0 ? String(over) : '',
+    annuleerregel,
   }
 }
 

@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.40] — 2026-11-03
+
+### Afhaalherinnering: de termijn per herinnering
+
+`{annuleerregel}` zegt nu per herinnering iets anders:
+
+- **De eerste herinnering** noemt de afhaaltermijn nog niet.
+- **Een volgende** houdt de bestelling vriendelijk vast: "We houden je
+  bestelling graag nog 14 dagen voor je vast, tot en met dinsdag 17 november."
+- **De laatste** (ook als er maar één herinnering is) zegt dat we daarna
+  annuleren: "Dit is onze laatste herinnering: we houden je bestelling nog voor
+  je vast tot en met dinsdag 17 november. Daarna annuleren we hem, zodat het
+  bier niet te lang blijft staan."
+- Nieuwe variabelen voor een eigen tekst: `{vasthoudtot}` (de laatste dag
+  voluit) en `{dagen_over}` (hoeveel dagen de klant nog heeft). `{annuleerdatum}`
+  blijft de dag waarop er geannuleerd wordt.
+
+---
+
 ## [1.13.39] — 2026-11-03
 
 ### Afhaalherinnering: vaker, en een afhaaltermijn
