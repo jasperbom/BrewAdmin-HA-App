@@ -76,7 +76,7 @@ export const DOC_CSS = `
   .paginascheiding { break-after: page; page-break-after: always; height: 0; }
   @media screen { .paginascheiding { max-width: 210mm; margin: 0 auto; border-top: 2px dashed #d1d5db; } }
   .sub-title { font-size: 9pt; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin: 6mm 0 2mm; }
-  .remarks { margin-top: 3mm; font-size: 9pt; color: #555; border-left: 2px solid #ddd; padding-left: 3mm; }
+  .remarks { margin-top: 3mm; font-size: 9pt; color: #555; border-left: 2px solid #ddd; padding-left: 3mm; white-space: pre-line; }
   .notice-block { background: #fff7ed; border: 1.5px solid #f97316; padding: 3.5mm 4.5mm; border-radius: 3px; margin-bottom: 5mm; }
   .notice-title { font-weight: bold; font-size: 11pt; color: #c2410c; margin-bottom: 2px; }
   .notice-text { font-size: 9.5pt; line-height: 1.65; color: #7c2d12; }
@@ -354,7 +354,7 @@ function buildPicklijstBody(
       <td>${levering}</td>
       <td class="r">${esc(o.regels)}</td>
       <td class="r">${esc(o.stuks)}</td>
-      <td>${esc(o.opmerkingen)}</td>
+      <td>${esc(o.opmerkingen).replace(/\n/g, '<br>')}</td>
     </tr>`
   }).join('')
 

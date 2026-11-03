@@ -1305,7 +1305,12 @@ export interface Bestelling {
   // klant_bedrijf gevuld → zakelijk, anders → privé (alleen bij niet-verzonden orders).
   klant_type?: KlantType
   regels: BestellingRegel[]
+  // Bij een webshoporder staat hier de notitie die de klant bij het afrekenen
+  // schreef (WooCommerce `customer_note`); `wc_notitie` is wat er de vorige
+  // keer uit de winkel kwam, zodat een gewijzigde notitie meekomt
+  // (utils/wcOrderImport → notitieUpdate).
   opmerkingen?: string
+  wc_notitie?: string
   wc_order_id?: number | null
   wc_order_nummer?: string | null
   // Betaalstatus zoals WooCommerce hem kent (zie utils/wcImport → wcBetaalStatus).

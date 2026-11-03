@@ -84,7 +84,8 @@ BrewAdmin-HA-App/
 │   │   ├── batch/                  # De batchpagina in delen: BatchKop + KetenRegel (Recept › Product ›
 │   │   │                           # Tank), EtiketKaart (etiket & website; modi batch/product/recept),
 │   │   │                           # EtiketBijwerken (de énige schrijfweg voor het etiket, overal te openen
-│   │   │                           # met `useEtiketBijwerken()?.open({productId, batchId?})`), AbvVastzetten,
+│   │   │                           # met `useEtiketBijwerken()?.open({productId, batchId?})`; bovenaan
+│   │   │                           # EtiketVoorschriftLijst: "Zet dit op het etiket"), AbvVastzetten,
 │   │   │                           # NieuweBatchBlad ("Wat brouw je?", overal via `useNieuweBatch()?.open(…)`),
 │   │   │                           # MetingBlad, AfvulSessieSectie (CCP 2/3), useProductKoppeling, FaseKop
 │   │   │                           # (bureau: compacte stappenbalk; telefoon: "Fase 4 van 6" met een lijst),
@@ -186,7 +187,10 @@ BrewAdmin-HA-App/
 │   │   │                   # `abvBalling`, + suiker na de kook), `energiePer100ml` (kcal én kJ), `abvMarge`,
 │   │   │                   # `vergelijkEtiket`/`etiketStatus`, `allergeenRegel` ("Bevat: …"),
 │   │   │                   # `referentieBatch`, `productEtiketWaarden`, `legEtiketVast` (énige schrijfweg),
-│   │   │                   # `volgendeEtiketVersie`, `websiteLooptAchter`, `webshopBevatRegel`
+│   │   │                   # `volgendeEtiketVersie`, `websiteLooptAchter`, `webshopBevatRegel`,
+│   │   │                   # `etiketVoorschrift` (wat er op het etiket moet: per verplicht onderdeel de tekst,
+│   │   │                   # de stand t.o.v. het vastgelegde etiket en de uitleg; vrijwillig: energie en de
+│   │   │                   # ingrediëntenlijst met `ingredientenMetNadruk`) en `allergeenKeuzeTegenBatch`
 │   │   ├── etiketKaart.ts  # Het model van de EtiketKaart (blokken, rijen, oordelen) bovenop etiket.ts
 │   │   ├── afvulControle.ts # De afvulcontrole (tankvolume, ABV): fout = knop uit, waarschuwing = bevestigen in de knop
 │   │   ├── productKeten.ts # De keten recept › batch › product: `receptHoofdId`/`hoofdIdResolver` (een
@@ -340,11 +344,17 @@ BrewAdmin-HA-App/
 │   │   │                   # webshopthema. Bewaart zelf niets; alleen deze sleutels worden
 │   │   │                   # gelezen/geschreven
 │   │   ├── wcImport.ts     # WooCommerce-order → orderregels: statusquery/paginering, verzendkosten (shipping_lines) + toeslagen (fee_lines), merch-herkenning (geen eigen artikel = vrije regel), betaalstatus (`wcBetaalStatus`: date_paid of processing/completed = betaald)
-│   │   ├── adres.ts        # Straat + huisnummer uit een WooCommerce-order: losse velden van een
-│   │   │                   # NL-checkoutplugin (`_billing_house_number`/`_suffix`/`_street_name`)
-│   │   │                   # eerst, anders `address_1` gesplitst; `address_2` achter het nummer
+│   │   ├── adres.ts        # Straat + huisnummer uit een WooCommerce-order: losse velden eerst —
+│   │   │                   # klassieke checkout (`_billing_house_number`/`_suffix`/`_street_name`, ook
+│   │   │                   # `huisnummer`/`housenumber`/`toevoeging`), blokcheckout
+│   │   │                   # (`_wc_billing/<ns>/<veld>`) of op `billing` zelf —, anders `address_1`
+│   │   │                   # gesplitst; `address_2` achter het nummer. `wcAdresVolledig`: factuuradres,
+│   │   │                   # verzendadres als terugval (factuur leeg, of zonder nummer bij dezelfde
+│   │   │                   # straat/postcode), met postcode en plaats van dezelfde kant
 │   │   ├── wcOrderImport.ts # WooCommerce-orderimport (ophalen, order → bestelling, bekende orders
-│   │   │                   # verversen, dedup bij toepassen, lease voor de automatische import) —
+│   │   │                   # verversen — ook een ontbrekend huisnummer en de klantnotitie
+│   │   │                   # (`customer_note` → `opmerkingen`, `wc_notitie`) —, dedup bij toepassen,
+│   │   │                   # lease voor de automatische import) —
 │   │   │                   # gedeeld door de bestellingenknop en de periodieke import in App.tsx
 │   │   ├── websiteTelemetrie.ts # Website-telemetrie (plugin Craftery Brouwerij): opslagvorm
 │   │   │                   # `website_telemetrie`, standaard alles uit, foutcode → i18n,
@@ -848,7 +858,12 @@ het scangeheugen, de totaal- en dubbelecontrole, de foto-omzetting
 Het opzoeken van allergenen (`allergeenOpzoeken.test.ts`): de vaste regels (mout,
 graansoorten in vijf talen, glutenvrij graan, melkzuur/nootmuskaat/kokos,
 plantaardige melk, suiker, wat onzeker blijft), de gluten-conventie, het schema
-en het antwoord van Claude, voorstellen, aanpassen en overnemen.
+en het antwoord van Claude, voorstellen, aanpassen en overnemen. Wat er op het
+etiket moet (`etiketVoorschrift.test.ts`): elk verplicht onderdeel met de tekst
+en de stand tegen het vastgelegde etiket, wat nog ontbreekt (allergenen,
+brouwerij, verpakking), "overig" is geen etikettekst, ≥ 10 % vol geen THT, tot
+1,2 % vol de ingrediëntenlijst verplicht, nadruk in de ingrediëntenlijst en de
+vinkjes tegen de ingrediënten.
 De administratie (v1.12.89/90) heeft een eigen blok: de periodekeuze
 (`periode.test.ts`), de factuurfilter (`factuurFilter.test.ts`: een vervallen
 factuur van vorig jaar staat onder Te laat terwijl de periode "dit jaar" is, en
@@ -1391,6 +1406,20 @@ website hoort (zie `docs/OPZET-PRODUCTIE-VERKOOP.md` hoofdstuk 5). Regels:
   (nooit voorgevinkt). Het voorstel volgt de gluten-conventie van wat al
   vastligt (`glutenConventie`), want CCP 3 normaliseert gluten niet. Het etiket
   van het product blijft daarbuiten: dat gaat alleen via `legEtiketVast`.
+- **Wat er op het etiket moet** (`etiketVoorschrift`, blok *Zet dit op het
+  etiket* bovenaan `EtiketBijwerken`): per verplicht onderdeel van een
+  bieretiket (benaming, alcohol, allergenen, inhoud per verpakking, THT,
+  lotcode, naam en adres, statiegeldlogo bij een SNd-verpakking) de tekst die
+  erop hoort, uit de batch of het recept, met de stand tegen het vastgelegde
+  etiket (`klopt`/`aanpassen`/`nieuw`) en een korte uitleg; vrijwillig: energie
+  en de ingrediëntenlijst met de allergenen vet. Een aanwijzing, geen
+  invulhulp: er wordt niets voorgevinkt en er is geen "neem over". Onder de
+  vinkjes zegt `allergeenKeuzeTegenBatch` wat er volgens de ingrediënten nog
+  mist of te veel staat (in de namen van de vinkjes, gluten los). "Overige
+  allergenen" en "noten" zijn geen etikettekst (noem het allergeen of de noot
+  zelf); zijn de allergenen van de ingrediënten niet compleet, dan geen
+  Bevat-regel maar *Allergenen opzoeken* — het venster gaat dan even weg
+  (`verborgen`) en komt met zijn keuzes terug.
 - **Webshop.** `afgeleideBierInfo` voor de push leest alleen productwaarden
   (nooit stil een batchwaarde). Bij elke push en pull bewaart de app de
   `_cf_`-meta als `wc.meta_stand` + `meta_stand_op` op het artikel; "website
@@ -1561,7 +1590,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `scan_correcties` | array | Het scangeheugen (`utils/scanGeheugen.ts`): `{tekst, soort, leverancier?, artikelcode?, naam?, kostensoort?, eenheid?}`, de nieuwste 500. Bij elk opslaan van een gescande factuur geleerd (per leverancier + artikelnummer, anders omschrijving); de oude `{tekst, soort}` blijft gelden als algemene correctie. Gaat vóór de indeling van het model |
 | `inkoop_inbox` | array | Facturen per e-mail: de PDF-bijlagen die de server-tick `_inbox_tick` uit het postvak (IMAP) haalde, met `status` `nieuw`/`verwerkt`/`genegeerd`. Item: `{id, ontvangen, mail_datum, van, van_naam, onderwerp, message_id, bijlage: {naam, bestand}, grootte, sha256, status, factuur_id?, afgehandeld?}`. De server voegt alleen nieuwe items toe (bestand `inbox_<sha256[:20]>.pdf` in de bijlagenmap); verwerken, negeren, terugzetten en verwijderen doet de app. Een PDF met een `sha256` die er al in staat (ook genegeerd/verwerkt) komt er nooit nog eens bij. Financiële key: alleen `boekhouding`/`beheer` schrijven. Wel in de Excel-backup |
 | `verkoop_facturen` | array | Verkoopfacturen. `verrekend_alt_id` = verrekend met de schuld aan een alt-rekening (ook nadat de factuur met de hand op betaald is gezet); `vorige_stand` = de stand daarvoor. De factuur van een bestelling draagt `bestelling_id` (opgebouwd door `bouwOrderFactuur` in `utils/orderFactuur.ts`); wordt een gefactureerde bestelling geannuleerd, dan komt er een creditnota met `credit_van_factuur_id` en hetzelfde `bestelling_id` |
-| `bestellingen` | array | WooCommerce-bestellingen. `factuur_id`/`factuur_nummer` = de verkoopfactuur; die kan er al zijn vóór `afgerond` — een betaalde order die nog niet is opgehaald of verzonden, vooraf gefactureerd (Bestellingen "Factuur maken", of Bank vanuit een PSP-uitbetaling). Afronden maakt dan geen tweede factuur, de orderregels liggen vast en annuleren maakt een creditnota. `mails_verstuurd: {soort: datum}` = welke mails de klant al kreeg (met de hand of automatisch; `factuur` dekt ook `factuur_betaald`; de na-aankoopmails als `na_<stap>`, in de proefstand `na_<stap>_proef`) — een mail gaat nooit twee keer automatisch (`utils/orderMail.ts`, `utils/naAankoopMail.ts`). `wc_mail_vinkje` = het vinkje "mail na je bestelling" uit de checkout (alleen met `na_aankoop_mails.vinkje_meta`, bij elke import ververst; alleen een expliciete waarde telt, de meta weghalen verandert niets), `wc_mail_vinkje_op` = de dag waarop het op een bekende bestelling veranderde (afmelden op de site) |
+| `bestellingen` | array | WooCommerce-bestellingen. `opmerkingen` = bij een webshoporder de notitie van de klant (`customer_note`), `wc_notitie` = wat er de vorige keer uit de winkel kwam (een gewijzigde notitie volgt zolang de opmerkingen niet zelf zijn aangepast). `factuur_id`/`factuur_nummer` = de verkoopfactuur; die kan er al zijn vóór `afgerond` — een betaalde order die nog niet is opgehaald of verzonden, vooraf gefactureerd (Bestellingen "Factuur maken", of Bank vanuit een PSP-uitbetaling). Afronden maakt dan geen tweede factuur, de orderregels liggen vast en annuleren maakt een creditnota. `mails_verstuurd: {soort: datum}` = welke mails de klant al kreeg (met de hand of automatisch; `factuur` dekt ook `factuur_betaald`; de na-aankoopmails als `na_<stap>`, in de proefstand `na_<stap>_proef`) — een mail gaat nooit twee keer automatisch (`utils/orderMail.ts`, `utils/naAankoopMail.ts`). `wc_mail_vinkje` = het vinkje "mail na je bestelling" uit de checkout (alleen met `na_aankoop_mails.vinkje_meta`, bij elke import ververst; alleen een expliciete waarde telt, de meta weghalen verandert niets), `wc_mail_vinkje_op` = de dag waarop het op een bekende bestelling veranderde (afmelden op de site) |
 | `bestelling_picks` | array | Pickregels per bestelling |
 | `afboekingen` | array | Biervoorraadbewegingen (vermis, vernietiging, overig). `bron_locatie_id` = waar het bier lág — bepaalt van welke locatie het afgaat én of er accijns verschuldigd wordt. Ontbreekt op records van vóór v1.12.52; die gelden als AGP |
 | `klanten` | array | Klanten |

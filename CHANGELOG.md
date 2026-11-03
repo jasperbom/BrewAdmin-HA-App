@@ -4,6 +4,69 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.45] — 2026-11-03
+
+### Webshopbestellingen: huisnummer en notitie van de klant
+
+- **De notitie van de klant komt mee.** Wat de klant bij het afrekenen
+  schreef ("Graag bij de buren afgeven", WooCommerce `customer_note`) werd
+  niet geïmporteerd. Het staat nu in de opmerkingen van de bestelling: in het
+  orderdetail, op de pakbon en op de picklijst, met de regels zoals de klant
+  ze typte. Bestaande webshoporders krijgen hun notitie bij de volgende import.
+  Past de winkel de notitie aan, dan volgt de bestelling; eigen tekst in de
+  opmerkingen blijft staan en de notitie komt erachter. De notitie gaat niet
+  op de factuur.
+- **Huisnummer uit meer soorten checkout.** De import las alleen
+  `_billing_house_number` (PostNL, MyParcel). Nu ook:
+  - de extra adresvelden van de blokcheckout van een thema of plugin
+    (`_wc_billing/<naam>/huisnummer`, `…/house-number`, met toevoeging);
+  - andere veldnamen in de klassieke checkout (`billing_huisnummer`,
+    `billing_housenumber`, `…_toevoeging`, `…_straatnaam`);
+  - het verzendadres: is het factuuradres leeg, dan telt het verzendadres
+    (met postcode en plaats); heeft het factuuradres geen huisnummer en het
+    verzendadres van dezelfde straat of postcode wél, dan dat nummer. Een
+    ánder verzendadres vervangt het factuuradres nooit.
+- **Bestaande orders zonder huisnummer** worden bij de volgende import
+  aangevuld (zolang de straat nog is zoals hij uit de winkel kwam); een lege
+  postcode of plaats meteen mee. Een adres dat je zelf hebt aangepast blijft
+  staan.
+- Een huisnummer zonder straat valt niet meer weg op factuur, pakbon en
+  herinnering.
+
+---
+
+## [1.13.44] — 2026-11-03
+
+### Etiket bijwerken: "Zet dit op het etiket"
+
+"Etiket bijwerken" vroeg om aan te vinken wat er op het gedrukte etiket staat,
+maar zei nergens wat er óp moet. Nu staat dat bovenaan.
+
+- **Zet dit op het etiket**: per verplicht onderdeel van een bieretiket de tekst
+  die erop hoort, met de waarden van de batch (of het recept): benaming, alcohol
+  ("5,3 % vol"), allergenen ("Bevat: gerst, tarwe, melk (lactose)."), inhoud per
+  verpakking, houdbaarheid, lotcode, naam en adres van de brouwerij, en het
+  statiegeldlogo bij een blik of fles met statiegeld. Per regel staat of je
+  huidige etiket het al goed heeft ("staat erop") of dat het anders moet
+  ("aanpassen", met wat er nu op staat), en waar het getal vandaan komt.
+- **Hoe het erop moet**: zonder ingrediëntenlijst de regel "Bevat: …"; met een
+  lijst de allergenen daarin vet. De ingrediëntenlijst staat er (vrijwillig) bij
+  met de allergenen al vet, net als de energie in kJ én kcal. "Overige
+  allergenen" en "noten" zijn geen etikettekst: de app zegt dat je het allergeen
+  of de noot zelf noemt, en in welk ingrediënt het zit. Sulfieten pas boven
+  10 mg/l; vanaf 10 % vol geen houdbaarheidsdatum; tot 1,2 % vol is juist de
+  ingrediëntenlijst verplicht.
+- **Onder de vinkjes**: wat er volgens de ingrediënten nog aangevinkt moet
+  worden, wat er te veel staat, of "Klopt met de ingrediënten".
+- Zijn de allergenen van een ingrediënt nog niet bekend, dan staat er geen
+  Bevat-regel maar **Allergenen opzoeken**; het venster komt daarna met je
+  keuzes terug.
+- Nog steeds een aanwijzing, geen invulhulp: er wordt niets voorgevinkt. Wat je
+  vastlegt is wat er op het gedrukte etiket staat, zodat de controle bij het
+  afvullen (CCP 3) echt blijft.
+
+---
+
 ## [1.13.43] — 2026-11-03
 
 ### Pushen naar de webshop: geen concept meer, de foto blijft staan
