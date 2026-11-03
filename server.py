@@ -885,6 +885,14 @@ def _build_email(creds: dict, payload: dict) -> tuple[email.message.EmailMessage
     if inline_imgs and not html_body:
         # Inline images zonder HTML-body hebben geen verwijzingspunt.
         return None
+    # Het HTML-deel één keer opzoeken en álle afbeeldingen daaraan hangen:
+    # de eerste `add_related` maakt van dit deel een multipart/related, de
+    # volgende komen er als broertjes bij. Opnieuw zoeken per afbeelding gaf
+    # bij een tweede afbeelding (logo + WhatsApp) een related ín een related,
+    # en dan vindt o.a. Apple Mail het plaatje niet: een vraagteken.
+    html_part = msg.get_body(preferencelist=('html',)) if inline_imgs else None
+    if inline_imgs and html_part is None:
+        return None
     for img in inline_imgs:
         if not isinstance(img, dict):
             return None
@@ -909,9 +917,6 @@ def _build_email(creds: dict, payload: dict) -> tuple[email.message.EmailMessage
         if not imt.startswith('image/') or '/' not in imt:
             return None
         imaintype, _, isubtype = imt.partition('/')
-        html_part = msg.get_body(preferencelist=('html',))
-        if html_part is None:
-            return None
         # `disposition='inline'` zorgt dat strikte mailclients het beeld
         # daadwerkelijk in de body renderen i.p.v. als losse download tonen.
         html_part.add_related(icontent, maintype=imaintype, subtype=isubtype,
