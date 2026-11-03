@@ -12,22 +12,24 @@ import { regelBedrag } from './orderRegel'
 import { statiegeldFactuurRegels, isWebshopOrder } from './statiegeld'
 import type { StatiegeldSoort, StatiegeldVerpakking } from './statiegeld'
 import { toCent, centNaarEuro } from './centen'
-import { wachtOpAfhaalmoment } from './levering'
+import { wachtOpAfhaalmoment, afhaalTermijnVoorbij } from './levering'
+import type { AfhaalSchema } from './levering'
 
 // ── Statussen ───────────────────────────────────────────────────────────────
 
 export type BestellingStatus = 'nieuw' | 'bevestigd' | 'gepickt' | 'verzonden' | 'afgerond' | 'geannuleerd'
 
 /** De chips boven de lijst: alles, "te picken" (zoals de attentie-badge), afhalen
- * zonder afhaalmoment (`wachtOpAfhaalmoment`) en elke status. */
-export type StatusFilter = 'alle' | 'te_picken' | 'geen_afhaalmoment' | BestellingStatus
+ * zonder afhaalmoment (`wachtOpAfhaalmoment`), over de afhaaltermijn
+ * (`afhaalTermijnVoorbij`) en elke status. */
+export type StatusFilter = 'alle' | 'te_picken' | 'geen_afhaalmoment' | 'afhaal_termijn' | BestellingStatus
 
 export const STATUS_FILTERS: readonly StatusFilter[] = [
-  'alle', 'te_picken', 'geen_afhaalmoment', 'nieuw', 'bevestigd', 'gepickt', 'verzonden', 'afgerond', 'geannuleerd',
+  'alle', 'te_picken', 'geen_afhaalmoment', 'afhaal_termijn', 'nieuw', 'bevestigd', 'gepickt', 'verzonden', 'afgerond', 'geannuleerd',
 ]
 
 /** Chips die alleen verschijnen als er iets onder valt (of als ze gekozen zijn). */
-export const STATUS_FILTERS_ALLEEN_MET_INHOUD: readonly StatusFilter[] = ['geen_afhaalmoment']
+export const STATUS_FILTERS_ALLEEN_MET_INHOUD: readonly StatusFilter[] = ['geen_afhaalmoment', 'afhaal_termijn']
 
 export const isStatusFilter = (v: unknown): v is StatusFilter =>
   typeof v === 'string' && (STATUS_FILTERS as readonly string[]).includes(v)
@@ -121,10 +123,17 @@ export const bestellingPastBijZoek = (b: BestellingLijstBron | null | undefined,
   return woorden.every(w => hooiberg.includes(w))
 }
 
+/** Voor de chip "Over de afhaaltermijn": vandaag en het schema (utils/levering.ts). */
+export interface AfhaalFilterCtx {
+  vandaag: string
+  schema?: AfhaalSchema
+}
+
 /** Hoeveel bestellingen elke chip telt. `te_picken` = de selectie van de attentie-badge. */
 export const statusTellingen = (
   bestellingen: ReadonlyArray<BestellingLijstBron | null | undefined> | null | undefined,
   omTePicken: ReadonlySet<unknown>,
+  afhaal?: AfhaalFilterCtx,
 ): Record<StatusFilter, number> => {
   const uit = Object.fromEntries(STATUS_FILTERS.map(s => [s, 0])) as Record<StatusFilter, number>
   for (const b of bestellingen || []) {
@@ -132,8 +141,9 @@ export const statusTellingen = (
     uit.alle++
     if (omTePicken.has(b.id)) uit.te_picken++
     if (wachtOpAfhaalmoment(b as any)) uit.geen_afhaalmoment++
+    if (afhaal && afhaalTermijnVoorbij(b as any, afhaal.vandaag, afhaal.schema)) uit.afhaal_termijn++
     const s = String(b.status || '')
-    if (isStatusFilter(s) && s !== 'alle' && s !== 'te_picken' && s !== 'geen_afhaalmoment') uit[s]++
+    if (isStatusFilter(s) && s !== 'alle' && s !== 'te_picken' && s !== 'geen_afhaalmoment' && s !== 'afhaal_termijn') uit[s]++
   }
   return uit
 }
@@ -143,21 +153,23 @@ export const pastBijStatus = (
   b: BestellingLijstBron | null | undefined,
   filter: StatusFilter,
   omTePicken: ReadonlySet<unknown>,
+  afhaal?: AfhaalFilterCtx,
 ): boolean => {
   if (!b) return false
   if (filter === 'alle') return true
   if (filter === 'te_picken') return omTePicken.has(b.id)
   if (filter === 'geen_afhaalmoment') return wachtOpAfhaalmoment(b as any)
+  if (filter === 'afhaal_termijn') return !!afhaal && afhaalTermijnVoorbij(b as any, afhaal.vandaag, afhaal.schema)
   return b.status === filter
 }
 
 /** De lijst onder de chips: status én zoektekst, nieuwste datum eerst (zoals altijd). */
 export function filterBestellingen<B extends BestellingLijstBron>(
   bestellingen: ReadonlyArray<B | null | undefined> | null | undefined,
-  opties: { status: StatusFilter; zoek?: string; omTePicken: ReadonlySet<unknown> },
+  opties: { status: StatusFilter; zoek?: string; omTePicken: ReadonlySet<unknown>; afhaal?: AfhaalFilterCtx },
 ): B[] {
   return (bestellingen || [])
-    .filter((b): b is B => !!b && pastBijStatus(b, opties.status, opties.omTePicken)
+    .filter((b): b is B => !!b && pastBijStatus(b, opties.status, opties.omTePicken, opties.afhaal)
       && bestellingPastBijZoek(b, opties.zoek || ''))
     .sort((a, b) => String(b.datum || '').localeCompare(String(a.datum || '')))
 }

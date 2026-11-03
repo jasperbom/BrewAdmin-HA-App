@@ -343,8 +343,22 @@ export function wachtOpAfhaalmoment(
   return !str(bestelling.wc_afhaalmoment)
 }
 
-/** Na zoveel dagen zonder afhaalmoment vraagt een afhaalbestelling om aandacht. */
+/** Na zoveel dagen zonder afhaalmoment vraagt een afhaalbestelling om aandacht (de eerste herinnering). */
 export const AFHAAL_HERINNERING_NA_DAGEN = 3
+
+/**
+ * Wanneer een afhaalklant zonder afhaalmoment een herinnering krijgt en
+ * wanneer de bestelling vervalt. `dagen` = de herinneringen, in dagen na het
+ * bestellen (oplopend, hooguit drie); `annulerenNa` = de afhaaltermijn: na
+ * zoveel dagen hoort de bestelling geannuleerd te worden (houdbaarheid),
+ * null = geen termijn. Leest orderMail.ts uit `mail_templates.afhaal_herinnering`
+ * (`afhaalSchema`).
+ */
+export interface AfhaalSchema {
+  dagen: number[]
+  annulerenNa: number | null
+}
+export const AFHAAL_SCHEMA_STANDAARD: AfhaalSchema = {dagen: [AFHAAL_HERINNERING_NA_DAGEN], annulerenNa: null}
 
 // 'JJJJ-MM-DD…' → hele dagen ertussen (UTC, dus een zomertijdwissel telt niet mee); null zonder datum.
 const dagenTussen = (van: unknown, tot: unknown): number | null => {
@@ -362,29 +376,106 @@ export const dagenSindsBestelling = (
   bestelling: {datum?: unknown} | null | undefined, vandaag: string,
 ): number | null => dagenTussen(bestelling?.datum, vandaag)
 
+type AfhaalBestelling = (Partial<LeveringVelden> & {
+  status?: string, datum?: unknown, mails_verstuurd?: Record<string, unknown> | null,
+  afhaal_herinneringen?: unknown, [k: string]: unknown,
+}) | null | undefined
+
 /**
- * Vraagt deze afhaalbestelling om de afhaalherinnering? Nog geen moment
- * gekozen, al minstens `AFHAAL_HERINNERING_NA_DAGEN` dagen besteld, en de
- * klant kreeg de herinnering nog niet (`mails_verstuurd.afhaal_herinnering`).
- * Eén keer: daarna staat hij alleen nog onder de chip "Geen afhaalmoment".
+ * Op welke dagen de klant al een afhaalherinnering kreeg (met de hand of
+ * automatisch), oudste eerst. `afhaal_herinneringen` op de bestelling; een
+ * bestelling van vóór de lijst heeft alleen `mails_verstuurd.afhaal_herinnering`.
  */
-export function afhaalHerinneringNodig(
-  bestelling: (Partial<LeveringVelden> & {status?: string, datum?: unknown, mails_verstuurd?: Record<string, unknown> | null, [k: string]: unknown}) | null | undefined,
-  vandaag: string,
-  dagen: number = AFHAAL_HERINNERING_NA_DAGEN,
-): boolean {
-  if (!wachtOpAfhaalmoment(bestelling)) return false
-  if (bestelling?.mails_verstuurd?.afhaal_herinnering) return false
-  const n = dagenSindsBestelling(bestelling, vandaag)
-  return n !== null && n >= dagen
+export function afhaalHerinneringenVerstuurd(bestelling: AfhaalBestelling): string[] {
+  const lijst = bestelling?.afhaal_herinneringen
+  if (Array.isArray(lijst)) return lijst.map(str).filter(Boolean)
+  const een = str(bestelling?.mails_verstuurd?.afhaal_herinnering)
+  return een ? [een] : []
 }
 
-/** Hoeveel afhaalbestellingen om de afhaalherinnering vragen (attentiepost op Verkoop).
- * `dagen` = de ingestelde wachttijd (`afhaalHerinneringDagen` in orderMail.ts). */
+/** De dag (JJJJ-MM-DD) waarop de afhaaltermijn afloopt; null zonder termijn of besteldatum. */
+export function afhaalTermijnDatum(bestelling: AfhaalBestelling, schema: AfhaalSchema = AFHAAL_SCHEMA_STANDAARD): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(str(bestelling?.datum))
+  if (!m || schema.annulerenNa == null) return null
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + schema.annulerenNa))
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Is de afhaaltermijn voorbij? Een afhaalbestelling die nog openstaat (niet
+ * opgehaald, niet geannuleerd), al `annulerenNa` dagen geleden besteld, en
+ * waarvoor de klant geen moment koos of zijn moment voorbij liet gaan. Een
+ * moment dat nog komt of "in overleg" telt niet: dan is er een afspraak.
+ * Annuleren blijft een handeling van een mens (terugbetalen, creditnota).
+ */
+export function afhaalTermijnVoorbij(
+  bestelling: AfhaalBestelling, vandaag: string, schema: AfhaalSchema = AFHAAL_SCHEMA_STANDAARD,
+): boolean {
+  if (!bestelling || bestelling.wc_levering !== 'afhalen' || schema.annulerenNa == null) return false
+  if (['afgerond', 'geannuleerd', 'verzonden'].includes(str(bestelling.status))) return false
+  const n = dagenSindsBestelling(bestelling, vandaag)
+  if (n === null || n < schema.annulerenNa) return false
+  if (wachtOpAfhaalmoment(bestelling)) return true
+  const moment = afhaalmomentDate(bestelling.wc_afhaalmoment)
+  if (!moment) return false
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(vandaag)
+  return !!m && moment.getTime() < new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime()
+}
+
+/** Hoeveel afhaalbestellingen over de afhaaltermijn zijn (attentiepost op Verkoop). */
+export const telAfhaalTermijnVoorbij = (
+  bestellingen: ReadonlyArray<any> | null | undefined, vandaag: string, schema: AfhaalSchema = AFHAAL_SCHEMA_STANDAARD,
+): number => (bestellingen || []).filter(b => afhaalTermijnVoorbij(b, vandaag, schema)).length
+
+/** Waar een afhaalbestelling staat met de herinneringen (`afhaalHerinneringStand`). */
+export type AfhaalHerinneringStand =
+  | 'geen'            // geen afhaalbestelling zonder moment (meer)
+  | 'klaar'           // alle herinneringen zijn verstuurd
+  | 'nog_niet'        // de volgende herinnering is nog niet aan de beurt
+  | 'aan_de_beurt'
+  | 'termijn_voorbij' // de afhaaltermijn is om: annuleren, geen herinnering meer
+
+/**
+ * De volgende herinnering voor een afhaalbestelling zonder moment. Herinnering
+ * `stap` (0 = de eerste) is aan de beurt op dag `dagen[stap]` na het bestellen,
+ * en nooit eerder dan het verschil met de vorige herinnering na díe herinnering
+ * (een eerste die met de hand later ging, schuift de tweede mee op). `teLaat` =
+ * hoeveel dagen na zijn dag hij nu zou komen.
+ */
+export function afhaalHerinneringStand(
+  bestelling: AfhaalBestelling, vandaag: string, schema: AfhaalSchema = AFHAAL_SCHEMA_STANDAARD,
+): {stand: AfhaalHerinneringStand, stap: number, teLaat: number} {
+  const verstuurd = afhaalHerinneringenVerstuurd(bestelling)
+  const stap = verstuurd.length
+  if (!wachtOpAfhaalmoment(bestelling)) return {stand: 'geen', stap, teLaat: 0}
+  if (afhaalTermijnVoorbij(bestelling, vandaag, schema)) return {stand: 'termijn_voorbij', stap, teLaat: 0}
+  if (stap >= schema.dagen.length) return {stand: 'klaar', stap, teLaat: 0}
+  const n = dagenSindsBestelling(bestelling, vandaag)
+  const dag = schema.dagen[stap]
+  if (n === null || n < dag) return {stand: 'nog_niet', stap, teLaat: 0}
+  if (stap > 0) {
+    const sindsVorige = dagenTussen(verstuurd[stap - 1], vandaag)
+    if (sindsVorige !== null && sindsVorige < dag - schema.dagen[stap - 1]) return {stand: 'nog_niet', stap, teLaat: 0}
+  }
+  return {stand: 'aan_de_beurt', stap, teLaat: n - dag}
+}
+
+/**
+ * Vraagt deze afhaalbestelling om een afhaalherinnering? Nog geen moment
+ * gekozen, de volgende herinnering uit het schema is aan de beurt en de
+ * afhaaltermijn is nog niet om. Na de laatste herinnering staat hij alleen nog
+ * onder de chip "Geen afhaalmoment" (en na de termijn bij "Over de afhaaltermijn").
+ */
+export function afhaalHerinneringNodig(
+  bestelling: AfhaalBestelling, vandaag: string, schema: AfhaalSchema = AFHAAL_SCHEMA_STANDAARD,
+): boolean {
+  return afhaalHerinneringStand(bestelling, vandaag, schema).stand === 'aan_de_beurt'
+}
+
+/** Hoeveel afhaalbestellingen om een afhaalherinnering vragen (attentiepost op Verkoop). */
 export const telAfhaalHerinneringNodig = (
-  bestellingen: ReadonlyArray<any> | null | undefined, vandaag: string,
-  dagen: number = AFHAAL_HERINNERING_NA_DAGEN,
-): number => (bestellingen || []).filter(b => afhaalHerinneringNodig(b, vandaag, dagen)).length
+  bestellingen: ReadonlyArray<any> | null | undefined, vandaag: string, schema: AfhaalSchema = AFHAAL_SCHEMA_STANDAARD,
+): number => (bestellingen || []).filter(b => afhaalHerinneringNodig(b, vandaag, schema)).length
 
 /** Korte omschrijving voor een badge of tooltip: "Afhalen · Brouwerij · za 30 aug om 13:00". */
 export function leveringOmschrijving(b: Partial<LeveringVelden> | null | undefined): string {
@@ -526,6 +617,10 @@ export interface AfhaalHerinneringMailVars {
   dagen: string
   /** De besteldatum als dd-mm-jjjj. */
   besteldatum: string
+  /** De dag waarop de afhaaltermijn afloopt (dd-mm-jjjj); leeg zonder termijn. */
+  annuleerdatum: string
+  /** "Kies je geen moment, dan annuleren we je bestelling op …"; leeg zonder termijn. */
+  annuleerregel: string
 }
 
 /**
@@ -536,7 +631,7 @@ export interface AfhaalHerinneringMailVars {
  */
 export function afhaalHerinneringMailVars(
   bestelling: (Partial<LeveringVelden> & {wc_order_id?: number | null, datum?: unknown}) | null | undefined,
-  opts: {storeUrl?: string, vandaag?: string} = {},
+  opts: {storeUrl?: string, vandaag?: string, schema?: AfhaalSchema} = {},
 ): AfhaalHerinneringMailVars {
   const b = bestelling || {}
   const link = afhaalLink(opts.storeUrl, b.wc_order_id, b.wc_order_key)
@@ -546,12 +641,15 @@ export function afhaalHerinneringMailVars(
     .split('{locatie}').join(locatie)
     .split('{link}').join(link)
   const n = opts.vandaag ? dagenSindsBestelling(b, opts.vandaag) : null
+  const termijn = afhaalTermijnDatum(b, opts.schema)
   return {
     afhaallink: link,
     afhaallocatie: locatieNaam,
     afhaalregel,
     dagen: n !== null && n >= 0 ? String(n) : '',
     besteldatum: fmtDatum(b.datum),
+    annuleerdatum: termijn ? fmtDatum(termijn) : '',
+    annuleerregel: termijn ? t('mail_afhaal_herinnering_annuleer').split('{datum}').join(fmtDatum(termijn)) : '',
   }
 }
 

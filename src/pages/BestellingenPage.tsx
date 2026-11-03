@@ -34,9 +34,10 @@ import { htmlToPdfBase64 } from '../utils/pdf'
 import { qrDataUrl } from '../utils/qr'
 import { importeerWcOrders, pasImportToe, importAuditRegels, importMelding } from '../utils/wcOrderImport'
 import { wcTerugschrijfPlan, wcSyncVelden, WcSyncDoel } from '../utils/wcTerugschrijven'
-import { afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, wachtOpAfhaalmoment, MailKnop } from '../utils/levering'
+import { afhaalLink, afhaalmomentLabel, wilVerzendbevestiging, afhaalmomentVerstreken, wachtOpAfhaalmoment, MailKnop,
+  afhaalHerinneringenVerstuurd, afhaalTermijnDatum, afhaalTermijnVoorbij } from '../utils/levering'
 import {
-  bouwOrderMail, bouwFactuurMail, mailAutoAan, autoMailReden, naMailVerstuurd, mailAuditTekst,
+  bouwOrderMail, bouwFactuurMail, mailAutoAan, autoMailReden, naMailVerstuurd, mailAuditTekst, afhaalSchema,
 } from '../utils/orderMail'
 import type { OrderMail, OrderMailSoort, AnnuleringCredit } from '../utils/orderMail'
 import { verzendMail } from '../utils/mailVerzenden'
@@ -325,8 +326,10 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
     resolvedSelectedOrder?.klant_stad].filter(Boolean).join(' ')
 
   // Lijst: statuschip én zoektekst, nieuwste eerst (utils/bestelling).
-  const filtered = filterBestellingen(bestellingen, {status: statusFilter, zoek, omTePicken: omTePickenIds})
-  const tellingen = statusTellingen(bestellingen, omTePickenIds)
+  // De afhaaltermijn (utils/orderMail → afhaalSchema) voor de chip "Over de afhaaltermijn".
+  const afhaalCtx = {vandaag: tod(), schema: afhaalSchema(mailTemplates)}
+  const filtered = filterBestellingen(bestellingen, {status: statusFilter, zoek, omTePicken: omTePickenIds, afhaal: afhaalCtx})
+  const tellingen = statusTellingen(bestellingen, omTePickenIds, afhaalCtx)
 
   // De totalen van een order zoals de factuur ze krijgt: per regel
   // `regelBedrag` (cent-exact, met behoud van de autoritatieve WooCommerce-
@@ -2337,9 +2340,27 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                     </div>
                   )
                 })()}
-                {afhalen && selectedOrder.mails_verstuurd?.afhaal_herinnering && (
-                  <div className="text-xs text-gray-600">{t('orders_afhaal_herinnering_op').replace('{datum}', fmtD(selectedOrder.mails_verstuurd.afhaal_herinnering))}</div>
-                )}
+                {afhalen && (() => {
+                  const data = afhaalHerinneringenVerstuurd(selectedOrder)
+                  return data.length > 0 && (
+                    <div className="text-xs text-gray-600">{t('orders_afhaal_herinnering_op').replace('{datum}', data.map(d => fmtD(d)).join(', '))}</div>
+                  )
+                })()}
+                {/* De afhaaltermijn: tot wanneer de bestelling blijft staan; voorbij =
+                    annuleren (met de hand: terugbetalen of creditnota). */}
+                {afhalen && open && (() => {
+                  const termijn = afhaalTermijnDatum(selectedOrder, afhaalCtx.schema)
+                  if (!termijn || (selectedOrder.wc_afhaalmoment && !afhaalmomentVerstreken(selectedOrder))) return null
+                  if (!afhaalTermijnVoorbij(selectedOrder, afhaalCtx.vandaag, afhaalCtx.schema)) {
+                    return <div className="text-xs text-gray-600">{t('orders_afhaal_termijn_tot').replace('{datum}', fmtD(termijn))}</div>
+                  }
+                  return (
+                    <div className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 space-y-2">
+                      <p>{t('orders_afhaal_termijn_voorbij').replace('{datum}', fmtD(termijn))}</p>
+                      <Btn v="danger" s="sm" onClick={openAnnuleren}>{t('order_cancel')}</Btn>
+                    </div>
+                  )
+                })()}
                 {afhalen && selectedOrder.afhaal_gemist_datum && (
                   <div className="text-xs text-red-700">{t('orders_afhaal_gemist_op').replace('{datum}', fmtD(selectedOrder.afhaal_gemist_datum))}</div>
                 )}
@@ -2934,6 +2955,13 @@ const BestellingenPage: React.FC<BestellingenPageProps> = ({
                   {t('msg_order_cancel_creditnota')
                     .replace('{nummer}', crediteren.factuurnummer || '')
                     .replace('{bedrag}', fmt(Number(crediteren.bruto || 0)))}
+                </p>
+              )}
+              {/* Betaald in de webshop maar (nog) zonder factuur: ook dan gaat het
+                  geld niet vanzelf terug. */}
+              {!crediteren && selectedOrder.wc_betaald && (
+                <p className="text-sm text-orange-800 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                  {t('msg_order_cancel_betaald')}
                 </p>
               )}
               {(() => {

@@ -12,7 +12,8 @@
 
 import { telThtAlerts, thtAlertLots } from './calculations'
 import { telNieuweWebshopOrders, telWebshopAfgebroken } from './wcOrderImport'
-import { telAfhaalHerinneringNodig } from './levering'
+import { telAfhaalHerinneringNodig, telAfhaalTermijnVoorbij } from './levering'
+import type { AfhaalSchema } from './levering'
 import type { BtwPeriodeType } from './btw'
 import { openstaandeBatchTaken, telAchterstalligeSchoonmaakTaken } from './taken'
 import { telOpenstaandeBestellingen } from './picking'
@@ -118,9 +119,9 @@ export interface AttentieBron {
   bestellingPicks: any[]
   /** `wc_import_status` — webshoporders die de server zag maar hier nog niet staan. */
   wcImportStatus?: any
-  /** Na hoeveel dagen zonder afhaalmoment de afhaalherinnering aan de beurt is
-      (`afhaalHerinneringDagen(mail_templates)`); zonder = de standaard. */
-  afhaalHerinneringDagen?: number
+  /** Wanneer de afhaalherinneringen aan de beurt zijn en wanneer de afhaaltermijn
+      om is (`afhaalSchema(mail_templates)` in orderMail.ts); zonder = de standaard. */
+  afhaalSchema?: AfhaalSchema
   btwPeriode: BtwPeriodeType
   btwAangiftes: any[]
   bankKoppelingen: Record<string, any>
@@ -435,7 +436,14 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
         // iets mis (geen e-mailadres, SMTP) of is de bestelling van vóór het
         // aanzetten.
         id: 'afhaal_herinnering', sleutel: 'attentie_afhaal_herinnering', pagina: 'bestellingen', filter: 'geen_afhaalmoment',
-        aantal: telAfhaalHerinneringNodig(bron.bestellingen, bron.vandaagIso, bron.afhaalHerinneringDagen),
+        aantal: telAfhaalHerinneringNodig(bron.bestellingen, bron.vandaagIso, bron.afhaalSchema),
+      },
+      {
+        // De afhaaltermijn is om (houdbaarheid) en de klant kwam niet en koos
+        // geen moment: annuleren — met de hand, want er hoort een terugbetaling
+        // of creditnota bij (utils/levering → afhaalTermijnVoorbij).
+        id: 'afhaal_termijn', sleutel: 'attentie_afhaal_termijn', pagina: 'bestellingen', filter: 'afhaal_termijn',
+        aantal: telAfhaalTermijnVoorbij(bron.bestellingen, bron.vandaagIso, bron.afhaalSchema),
       },
       // Het etiket klopt niet met wat er gebrouwen is: per product, de regel
       // opent het product.

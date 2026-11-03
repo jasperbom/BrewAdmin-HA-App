@@ -3,7 +3,7 @@ import { t, getLang } from '../i18n'
 import { landOpties } from '../utils/btwCategorie'
 import { BESTEL_URL_STANDAARD } from '../utils/levering'
 import { ORDER_MAIL_SOORTEN, MAIL_HANDELING, mailAutoAan, zetMailAuto } from '../utils/orderMail'
-import { AFHAAL_HERINNERING_NA_DAGEN } from '../utils/levering'
+import AfhaalHerinneringVelden from '../components/AfhaalHerinneringVelden'
 import NaAankoopMailInstellingen from '../components/NaAankoopMailInstellingen'
 import MailOpmaakInstellingen from '../components/MailOpmaakInstellingen'
 import { uitnodigingUrl, uitnodigingStandaard, isWhatsAppLink } from '../utils/mailUitnodiging'
@@ -2031,8 +2031,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               `factuur_betaald` is de tekst voor een factuur die al voldaan is
               en volgt de instelling van `factuur`; `afhaal_gemist` heeft geen
               handeling (het afhaalmoment verstrijkt vanzelf); de
-              afhaalherinnering gaat na een wachttijd (`dagen`, ook de
-              drempel van de attentiepost). {levering} in de
+              afhaalherinnering gaat op de dagen uit `dagen` (tot drie keer, ook de
+              drempel van de attentiepost) tot de afhaaltermijn (`annuleren_na`). {levering} in de
               bestelbevestiging en {afhaalregel} in de afspraak-gemist-mail komen
               uit utils/levering.ts. */}
           {ORDER_MAIL_SOORTEN.map((kind) => {
@@ -2084,22 +2084,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                     )}
                   </>)}
                   {kind === 'afhaal_herinnering' && (
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
-                      <label htmlFor="mail-afhaal-herinnering-dagen" className="text-sm font-medium text-gray-700">
-                        {t('settings_mail_afhaal_herinnering_dagen')}
-                      </label>
-                      <input id="mail-afhaal-herinnering-dagen" type="number" min={1} max={60} step={1} inputMode="numeric"
-                        value={tpl.dagen ?? ''}
-                        placeholder={String(AFHAAL_HERINNERING_NA_DAGEN)}
-                        onChange={(e: any) => {
-                          const waarde = e.target.value === '' ? undefined : Math.round(Number(e.target.value))
-                          setMailTemplates((p: any) => ({...(p || {}), [kind]: {...((p || {})[kind] || {}), dagen: waarde}}))
-                        }}
-                        className="border border-gray-300 rounded px-2 py-1 text-sm w-20 t-input bg-white" />
-                      <span className="text-xs text-gray-500">
-                        {t('settings_mail_afhaal_herinnering_dagen_hint').replace('{n}', String(AFHAAL_HERINNERING_NA_DAGEN))}
-                      </span>
-                    </div>
+                    <AfhaalHerinneringVelden waarde={tpl}
+                      onChange={(patch) => setMailTemplates((p: any) => ({...(p || {}), [kind]: {...((p || {})[kind] || {}), ...patch}}))} />
                   )}
                 </div>
                 <div className="flex flex-col gap-2">

@@ -26,7 +26,7 @@ import { bfRichtingen, bfKoppelingAan, bfBatchesKoppelbaar, bfBatchesLezen, bfBa
 import { afgevuldeLiters } from './utils/batchesLijst'
 import { migreerInternGebruik } from './utils/internGebruik'
 import { findKlantVoorOrder, resolveKlantSnapshot } from './utils/klant'
-import { autoMailReden, bouwOrderMail, naMailVerstuurd, mailAuditTekst, afhaalHerinneringPlan, afhaalHerinneringDagen } from './utils/orderMail'
+import { autoMailReden, bouwOrderMail, naMailVerstuurd, mailAuditTekst, afhaalHerinneringPlan, afhaalSchema } from './utils/orderMail'
 import { verzendMail } from './utils/mailVerzenden'
 import {
   naAankoopInstellingen, naAankoopPlan, bouwNaAankoopMail, naNaAankoopVerstuurd, naAankoopAuditTekst,
@@ -1810,8 +1810,8 @@ function App() {
     }
   }
   // ── Afhaalherinnering (utils/orderMail.ts → afhaalHerinneringPlan): staat
-  // hij op automatisch, dan krijgt een afhaalklant die na de ingestelde dagen
-  // nog geen moment koos één keer de herinnering. Na de import, dus met het
+  // hij op automatisch, dan krijgt een afhaalklant die nog geen moment koos de
+  // herinneringen op de ingestelde dagen (tot de afhaaltermijn om is). Na de import, dus met het
   // verse afhaalmoment uit de winkel; binnen de lease, één voor één, stempel
   // pas na succes en bij een fout stopt de ronde — net als hierboven.
   const afhaalHerinneringBezig = React.useRef(false)
@@ -2520,7 +2520,7 @@ function App() {
       bankTransacties, bankAfschriften,
       beslissingen: adminRijen,
       vandaag, vandaagIso,
-      afhaalHerinneringDagen: afhaalHerinneringDagen(mailTemplates),
+      afhaalSchema: afhaalSchema(mailTemplates),
       // Product en voorraad: het etiket tegen de batch, afgevuld zonder
       // artikel, bier-THT, dubbele SKU (utils/productAandacht.ts).
       producten, verkoop: verkoopCtx,

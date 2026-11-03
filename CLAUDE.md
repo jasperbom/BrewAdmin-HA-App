@@ -367,10 +367,14 @@ BrewAdmin-HA-App/
 │   │   │                   # de afhaalpagina-link zelf komt als knop onder de mail (`afhaalMailKnop`:
 │   │   │                   # kiezen/verzetten, `afhaalGemistMailKnop`: nieuw moment) — `MailKnop`;
 │   │   │                   # afhaalherinnering voor wie nog géén moment koos (`wachtOpAfhaalmoment`,
-│   │   │                   # `afhaalHerinneringMailVars`; `afhaalHerinneringNodig`: na de wachttijd
-│   │   │                   # (`afhaalHerinneringDagen` in orderMail.ts, standaard
-│   │   │                   # `AFHAAL_HERINNERING_NA_DAGEN`) en nog niet gemaild = attentiepost, chip
-│   │   │                   # "Geen afhaalmoment" in Bestellingen);
+│   │   │                   # `afhaalHerinneringMailVars`; `AfhaalSchema` = tot drie herinneringen + de
+│   │   │                   # afhaaltermijn (`afhaalSchema` in orderMail.ts), `afhaalHerinneringStand`: de
+│   │   │                   # volgende herinnering op zijn dag en niet eerder dan het verschil na de vorige
+│   │   │                   # (`afhaal_herinneringen` op de bestelling), `afhaalHerinneringNodig` =
+│   │   │                   # attentiepost, chip "Geen afhaalmoment"; `afhaalTermijnVoorbij`: open, geen of
+│   │   │                   # een gemist moment en de termijn om = attentiepost + chip "Over de
+│   │   │                   # afhaaltermijn" — annuleren blijft met de hand (terugbetalen, creditnota);
+│   │   │                   # `{annuleerregel}`/`{annuleerdatum}` in de mail);
 │   │   │                   # `bestelPaginaLink` = link naar de bestelling in de webshop, bij de import
 │   │   │                   # per order bepaald (`wc_bestel_url`): klant met account → Mijn account via
 │   │   │                   # pagina-ID (`?page_id=8&view-order=<id>`, slug-onafhankelijk), gast → de
@@ -523,10 +527,11 @@ BrewAdmin-HA-App/
 │   │   │                   # geannuleerd, `wachttijd`; afspraak gemist alleen met de hand, factuur_betaald volgt
 │   │   │                   # factuur): `autoMailReden` (nooit twee keer — `mails_verstuurd` op de order —,
 │   │   │                   # bevestiging en afhaalherinnering alleen voor bestellingen van na `auto_sinds`),
-│   │   │                   # `naMailVerstuurd`. De afhaalherinnering (`wachttijd`) gaat na
-│   │   │                   # `afhaalHerinneringDagen` dagen zonder afhaalmoment (`mail_templates.
-│   │   │                   # afhaal_herinnering.dagen`, 1–60), nooit meer dan
-│   │   │                   # `AFHAAL_HERINNERING_MAX_TE_LAAT_DAGEN` daarna; `afhaalHerinneringPlan` =
+│   │   │                   # `naMailVerstuurd`. De afhaalherinnering (`wachttijd`) gaat tot drie keer,
+│   │   │                   # op de dagen uit `afhaalSchema` (`mail_templates.afhaal_herinnering.dagen`,
+│   │   │                   # 1–60, en `annuleren_na` = de afhaaltermijn), nooit meer dan
+│   │   │                   # `AFHAAL_HERINNERING_MAX_TE_LAAT_DAGEN` na zijn dag en nooit na de
+│   │   │                   # termijn; `afhaalHerinneringPlan` =
 │   │   │                   # wie nu aan de beurt is (App.tsx `verstuurAfhaalHerinneringen`, na de
 │   │   │                   # webshopimport binnen de lease)
 │   │   ├── mailVerzenden.ts # Eén mail de deur uit (`verzendMail`: Mollie-link, HTML met logo en knoppen,
@@ -1584,7 +1589,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `btw_instellingen` | object | BTW-aangifte-instellingen: `periode` + `standaard_btw` (voorgesteld tarief bij nieuwe artikelen/verkoopregels, default 21% via `standaardBtwPct` in `utils/btw.ts`) |
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
 | `brewery_details` | object | Brouwerijnaam, adres, land (ISO-2), BTW-nr., KvK, PEPPOL-ID/-schema (e-factuur), website (klikbaar logo in mail), `mail_stijl` (`{stijl: thema\|standaard\|craftery, lettertypen_url}` — de opmaak van de klantmails, `utils/mailTemplate.ts`), `mail_uitnodiging` (`{kop, tekst, knop, url}` — "Wist je dat?" met knop in de voet van elke klantmail, `utils/mailUitnodiging.ts`), `factuur_velden` (zichtbaarheid), `factuur_template` (`{html, css}` — eigen factuurlayout, leeg = de ingebouwde standaard uit `utils/factuurTemplate.ts`) en `pakbon_template` (`{html, css}` — eigen pakbonlayout, ook in de picklijst; leeg = de standaard uit `utils/pakbonTemplate.ts`) |
-| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`, `afhaal_herinnering`, `afhaal_gemist`, `annulering`, en de mail na een webshopbestelling `na_smaak`) met `subject`/`body`; leeg = i18n-default. `auto: true` = automatisch versturen bij de handeling van die mail, `auto_sinds` = wanneer dat aan ging (`zetMailAuto`/`autoMailReden` in `utils/orderMail.ts`; de "al betaald"-factuurmail volgt `factuur`). `annulering` kent `{creditregel}` (de factuur en de creditnota, leeg zonder factuur). `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}`, `afhaal_gemist` de mail voor een afhaalklant die niet kwam (`{afhaalmoment}` + `{afhaalregel}` met dezelfde link om een nieuw moment te kiezen; knop verschijnt via `afhaalmomentVerstreken`), `afhaal_herinnering` die voor een afhaalklant die nog geen moment koos (`{afhaalregel}`, `{dagen}`, `{besteldatum}`; knop via `wachtOpAfhaalmoment`; `dagen` = na hoeveel dagen zonder moment, 1–60, standaard 3 — ook de drempel van de attentiepost; met `auto` gaat hij dan vanzelf bij de webshopimport) — zie `utils/levering.ts`. Eigen teksten van een brouwerij staan hier, nooit als standaardtekst in de code |
+| `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`, `afhaal_herinnering`, `afhaal_gemist`, `annulering`, en de mail na een webshopbestelling `na_smaak`) met `subject`/`body`; leeg = i18n-default. `auto: true` = automatisch versturen bij de handeling van die mail, `auto_sinds` = wanneer dat aan ging (`zetMailAuto`/`autoMailReden` in `utils/orderMail.ts`; de "al betaald"-factuurmail volgt `factuur`). `annulering` kent `{creditregel}` (de factuur en de creditnota, leeg zonder factuur). `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}`, `afhaal_gemist` de mail voor een afhaalklant die niet kwam (`{afhaalmoment}` + `{afhaalregel}` met dezelfde link om een nieuw moment te kiezen; knop verschijnt via `afhaalmomentVerstreken`), `afhaal_herinnering` die voor een afhaalklant die nog geen moment koos (`{afhaalregel}`, `{dagen}`, `{besteldatum}`; knop via `wachtOpAfhaalmoment`; `dagen` = op welke dagen na het bestellen een herinnering gaat, tot drie (lijst, 1–60; een losse waarde = één; standaard 3) — ook de drempel van de attentiepost; `annuleren_na` = de afhaaltermijn in dagen (leeg = geen): daarna attentiepost "annuleren", geen herinnering meer, en `{annuleerregel}` noemt de datum; met `auto` gaan de herinneringen vanzelf bij de webshopimport) — zie `utils/levering.ts`. Eigen teksten van een brouwerij staan hier, nooit als standaardtekst in de code |
 | `na_aankoop_mails` | object | De mail ná een webshopbestelling, "Hoe smaakte het?" (`utils/naAankoopMail.ts`): `{modus: uit\|proef\|aan, sinds, proef_adres, grondslag: soft_opt_in\|toestemming, vinkje_meta, dagen, vanaf: bestelling\|geleverd, review_url, afmeld_url}`. Een oud `stappen.smaak.{dagen,vanaf}` (uit de tijd van drie mails) wordt nog gelezen; `stappen.serveertips`/`taplijst` en `taplijst_url` worden genegeerd. Standaard `uit`; `sinds` = het moment van de laatste modus-wissel (bestellingen van daarvóór krijgen niets). **Beheer-only**; wel in de Excel-backup |
 | `mail_afmeldingen` | array | Wie geen na-aankoopmails meer wil: `{id, email (klein geschreven), datum, bron: handmatig\|mail\|webshop, notitie?}`. Bewust géén beheer-key: wie bestellingen afhandelt, legt een afmelding meteen vast. In de Excel-backup (sheet `MailAfmeldingen`) |
 | `gebruikers_rollen` | object | Rollen per HA-ingress-gebruiker (ERP 4.2): `{gebruikers: {naam: rol}, standaard_rol}` met rollen `beheer`/`boekhouding`/`productie`/`alleen_lezen` — server-side afgedwongen, alleen door `beheer` te wijzigen, lockout-guard |
@@ -1937,14 +1942,20 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
   volgende import mee. Koos de klant nog helemaal geen moment, dan biedt de
   bestelpagina *Mail afhaalherinnering* (template `afhaal_herinnering`, knop
   *Kies je afhaalmoment*); zulke bestellingen staan onder de chip *Geen
-  afhaalmoment*, en na de wachttijd (`mail_templates.afhaal_herinnering.dagen`,
-  standaard `AFHAAL_HERINNERING_NA_DAGEN`) zonder herinnering ook als
-  attentiepost op Verkoop (`afhaalHerinneringNodig`, één keer). Met
-  *Automatisch versturen* aan gaat de herinnering na die wachttijd vanzelf
-  (`verstuurAfhaalHerinneringen` in App.tsx, na elke automatische import,
-  binnen de lease, met het verse afhaalmoment; alleen bestellingen van na
-  `auto_sinds`, één keer, niet meer dan `AFHAAL_HERINNERING_MAX_TE_LAAT_DAGEN`
-  dagen te laat; zonder open tabblad niets). De
+  afhaalmoment*, en is er een herinnering aan de beurt (tot drie, op de dagen
+  uit `mail_templates.afhaal_herinnering.dagen`, standaard
+  `AFHAAL_HERINNERING_NA_DAGEN`) ook als attentiepost op Verkoop
+  (`afhaalHerinneringNodig`). Met *Automatisch versturen* aan gaan de
+  herinneringen vanzelf (`verstuurAfhaalHerinneringen` in App.tsx, na elke
+  automatische import, binnen de lease, met het verse afhaalmoment; alleen
+  bestellingen van na `auto_sinds`, elke herinnering één keer, niet meer dan
+  `AFHAAL_HERINNERING_MAX_TE_LAAT_DAGEN` dagen te laat; zonder open tabblad
+  niets). Na de afhaaltermijn (`annuleren_na`, houdbaarheid) gaat er geen
+  herinnering meer en vraagt de bestelling om annuleren (attentiepost
+  `afhaal_termijn`, chip *Over de afhaaltermijn*, rode regel met knop op de
+  bestelling). **Annuleren gaat nooit vanzelf:** een betaalde bestelling moet
+  in de webshop terugbetaald worden en een gefactureerde krijgt een
+  creditnota — dat is de gewone annuleerknop. De
   bestelbevestiging van een webshoporder krijgt een knop *Bekijk je
   bestelling* (`bestelLink`: het sjabloon `woocommerce_creds.bestelUrl`, anders
   `wc_bestel_url` — bij elke import per order bepaald door `bestelPaginaLink`:

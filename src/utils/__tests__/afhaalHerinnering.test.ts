@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest'
 import {
   wachtOpAfhaalmoment, afhaalHerinneringNodig, telAfhaalHerinneringNodig, afhaalHerinneringMailVars,
   dagenSindsBestelling, AFHAAL_HERINNERING_NA_DAGEN, AFHAAL_OVERLEG,
+  afhaalHerinneringStand, afhaalHerinneringenVerstuurd, afhaalTermijnDatum, afhaalTermijnVoorbij, telAfhaalTermijnVoorbij,
 } from '../levering'
+import type { AfhaalSchema } from '../levering'
 import {
   bouwOrderMail, naMailVerstuurd, MAIL_HANDELING, mailAutoAan, ORDER_MAIL_SOORTEN, zetMailAuto, autoMailReden,
-  afhaalHerinneringDagen, afhaalHerinneringPlan, AFHAAL_HERINNERING_MAX_TE_LAAT_DAGEN, AFHAAL_HERINNERING_MAX_PER_RONDE,
+  afhaalSchema, afhaalHerinneringPlan, AFHAAL_HERINNERING_MAX_TE_LAAT_DAGEN, AFHAAL_HERINNERING_MAX_PER_RONDE,
 } from '../orderMail'
 import { statusTellingen, filterBestellingen, pastBijStatus, STATUS_FILTERS } from '../bestelling'
 import { attentiePosten } from '../attentie'
@@ -51,6 +53,7 @@ describe('afhaalHerinneringNodig — wanneer vraagt hij om aandacht', () => {
     expect(afhaalHerinneringNodig(afhaal, '2026-11-03')).toBe(true)
     const gemaild = {...afhaal, ...naMailVerstuurd(afhaal, 'afhaal_herinnering', '2026-11-03')}
     expect(gemaild.mails_verstuurd).toEqual({afhaal_herinnering: '2026-11-03'})
+    expect(gemaild.afhaal_herinneringen).toEqual(['2026-11-03'])
     expect(afhaalHerinneringNodig(gemaild, '2026-11-20')).toBe(false)
     // De gewone bevestigingsmail telt niet als herinnering.
     expect(afhaalHerinneringNodig({...afhaal, mails_verstuurd: {bestelling: '2026-10-28'}}, '2026-11-03')).toBe(true)
@@ -127,11 +130,11 @@ describe('automatisch na een wachttijd', () => {
     expect(autoMailReden('afhaal_herinnering', afhaal, {...opts(), sjablonen: {}})).toBe('uit')
   })
 
-  it('het aantal dagen: 1 tot 60, anders de standaard', () => {
-    expect(afhaalHerinneringDagen({})).toBe(AFHAAL_HERINNERING_NA_DAGEN)
-    expect(afhaalHerinneringDagen({afhaal_herinnering: {dagen: 7}})).toBe(7)
+  it('het schema: dagen 1 tot 60, anders de standaard', () => {
+    expect(afhaalSchema({})).toEqual({dagen: [AFHAAL_HERINNERING_NA_DAGEN], annulerenNa: null})
+    expect(afhaalSchema({afhaal_herinnering: {dagen: 7}}).dagen).toEqual([7])
     for (const dagen of [0, -2, 61, 2.5, Number.NaN, undefined]) {
-      expect(afhaalHerinneringDagen({afhaal_herinnering: {dagen}})).toBe(AFHAAL_HERINNERING_NA_DAGEN)
+      expect(afhaalSchema({afhaal_herinnering: {dagen}}).dagen).toEqual([AFHAAL_HERINNERING_NA_DAGEN])
     }
   })
 
@@ -152,8 +155,8 @@ describe('automatisch na een wachttijd', () => {
     const zeven = {...aan, afhaal_herinnering: {...aan.afhaal_herinnering, dagen: 7}}
     expect(autoMailReden('afhaal_herinnering', afhaal, opts({sjablonen: zeven}))).toBe('nog_niet')
     expect(autoMailReden('afhaal_herinnering', afhaal, opts({sjablonen: zeven, vandaag: '2026-11-04'}))).toBeNull()
-    expect(telAfhaalHerinneringNodig([afhaal], '2026-11-03', 7)).toBe(0)
-    expect(telAfhaalHerinneringNodig([afhaal], '2026-11-04', 7)).toBe(1)
+    expect(telAfhaalHerinneringNodig([afhaal], '2026-11-03', afhaalSchema(zeven))).toBe(0)
+    expect(telAfhaalHerinneringNodig([afhaal], '2026-11-04', afhaalSchema(zeven))).toBe(1)
   })
 
   it('geen achterstand: bestellingen van vóór het aanzetten blijven met de hand', () => {
@@ -244,5 +247,141 @@ describe('de attentiepost op Verkoop', () => {
     })
     b.bestellingen = [{...afhaal, mails_verstuurd: {afhaal_herinnering: '2026-11-01'}}]
     expect(attentiePosten(b).verkoop.find(p => p.id === 'afhaal_herinnering')).toBeUndefined()
+  })
+})
+
+// ── Meer herinneringen en de afhaaltermijn ─────────────────────────────────
+
+describe('het schema: tot drie herinneringen en een afhaaltermijn', () => {
+  it('oplopend, zonder dubbele en lege plekken, hooguit drie', () => {
+    expect(afhaalSchema({afhaal_herinnering: {dagen: [7, null, 3]}}).dagen).toEqual([3, 7])
+    expect(afhaalSchema({afhaal_herinnering: {dagen: [3, 3, 7]}}).dagen).toEqual([3, 7])
+    expect(afhaalSchema({afhaal_herinnering: {dagen: [2, 4, 6, 8]}}).dagen).toEqual([2, 4, 6])
+    expect(afhaalSchema({afhaal_herinnering: {dagen: [null, null]}}).dagen).toEqual([AFHAAL_HERINNERING_NA_DAGEN])
+  })
+
+  it('de afhaaltermijn: 1 tot 120 dagen, anders geen; een herinnering op of na de termijn vervalt', () => {
+    expect(afhaalSchema({afhaal_herinnering: {annuleren_na: 21}}).annulerenNa).toBe(21)
+    for (const annuleren_na of [0, 121, 2.5, null, undefined]) {
+      expect(afhaalSchema({afhaal_herinnering: {annuleren_na}}).annulerenNa).toBeNull()
+    }
+    expect(afhaalSchema({afhaal_herinnering: {dagen: [3, 7, 14], annuleren_na: 14}}))
+      .toEqual({dagen: [3, 7], annulerenNa: 14})
+    expect(afhaalSchema({afhaal_herinnering: {dagen: [3], annuleren_na: 2}}).dagen).toEqual([])
+  })
+})
+
+describe('meer herinneringen na elkaar', () => {
+  const schema: AfhaalSchema = {dagen: [3, 7, 14], annulerenNa: 21}
+  const na = (b: Record<string, any>, datum: string) => ({...b, ...naMailVerstuurd(b, 'afhaal_herinnering', datum)})
+
+  it('elke herinnering op zijn dag, en de vorige telt mee', () => {
+    // Besteld 28-10: de eerste op 31-10, de tweede op 4-11, de derde op 11-11.
+    expect(afhaalHerinneringStand(afhaal, '2026-10-30', schema)).toEqual({stand: 'nog_niet', stap: 0, teLaat: 0})
+    expect(afhaalHerinneringStand(afhaal, '2026-10-31', schema)).toEqual({stand: 'aan_de_beurt', stap: 0, teLaat: 0})
+    const een = na(afhaal, '2026-10-31')
+    expect(afhaalHerinneringStand(een, '2026-11-03', schema).stand).toBe('nog_niet')
+    expect(afhaalHerinneringStand(een, '2026-11-04', schema)).toEqual({stand: 'aan_de_beurt', stap: 1, teLaat: 0})
+    const twee = na(een, '2026-11-04')
+    expect(afhaalHerinneringenVerstuurd(twee)).toEqual(['2026-10-31', '2026-11-04'])
+    expect(twee.mails_verstuurd.afhaal_herinnering).toBe('2026-11-04')
+    expect(afhaalHerinneringStand(twee, '2026-11-10', schema).stand).toBe('nog_niet')
+    expect(afhaalHerinneringStand(twee, '2026-11-11', schema)).toEqual({stand: 'aan_de_beurt', stap: 2, teLaat: 0})
+    const drie = na(twee, '2026-11-11')
+    expect(afhaalHerinneringStand(drie, '2026-11-15', schema).stand).toBe('klaar')
+    expect(afhaalHerinneringNodig(drie, '2026-11-15', schema)).toBe(false)
+  })
+
+  it('een eerste die met de hand later ging, schuift de volgende mee op', () => {
+    const laat = na(afhaal, '2026-11-03')   // dag 6 i.p.v. dag 3
+    expect(afhaalHerinneringStand(laat, '2026-11-04', schema).stand).toBe('nog_niet')   // dag 7, maar pas 1 dag na de vorige
+    expect(afhaalHerinneringStand(laat, '2026-11-07', schema).stand).toBe('aan_de_beurt') // 4 dagen erna
+  })
+
+  it('een bestelling van vóór de lijst telt zijn ene herinnering', () => {
+    const oud = {...afhaal, mails_verstuurd: {afhaal_herinnering: '2026-10-31'}}
+    expect(afhaalHerinneringenVerstuurd(oud)).toEqual(['2026-10-31'])
+    expect(afhaalHerinneringStand(oud, '2026-11-04', schema).stap).toBe(1)
+    expect(na(oud, '2026-11-04').afhaal_herinneringen).toEqual(['2026-10-31', '2026-11-04'])
+  })
+
+  it('automatisch: de tweede gaat ook vanzelf, maar niet meer na de afhaaltermijn', () => {
+    const sjablonen = {afhaal_herinnering: {auto: true, auto_sinds: '2026-10-20T09:00:00.000Z', dagen: [3, 7], annuleren_na: 14}}
+    const o = (vandaag: string) => ({sjablonen, smtpAan: true, vandaag})
+    const een = na(afhaal, '2026-10-31')
+    expect(autoMailReden('afhaal_herinnering', een, o('2026-11-03'))).toBe('nog_niet')
+    expect(autoMailReden('afhaal_herinnering', een, o('2026-11-04'))).toBeNull()
+    expect(afhaalHerinneringPlan([een], o('2026-11-04')).map(b => b.id)).toEqual([12])
+    expect(autoMailReden('afhaal_herinnering', na(een, '2026-11-04'), o('2026-11-06'))).toBe('al_verstuurd')
+    // Nooit de tweede gemist en hij komt pas na de termijn: dan niet meer.
+    expect(autoMailReden('afhaal_herinnering', een, o('2026-11-11'))).toBe('te_laat')
+  })
+})
+
+describe('de afhaaltermijn: daarna annuleren', () => {
+  const schema: AfhaalSchema = {dagen: [3, 7], annulerenNa: 21}
+
+  it('de datum: besteldatum plus de termijn', () => {
+    expect(afhaalTermijnDatum(afhaal, schema)).toBe('2026-11-18')
+    expect(afhaalTermijnDatum(afhaal, {dagen: [3], annulerenNa: null})).toBeNull()
+    expect(afhaalTermijnDatum({...afhaal, datum: undefined}, schema)).toBeNull()
+  })
+
+  it('voorbij: open, afhalen, geen moment of een gemist moment, en de dagen zijn om', () => {
+    expect(afhaalTermijnVoorbij(afhaal, '2026-11-17', schema)).toBe(false)
+    expect(afhaalTermijnVoorbij(afhaal, '2026-11-18', schema)).toBe(true)
+    // Het gekozen moment is voorbij: ook dan.
+    expect(afhaalTermijnVoorbij({...afhaal, wc_afhaalmoment: '2026-11-05 14:00'}, '2026-11-18', schema)).toBe(true)
+    // Een afspraak die nog komt, of in overleg: niet.
+    expect(afhaalTermijnVoorbij({...afhaal, wc_afhaalmoment: '2026-11-20 14:00'}, '2026-11-18', schema)).toBe(false)
+    expect(afhaalTermijnVoorbij({...afhaal, wc_afhaalmoment: AFHAAL_OVERLEG}, '2026-11-18', schema)).toBe(false)
+    // Opgehaald, geannuleerd, bezorgen of zonder termijn: niet.
+    for (const status of ['afgerond', 'geannuleerd', 'verzonden']) {
+      expect(afhaalTermijnVoorbij({...afhaal, status}, '2026-11-30', schema)).toBe(false)
+    }
+    expect(afhaalTermijnVoorbij({...afhaal, wc_levering: 'verzenden'}, '2026-11-30', schema)).toBe(false)
+    expect(afhaalTermijnVoorbij(afhaal, '2026-11-30', {dagen: [3], annulerenNa: null})).toBe(false)
+    expect(telAfhaalTermijnVoorbij([afhaal, {...afhaal, id: 2, status: 'afgerond'}, null], '2026-11-18', schema)).toBe(1)
+  })
+
+  it('na de termijn geen herinnering meer, ook niet met de hand-telling van de attentiepost', () => {
+    expect(afhaalHerinneringStand(afhaal, '2026-11-18', schema).stand).toBe('termijn_voorbij')
+    expect(afhaalHerinneringNodig(afhaal, '2026-11-18', schema)).toBe(false)
+    expect(telAfhaalHerinneringNodig([afhaal], '2026-11-17', schema)).toBe(1)
+  })
+
+  it('de mail noemt de datum met {annuleerregel}; zonder termijn blijft hij weg', () => {
+    const sjablonen = {afhaal_herinnering: {dagen: [3, 7], annuleren_na: 21}}
+    const m = bouwOrderMail('afhaal_herinnering', afhaal, {...ctx, sjablonen})
+    expect(m.text).toContain('Kies je geen moment, dan annuleren we je bestelling op 18-11-2026.')
+    expect(m.text).not.toMatch(/\{[a-z_]+\}/)
+    expect(m.text).not.toMatch(/\n{3,}/)
+    const zonder = bouwOrderMail('afhaal_herinnering', afhaal, ctx)
+    expect(zonder.text).not.toContain('annuleren')
+    expect(zonder.text).not.toMatch(/\n{3,}/)
+    const vars = afhaalHerinneringMailVars(afhaal, {schema: afhaalSchema(sjablonen)})
+    expect(vars.annuleerdatum).toBe('18-11-2026')
+  })
+
+  it('de chip "Over de afhaaltermijn" en de attentiepost wijzen dezelfde bestellingen aan', () => {
+    const lijst = [afhaal, {...afhaal, id: 30, datum: '2026-11-10'}, {...afhaal, id: 31, wc_levering: 'verzenden'}]
+    const afhaalCtx = {vandaag: '2026-11-18', schema}
+    expect(STATUS_FILTERS).toContain('afhaal_termijn')
+    expect(statusTellingen(lijst, new Set(), afhaalCtx).afhaal_termijn).toBe(1)
+    expect(statusTellingen(lijst, new Set()).afhaal_termijn).toBe(0)
+    expect(filterBestellingen(lijst, {status: 'afhaal_termijn', omTePicken: new Set(), afhaal: afhaalCtx}).map(b => b.id)).toEqual([12])
+    const b: AttentieBron = {
+      batches: [], batchTakenItems: [], batchTakenGroepen: [], schoonmaakTaken: [], schoonmaakLog: [], lots: [],
+      bestellingen: lijst, bestellingPicks: [],
+      btwPeriode: 'kwartaal', btwAangiftes: [], bankKoppelingen: {}, verkoopFacturen: [], inkoopFacturen: [],
+      accijnsAangiftes: [], accijns: [], klanten: [], breweryDetails: {betalingstermijn: 14},
+      vandaag: new Date('2026-11-18'), vandaagIso: '2026-11-18', afhaalSchema: schema,
+    }
+    const verkoop = attentiePosten(b).verkoop
+    expect(verkoop.find(p => p.id === 'afhaal_termijn')).toEqual({
+      id: 'afhaal_termijn', sleutel: 'attentie_afhaal_termijn', pagina: 'bestellingen', filter: 'afhaal_termijn', aantal: 1,
+    })
+    // De bestelling van 10-11 zit nog binnen de termijn en vraagt om zijn eerste herinnering.
+    expect(verkoop.find(p => p.id === 'afhaal_herinnering')?.aantal).toBe(1)
   })
 })
