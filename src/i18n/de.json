@@ -5843,10 +5843,10 @@
   "na_aankoop_grondslag_soft_opt_in": "Bestandskunden (Soft-Opt-in)",
   "na_aankoop_grondslag_toestemming": "Nur mit Einwilligung",
   "na_aankoop_grondslag_soft_opt_in_uitleg": "Jeder Webshop-Kunde, außer wer sich abgemeldet oder im Checkout widersprochen hat. Das ist für eigene, ähnliche Produkte erlaubt, wenn der Kunde beim Bestellen erfährt, dass er diese Mails bekommt, und sie leicht ablehnen kann: Schreib das in den Checkout deines Webshops.",
-  "na_aankoop_grondslag_toestemming_uitleg": "Nur wer im Checkout das Häkchen für diese Mails gesetzt hat.",
+  "na_aankoop_grondslag_toestemming_uitleg": "Nur Bestellungen, bei denen der Kunde im Checkout das Häkchen für diese Mails gesetzt hat, auch für die Serviertipps. Meldet er sich ab (auf der Abmeldeseite oder über die Liste), endet alles für diese Adresse; erst eine neue Bestellung mit Häkchen bringt wieder Mails.",
   "na_aankoop_vinkje_meta": "Häkchen aus dem Checkout (Order-Meta)",
   "na_aankoop_vinkje_meta_uitleg_soft_opt_in": "Optional: der Schlüssel des Häkchens „keine Mails“ in der Bestellung (meta_data). Ist es gesetzt, bekommt diese Adresse keine Nachkauf-Mails mehr. Leer = nicht lesen.",
-  "na_aankoop_vinkje_meta_uitleg_toestemming": "Der Schlüssel des Häkchens „ja, schickt mir diese Mails“ in der Bestellung (meta_data). Nur Adressen mit diesem Häkchen bekommen Mails.",
+  "na_aankoop_vinkje_meta_uitleg_toestemming": "Der Schlüssel des Häkchens „ja, schickt mir diese Mails“ in der Bestellung (meta_data). Nur Bestellungen mit diesem Häkchen bekommen Mails. Setzt die Abmeldeseite es auf „nein“, gilt das als Widerruf.",
   "na_aankoop_stap_aan": "Diese Mail verschicken",
   "na_aankoop_dagen": "Wartezeit (Tage)",
   "na_aankoop_vanaf": "Gezählt ab",
@@ -5908,5 +5908,6 @@
   "na_aankoop_reden_te_laat": "zu spät, entfallen",
   "na_aankoop_reden_nieuwere_bestelling": "Kunde hat danach wieder bestellt",
   "na_aankoop_reden_geen_inhoud": "nichts zu senden",
-  "na_aankoop_reden_rust": "hat gerade eine Mail bekommen"
+  "na_aankoop_reden_rust": "hat gerade eine Mail bekommen",
+  "na_aankoop_reden_ingetrokken": "Einwilligung widerrufen"
 }

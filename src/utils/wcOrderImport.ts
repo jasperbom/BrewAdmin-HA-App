@@ -281,7 +281,8 @@ function adresHerstel(bestaand: any, o: any): Record<string, string> | null {
  * Geeft `null` als er niets veranderd is.
  */
 export function wcOrderUpdate(
-  bestaand: any, o: any, link: WcLinkContext & {mailVinkjeMeta?: string} = {}, opts: {heeftPicks?: boolean} = {},
+  bestaand: any, o: any, link: WcLinkContext & {mailVinkjeMeta?: string, vandaag?: string} = {},
+  opts: {heeftPicks?: boolean} = {},
 ): Record<string, any> | null {
   // Onze eigen `completed` (terugschrijven) telt niet als betaling.
   const velden = betaalVeldenNaEigenSync(bestaand, o, wcBetaalVelden(o))
@@ -301,9 +302,13 @@ export function wcOrderUpdate(
   }
   // Het vinkje uit de checkout: een afmeldpagina op de site kan het later nog
   // zetten, dus ook bij een bekende order. Alleen als de order het veld heeft.
+  // De dag van de wijziging gaat mee (`wc_mail_vinkje_op`): bij "alleen met
+  // toestemming" stopt een intrekking de mails van alle bestellingen van dat
+  // adres tot en met die dag (utils/naAankoopMail.ts).
   const vinkje = mailVinkjeVeld(o, link)
   if (vinkje.wc_mail_vinkje != null && vinkje.wc_mail_vinkje !== bestaand?.wc_mail_vinkje) {
     upd.wc_mail_vinkje = vinkje.wc_mail_vinkje
+    upd.wc_mail_vinkje_op = link.vandaag || tod()
   }
   // Webshopstatus: alleen bewaren zodra het ertoe doet (of als hij er al
   // stond, zodat een mislukte order die alsnog betaald wordt weer schoon is);
@@ -328,9 +333,9 @@ export async function importeerWcOrders(invoer: WcImportInvoer): Promise<WcImpor
   const bekend = teVerversen.length ? await haalBekendeWcOrders(invoer.wcGet, teVerversen) : []
   // De winkelpagina's voor de bestellink per order; één klein verzoek per
   // import, en bij een bestaande order alleen een update als de link wijzigt.
-  const link: WcLinkContext & {mailVinkjeMeta?: string} = {storeUrl: invoer.wcCreds?.storeUrl || '',
+  const link: WcLinkContext & {mailVinkjeMeta?: string, vandaag?: string} = {storeUrl: invoer.wcCreds?.storeUrl || '',
     paginas: orders.length || bekend.length ? await haalWcPaginas(invoer.wcGet) : null,
-    mailVinkjeMeta: invoer.mailVinkjeMeta}
+    mailVinkjeMeta: invoer.mailVinkjeMeta, vandaag: invoer.vandaag}
   const opWcId = new Map<any, any>()
   for (const b of bestellingen) if (b?.wc_order_id != null) opWcId.set(b.wc_order_id, b)
   const metPicks = Array.isArray(invoer.bestellingPicks)

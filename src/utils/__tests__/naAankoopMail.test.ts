@@ -295,6 +295,65 @@ describe('wie krijgt níéts', () => {
   })
 })
 
+describe('alleen met toestemming: per bestelling, en intrekken stopt alles tot die dag', () => {
+  const inst = instAan({grondslag: 'toestemming', vinkje_meta: '_craftery_wel_mail'})
+  const adres = 'jasper.test@example.com'
+  const a = testOrder({id: 1, wc_order_id: 5001, datum: '2026-11-03', klant_email: adres, wc_mail_vinkje: true})
+
+  it('geldt voor alle drie de mails, ook de serveertips', () => {
+    const zonder = testOrder({klant_email: adres})
+    for (const stap of NA_AANKOOP_STAPPEN) {
+      expect(naAankoopStand(zonder, stap, ctxVoor([zonder], '2026-11-03', {inst})))
+        .toEqual({status: 'overgeslagen', reden: 'geen_toestemming'})
+    }
+  })
+
+  it('het vinkje bij een eerdere bestelling geldt niet voor een latere zonder vinkje', () => {
+    const b = testOrder({id: 2, wc_order_id: 5002, datum: '2026-11-05', klant_email: adres})
+    const ctx = ctxVoor([a, b], '2026-11-05', {inst})
+    expect(naAankoopStand(b, 'serveertips', ctx)).toEqual({status: 'overgeslagen', reden: 'geen_toestemming'})
+    expect(naAankoopStand(a, 'serveertips', ctx).status).toBe('klaar')
+  })
+
+  it('afmelden op de site (ja → nee op een bestelling) stopt de mails van alle bestellingen tot en met die dag', () => {
+    const b = testOrder({id: 2, wc_order_id: 5002, datum: '2026-11-05', klant_email: adres, wc_mail_vinkje: true})
+    const aIngetrokken = {...a, wc_mail_vinkje: false, wc_mail_vinkje_op: '2026-11-10'}
+    const c = testOrder({id: 3, wc_order_id: 5003, datum: '2026-11-20', klant_email: adres, wc_mail_vinkje: true})
+    let ctx = ctxVoor([aIngetrokken, b], '2026-11-12', {inst})
+    expect(naAankoopStand(b, 'serveertips', ctx)).toEqual({status: 'overgeslagen', reden: 'ingetrokken'})
+    expect(naAankoopStand(aIngetrokken, 'smaak', ctx)).toEqual({status: 'overgeslagen', reden: 'geen_toestemming'})
+    expect(naAankoopPlan(ctx)).toEqual([])
+    // Een nieuwe bestelling mét vinkje, na het afmelden: die telt weer.
+    ctx = ctxVoor([aIngetrokken, b, c], '2026-11-20', {inst})
+    expect(naAankoopStand(c, 'serveertips', ctx).status).toBe('klaar')
+    expect(naAankoopStand(b, 'taplijst', ctx)).toEqual({status: 'overgeslagen', reden: 'ingetrokken'})
+  })
+
+  it('de afmeldlijst: bij toestemming tot en met de dag van afmelden, bij soft opt-in voor altijd', () => {
+    const c = testOrder({id: 3, wc_order_id: 5003, datum: '2026-11-20', klant_email: adres, wc_mail_vinkje: true})
+    const afmeldingen = [{id: 1, email: adres, datum: '2026-11-04', bron: 'mail' as const}]
+    const ctx = ctxVoor([a, c], '2026-11-20', {inst, afmeldingen})
+    expect(naAankoopStand(a, 'smaak', ctx)).toEqual({status: 'overgeslagen', reden: 'afgemeld'})
+    expect(naAankoopStand(c, 'serveertips', ctx).status).toBe('klaar')
+    const soft = ctxVoor([a, c], '2026-11-20', {afmeldingen})
+    expect(naAankoopStand(c, 'serveertips', soft)).toEqual({status: 'overgeslagen', reden: 'afgemeld'})
+  })
+
+  it('de import onthoudt de dag waarop het vinkje op een bekende bestelling veranderde', () => {
+    const t = (k: string) => k
+    const o = {id: 5001, number: '5001', date_created: '2026-11-03T10:00:00', billing: {email: adres},
+      line_items: [], meta_data: [{key: '_craftery_wel_mail', value: 'no'}]}
+    const link = {mailVinkjeMeta: '_craftery_wel_mail', vandaag: '2026-11-10'}
+    const bestaand = {...wcOrderNaarBestelling({...o, meta_data: [{key: '_craftery_wel_mail', value: 'yes'}]}, {}, [], [], t,
+      '2026-11-03', link)}
+    expect(bestaand.wc_mail_vinkje).toBe(true)
+    expect('wc_mail_vinkje_op' in bestaand).toBe(false)
+    expect(wcOrderUpdate(bestaand, o, link)).toMatchObject({wc_mail_vinkje: false, wc_mail_vinkje_op: '2026-11-10'})
+    // De meta weghalen is geen intrekken: dan verandert er niets.
+    expect(wcOrderUpdate(bestaand, {...o, meta_data: []}, link)).toBeNull()
+  })
+})
+
 describe('de ronde: rust, één per adres, een maximum', () => {
   it('kreeg het adres net een mail, dan wacht de volgende een paar dagen', () => {
     const oud = testOrder({id: 90, wc_order_id: 3290, datum: '2026-11-02', mails_verstuurd: {na_serveertips: '2026-11-02'}})
@@ -417,7 +476,7 @@ describe('i18n', () => {
 
   it('elke reden en status heeft een tekst in alle vijf talen; de talen hebben dezelfde sleutels', () => {
     const redenen = ['uit', 'stap_uit', 'geen_webshop', 'van_voor_inschakelen', 'geannuleerd', 'geen_email', 'afgemeld',
-      'bezwaar', 'geen_toestemming', 'geen_proef_adres', 'geen_afmeldlink', 'in_bevestiging', 'niet_betaald',
+      'bezwaar', 'geen_toestemming', 'ingetrokken', 'geen_proef_adres', 'geen_afmeldlink', 'in_bevestiging', 'niet_betaald',
       'niet_geleverd', 'nog_niet', 'te_laat', 'nieuwere_bestelling', 'geen_inhoud', 'rust']
     const nlSleutels = Object.keys(nl).filter(k => k.startsWith('na_aankoop_') || k.startsWith('mail_na_'))
     for (const [lang, d] of Object.entries(talen)) {

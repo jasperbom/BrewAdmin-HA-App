@@ -5843,10 +5843,10 @@
   "na_aankoop_grondslag_soft_opt_in": "Clients existants (soft opt-in)",
   "na_aankoop_grondslag_toestemming": "Seulement avec consentement",
   "na_aankoop_grondslag_soft_opt_in_uitleg": "Chaque client de la boutique, sauf ceux qui se sont désinscrits ou se sont opposés au paiement. C’est permis pour tes propres produits similaires, si le client apprend lors de la commande qu’il recevra ces e-mails et peut facilement les refuser : indique-le au paiement de ta boutique.",
-  "na_aankoop_grondslag_toestemming_uitleg": "Seulement ceux qui ont coché la case pour ces e-mails au paiement.",
+  "na_aankoop_grondslag_toestemming_uitleg": "Seulement les commandes pour lesquelles le client a coché la case de ces e-mails au paiement, conseils de service compris. S’il se désinscrit (sur la page de désinscription ou via la liste), tout s’arrête pour cette adresse ; seule une nouvelle commande avec la case cochée relance les e-mails.",
   "na_aankoop_vinkje_meta": "Case du paiement (méta de commande)",
   "na_aankoop_vinkje_meta_uitleg_soft_opt_in": "Facultatif : la clé de la case « pas d’e-mails » dans la commande (meta_data). Si elle est cochée, cette adresse ne reçoit plus d’e-mails après achat. Vide = non lu.",
-  "na_aankoop_vinkje_meta_uitleg_toestemming": "La clé de la case « oui, envoyez-moi ces e-mails » dans la commande (meta_data). Seules les adresses avec cette case cochée reçoivent des e-mails.",
+  "na_aankoop_vinkje_meta_uitleg_toestemming": "La clé de la case « oui, envoyez-moi ces e-mails » dans la commande (meta_data). Seules les commandes avec cette case cochée reçoivent des e-mails. Si la page de désinscription la met à « non », cela vaut retrait du consentement.",
   "na_aankoop_stap_aan": "Envoyer cet e-mail",
   "na_aankoop_dagen": "Délai (jours)",
   "na_aankoop_vanaf": "Compté à partir de",
@@ -5908,5 +5908,6 @@
   "na_aankoop_reden_te_laat": "trop tard, abandonné",
   "na_aankoop_reden_nieuwere_bestelling": "le client a recommandé depuis",
   "na_aankoop_reden_geen_inhoud": "rien à envoyer",
-  "na_aankoop_reden_rust": "vient de recevoir un e-mail"
+  "na_aankoop_reden_rust": "vient de recevoir un e-mail",
+  "na_aankoop_reden_ingetrokken": "consentement retiré"
 }

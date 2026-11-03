@@ -5843,10 +5843,10 @@
   "na_aankoop_grondslag_soft_opt_in": "Existing customers (soft opt-in)",
   "na_aankoop_grondslag_toestemming": "Only with consent",
   "na_aankoop_grondslag_soft_opt_in_uitleg": "Every web shop customer, except those who unsubscribed or objected in the checkout. This is allowed for your own, similar products, if the customer is told at checkout that they will get these emails and can easily refuse them: put that in the checkout of your web shop.",
-  "na_aankoop_grondslag_toestemming_uitleg": "Only those who ticked the box for these emails in the checkout.",
+  "na_aankoop_grondslag_toestemming_uitleg": "Only orders where the customer ticked the box for these emails in the checkout, the serving tips included. If they unsubscribe (on the unsubscribe page or via the list), everything stops for that address; only a new order with the box ticked brings email again.",
   "na_aankoop_vinkje_meta": "Checkout checkbox (order meta)",
   "na_aankoop_vinkje_meta_uitleg_soft_opt_in": "Optional: the key of the \"no emails\" checkbox in the order (meta_data). If it is ticked, that address gets no more after-sale emails. Empty = not read.",
-  "na_aankoop_vinkje_meta_uitleg_toestemming": "The key of the \"yes, send me these emails\" checkbox in the order (meta_data). Only addresses with that box ticked get email.",
+  "na_aankoop_vinkje_meta_uitleg_toestemming": "The key of the \"yes, send me these emails\" checkbox in the order (meta_data). Only orders with that box ticked get email. If the unsubscribe page sets it to \"no\", that counts as withdrawing consent.",
   "na_aankoop_stap_aan": "Send this email",
   "na_aankoop_dagen": "Wait (days)",
   "na_aankoop_vanaf": "Counted from",
@@ -5908,5 +5908,6 @@
   "na_aankoop_reden_te_laat": "too late, dropped",
   "na_aankoop_reden_nieuwere_bestelling": "customer ordered again since",
   "na_aankoop_reden_geen_inhoud": "nothing to send",
-  "na_aankoop_reden_rust": "just got an email"
+  "na_aankoop_reden_rust": "just got an email",
+  "na_aankoop_reden_ingetrokken": "consent withdrawn"
 }

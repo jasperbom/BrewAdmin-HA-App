@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.25] — 2026-11-03
+
+### Na-aankoopmails: "alleen met toestemming" per bestelling
+
+- **Toestemming per bestelling.** Bij *Alleen met toestemming* krijgt een
+  bestelling alleen mail als de klant bij déze bestelling het vinkje aanzette,
+  voor alle drie de mails (ook de serveertips). Voorheen telde een vinkje bij
+  een eerdere bestelling ook voor latere bestellingen zonder vinkje.
+- **Intrekken stopt alles tot die dag.** Zet de afmeldpagina van de webshop
+  het vinkje op een bekende bestelling van ja naar nee, dan onthoudt de import
+  die dag (`wc_mail_vinkje_op`). Alle bestellingen van dat adres tot en met die
+  dag krijgen dan niets meer (reden *toestemming ingetrokken*). Hetzelfde geldt
+  voor een adres op de afmeldlijst. Een nieuwe bestelling waarbij de klant
+  opnieuw het vinkje aanzet, telt weer.
+- Bij *Bestaande klanten (soft opt-in)* verandert niets: afgemeld of bezwaar
+  geldt voor altijd.
+
+---
+
 ## [1.13.24] — 2026-11-03
 
 ### Na-aankoopmails: afmelden met één klik
