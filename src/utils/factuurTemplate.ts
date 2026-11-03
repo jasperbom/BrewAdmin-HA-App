@@ -303,6 +303,54 @@ const brouwerijDelen = (brewery: any) => {
   }
 }
 
+/**
+ * De velden over de brouwerij, gedeeld door de factuur en de pakbon: logo
+ * (alleen met de schakelaar aan), naam, de regels onder de naam, dezelfde
+ * gegevens in delen, drie voetregels en die voet als CSS-veilige tekst.
+ */
+export const brouwerijVelden = (brewery: any, appName: string, logo?: string | null): TemplateContext => {
+  const fv = brewery?.factuur_velden || {}
+  const naam = brewery?.naam || appName || ''
+  const info = brouwerijRegels(brewery)
+  const delen = brouwerijDelen(brewery)
+  const voetRegels = [
+    metPunt([naam, ...delen.adres]),
+    metPunt([delen.email, delen.telefoon, delen.web]),
+    metPunt([delen.kvk, delen.btw, delen.iban]),
+  ].filter(Boolean)
+  return {
+    logo: (fv.logo !== false && logo) ? logo : '',
+    brouwerij_naam: naam,
+    brouwerij_info: info.map(regel => ({regel})),
+    heeft_brouwerij_info: info.length > 0,
+    brouwerij_adres: delen.adres.map(regel => ({regel})),
+    brouwerij_contact: metPunt([delen.email, delen.telefoon]),
+    brouwerij_registratie: metPunt([delen.kvk, delen.btw]),
+    voet_regels: voetRegels.map(regel => ({regel})),
+    voet_css: cssTekst(voetRegels.join('\n')),
+  }
+}
+
+/**
+ * De velden over de afnemer, gedeeld door de factuur en de pakbon: de kop van
+ * het adresblok, de regels eronder (`klantRegels`), en dezelfde regels in
+ * twee delen — adres, en e-mail + BTW-nummer.
+ */
+export const klantVelden = (order: any): TemplateContext => {
+  const klant = klantRegels(order)
+  const klantBtw = order?.klant_btw_nummer ? `${t('lbl_btw')}: ${order.klant_btw_nummer}` : ''
+  const klantEmail = String(order?.klant_email || '')
+  const klantAdres = klant.rest.filter(r => r !== klantBtw && r !== klantEmail)
+  const klantExtra = [klantEmail, order?.klant_btw_nummer ? `${t('lbl_btw')} ${order.klant_btw_nummer}` : '']
+    .filter(Boolean)
+  return {
+    klant_titel: klant.titel,
+    klant_regels: klant.rest.map(regel => ({regel})),
+    klant_adres: klantAdres.map(regel => ({regel})),
+    klant_extra: klantExtra.map(regel => ({regel})),
+  }
+}
+
 /** Adresregels van de afnemer; de eerste regel is de kop van het adresblok.
  * Eén definitie voor factuur, pakbon en herinnering (`klantBlock` in
  * PakbonExport.tsx), zodat geen document bedrijf of huisnummer vergeet. */
@@ -378,10 +426,7 @@ export const bouwFactuurContext = (bronnen: FactuurTemplateBronnen): TemplateCon
     orderRef ? {label: t('lbl_order_ref'), waarde: orderRef} : null,
   ].filter(Boolean)
 
-  const klant = klantRegels(order)
-  const info = brouwerijRegels(brewery)
   const overzicht = btwOverzichtVan(factuur)
-  const naam = brewery?.naam || appName || ''
 
   // Stand: vervallen = nog open en voorbij de vervaldatum (dezelfde
   // dagrekening als de te-laat-badge), of al in herinnering of aanmaning.
@@ -390,21 +435,6 @@ export const bouwFactuurContext = (bronnen: FactuurTemplateBronnen): TemplateCon
     && (inHerinnering || dagenTeLaat(vervalBron, [], {betalingstermijn}, vandaag) > 0)
   const stand: FactuurStand = isCredit ? 'credit' : isBetaald ? 'betaald' : isVervallen ? 'vervallen' : 'open'
 
-  // Het adresblok van de afnemer in twee delen: adres, en e-mail + BTW-nummer
-  // (dezelfde regels als `klantRegels`, die het in één lijst geeft).
-  const klantBtw = order?.klant_btw_nummer ? `${t('lbl_btw')}: ${order.klant_btw_nummer}` : ''
-  const klantEmail = String(order?.klant_email || '')
-  const klantAdres = klant.rest.filter(r => r !== klantBtw && r !== klantEmail)
-  const klantExtra = [klantEmail, order?.klant_btw_nummer ? `${t('lbl_btw')} ${order.klant_btw_nummer}` : '']
-    .filter(Boolean)
-
-  const delen = brouwerijDelen(brewery)
-  const voetRegels = [
-    metPunt([naam, ...delen.adres]),
-    metPunt([delen.email, delen.telefoon, delen.web]),
-    metPunt([delen.kvk, delen.btw, delen.iban]),
-  ].filter(Boolean)
-
   // Een creditnota krijgt geen betaal-QR: daar valt niets te betalen. Alleen
   // een https-link wordt een klikbare link op het document.
   const qr = (payInfo?.qrDataUrl && !isCredit) ? payInfo.qrDataUrl : ''
@@ -412,16 +442,12 @@ export const bouwFactuurContext = (bronnen: FactuurTemplateBronnen): TemplateCon
   const betaaldIso = isBetaald ? String(factuur?.wc_betaald_datum || factuur?.betaald_datum || '') : ''
 
   return {
-    // Kop
-    logo: (fv.logo !== false && factuurLogo) ? factuurLogo : '',
-    brouwerij_naam: naam,
-    brouwerij_info: info.map(regel => ({regel})),
-    heeft_brouwerij_info: info.length > 0,
+    // Kop: brouwerij en afnemer (gedeeld met de pakbon, `pakbonTemplate.ts`)
+    ...brouwerijVelden(brewery, appName, factuurLogo),
+    ...klantVelden(order),
     doc_titel: isCredit ? t('lbl_creditnota_titel') : t('lbl_factuur_titel'),
     factuurnummer,
     is_betaald: isBetaald,
-    klant_titel: klant.titel,
-    klant_regels: klant.rest.map(regel => ({regel})),
     meta,
     // Regels
     regels: (factuur?.regels || []).map((r: any) => ({
@@ -467,15 +493,8 @@ export const bouwFactuurContext = (bronnen: FactuurTemplateBronnen): TemplateCon
     betaald_op_lang: langeDatum(betaaldIso) || (betaaldOp !== '—' ? betaaldOp : ''),
     heeft_betaald_op: !!betaaldOp && betaaldOp !== '—',
     credit_van: isCredit ? String(factuur?.credit_van_factuurnummer || '').trim() : '',
-    klant_adres: klantAdres.map(regel => ({regel})),
-    klant_extra: klantExtra.map(regel => ({regel})),
-    brouwerij_adres: delen.adres.map(regel => ({regel})),
-    brouwerij_contact: metPunt([delen.email, delen.telefoon]),
-    brouwerij_registratie: metPunt([delen.kvk, delen.btw]),
-    voet_regels: voetRegels.map(regel => ({regel})),
     betaallink,
     betaallink_tekst: linkTekst(betaallink),
-    voet_css: cssTekst(voetRegels.join('\n')),
     factuurnummer_css: cssTekst(factuurnummer),
     // Labels — zo blijft ook een eigen layout meertalig.
     lbl_betaald: t('factuur_paid'),

@@ -6,7 +6,7 @@
 import { t } from '../i18n'
 import { fmtQty, fmtEuroDoc, fmtDatumDoc, tod } from '../utils/format'
 import { renderTemplateOfFallback, escapeHtml } from '../utils/template'
-import { onGepickteRegels, herkomstVanPick, orderNummer } from '../utils/picking'
+import { PAKBON_HTML_DEFAULT, bouwPakbonContext, eigenPakbonTemplate, pakbonNummer } from '../utils/pakbonTemplate'
 import type { Picklijst, PicklijstRegel, PicklijstOrder, PickHerkomstData } from '../utils/picking'
 import {
   FACTUUR_CSS_DEFAULT,
@@ -246,123 +246,19 @@ function buildPakbonBody(
   sessies?: PickHerkomstData['afvulSessies'],
   voorDeDoos = false
 ): {bodyHtml: string, filename: string, pakbonNr: string} {
-  const pakbonNr = order.pakbon_nummer || `P-${order.id}`
-  // Pakbon-datum = datum van picken (`pakbon_datum` of `pick_datum`).
-  // Verzend-/orderdatum zijn alleen fallback voor oude records waar het
-  // pickmoment niet vastgelegd was.
-  const datum = fmtDate(order.pakbon_datum || order.pick_datum || order.verzend_datum || order.datum)
-  // Hetzelfde nummer als in de app (lijst, kopbalk, klantkaart): `orderNummer`.
-  const orderRef = orderNummer(order)
-
-  const pickRows = picks.map((p: any) => {
-    const afvulling = av.find((a: any) => a.id === p.afvulling_id)
-    const batch = bat.find((b: any) => b.id === p.batch_id)
-    // Toon biernaam zoals besteld (orderregel) — viel anders terug op een
-    // batchnaam als "James Blond V1" die voor de klant verwarrend kan zijn.
-    // Fallback-keten: orderregel.bier_naam → batch.biernaam → batch.naam.
-    const regel = (order?.regels || []).find((r: any) => r.id === p.regel_id)
-    const bierNaam = regel?.bier_naam || batch?.biernaam || batch?.naam || '—'
-    // De lotcode zoals op de verpakking (afvulling, anders de afvulsessie)
-    // naast de THT; het batchnummer apart. Zo is elke fles bij een
-    // terugroepactie naar de afnemer te herleiden (handboek hoofdstuk 11).
-    const herkomst = herkomstVanPick(p, {afvullingen: av, batches: bat, afvulSessies: sessies})
-    return `<tr>
-      <td>${esc(bierNaam)}</td>
-      <td>${esc(afvulling?.verpakking_type || '—')}</td>
-      <td>${afvulling?.inhoud_per_eenheid ? `${esc(afvulling.inhoud_per_eenheid)}L` : '—'}</td>
-      <td class="lotcode">${herkomst.lotcode ? esc(herkomst.lotcode) : '—'}</td>
-      <td>${afvulling?.tht ? esc(fmtDate(afvulling.tht)) : '—'}</td>
-      <td>${herkomst.batchNummer ? `#${esc(herkomst.batchNummer)}` : '—'}</td>
-      <td class="r">${esc(p.aantal)}</td>
-    </tr>`
-  })
-
-  // Nog niet (volledig) gepickte bierregels: de pakbon mag ook vóór het picken
-  // geprint worden, bijvoorbeeld als picklijst in de koeling. Wat er nog niet
-  // gepickt is staat dan op de bestelde regel zelf — batch, inhoud en THT zijn
-  // nog onbekend. Zolang zo'n regel bestaat is het document een concept.
-  // Uitzondering: de pakbon voor in de doos (`voorDeDoos`, samen met de
-  // picklijst afgedrukt). Het afdrukken reserveert de voorraad, dus lot, THT en
-  // batch staan er via de picks al op; geen concept. Alleen wat niet
-  // gereserveerd kon worden (tekort, eerst uitslaan) staat als gewone regel
-  // zonder lot.
-  const openRegels = onGepickteRegels(order, picks)
-  const openRows = openRegels.map((r: any) => voorDeDoos
-    ? `<tr>
-      <td>${esc(r.bier_naam || '—')}</td>
-      <td>${esc(r.verpakking_type || '—')}</td>
-      <td>—</td>
-      <td>—</td>
-      <td>—</td>
-      <td>—</td>
-      <td class="r">${esc(r.aantal)}</td>
-    </tr>`
-    : `<tr class="open">
-      <td>${esc(r.bier_naam || '—')}</td>
-      <td>${esc(r.verpakking_type || '—')}</td>
-      <td>—</td>
-      <td class="muted">${t('lbl_pakbon_nog_te_picken')}</td>
-      <td>—</td>
-      <td>—</td>
-      <td class="r">${esc(r.aantal)}</td>
-    </tr>`)
-  const isConcept = !voorDeDoos && openRows.length > 0
-  const rows = [...pickRows, ...openRows].join('')
-
-  const bodyHtml = `<div class="page">
-    <div class="hdr">
-      ${breweryBlock(brewery, appName, factuurLogo)}
-      <div class="hdr-right">
-        <div class="doc-title">${esc(t('lbl_pakbon_document'))}</div>
-        <div class="doc-nr">${esc(pakbonNr)}</div>
-        ${isConcept ? `<div class="badge badge-concept">${t('lbl_pakbon_concept')}</div>` : ''}
-        <div class="hdr-party">
-          <div class="party-label">${t('lbl_bezorgadres')}</div>
-          ${klantBlock(order)}
-        </div>
-      </div>
-    </div>
-
-    <div class="meta-grid">
-      <div class="meta-block"><div class="ml">${t('lbl_date')}</div><div class="mv">${esc(datum)}</div></div>
-      <div class="meta-block"><div class="ml">${t('lbl_order_ref')}</div><div class="mv">${esc(orderRef)}</div></div>
-    </div>
-
-    <table>
-      <thead>
-        <tr>
-          <th>${t('lbl_pakbon_bier')}</th>
-          <th>${t('lbl_pakbon_verpakking')}</th>
-          <th>${t('lbl_pakbon_inhoud')}</th>
-          <th>${t('picking_lot')}</th>
-          <th>${t('lbl_tht')}</th>
-          <th>${t('picking_batch')}</th>
-          <th class="r">${t('lbl_kol_aantal')}</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows || `<tr><td colspan="7" style="text-align:center;color:#888;padding:4mm;">${t('msg_geen_picks')}</td></tr>`}
-      </tbody>
-    </table>
-
-    ${order.opmerkingen ? `<div class="remarks"><strong>${t('lbl_opmerking')}:</strong> ${esc(order.opmerkingen)}</div>` : ''}
-
-    <div class="footer">
-      <div class="sign-block">
-        <div style="font-size:8pt;font-weight:bold;text-transform:uppercase;color:#888;letter-spacing:0.05em">${t('lbl_pakbon_ontvangst')}</div>
-        <div class="sign-line"></div>
-        <div class="sign-label">${t('lbl_handtekening')}</div>
-      </div>
-      <div class="sign-block">
-        <div style="font-size:8pt;font-weight:bold;text-transform:uppercase;color:#888;letter-spacing:0.05em">${t('lbl_datum_ontvangst')}</div>
-        <div class="sign-line"></div>
-        <div class="sign-label">${t('lbl_date')}</div>
-      </div>
-    </div>
-  </div>`
-
+  // De inhoud komt uit `bouwPakbonContext` (utils/pakbonTemplate.ts), de
+  // layout uit de eigen pakbonlayout van de brouwerij, anders de standaard.
+  const context = bouwPakbonContext({order, picks, afvullingen: av, batches: bat, brewery, appName, factuurLogo, sessies, voorDeDoos})
+  const bodyHtml = renderTemplateOfFallback(eigenPakbonTemplate(brewery).html, PAKBON_HTML_DEFAULT, context)
   const filename = order.pakbon_nummer || `Pakbon-${order.id || 'export'}`
-  return {bodyHtml, filename, pakbonNr}
+  return {bodyHtml, filename, pakbonNr: pakbonNummer(order)}
+}
+
+// CSS van de pakbon: de eigen stijl als die is ingesteld, anders de gedeelde
+// documentopmaak (met de Craftery-laag bij dat thema). Lettertypes van de app
+// die de opmaak noemt gaan mee (@font-face).
+function pakbonCss(brewery: any): string {
+  return metAppLettertypen(eigenPakbonTemplate(brewery).css || metHuisstijl(DOC_CSS))
 }
 
 export function printPakbon(
@@ -376,7 +272,7 @@ export function printPakbon(
   extra: PrintExtra = {}
 ): void {
   const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo, extra.sessies)
-  openPrint(r.bodyHtml, r.filename, metHuisstijl(DOC_CSS), extra.onGeblokkeerd)
+  openPrint(r.bodyHtml, r.filename, pakbonCss(brewery), extra.onGeblokkeerd)
 }
 
 // Geeft volledige standalone HTML (incl. <html>/<head>/<style>) terug — voor
@@ -392,7 +288,7 @@ export function buildPakbonHTML(
   extra: Pick<PrintExtra, 'sessies'> = {}
 ): {html: string, filename: string} {
   const r = buildPakbonBody(order, picks, av, bat, brewery, appName, factuurLogo, extra.sessies)
-  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${metHuisstijl(DOC_CSS)}</style></head><body>${r.bodyHtml}</body></html>`
+  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${pakbonCss(brewery)}</style></head><body>${r.bodyHtml}</body></html>`
   return {html, filename: r.filename}
 }
 
@@ -520,6 +416,14 @@ function buildPicklijstBody(
   }
 }
 
+// CSS van de picklijst. Gaan er pakbonnen mee, dan komt de eigen
+// pakbonopmaak erachter — die geldt dan voor het hele document, dus een eigen
+// pakbonlayout houdt zijn CSS onder een eigen klasse.
+function picklijstCss(brewery: any, pakbonnen?: PicklijstPakbonnen): string {
+  const eigen = pakbonnen?.bestellingen?.length ? eigenPakbonTemplate(brewery).css : ''
+  return metAppLettertypen(eigen ? `${metHuisstijl(DOC_CSS)}\n${eigen}` : metHuisstijl(DOC_CSS))
+}
+
 export function printPicklijst(
   lijst: Picklijst,
   brewery: any,
@@ -528,7 +432,7 @@ export function printPicklijst(
   extra: Pick<PrintExtra, 'onGeblokkeerd'> & {pakbonnen?: PicklijstPakbonnen} = {}
 ): boolean {
   const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo, extra.pakbonnen)
-  return openPrint(r.bodyHtml, r.filename, metHuisstijl(DOC_CSS), extra.onGeblokkeerd)
+  return openPrint(r.bodyHtml, r.filename, picklijstCss(brewery, extra.pakbonnen), extra.onGeblokkeerd)
 }
 
 // Volledige standalone HTML (voor tests en een eventuele mail-PDF).
@@ -540,7 +444,7 @@ export function buildPicklijstHTML(
   pakbonnen?: PicklijstPakbonnen
 ): {html: string, filename: string} {
   const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo, pakbonnen)
-  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${metHuisstijl(DOC_CSS)}</style></head><body>${r.bodyHtml}</body></html>`
+  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(r.filename)}</title><style>${picklijstCss(brewery, pakbonnen)}</style></head><body>${r.bodyHtml}</body></html>`
   return {html, filename: r.filename}
 }
 

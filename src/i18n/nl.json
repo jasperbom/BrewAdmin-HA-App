@@ -5972,5 +5972,8 @@
   "factuur_stand_open": "te betalen",
   "factuur_stand_betaald": "betaald",
   "factuur_stand_vervallen": "vervallen",
-  "factuur_stand_credit": "creditnota"
+  "factuur_stand_credit": "creditnota",
+  "settings_pakbon_template_title": "Pakbonlayout",
+  "settings_pakbon_template_desc": "De layout van de pakbon als template, ook voor de pakbonnen die met de picklijst meegaan. Leeg = de ingebouwde standaardlayout. Bij een fout in je eigen template valt de app terug op de standaard. Houd de CSS onder een eigen klasse, anders verandert de picklijst mee.",
+  "undo_pakbon_template_verwijderd": "Eigen pakbonlayout verwijderd"
 }

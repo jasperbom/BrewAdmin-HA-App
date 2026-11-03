@@ -74,6 +74,8 @@ BrewAdmin-HA-App/
 │   │                               # `DOC_CSS`/`esc`/`breweryBlock`/`openPrint` met het dossier.
 │   │                               # De picklijst drukt de pakbonnen voor in de doos mee
 │   │                               # (`PicklijstPakbonnen`, elk op een eigen blad, géén concept).
+│   │                               # De pakbon zelf rendert via `utils/pakbonTemplate.ts` (eigen layout
+│   │                               # `brewery_details.pakbon_template`; die CSS geldt in de picklijst ook)
 │   │                               # Afdrukken reserveert eerst de voorraad per bestelling
 │   │                               # (`picklijstMetReservering` in utils/picking.ts: picks zonder
 │   │                               # uitlevering, FEFO, vrije voorraad buiten de AGP), zodat lot/THT/
@@ -498,7 +500,12 @@ BrewAdmin-HA-App/
 │   │   │                   # `is_credit`, `status_label`), datums voluit (`langeDatum`), adres/contact/registratie
 │   │   │                   # in delen, `voet_regels`, `betaallink` (alleen https) en CSS-veilige tekst voor een
 │   │   │                   # `@page`-voet (`voet_css`, `factuurnummer_css` via `cssTekst`). Lettertypes van de app
-│   │   │                   # die de opmaak noemt gaan mee (`metAppLettertypen` in huisstijl.ts)
+│   │   │                   # die de opmaak noemt gaan mee (`metAppLettertypen` in huisstijl.ts).
+│   │   │                   # `brouwerijVelden`/`klantVelden`: gedeeld met de pakbon
+│   │   ├── pakbonTemplate.ts # De pakbon als template: `PAKBON_HTML_DEFAULT` (= het oude document),
+│   │   │                   # `bouwPakbonContext` (regels met lot/THT/batch, concept, voor in de doos, totaal),
+│   │   │                   # eigen layout via `brewery_details.pakbon_template` met stille terugval.
+│   │   │                   # Editor: components/LayoutEditorKaart.tsx (gedeeld met de factuurlayout)
 │   │   ├── factuurMail.ts  # Welke mailtekst bij een verkoopfactuur: `factuur` (open) of `factuur_betaald`
 │   │   │                   # (al voldaan — webshoporder betaald in WooCommerce, kassa, vinkje) + de
 │   │   │                   # betaalvariabelen {betaalregel}/{betaaldatum}/{betaalwijze}; gedeeld door
@@ -796,7 +803,9 @@ gemiddeld verlies, verpakking, kostprijs per liter), de afgeleide brouwkosten
 (gemeten batches → inkoopfacturen → handmatig, schaling naar batchgrootte), de
 verpakkingskosten (prijs per eenheid uit de onderdelen, mix uit de eigen
 afvullingen), de
-templaterenderer + factuurlayout (en de velden voor een eigen layout, `factuurVelden.test.ts`:
+templaterenderer + factuurlayout + pakbonlayout (`pakbonTemplate.test.ts`: context, concept, voor in de
+doos, dezelfde brouwerij- en klantvelden als de factuur; eigen layout en picklijst in
+`printDocumenten.test.ts`) (en de velden voor een eigen layout, `factuurVelden.test.ts`:
 stand, datums voluit, gegevens in delen, betaallink, CSS-veilige paginavoet, lettertypes van de
 app), de Excel-backup-round-trip, de
 tanktemperatuurbewaking (incl. het werkelijke setpoint van
@@ -997,9 +1006,10 @@ versie noemen, zodat alle drie de bestanden in sync blijven.
   Geen big-bang-refactors; voorbeelden: `utils/zip.ts`, `getPeriodes` in
   `utils/btw.ts`, `parseMT940` in `utils/bank.ts`
 - Shared UI primitives live in `src/components/ui/` — use these, don't create inline one-offs
-- **Documentlayouts (factuur) zijn data, geen code:** pas
-  `FACTUUR_HTML_DEFAULT`/`FACTUUR_CSS_DEFAULT` in `utils/factuurTemplate.ts` aan
-  en zet nieuwe waarden in `bouwFactuurContext`. Labels lopen altijd via
+- **Documentlayouts (factuur, pakbon) zijn data, geen code:** pas
+  `FACTUUR_HTML_DEFAULT`/`FACTUUR_CSS_DEFAULT` in `utils/factuurTemplate.ts` (of
+  `PAKBON_HTML_DEFAULT` in `utils/pakbonTemplate.ts`, opmaak `DOC_CSS`) aan
+  en zet nieuwe waarden in `bouwFactuurContext`/`bouwPakbonContext`. Labels lopen altijd via
   `{{lbl_…}}` uit de context (nooit letterlijke tekst in de template), zodat een
   eigen layout van de gebruiker meertalig blijft
 - Theming via CSS variables: `--t-accent`, `--t-light`, `--t-dark`, `--t-text`, `--t-bg`
@@ -1171,7 +1181,8 @@ pytest bewaakt dat ze gelijk zijn). Waar het staat:
   De naam Craftery, het logo en de huisstijl van Craftery Brewing vallen niet onder de AGPL
   (`TRADEMARKS.md`, artikel 7(e)). Wat hierboven en hieronder staat is al gepubliceerd en blijft;
   nieuw ontwerp in die huisstijl (zoals de Craftery-factuur) staat alleen in de gegevens van
-  Craftery's eigen installatie — de factuur als eigen layout in `brewery_details.factuur_template`.
+  Craftery's eigen installatie — factuur en pakbon als eigen layout in
+  `brewery_details.factuur_template`/`pakbon_template`.
   Heeft zo'n ontwerp iets nodig, dan komt er een algemeen veld of mechanisme bij dat elke brouwerij
   kan gebruiken (de velden in `bouwFactuurContext`, `metAppLettertypen`); nooit de vormgeving, de
   teksten of de commandoregels van Craftery zelf
@@ -1561,7 +1572,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `accijns_instellingen` | object | Accijnstarieven |
 | `btw_instellingen` | object | BTW-aangifte-instellingen: `periode` + `standaard_btw` (voorgesteld tarief bij nieuwe artikelen/verkoopregels, default 21% via `standaardBtwPct` in `utils/btw.ts`) |
 | `ing_type_btw` | object | Standaard BTW% per ingrediënttype |
-| `brewery_details` | object | Brouwerijnaam, adres, land (ISO-2), BTW-nr., KvK, PEPPOL-ID/-schema (e-factuur), website (klikbaar logo in mail), `mail_stijl` (`{stijl: thema\|standaard\|craftery, lettertypen_url}` — de opmaak van de klantmails, `utils/mailTemplate.ts`), `mail_uitnodiging` (`{kop, tekst, knop, url}` — "Wist je dat?" met knop in de voet van elke klantmail, `utils/mailUitnodiging.ts`), `factuur_velden` (zichtbaarheid) en `factuur_template` (`{html, css}` — eigen factuurlayout, leeg = de ingebouwde standaard uit `utils/factuurTemplate.ts`) |
+| `brewery_details` | object | Brouwerijnaam, adres, land (ISO-2), BTW-nr., KvK, PEPPOL-ID/-schema (e-factuur), website (klikbaar logo in mail), `mail_stijl` (`{stijl: thema\|standaard\|craftery, lettertypen_url}` — de opmaak van de klantmails, `utils/mailTemplate.ts`), `mail_uitnodiging` (`{kop, tekst, knop, url}` — "Wist je dat?" met knop in de voet van elke klantmail, `utils/mailUitnodiging.ts`), `factuur_velden` (zichtbaarheid), `factuur_template` (`{html, css}` — eigen factuurlayout, leeg = de ingebouwde standaard uit `utils/factuurTemplate.ts`) en `pakbon_template` (`{html, css}` — eigen pakbonlayout, ook in de picklijst; leeg = de standaard uit `utils/pakbonTemplate.ts`) |
 | `mail_templates` | object | Aangepaste mail-templates per kind (`pakbon`, `factuur`, `factuur_betaald`, `bestelling`, `verzending`, `afhaal_gemist`, `annulering`, en de mail na een webshopbestelling `na_smaak`) met `subject`/`body`; leeg = i18n-default. `auto: true` = automatisch versturen bij de handeling van die mail, `auto_sinds` = wanneer dat aan ging (`zetMailAuto`/`autoMailReden` in `utils/orderMail.ts`; de "al betaald"-factuurmail volgt `factuur`). `annulering` kent `{creditregel}` (de factuur en de creditnota, leeg zonder factuur). `bestelling` kent `{levering}` (afhaal-/bezorgtekst incl. de link naar de afhaalpagina van de klant), `verzending` is de verzendbevestiging met `{trackregel}`/`{track}`, `afhaal_gemist` de mail voor een afhaalklant die niet kwam (`{afhaalmoment}` + `{afhaalregel}` met dezelfde link om een nieuw moment te kiezen; knop verschijnt via `afhaalmomentVerstreken`) — zie `utils/levering.ts` |
 | `na_aankoop_mails` | object | De mail ná een webshopbestelling, "Hoe smaakte het?" (`utils/naAankoopMail.ts`): `{modus: uit\|proef\|aan, sinds, proef_adres, grondslag: soft_opt_in\|toestemming, vinkje_meta, dagen, vanaf: bestelling\|geleverd, review_url, afmeld_url}`. Een oud `stappen.smaak.{dagen,vanaf}` (uit de tijd van drie mails) wordt nog gelezen; `stappen.serveertips`/`taplijst` en `taplijst_url` worden genegeerd. Standaard `uit`; `sinds` = het moment van de laatste modus-wissel (bestellingen van daarvóór krijgen niets). **Beheer-only**; wel in de Excel-backup |
 | `mail_afmeldingen` | array | Wie geen na-aankoopmails meer wil: `{id, email (klein geschreven), datum, bron: handmatig\|mail\|webshop, notitie?}`. Bewust géén beheer-key: wie bestellingen afhandelt, legt een afmelding meteen vast. In de Excel-backup (sheet `MailAfmeldingen`) |

@@ -154,3 +154,34 @@ describe('picklijst met de pakbonnen voor in de doos', () => {
     expect(html).not.toContain('<img src=x')
   })
 })
+
+describe('eigen pakbonlayout (brewery_details.pakbon_template)', () => {
+  const order = {id: 7, wc_order_nummer: '4321', klant_naam: 'Café De Kade',
+    regels: [{id: 1, bier_naam: 'Kadeblond', verpakking_type: 'Fles 33cL', aantal: 24}]}
+  const eigen = {naam: 'Test', pakbon_template: {
+    html: '<section class="mijn-pakbon"><h1>{{pakbonnummer}}</h1>{{#regels}}<p>{{bier}} × {{aantal}}</p>{{/regels}}</section>',
+    css: '.mijn-pakbon h1 { color: red; }',
+  }}
+  const lijst = {regels: [], orders: [], totaal: 0} as unknown as Picklijst
+
+  it('de pakbon gebruikt de eigen layout en opmaak', () => {
+    const {html} = buildPakbonHTML(order, [], [], [], eigen, 'App', null)
+    expect(html).toContain('<section class="mijn-pakbon"><h1>P-7</h1><p>Kadeblond × 24</p></section>')
+    expect(html).toContain('.mijn-pakbon h1 { color: red; }')
+    expect(html).not.toContain('<div class="doc-title">PAKBON</div>')
+  })
+
+  it('een kapotte eigen layout valt terug op de standaard', () => {
+    const {html} = buildPakbonHTML(order, [], [], [], {...eigen, pakbon_template: {html: '{{#regels}}kapot'}}, 'App', null)
+    expect(html).toContain('<div class="doc-title">PAKBON</div>')
+  })
+
+  it('de picklijst neemt de eigen pakbonopmaak alleen mee als er pakbonnen bij zitten', () => {
+    const met = buildPicklijstHTML(lijst, eigen, 'App', null, {bestellingen: [{order, picks: []}], afvullingen: [], batches: []}).html
+    expect(met).toContain('<section class="mijn-pakbon">')
+    expect(met).toContain('.mijn-pakbon h1 { color: red; }')
+    expect(met).toContain('PICKLIJST')
+    const zonder = buildPicklijstHTML(lijst, eigen, 'App', null).html
+    expect(zonder).not.toContain('.mijn-pakbon')
+  })
+})

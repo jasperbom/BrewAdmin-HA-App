@@ -5972,5 +5972,8 @@
   "factuur_stand_open": "payment due",
   "factuur_stand_betaald": "paid",
   "factuur_stand_vervallen": "overdue",
-  "factuur_stand_credit": "credit note"
+  "factuur_stand_credit": "credit note",
+  "settings_pakbon_template_title": "Packing slip layout",
+  "settings_pakbon_template_desc": "The layout of the packing slip as a template, also for the packing slips printed with the pick list. Empty = the built-in default layout. If your own template contains an error, the app falls back to the default. Keep the CSS under a class of its own, otherwise the pick list changes too.",
+  "undo_pakbon_template_verwijderd": "Custom packing slip layout removed"
 }
