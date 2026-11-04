@@ -11,13 +11,17 @@
  * de elementen die erop matchen worden niet doormidden geknipt. `kopSelector`
  * doet hetzelfde voor kopjes, plus een stuk inhoud eronder — een kop die als
  * laatste regel van een pagina achterblijft is net zo lelijk als een halve
- * tabelregel. Zonder die opties blijft het gedrag exact als vanouds: één
- * doorlopende afbeelding die per paginahoogte opschuift, wat voor een pakbon
- * of factuur van één pagina precies goed is.
+ * tabelregel. Zonder die opties: één doorlopende afbeelding die per
+ * paginahoogte opschuift, wat voor een pakbon of factuur van één pagina precies
+ * goed is. Past zo'n document nét niet op één blad (tot een kwart te hoog),
+ * dan komt het iets kleiner op één blad in plaats van een tweede blad met
+ * alleen de voet of witruimte (`passendeSchaal` in bladPassend.ts); een
+ * laatste blad met alleen witruimte komt er nooit bij.
  */
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { paginaIndeling, type PdfBlok } from './pdfPaginering'
+import { passendeSchaal, isLeegBeeld } from './bladPassend'
 
 /** Inhoud die minimaal achter een kop op dezelfde pagina moet passen, in
  *  CSS-pixels: genoeg voor een tabelkop plus de eerste twee regels. Een kop
@@ -85,14 +89,36 @@ export async function htmlToPdfBase64(
     const imgW = pageW
     const imgH = (canvas.height * pageW) / canvas.width
 
-    if (blokkenCss.length) {
+    const pxPerMm = canvas.height / imgH
+    // Staat er vanaf deze hoogte (canvas-pixels) nog iets anders dan witruimte?
+    // Een laatste blad met alleen de witruimte onderaan het document komt er
+    // niet bij.
+    const leegVanaf = (vanPx: number): boolean => {
+      const y = Math.max(0, Math.floor(vanPx))
+      if (y >= canvas.height) return true
+      try {
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return false
+        return isLeegBeeld(ctx.getImageData(0, y, canvas.width, canvas.height - y).data)
+      } catch {
+        return false
+      }
+    }
+    // Past het document nét niet op één blad (de voet of de witruimte onderaan
+    // valt over de rand), dan wordt het iets kleiner op één blad gezet.
+    const schaal = blokkenCss.length ? 1 : passendeSchaal(imgH, pageH)
+
+    if (schaal < 1) {
+      const w = imgW * schaal
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', (pageW - w) / 2, 0, w, imgH * schaal)
+    } else if (blokkenCss.length) {
       // Knip de lange afbeelding in stukken die op een blokgrens eindigen en
       // plaats elk stuk als eigen pagina. Het schaalt canvas-pixels ↔ mm via
       // dezelfde verhouding als hierboven.
-      const pxPerMm = canvas.height / imgH
       const cssNaarPx = canvas.height / body.scrollHeight
       const blokken = blokkenCss.map(b => ({top: b.top * cssNaarPx, bottom: b.bottom * cssNaarPx}))
       const paginas = paginaIndeling(canvas.height, pageH * pxPerMm, blokken)
+        .filter((p, i) => i === 0 || !leegVanaf(p.top))
       const stuk = document.createElement('canvas')
       const ctx = stuk.getContext('2d')
       paginas.forEach((p, i) => {
@@ -109,16 +135,15 @@ export async function htmlToPdfBase64(
       })
     } else {
       const imgData = canvas.toDataURL('image/jpeg', 0.92)
-      // Multi-page support: schuif de image telkens een pagina hoogte omhoog.
-      let position = 0
-      let heightLeft = imgH
-      pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH)
-      heightLeft -= pageH
-      while (heightLeft > 0) {
-        position -= pageH
+      // Meer bladen: schuif de afbeelding telkens een paginahoogte omhoog,
+      // zolang er onder de vorige pagina nog iets anders staat dan witruimte.
+      let top = 0
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgW, imgH)
+      top += pageH
+      while (top < imgH && !leegVanaf(top * pxPerMm)) {
         pdf.addPage()
-        pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH)
-        heightLeft -= pageH
+        pdf.addImage(imgData, 'JPEG', 0, -top, imgW, imgH)
+        top += pageH
       }
     }
 

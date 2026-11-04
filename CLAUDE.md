@@ -309,6 +309,16 @@ BrewAdmin-HA-App/
 │   │   ├── pdfPaginering.ts # Waar een lang document geknipt mag worden: `paginaIndeling`
 │   │   │                   # houdt blokken (tabelrijen, kaarten) heel en laat een kopje
 │   │   │                   # niet als weesregel achter. Gebruikt door `pdf.ts`
+│   │   ├── bladPassend.ts  # Een document dat nét niet op één blad past, past erop: tot een
+│   │   │                   # kwart te hoog (`MIN_SCHAAL` 0,8) = iets kleiner afdrukken (`zoom`
+│   │   │                   # per blad, `.ba-blad` via `inBlad`) i.p.v. een tweede blad met
+│   │   │                   # alleen de voet of witruimte. Meet op het bedrukbare vlak uit
+│   │   │                   # `@page` (zonder regel: A4 zonder marge), meet na het verkleinen
+│   │   │                   # opnieuw (afronding). `openPrint` doet dit bij élk printdocument
+│   │   │                   # (geef meer bladen als lijst, zoals de picklijst); de PDF-bijlage
+│   │   │                   # (`pdf.ts`) schaalt de afbeelding en laat een laatste blad met
+│   │   │                   # alleen witruimte weg (`isLeegBeeld`). Werkt ook voor een eigen
+│   │   │                   # factuur- of pakbonlayout — geen layout-specifieke uitzonderingen
 │   │   ├── batchStats.ts   # Wat de batches over een bier zeggen: aantal, gebrouwen liters,
 │   │   │                   # gemeten ABV/OG/FG/kleur/rendement/kostprijs-per-liter (gemiddelde,
 │   │   │                   # spreiding, trend t.o.v. de vorige brouw, reeks voor een lijntje) en
@@ -848,7 +858,10 @@ conflict-samenvoeging (`merge.ts` + het 409-pad van `api.ts`), de hash-routing
 van de schil (`route.ts`), het themacontrast (`kleurContrast.ts`, alle zeven
 thema's), de undo-planner (`undo.ts`), het batchdossier (`batchRapport.ts`:
 afbakening op de batch, kerncijfers, traceerregels, CCP-registraties,
-kostprijs), de pagina-indeling van de PDF-export (`pdfPaginering.ts`) en het
+kostprijs), de pagina-indeling van de PDF-export (`pdfPaginering.ts`), het
+passend maken van een blad dat nét niet op het papier past (`bladPassend.ts`:
+lengtes en papiermaten van `@page`, het bedrukbare vlak, schaal en bijstellen,
+witruimte herkennen, `@page`-regels uit de stylesheets) en het
 inkoopformulier: de regels (`inkoopRegels.ts`, ook meer lots per regel), de
 scanhelper (`claudeScan.ts`: modelketen, geen temperature, foutcodes), de
 factuur- en etiketscan (schema's binnen de grenzen van gestructureerde

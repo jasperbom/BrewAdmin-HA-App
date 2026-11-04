@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.46] — 2026-11-04
+
+### Geen tweede blad meer met alleen de voet
+
+Een pakbon, factuur of herinnering die nét niet op één A4 paste, kwam op twee
+bladen: het tweede met alleen de voet (handtekening, datum ontvangst) of zelfs
+alleen de witruimte onderaan het blad. Dat gebeurde bij een lange pakbon in de
+standaardlayout en bij een eigen layout met de voet onderaan het blad.
+
+- **Iets kleiner in plaats van een extra blad.** Is een blad tot een kwart te
+  hoog, dan drukt de app het iets kleiner af (tot 80%), zodat het op één blad
+  past. Een document dat echt langer is, blijft op ware grootte over meer
+  bladen lopen.
+- **Overal:** het printvenster (pakbon, factuur, herinnering, picklijst — daar
+  elke pakbon op zijn eigen blad — en het batchdossier) en de PDF-bijlage bij
+  een mail. Een laatste blad met alleen witruimte komt niet meer in de PDF.
+- **Ook voor een eigen layout:** de app leest de papiermaat en de marges uit
+  `@page` in de opmaak en past het blad daarop.
+
+---
+
 ## [1.13.45] — 2026-11-03
 
 ### Webshopbestellingen: huisnummer en notitie van de klant
