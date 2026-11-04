@@ -1,8 +1,61 @@
 import { describe, it, expect } from 'vitest'
 import {
-  BLAD_CSS, BLAD_KLASSE, MIN_SCHAAL, SPELING_MM,
-  bedrukbaarVlak, bijgesteldeSchaal, inBlad, isLeegBeeld, lengteInMm, paginaRegelsUit, papiermaatUit, passendeSchaal,
+  BLAD_CSS, BLAD_KLASSE, MIN_SCHAAL, PRINTER_RAND_MM, SPELING_MM,
+  bedrukbaarVlak, bijgesteldeSchaal, inBlad, isLeegBeeld, lengteInMm, mediaVoorAfdrukken, metAfdrukOpmaak,
+  paginaRegelsUit, papiermaatUit, passendeSchaal,
 } from '../bladPassend'
+
+describe('mediaVoorAfdrukken — meten met de afdrukopmaak', () => {
+  it('print wordt all, screen wordt not all', () => {
+    expect(mediaVoorAfdrukken('print')).toBe('all')
+    expect(mediaVoorAfdrukken('screen')).toBe('not all')
+    expect(mediaVoorAfdrukken('only screen and (min-width: 600px)')).toBe('not all')
+    expect(mediaVoorAfdrukken('only print and (orientation: portrait)')).toBe('all and (orientation: portrait)')
+  })
+
+  it('not keert het om', () => {
+    expect(mediaVoorAfdrukken('not screen')).toBe('all')
+    expect(mediaVoorAfdrukken('not print')).toBe('not all')
+    expect(mediaVoorAfdrukken('not print and (color)')).toBe('not all and (color)')
+  })
+
+  it('lijsten per deel, zonder type ongewijzigd', () => {
+    expect(mediaVoorAfdrukken('screen, print')).toBe('not all, all')
+    expect(mediaVoorAfdrukken('(max-width: 600px)')).toBe('(max-width: 600px)')
+    expect(mediaVoorAfdrukken('all')).toBe('all')
+    expect(mediaVoorAfdrukken('')).toBe('')
+    expect(mediaVoorAfdrukken(null)).toBe('')
+  })
+})
+
+describe('metAfdrukOpmaak', () => {
+  const lijst = (mediaText: string) => ({mediaText})
+  const maakDoc = () => {
+    const scherm = lijst('screen')
+    const print = lijst('print')
+    const binnen = lijst('only screen and (min-width: 600px)')
+    const blad = lijst('')
+    const doc = {styleSheets: [{media: blad, cssRules: [
+      {cssText: '.a {}'},
+      {media: scherm, cssRules: [{media: binnen, cssRules: []}]},
+      {media: print, cssRules: []},
+    ]}]} as unknown as Document
+    return {doc, scherm, print, binnen, blad}
+  }
+
+  it('zet de voorwaarden om tijdens het meten en daarna terug', () => {
+    const {doc, scherm, print, binnen, blad} = maakDoc()
+    const tijdens = metAfdrukOpmaak(doc, () => [scherm.mediaText, print.mediaText, binnen.mediaText, blad.mediaText])
+    expect(tijdens).toEqual(['not all', 'all', 'not all', ''])
+    expect([scherm.mediaText, print.mediaText, binnen.mediaText]).toEqual(['screen', 'print', 'only screen and (min-width: 600px)'])
+  })
+
+  it('ook terug als het meten faalt', () => {
+    const {doc, scherm, print} = maakDoc()
+    expect(() => metAfdrukOpmaak(doc, () => { throw new Error('mis') })).toThrow('mis')
+    expect([scherm.mediaText, print.mediaText]).toEqual(['screen', 'print'])
+  })
+})
 
 describe('lengteInMm', () => {
   it('rekent CSS-lengtes om naar mm', () => {
@@ -41,26 +94,35 @@ describe('papiermaatUit', () => {
 })
 
 describe('bedrukbaarVlak', () => {
-  it('zonder @page: een A4 zonder marge, zoals de documenten van de app', () => {
-    expect(bedrukbaarVlak([])).toEqual({breedte: 210, hoogte: 297})
-    expect(bedrukbaarVlak(null)).toEqual({breedte: 210, hoogte: 297})
+  const A4_MET_RAND = 297 - 2 * PRINTER_RAND_MM
+
+  it('zonder @page: een A4 zonder marge, zoals de documenten van de app — met de printerrand', () => {
+    expect(bedrukbaarVlak([])).toEqual({breedte: 210, hoogte: A4_MET_RAND})
+    expect(bedrukbaarVlak(null)).toEqual({breedte: 210, hoogte: A4_MET_RAND})
   })
 
-  it('marges van @page gaan van het papier af', () => {
+  it('@page { margin: 0 } houdt boven en onder toch de printerrand (Safari pagineert op het afdrukbare gebied)', () => {
+    expect(bedrukbaarVlak([{size: 'A4', marginTop: '0', marginBottom: '0', marginLeft: '0', marginRight: '0'}]))
+      .toEqual({breedte: 210, hoogte: A4_MET_RAND})
+    // Een vel van 296 mm (min-height, voet onderaan) past dus niet zonder te verkleinen.
+    expect(passendeSchaal(296, A4_MET_RAND)).toBeLessThan(1)
+  })
+
+  it('marges van @page groter dan de printerrand gaan van het papier af', () => {
     expect(bedrukbaarVlak([{size: 'A4', marginTop: '12mm', marginBottom: '18mm', marginLeft: '0', marginRight: '0'}]))
       .toEqual({breedte: 210, hoogte: 267})
   })
 
   it('een latere regel gaat voor, een lege waarde laat de vorige staan', () => {
     const vlak = bedrukbaarVlak([
-      {size: 'A4', marginTop: '0', marginBottom: '0'},
+      {size: 'A4', marginTop: '0', marginBottom: '20mm'},
       {size: '', marginTop: '10mm', marginBottom: ''},
     ])
-    expect(vlak).toEqual({breedte: 210, hoogte: 287})
+    expect(vlak).toEqual({breedte: 210, hoogte: 267})
   })
 
   it('een negatieve of onleesbare marge telt niet', () => {
-    expect(bedrukbaarVlak([{marginTop: '-5mm', marginBottom: 'auto'}])).toEqual({breedte: 210, hoogte: 297})
+    expect(bedrukbaarVlak([{marginTop: '-5mm', marginBottom: 'auto'}])).toEqual({breedte: 210, hoogte: A4_MET_RAND})
   })
 })
 
@@ -159,7 +221,7 @@ describe('paginaRegelsUit', () => {
   it('size uit de tekst als de stijl hem niet teruggeeft', () => {
     const regels = paginaRegelsUit(doc([{regels: [pagina('@page { size: A5 landscape; margin-top: 10mm; }', {'margin-top': '10mm'})]}]))
     expect(regels[0].size).toBe('A5 landscape')
-    expect(bedrukbaarVlak(regels)).toEqual({breedte: 210, hoogte: 138})
+    expect(bedrukbaarVlak(regels)).toEqual({breedte: 210, hoogte: 148 - 10 - PRINTER_RAND_MM})
   })
 
   it('slaat @media screen, @page :first en een schermstylesheet over', () => {
