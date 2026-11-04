@@ -19,6 +19,7 @@ import {
 import { betalingstermijnVoor, vervaldatumTekst, isoDag } from '../utils/facturen'
 import { toonMelding } from './ui/AppMelding'
 import { metHuisstijl, metAppLettertypen } from '../utils/huisstijl'
+import { BLAD_CSS, inBlad, pasBladenOpPagina, wachtOpInhoud } from '../utils/bladPassend'
 
 // Basisopmaak van elk document dat deze app uitprint. Gedeeld met het
 // batchdossier (`BatchRapportExport.tsx`), zodat een pakbon, een factuur en een
@@ -101,22 +102,35 @@ export const esc = escapeHtml
 const fmtEuro = fmtEuroDoc
 const fmtDate = fmtDatumDoc
 
+// Scheiding tussen twee bladen in één printdocument (opmaak in DOC_CSS).
+const PAGINASCHEIDING = '<div class="paginascheiding"></div>'
+
 // Opent het printvenster. Geblokkeerd (pop-ups uit): wie een melding op de
 // pagina kan tonen geeft `onGeblokkeerd` mee en krijgt de tekst terug; zonder
 // die callback komt de melding bovenin de app (`toonMelding`, geen alert()).
-export function openPrint(html: string, filename: string, css: string = metHuisstijl(DOC_CSS), onGeblokkeerd?: (melding: string) => void): boolean {
+// `html` is één blad of een lijst bladen (de picklijst met de pakbonnen erachter),
+// elk op een eigen blad. Een blad dat nét niet op het papier past wordt iets
+// kleiner afgedrukt, zodat er geen tweede blad komt met alleen de voet of
+// witruimte (`utils/bladPassend.ts`).
+export function openPrint(html: string | string[], filename: string, css: string = metHuisstijl(DOC_CSS), onGeblokkeerd?: (melding: string) => void): boolean {
   const w = window.open('', '_blank', 'width=900,height=700')
   if (!w) {
     if (onGeblokkeerd) onGeblokkeerd(t('err_popup_blocked'))
     else toonMelding(t('err_popup_blocked'))
     return false
   }
-  w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(filename)}</title><style>${css}</style></head><body>${html}</body></html>`)
+  const body = (Array.isArray(html) ? html : [html]).map(inBlad).join(PAGINASCHEIDING)
+  w.document.write(`<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${esc(filename)}</title><style>${css}\n${BLAD_CSS}</style></head><body>${body}</body></html>`)
   w.document.close()
   w.focus()
   // Sluit popup automatisch na opslaan/annuleren print
   w.onafterprint = () => w.close()
-  setTimeout(() => { w.print() }, 400)
+  setTimeout(() => {
+    void wachtOpInhoud(w.document).then(() => {
+      try { pasBladenOpPagina(w.document) } catch { /* meten mislukt: gewoon afdrukken */ }
+      w.print()
+    })
+  }, 400)
   return true
 }
 
@@ -317,7 +331,7 @@ function buildPicklijstBody(
   appName: string,
   factuurLogo: string | null | undefined,
   pakbonnen?: PicklijstPakbonnen
-): {bodyHtml: string, filename: string} {
+): {bodyHtml: string, bladen: string[], filename: string} {
   // Lokale kalenderdag (niet UTC): een picklijst van 00:30 hoort bij vandaag.
   const vandaag = tod()
   const datum = fmtDate(vandaag)
@@ -410,8 +424,11 @@ function buildPicklijstBody(
     buildPakbonBody(order, picks, pakbonnen!.afvullingen, pakbonnen!.batches, brewery, appName, factuurLogo,
       pakbonnen!.sessies, true).bodyHtml)
 
+  // Elk blad apart: het printvenster past elke pakbon op zijn eigen blad.
+  const bladen = [bodyHtml, ...pakbonBodies]
   return {
-    bodyHtml: [bodyHtml, ...pakbonBodies].join('<div class="paginascheiding"></div>'),
+    bodyHtml: bladen.join(PAGINASCHEIDING),
+    bladen,
     filename: `Picklijst-${vandaag}`,
   }
 }
@@ -432,7 +449,7 @@ export function printPicklijst(
   extra: Pick<PrintExtra, 'onGeblokkeerd'> & {pakbonnen?: PicklijstPakbonnen} = {}
 ): boolean {
   const r = buildPicklijstBody(lijst, brewery, appName, factuurLogo, extra.pakbonnen)
-  return openPrint(r.bodyHtml, r.filename, picklijstCss(brewery, extra.pakbonnen), extra.onGeblokkeerd)
+  return openPrint(r.bladen, r.filename, picklijstCss(brewery, extra.pakbonnen), extra.onGeblokkeerd)
 }
 
 // Volledige standalone HTML (voor tests en een eventuele mail-PDF).
