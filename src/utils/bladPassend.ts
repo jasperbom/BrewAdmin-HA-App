@@ -15,6 +15,9 @@
  *
  * Puur rekenwerk staat bovenaan (getest); `pasBladenOpPagina` doet het in een
  * printvenster en `isLeegBeeld` kijkt of een stuk van de PDF-afbeelding leeg is.
+ * Het printvenster meet met de afdrukopmaak (`@media print`), niet met die van
+ * het scherm: een eigen layout kan op het scherm een vol vel hoog zijn en bij
+ * het afdrukken niet.
  */
 
 /** CSS-pixels per millimeter (96 dpi). */
@@ -25,6 +28,14 @@ export const MIN_SCHAAL = 0.8
 
 /** Speling onderaan het blad, in mm: afronding in de browser mag nooit een leeg tweede blad maken. */
 export const SPELING_MM = 1
+
+/**
+ * Boven en onder telt minstens zoveel als marge, ook bij `@page { margin: 0 }`.
+ * Een printer drukt niet tot de rand, en Safari pagineert op het afdrukbare
+ * gebied van de printer: een vel van 296 mm met de voet onderaan schoof daar
+ * naar een tweede blad terwijl de app dacht dat het paste.
+ */
+export const PRINTER_RAND_MM = 6
 
 /** De klasse om elk blad van een printdocument (pakbon, factuur, de picklijst en elke pakbon erachter). */
 export const BLAD_KLASSE = 'ba-blad'
@@ -103,8 +114,9 @@ export interface PaginaRegel {
 
 /**
  * Het bedrukbare vlak van een blad in mm: papiermaat min de marges van
- * `@page`. Latere regels gaan voor (zoals in de cascade); zonder regels is het
- * een A4 zonder marge — de standaard van de documenten in deze app.
+ * `@page`, boven en onder minstens `PRINTER_RAND_MM`. Latere regels gaan voor
+ * (zoals in de cascade); zonder regels is het een A4 zonder marge — de
+ * standaard van de documenten in deze app — met die printerrand.
  */
 export function bedrukbaarVlak(regels: readonly PaginaRegel[] | null | undefined): Papiermaat {
   let size: string | undefined
@@ -123,7 +135,7 @@ export function bedrukbaarVlak(regels: readonly PaginaRegel[] | null | undefined
   const papier = papiermaatUit(size)
   return {
     breedte: Math.max(1, papier.breedte - marge.links - marge.rechts),
-    hoogte: Math.max(1, papier.hoogte - marge.boven - marge.onder),
+    hoogte: Math.max(1, papier.hoogte - Math.max(marge.boven, PRINTER_RAND_MM) - Math.max(marge.onder, PRINTER_RAND_MM)),
   }
 }
 
@@ -165,6 +177,76 @@ export function isLeegBeeld(data: ArrayLike<number>, drempel = 245): boolean {
     if (data[i] < drempel || data[i + 1] < drempel || data[i + 2] < drempel) return false
   }
   return true
+}
+
+const MEDIATYPES = new Set(['all', 'print', 'screen', 'speech', 'tv', 'projection', 'handheld', 'braille', 'embossed', 'aural', 'tty'])
+
+/**
+ * Een mediavoorwaarde (`@media …`) omgezet zodat hij in een schermvenster
+ * werkt zoals bij het afdrukken: `print` wordt `all`, `screen` (en elk ander
+ * mediatype) wordt `not all`, met `not` omgekeerd. Voorwaarden zonder type
+ * (`(min-width: …)`) blijven staan. Zo meet het printvenster met de opmaak
+ * waarmee het afdrukt — een eigen layout die op het scherm een vol vel hoog is
+ * maar bij het afdrukken niet, wordt anders onnodig kleiner gemaakt.
+ */
+export function mediaVoorAfdrukken(mediaText: string | null | undefined): string {
+  const tekst = String(mediaText ?? '').trim()
+  if (!tekst) return tekst
+  return tekst.split(',').map(deel => {
+    const q = deel.trim()
+    const m = /^(not\s+|only\s+)?([a-z-]+)(.*)$/i.exec(q)
+    if (!m) return q
+    const ontkend = (m[1] || '').trim().toLowerCase() === 'not'
+    const type = m[2].toLowerCase()
+    const rest = m[3] || ''
+    if (!MEDIATYPES.has(type) || type === 'all') return q
+    if (type === 'print') return `${ontkend ? 'not ' : ''}all${rest}`
+    return ontkend ? 'all' : 'not all'
+  }).join(', ')
+}
+
+interface MediaRegel { readonly media?: MediaList, readonly cssRules?: CSSRuleList }
+
+/**
+ * Voert `doe` uit terwijl het document de afdrukopmaak gebruikt (de
+ * mediavoorwaarden tijdelijk omgezet met `mediaVoorAfdrukken`); daarna staat
+ * alles weer zoals het was, ook als `doe` faalt.
+ */
+export function metAfdrukOpmaak<T>(doc: Document, doe: () => T): T {
+  const terug: Array<() => void> = []
+  const zet = (lijst: MediaList | null | undefined) => {
+    if (!lijst) return
+    const oud = lijst.mediaText
+    const nieuw = mediaVoorAfdrukken(oud)
+    if (nieuw === oud) return
+    try {
+      lijst.mediaText = nieuw
+      terug.push(() => { lijst.mediaText = oud })
+    } catch { /* niet aan te passen: laten staan */ }
+  }
+  const loop = (regels: RegelLijst | null | undefined) => {
+    if (!regels) return
+    for (let i = 0; i < regels.length; i++) {
+      const regel = regels[i] as MediaRegel | undefined
+      if (!regel?.cssRules) continue
+      if (regel.media) zet(regel.media)
+      loop(regel.cssRules)
+    }
+  }
+  const bladen = doc.styleSheets
+  for (let i = 0; i < bladen.length; i++) {
+    zet(bladen[i].media)
+    let regels: CSSRuleList | null = null
+    try { regels = bladen[i].cssRules } catch { regels = null }
+    loop(regels)
+  }
+  try {
+    return doe()
+  } finally {
+    for (const herstel of terug.reverse()) {
+      try { herstel() } catch { /* laten staan */ }
+    }
+  }
 }
 
 // ── In het printvenster ─────────────────────────────────────────────────────
@@ -233,13 +315,17 @@ const MAX_BIJSTELLINGEN = 5
 
 /**
  * Maakt elk blad (`.ba-blad`) dat nét niet op het papier past iets kleiner.
- * Gemeten op de breedte van het bedrukbare vlak, zoals de browser het zo
- * afdrukt, en na het verkleinen opnieuw (afronding). Geeft per blad de schaal
- * terug (1 = ongewijzigd).
+ * Gemeten met de afdrukopmaak (`metAfdrukOpmaak`) op de breedte van het
+ * bedrukbare vlak, zoals de browser het zo afdrukt, en na het verkleinen
+ * opnieuw (afronding). Geeft per blad de schaal terug (1 = ongewijzigd).
  */
 export function pasBladenOpPagina(doc: Document): number[] {
   const bladen = Array.from(doc.querySelectorAll<HTMLElement>(`.${BLAD_KLASSE}`))
   if (!bladen.length) return []
+  return metAfdrukOpmaak(doc, () => meetEnPas(doc, bladen))
+}
+
+function meetEnPas(doc: Document, bladen: HTMLElement[]): number[] {
   const vlak = bedrukbaarVlak(paginaRegelsUit(doc))
   const html = doc.documentElement
   const oudeBreedte = html.style.width

@@ -312,9 +312,13 @@ BrewAdmin-HA-App/
 │   │   ├── bladPassend.ts  # Een document dat nét niet op één blad past, past erop: tot een
 │   │   │                   # kwart te hoog (`MIN_SCHAAL` 0,8) = iets kleiner afdrukken (`zoom`
 │   │   │                   # per blad, `.ba-blad` via `inBlad`) i.p.v. een tweede blad met
-│   │   │                   # alleen de voet of witruimte. Meet op het bedrukbare vlak uit
-│   │   │                   # `@page` (zonder regel: A4 zonder marge), meet na het verkleinen
-│   │   │                   # opnieuw (afronding). `openPrint` doet dit bij élk printdocument
+│   │   │                   # alleen de voet of witruimte. Meet met de afdrukopmaak
+│   │   │                   # (`metAfdrukOpmaak`: `@media print` geldt, `screen` niet — een
+│   │   │                   # eigen layout is op het scherm vaak een vol vel hoog en afgedrukt
+│   │   │                   # niet) op het bedrukbare vlak uit `@page` (zonder regel: A4 zonder
+│   │   │                   # marge), boven en onder minstens `PRINTER_RAND_MM` (6 mm: Safari
+│   │   │                   # pagineert op het afdrukbare gebied van de printer), en meet na
+│   │   │                   # het verkleinen opnieuw (afronding). `openPrint` doet dit bij élk printdocument
 │   │   │                   # (geef meer bladen als lijst, zoals de picklijst); de PDF-bijlage
 │   │   │                   # (`pdf.ts`) schaalt de afbeelding en laat een laatste blad met
 │   │   │                   # alleen witruimte weg (`isLeegBeeld`). Werkt ook voor een eigen
@@ -860,8 +864,9 @@ thema's), de undo-planner (`undo.ts`), het batchdossier (`batchRapport.ts`:
 afbakening op de batch, kerncijfers, traceerregels, CCP-registraties,
 kostprijs), de pagina-indeling van de PDF-export (`pdfPaginering.ts`), het
 passend maken van een blad dat nét niet op het papier past (`bladPassend.ts`:
-lengtes en papiermaten van `@page`, het bedrukbare vlak, schaal en bijstellen,
-witruimte herkennen, `@page`-regels uit de stylesheets) en het
+lengtes en papiermaten van `@page`, het bedrukbare vlak met de printerrand,
+schaal en bijstellen, witruimte herkennen, `@page`-regels uit de stylesheets,
+meten met de afdrukopmaak) en het
 inkoopformulier: de regels (`inkoopRegels.ts`, ook meer lots per regel), de
 scanhelper (`claudeScan.ts`: modelketen, geen temperature, foutcodes), de
 factuur- en etiketscan (schema's binnen de grenzen van gestructureerde
