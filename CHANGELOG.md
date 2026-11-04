@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.47] — 2026-11-04
+
+### Afdrukken in Safari, en een factuur weer op ware grootte
+
+- **Safari:** een pakbon met de voet onderaan het vel kwam in Safari op de Mac
+  nog steeds op twee bladen. Safari pagineert op het afdrukbare gebied van de
+  printer, een paar mm kleiner dan een heel A4, terwijl de app met het hele vel
+  rekende. De app houdt nu boven en onder altijd minstens 6 mm vrij, ook als de
+  layout een marge van 0 vraagt.
+- **Factuur op ware grootte:** een eigen layout die op het scherm een vol vel
+  hoog is maar bij het afdrukken niet (zoals een factuur met de voet in de
+  paginamarge), werd sinds 1.13.46 onnodig kleiner afgedrukt. De app meet nu
+  met de afdrukopmaak van de layout (`@media print`), niet met die van het
+  scherm.
+
+---
+
 ## [1.13.46] — 2026-11-04
 
 ### Geen tweede blad meer met alleen de voet
