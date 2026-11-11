@@ -158,6 +158,8 @@ export interface Batch {
   kook_verdamping_pct?: number | string                 // (pre−post)/pre / uur
   ibu_berekend?: number | string                        // uit hop-addities (Tinseth)
   gist_attenuation_pct?: number | string                // gemiddelde uit gistprofiel of recept
+  // Hoe de batch bij het plannen naar zijn tank is omgerekend (utils/receptSchalen.ts)
+  brouwplan?: BrouwPlan
 }
 
 // ── Brouwdag-stappen ─────────────────────────────────────────────────────────
@@ -640,6 +642,8 @@ export interface Recept {
   // ergens naar verwezen, dus de app bewaart het.
   vastgepind?: boolean
   niet_in_brewfather?: boolean
+  /** Het installatieprofiel waarmee het recept in Brewfather is ontworpen (kopie van `equipment`). */
+  installatie?: InstallatieProfiel | null
 }
 
 export interface ReceptIngredient {
@@ -683,6 +687,66 @@ export interface Tank {
   naam?: string
   volume?: number
   soort?: 'fermentatie' | 'bright' | 'barrel'
+  /** Wat er hooguit in mag (de gisttank met ruimte voor de kraag), in liters. */
+  werkvolume_max_l?: number | ''
+  /** Wat er minstens in moet (koeling, sensor onder het bier), in liters. */
+  werkvolume_min_l?: number | ''
+  /** De brouwinstallatie die in deze tank uitkomt (`utils/installatie.ts`). */
+  installatie?: InstallatieProfiel
+}
+
+/**
+ * Een installatieprofiel: ketel en gisttank samen, zoals een installatieprofiel
+ * in Brewfather — volumes, verliezen en rendement. Hoort bij een tank
+ * (`Tank.installatie`) of komt als kopie mee met een Brewfather-recept
+ * (`Recept.installatie`). Leeg (`''`) = niet ingevuld. Rekenen gaat altijd via
+ * `utils/installatie.ts`.
+ */
+export interface InstallatieProfiel {
+  /** Liters in de gisttank (het batchvolume van Brewfather). */
+  batch_l?: number | ''
+  kooktijd_min?: number | ''
+  kookverlies_l_per_uur?: number | ''
+  trub_koeler_verlies_l?: number | ''
+  /** Wat er bij het afvullen in de tank achterblijft (gist, trub, hop). */
+  verlies_vergistingsvat_l?: number | ''
+  maischketel_deadspace_l?: number | ''
+  maischrendement_pct?: number | ''
+  graanabsorptie_l_per_kg?: number | ''
+  water_graan_l_per_kg?: number | ''
+  /** Krimp bij koelen / uitzetten bij koken; leeg = 4 %. */
+  krimp_pct?: number | ''
+  spoelwater_temp_c?: number | ''
+  heetwatertank_max_l?: number | ''
+  /** Waar de waarden vandaan komen: overgenomen uit een Brewfather-recept of zelf ingevuld. */
+  bron?: 'brewfather' | 'handmatig'
+  /** De naam van het profiel in Brewfather. */
+  bf_naam?: string
+  /** Het recept waaruit het is overgenomen (naam, ter herkenning). */
+  bf_recept?: string
+  /** Laatst opgeslagen (JJJJ-MM-DD). */
+  bijgewerkt?: string
+}
+
+/**
+ * Hoe een batch bij het plannen is omgerekend naar zijn tank (blad *Wat brouw
+ * je?*, `utils/receptSchalen.ts`). Alleen ter documentatie en als doel op de
+ * brouwdag; de hoeveelheden zelf staan op de batchregels.
+ */
+export interface BrouwPlan {
+  /** De ingrediënten zijn mee geschaald (anders alleen andere liters). */
+  geschaald: boolean
+  /** Liters in de gisttank volgens het recept. */
+  recept_batch_l: number | null
+  /** Liters in de gisttank volgens het plan. */
+  batch_l: number
+  /** De tank waarvoor gepland is. */
+  tank?: string
+  factor_mout?: number
+  factor_hop?: number
+  factor_gist?: number
+  rendement_recept?: number | null
+  rendement_installatie?: number | null
 }
 
 // ── Tank-reinigingsstatus (HACCP) ────────────────────────────────────────────

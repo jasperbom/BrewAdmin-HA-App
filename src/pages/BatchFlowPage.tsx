@@ -74,7 +74,7 @@ import { actieveSessie, magAfvullingRegistreren, magNaarAfvullen, abvVastgezetBl
 import { ingredientVoorBatchRegel, afgeboekteRegels } from '../utils/batchIngredienten'
 import { receptNaarBatch } from '../utils/receptNaarBatch'
 import ReceptKiezer from '../components/recept/ReceptKiezer'
-import { productKeuzeNaKies } from '../utils/nieuweBatch'
+import { brouwPlanVoor, productKeuzeNaKies, schaalVoorPlan } from '../utils/nieuweBatch'
 import { batchNummer, batchTitel, nieuwProductUitBatch, productVoorBatch, receptVoorBatch } from '../utils/productKeten'
 import {
   batchKeten, besluitProduct, productBijPlannen, productenVoorBatchKeuze, productNaamBezet,
@@ -1432,8 +1432,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // alleen nog uitgevoerd. Het product: een batch die er al een heeft houdt
   // het; anders hetzelfde als bij een nieuwe batch (één kandidaat =
   // automatisch met een terugweg, anders de keuze uit de picker).
-  const applyReceptToBatch = (r: any) => {
-    if (!selB || !r || receptToepassenBlokkade()) return
+  const applyReceptToBatch = (rOrigineel: any) => {
+    if (!selB || !rOrigineel || receptToepassenBlokkade()) return
+    // Was de batch bij het plannen geschaald naar zijn tank, dan opnieuw
+    // schalen naar dezelfde liters en de installatie van die tank
+    // (utils/receptSchalen.ts); anders gewoon het recept, en vervalt het plan.
+    const vorigPlan = selB.brouwplan
+    const planTank = String(vorigPlan?.tank || selB.tank || '')
+    const schaal = vorigPlan?.geschaald
+      ? schaalVoorPlan(rOrigineel, { liters: vorigPlan.batch_l, tank: (tanks || []).find((tk: any) => String(tk?.id) === planTank) || null })
+      : null
+    const r = schaal ? schaal.recept : rOrigineel
+    const brouwplan = schaal ? brouwPlanVoor(rOrigineel, schaal, null, planTank) || undefined : undefined
     // Zelfde vertaling als een nieuwe batch (utils/receptNaarBatch): velden
     // uit het recept, meetvelden leeg, regels van deze batch vervangen.
     const opties = { batch: selB, ingredienten: ing || [] }
@@ -1446,7 +1456,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const product = nieuwProduct || besluit.product
     const patch = product ? receptNaarBatch(r, {...opties, product}).batch : zonderProduct
     if (nieuwProduct) voegProductToe(nieuwProduct)
-    setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...patch} : b))
+    setBat((prev: any[]) => prev.map((b: any) => b.id === selB.id ? {...b, ...patch, brouwplan} : b))
     setBi((prev: any[]) => receptNaarBatch(r, {...opties, regels: prev || []}).alleRegels)
     addLog({type: 'gewijzigd', batch_id: selB.id, referentie: t('batch_sync_recept_log').replace('{recept}', r.naam || '')})
     logAudit(auditLog, setAuditLog, {entiteit: 'Batch', entiteit_id: selB.id, actie: 'gewijzigd', omschrijving: t('batch_sync_recept_log').replace('{recept}', r.naam || '')})

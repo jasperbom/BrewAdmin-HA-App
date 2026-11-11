@@ -45,6 +45,9 @@ import WebsiteTelemetrie from '../components/WebsiteTelemetrie'
 import BrouwlogInstellingen from '../components/BrouwlogInstellingen'
 import InkoopMailInstellingen, { POSTVAK_KAART_ID } from '../components/InkoopMailInstellingen'
 import RuimteklimaatInstellingen from '../components/RuimteklimaatInstellingen'
+import InstallatieProfielBlad from '../components/tank/InstallatieProfielBlad'
+import type { InstallatieProfielOpslag } from '../components/tank/InstallatieProfielBlad'
+import { tankLiters } from '../utils/nieuweBatch'
 
 // Instelbare drempels van de temperatuurbewaking. De volgorde is die van het
 // oordeel zelf: eerst wat "normaal" is, dan wanneer het meldenswaardig wordt,
@@ -594,7 +597,7 @@ const BackupCard = () => {
   );
 };
 
-function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, wcImportStatus={}, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, websiteTelemetrie={}, setWebsiteTelemetrie=()=>{}, websiteBrouwlog={}, setWebsiteBrouwlog=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null, integriteitSetters={}, imapCreds=null, setImapCreds=()=>{}, navDoel=null, onNavDoelConsumed=()=>{}, naAankoop=null}: any) {
+function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, doImport, importRef, logo, setLogo, appName, setAppName, bfCreds, setBfCreds, tanks, setTanks, batchTakenItems=[], setBatchTakenItems=()=>{}, batchTakenGroepen=[], setBatchTakenGroepen=()=>{}, haccpSchoonmaakTaken=[], wcCreds, setWcCreds, wcSyncLog, setWcSyncLog, wcImportStatus={}, lang, setLang, navTheme, setNavTheme, btwInst, setBtwInst, btwTarieven=[0,9,21], setBtwTarieven=()=>{}, inkoopFacturen=[], verkoopFacturen=[], claudeCreds={apiKey:'',enabled:false}, setClaudeCreds=()=>{}, smtpCreds={host:'',port:587,username:'',password:'',fromEmail:'',fromName:'',security:'starttls',enabled:false}, setSmtpCreds=()=>{}, mollieCreds={apiKey:'',enabled:false,redirectUrl:''}, setMollieCreds=()=>{}, ingTypes=BUILTIN_ING_TYPES, setIngTypes=()=>{}, ingTypeBtw={}, setIngTypeBtw=()=>{}, ing=[], bat=[], acc=[], accijnsAangiftes=[], breweryDetails={}, setBreweryDetails=()=>{}, altRekeningen=[], setAltRekeningen=()=>{}, bankKoppelingen={}, factuurLogo=null, setFactuurLogo=()=>{}, haInst={enabled:false, sensors:[]}, setHaInst=()=>{}, notificatieInst={enabled:false, notify_service:'', on_screen:true}, setNotificatieInst=()=>{}, coldcrashInst={enabled:false, target_temp:2, ramp_per_uur:1}, setColdcrashInst=()=>{}, planningInst={conditioneren_dagen:14}, setPlanningInst=()=>{}, websiteTelemetrie={}, setWebsiteTelemetrie=()=>{}, websiteBrouwlog={}, setWebsiteBrouwlog=()=>{}, brouwprocesInst={hop_storage:'vacuum_koel'}, setBrouwprocesInst=()=>{}, haccpInst={}, setHaccpInst=()=>{}, auditLog=[], setAuditLog=()=>{}, kostenSoorten=['Grondstoffen','Verpakkingsmateriaal','Energie','Huur','Transport','Onderhoud','Marketing','Administratie','Overig'], setKostenSoorten=()=>{}, gnCodes=[], setGnCodes=()=>{}, mailTemplates={pakbon:{subject:'',body:''},factuur:{subject:'',body:''},bestelling:{subject:'',body:''}}, setMailTemplates=()=>{}, gebruikersRollen={}, setGebruikersRollen=()=>{}, loginInst={}, setLoginInst=()=>{}, resetApp=()=>{}, integriteitData=null, integriteitSetters={}, imapCreds=null, setImapCreds=()=>{}, navDoel=null, onNavDoelConsumed=()=>{}, naAankoop=null, recepten=[], afvullingen=[]}: any) {
   const [newIngType, setNewIngType] = React.useState('');
   const [newKostenSoort, setNewKostenSoort] = React.useState('');
   const [newGnCode, setNewGnCode] = React.useState('');
@@ -771,6 +774,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setTanks((prev: any)=>[...prev, {id, soort: tankSoortInput}]);
     logAudit(auditLog, setAuditLog, {entiteit:'Tank', entiteit_id:0, actie:'aangemaakt', omschrijving:`Tank ${id} (${tankSoortInput}) toegevoegd`});
     setTankInput('');
+  };
+  // Het installatieprofiel van een tank (components/tank/InstallatieProfielBlad.tsx).
+  const [profielTank, setProfielTank] = React.useState<string | null>(null);
+  const bewaarTankProfiel = (id: string, w: InstallatieProfielOpslag) => {
+    setTanks((prev: any) => prev.map((x: any) => x.id === id ? {...x, ...w} : x));
+    logAudit(auditLog, setAuditLog, {entiteit:'Tank', entiteit_id:0, actie:'gewijzigd', omschrijving: t('audit_tank_installatie').replace('{tank}', id)});
+    setProfielTank(null);
   };
   const setTankSoort = (id: string, soort: 'fermentatie'|'bright'|'barrel') => {
     setTanks((prev: any)=>prev.map((x: any)=>x.id===id ? {...x, soort} : x));
@@ -1500,6 +1510,10 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 <option value="bright">{t('tank_soort_bright')}</option>
                 <option value="barrel">{t('tank_soort_barrel')}</option>
               </select>
+              <button type="button" onClick={() => setProfielTank(tnk.id)}
+                className="text-xs t-accent-text hover:underline ml-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+                {tankLiters(tnk) != null ? t('tank_installatie_liters').replace('{n}', String(tankLiters(tnk))) : t('tank_installatie_knop')}
+              </button>
               <button onClick={()=>{logAudit(auditLog, setAuditLog, {entiteit:'Tank', entiteit_id:0, actie:'verwijderd', omschrijving:`Tank ${tnk.id} verwijderd`});setTanks((prev: any)=>prev.filter((x: any)=>x.id!==tnk.id))}}
                 className="text-gray-400 hover:text-red-500 text-xs ml-1 leading-none">✕</button>
             </div>
@@ -1523,6 +1537,13 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           </button>
         </div>
         <PaginaMelding tekst={tankFout} onSluit={() => setTankFout('')} cls="mt-2" />
+        {profielTank && (() => {
+          const tnk = (tanks || []).find((x: any) => x.id === profielTank);
+          return tnk ? (
+            <InstallatieProfielBlad tank={tnk} recepten={recepten} batches={bat} afvullingen={afvullingen} vandaag={tod()}
+              onOpslaan={(w) => bewaarTankProfiel(tnk.id, w)} onSluit={() => setProfielTank(null)} />
+          ) : null;
+        })()}
       </div>
 
       {/* Planning-defaults: conditioneren-duur */}

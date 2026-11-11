@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.48] — 2026-11-11
+
+### Installatieprofiel per tank, recepten schalen en het water op de brouwdag
+
+Recepten ontwerp je in Brewfather; de rest van het brouwproces nu in BrewAdmin.
+
+- **Installatieprofiel per tank** (Instellingen › Tanks › Installatie): ketel
+  en gisttank samen, zoals een installatieprofiel in Brewfather — batchvolume,
+  kooktijd, kookverlies, verliezen, maischrendement, water/graan, spoelwater,
+  heetwatertank — plus het werkvolume van de tank. Over te nemen uit de
+  profielen die met de Brewfather-recepten meekomen (de receptsync bewaart nu
+  een kopie van `equipment`). Hetzelfde rekenmodel als Brewfather: dezelfde
+  volumes voor hetzelfde profiel.
+- **Schalen bij het plannen:** kies in *Wat brouw je?* een tank met een
+  profiel, dan staan zijn liters er al en wordt het recept omgerekend: mout op
+  de OG (met het maischrendement van de installatie), hop in de ketel op de
+  IBU, dry hop en gist op de liters in de gisttank. OG en IBU blijven die van
+  het recept; uitvinken kan. Een waarschuwing als de liters niet in het
+  werkvolume van de tank passen. *Recept opnieuw toepassen* schaalt opnieuw.
+- **Water op de brouwdag:** het blad en de brouwdagwizard tonen maischwater,
+  spoelwater (met temperatuur), totaal en kookvolume, met een waarschuwing als
+  de heetwatertank te klein is. De doelvolumes voor en na het koken komen uit
+  het profiel.
+- **Profielcheck:** het profielblad toont wat de brouwdagen in die tank lieten
+  zien — kookverlies, verlies trub/koeler, verlies in de gisttank en
+  maischrendement, de mediaan van de laatste vijf — met de gemeten waarde als
+  voorstel.
+
+---
+
 ## [1.13.47] — 2026-11-04
 
 ### Afdrukken in Safari, en een factuur weer op ware grootte

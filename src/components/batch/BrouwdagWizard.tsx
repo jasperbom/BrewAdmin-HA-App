@@ -10,6 +10,7 @@ import {
 } from '../../utils/calculations'
 import { TANK_REINIGING_LABEL_KEY } from '../../utils/constants'
 import { getEffectiveBrewProp } from '../../utils/brewProps'
+import { brouwVolumes, getal, graanKg, installatieVanTank, waterPlan } from '../../utils/installatie'
 
 // Sleutels waaruit de berekende brouwdagwaarden volgen; het effect dat ze
 // vastlegt wacht tot ze alle vier van de server zijn.
@@ -351,12 +352,25 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
   // komen uit het gekoppelde recept (zelfde afleidingen als voorheen).
   const rec: any = batchRecept || {}
   const doelOGRecept = Number(rec.OG) || null
-  const doelBatchSize = Number(rec.batch_size) || null
-  const doelKookVol = Number(rec.kook_volume) || null
+  // Liters in de gisttank: uit het brouwplan (geschaald of andere liters bij
+  // het plannen), anders uit het recept.
+  const doelBatchSize = getal(batch.brouwplan?.batch_l) || Number(rec.batch_size) || null
+  // Heeft de tank een installatieprofiel, dan komen de volumes daaruit
+  // (utils/installatie.ts, hetzelfde model als Brewfather): kookvolume voor en
+  // na het koken (heet) en het water. Anders het kookvolume van de batch/het recept.
+  const tankInstallatie = installatieVanTank((tanks || []).find((tk: any) =>
+    String(tk?.id) === String(batch.tank || batch.brouwplan?.tank || '')) || null)
+  const kooktijdDoel = Number(batch.kooktijd) || Number(rec.kooktijd) || null
+  const doelVolumes = tankInstallatie ? brouwVolumes(tankInstallatie, doelBatchSize, kooktijdDoel) : null
+  const doelKookVol = doelVolumes?.voor_koken_l || Number(batch.kook_volume) || Number(rec.kook_volume) || null
+  const doelNaKoken = doelVolumes?.na_koken_l || doelBatchSize
+  const waterDoel = tankInstallatie && doelBatchSize
+    ? waterPlan(tankInstallatie, { batch_l: doelBatchSize, graan_kg: graanKg(batchBi), kooktijd_min: kooktijdDoel })
+    : null
   // Geschatte pre-boil SG: aanname dat alle suiker al in het wort zit, dus
-  // pre-boil SG verhoudt zich tot OG als batch_size/kook_volume.
-  const doelPreBoilSg = (doelOGRecept && doelBatchSize && doelKookVol && doelKookVol > 0)
-    ? 1 + (doelOGRecept - 1) * (doelBatchSize / doelKookVol)
+  // pre-boil SG verhoudt zich tot OG als volume na koken / volume voor koken.
+  const doelPreBoilSg = (doelOGRecept && doelNaKoken && doelKookVol && doelKookVol > 0)
+    ? 1 + (doelOGRecept - 1) * (doelNaKoken / doelKookVol)
     : null
 
   interface MeetVeldDef {
@@ -379,7 +393,7 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
     ],
     koken: [
       { veld: 'kook_volume_start_l', labelKey: 'brouwdag_kook_vol_start', step: '0.1', ph: '28', doel: doelKookVol, doelUnit: ' L', doelDecimals: 1 },
-      { veld: 'kook_volume_eind_l', labelKey: 'brouwdag_kook_vol_eind', step: '0.1', ph: '24', doel: doelBatchSize, doelUnit: ' L', doelDecimals: 1 },
+      { veld: 'kook_volume_eind_l', labelKey: 'brouwdag_kook_vol_eind', step: '0.1', ph: '24', doel: doelNaKoken, doelUnit: ' L', doelDecimals: 1 },
       { veld: 'kook_ph', labelKey: 'batch_info_boil_ph', step: '0.01', ph: '5.20', hint: '5.0–5.2' },
     ],
     koelen: [
@@ -1087,7 +1101,8 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                 const items = mijnStappen.filter(s => s.fase === fase).sort((a, b) => (a.volgorde || 0) - (b.volgorde || 0))
                 const velden = FASE_MEETVELDEN[fase] || []
                 const toonTank = fase === 'koelen'
-                if (!items.length && !velden.length && !toonTank) return null
+                const toonWater = fase === 'water' && !!waterDoel
+                if (!items.length && !velden.length && !toonTank && !toonWater) return null
                 return (
                   <div key={fase} className="border-l-4 pl-3" style={{borderColor: 'var(--t-accent)'}}>
                     <div className="text-xs font-semibold text-gray-500 mb-2 flex items-center justify-between">
@@ -1104,6 +1119,28 @@ const BrouwdagWizard: React.FC<Props> = ({batch, setBat, bi, setBi, stappen, set
                             onOpmerking={v => updOpmerking(s.id, v)}
                             onDelete={() => deleteStap(s.id)} />
                         ))}
+                      </div>
+                    )}
+                    {toonWater && waterDoel && (
+                      <div className={`rounded-lg bg-gray-50 px-3 py-2 text-sm ${items.length ? 'mt-2' : ''}`}>
+                        <div className="text-xs font-medium text-gray-600 mb-1">{t('water_plan_titel')}</div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-1">
+                          {waterDoel.maischwater_l != null && (
+                            <div><div className="text-xs text-gray-500">{t('water_lbl_maisch')}</div><div className="cijfer text-gray-900">{waterDoel.maischwater_l.toFixed(1)} L</div></div>
+                          )}
+                          {waterDoel.spoelwater_l != null && (
+                            <div>
+                              <div className="text-xs text-gray-500">{t('water_lbl_spoel')}</div>
+                              <div className="cijfer text-gray-900">{waterDoel.spoelwater_l.toFixed(1)} L{waterDoel.spoelwater_temp_c != null ? ` · ${Math.round(waterDoel.spoelwater_temp_c)} °C` : ''}</div>
+                            </div>
+                          )}
+                          <div><div className="text-xs text-gray-500">{t('water_lbl_totaal')}</div><div className="cijfer text-gray-900">{waterDoel.totaal_l.toFixed(1)} L</div></div>
+                          <div><div className="text-xs text-gray-500">{t('water_lbl_kookvolume')}</div><div className="cijfer text-gray-900">{waterDoel.voor_koken_l.toFixed(1)} L</div></div>
+                        </div>
+                        {waterDoel.maischwater_l == null && <p className="text-xs text-gray-500 mt-1">{t('water_geen_verhouding')}</p>}
+                        {waterDoel.heetwatertank_te_klein && <p className="text-xs text-orange-700 mt-1">{t('water_hlt_te_klein')}</p>}
+                        {waterDoel.maisch_te_veel && <p className="text-xs text-orange-700 mt-1">{t('water_maisch_te_veel')}</p>}
+                        {waterDoel.absorptie_aangenomen && <p className="text-xs text-gray-500 mt-1">{t('water_absorptie_aangenomen')}</p>}
                       </div>
                     )}
                     {(velden.length > 0 || toonTank) && (
