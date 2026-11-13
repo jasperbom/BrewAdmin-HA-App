@@ -134,7 +134,7 @@ export interface VerliesInvoer {
  * bestaan twee schrijfwijzen voor beide velden; een nul telt als "niet
  * ingevuld" zodat een oud record met alleen `aantal` niet op nul uitkomt.
  */
-const afgevuldeLiters = (batchId: any, afvullingen?: any[] | null): number =>
+export const afgevuldeLiters = (batchId: any, afvullingen?: any[] | null): number =>
   (afvullingen || [])
     .filter((a: any) => Number(a?.batch_id) === Number(batchId))
     .reduce((s: number, a: any) => {

@@ -203,7 +203,19 @@ BrewAdmin-HA-App/
 │   │   ├── batchKeten.ts   # Het product bij plannen (één kandidaat = koppelen met terugweg, meer = kiezen,
 │   │   │                   # geen = nieuw/later) en de ketenregel in de batchkop
 │   │   ├── receptNaarBatch.ts # De énige vertaling recept → batch + batchregels (plannen én opnieuw toepassen)
-│   │   ├── nieuweBatch.ts  # Het blad "Wat brouw je?": `planNieuweBatch`, tankstatus op de brouwdatum
+│   │   ├── nieuweBatch.ts  # Het blad "Wat brouw je?": `planNieuweBatch`, tankstatus op de brouwdatum;
+│   │   │                   # `tankLiters` (liters uit het profiel van de tank), `schaalVoorPlan` en
+│   │   │                   # `brouwPlanVoor` (het `brouwplan` op de batch; ook bij "Recept opnieuw toepassen")
+│   │   ├── installatie.ts  # Installatieprofielen (ketel + gisttank per tank, zoals Brewfather): het
+│   │   │                   # rekenmodel van Brewfather (`brouwVolumes`: na koken = (batch + trub)/(1 − krimp),
+│   │   │                   # voor koken = na koken + kookverlies × kooktijd), `waterPlan` (maisch-/spoelwater,
+│   │   │                   # heetwatertank), `graanKg`, `werkvolumeOordeel`, `installatieUitBrewfather` (de kopie
+│   │   │                   # in `recipe.equipment`; ontbrekend veld = leeg, nooit een gok), `brewfatherProfielen`
+│   │   ├── receptSchalen.ts # Een recept naar andere liters/een andere installatie: mout op OG (volume na koken
+│   │   │                   # × rendement recept/installatie), suiker en ketelhop op het volume na koken (IBU
+│   │   │                   # gelijk), dry hop/gist/gisttank-toevoegingen op de liters; `rondHoeveelheid`
+│   │   ├── profielCheck.ts # Profiel tegen de brouwdagen: mediaan van de laatste 5 batches per tank
+│   │   │                   # (kookverlies, trub, tankverlies, maischrendement), voorstel bij een echt verschil
 │   │   ├── receptGebruik.ts # Recepten "in gebruik" (zie Key Domain Concepts): `receptGebruik`,
 │   │   │                   # `receptenPerProduct`, `receptenVoorKiezer`, `tellingen`
 │   │   ├── receptLijst.ts  # De receptenpagina: In gebruik · Archief · Verborgen, tags als filter, zoeken
@@ -937,6 +949,12 @@ alleen lege velden, vastgezette ABV, schema's, status alleen vooruit langs tank 
 CCP 1), `bfRichting.test.ts` (standaard, ongeldige keuzes, rechten van de sleutel,
 gevolgen van koppelen), `bfKoppeling.test.ts` (voorstel op recept en brouwdag, al
 gekoppeld, opnieuw koppelen, Nieuw in Brewfather, bestaande batch) en `bfFout.test.ts`.
+Installatie en schalen: `installatie.test.ts` (dezelfde volumes als Brewfather, water,
+graan, de kopie uit `equipment`, werkvolume, opslaan, profielkeuze),
+`receptSchalen.test.ts` (IBU en OG gelijk, rendementcorrectie alleen op mout, dry hop en
+gist op de liters, kleur, randgevallen), `planSchalen.test.ts` (plannen met en zonder
+schalen, brouwplan, regels) en `profielCheck.test.ts` (metingen per batch, mediaan,
+drempels, de tank van de brouwdag).
 
 `server.py` heeft een pytest-suite (ERP-plan 3.2) in `tests/test_server.py`:
 key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
@@ -1558,6 +1576,31 @@ de fysieke bezetting. server.py (tankbewaking, auto-metingen) kijkt alleen naar
   (`useNieuweBatch()?.open({receptId?, versieId?, productId?, tank?, datum?})`)
   en `receptNaarBatch` — er is geen tweede planformulier.
 
+### Installatieprofiel, schalen en water
+
+Uitgangspunt van de gebruiker: recepten **ontwerpen** gebeurt in Brewfather, de
+rest van het brouwproces in BrewAdmin.
+
+- **Profiel per tank** (`tank.installatie`): ketel + gisttank, zoals een
+  installatieprofiel in Brewfather. Brewfather geeft profielen niet los via de
+  API; ze komen als kopie mee in een recept (`recept.installatie`, uit
+  `equipment`) en zijn in het profielblad over te nemen. Het rekenmodel in
+  `utils/installatie.ts` is dat van Brewfather — dezelfde getallen voor
+  hetzelfde profiel; houd dat zo (`installatie.test.ts` bewaakt 140 L →
+  148,96/153,46 L).
+- **Schalen** (`utils/receptSchalen.ts`, blad *Wat brouw je?*): kies je een
+  tank met een profiel, dan stelt het blad zijn liters voor en rekent het het
+  recept om — OG en IBU blijven die van het recept. Uitvinken = het oude
+  gedrag (andere liters, de hoeveelheden van het recept). Het resultaat staat
+  als `brouwplan` op de batch; *Recept opnieuw toepassen* schaalt opnieuw naar
+  dezelfde liters en tank.
+- **Brouwdag:** de wizard neemt kookvolume voor/na koken en liters naar de
+  gisttank uit het profiel van de tank (anders recept/batch) en toont in de
+  fase Water het maisch- en spoelwater (`waterPlan`).
+- **Profielcheck** (`utils/profielCheck.ts`): in het profielblad staat wat de
+  brouwdagen in die tank lieten zien, met de mediaan als voorstel. Er wordt
+  nooit iets vanzelf aangepast, en een profiel in Brewfather pas je zelf aan.
+
 ### Data keys (opgeslagen in SQLite, `/data/brewadmin.db`)
 
 Key names are alphanumeric + underscore only (enforced by server). All active keys:
@@ -1566,7 +1609,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 |-----|------|--------|
 | `ingredienten` | array | Ingrediënten. `allergenen` (ontbrekend = niet beoordeeld, `[]` = geen) met `allergenen_bron` (`regel`/`claude`/`handmatig`), `allergenen_toelichting` en `allergenen_model` (bij `claude`) — gezet door *Allergenen opzoeken* of de matrix (`handmatigBeoordeeld`) |
 | `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
-| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). Brewfather: `brewfather_id`/`brewfather_batch_nummer`, `bf_verweesd` (datum waarop Brewfather de batch niet meer kende); bij lezen `bf_stand` (per veld de laatst overgenomen waarde, een schema als hash) en `bf_verschil` (waarden waarin Brewfather afwijkt van een hier aangepaste waarde) — `utils/bfBatchSync.ts`; bij schrijven `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht) en `bf_fout` (`{op, melding}` van de laatste mislukte poging) — `utils/bfTerugschrijven.ts`. Brouwlog: `brouwlog_publiek` (alleen een echte `true` telt: deze batch gaat naar /brouwlog/ van de webshop) `brouwlog_notitie` (publieke tekst, max 600 tekens — los van `notities`/`batch_notities`, die intern blijven) en `brouwlog_artikel` (het webshopartikel voor naam en link: een `product_artikelen`-id, `'geen'` = geen link, leeg = automatisch); eigen velden die Brewfather-sync, receptsync en "opnieuw toepassen" niet aanraken |
+| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). Brewfather: `brewfather_id`/`brewfather_batch_nummer`, `bf_verweesd` (datum waarop Brewfather de batch niet meer kende); bij lezen `bf_stand` (per veld de laatst overgenomen waarde, een schema als hash) en `bf_verschil` (waarden waarin Brewfather afwijkt van een hier aangepaste waarde) — `utils/bfBatchSync.ts`; bij schrijven `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht) en `bf_fout` (`{op, melding}` van de laatste mislukte poging) — `utils/bfTerugschrijven.ts`. Brouwlog: `brouwlog_publiek` (alleen een echte `true` telt: deze batch gaat naar /brouwlog/ van de webshop) `brouwlog_notitie` (publieke tekst, max 600 tekens — los van `notities`/`batch_notities`, die intern blijven) en `brouwlog_artikel` (het webshopartikel voor naam en link: een `product_artikelen`-id, `'geen'` = geen link, leeg = automatisch); eigen velden die Brewfather-sync, receptsync en "opnieuw toepassen" niet aanraken. `brouwplan` (`BrouwPlan`): hoe de batch bij het plannen naar zijn tank is omgerekend (`geschaald`, liters recept/plan, factoren, rendementen, tank) — de brouwdagwizard leest er de doel-liters uit |
 | `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
 | `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull en `voorraad_gepusht`/`voorraad_gepusht_op` = de voorraad bij de laatste push en `winkel_stand` = `{status, afbeeldingen}` zoals de winkel ze bij het laatste contact had — ook op `merch_artikelen` en de oude `artikelen`) |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
@@ -1578,12 +1621,12 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `voorraad_log` | array | Mutatielog ingrediënten én bier: `afvullen`, `uitslaan` (AGP → vrije voorraad, met accijns), `verkoop` (uitlevering aan een klant; vóór v1.12.80 stond een verkoop óók als `uitslaan` gelogd; een teruggedraaide pick krijgt een tegenregel `verkoop` met negatieve hoeveelheid), `afboeking`, `rebrand` |
 | `voorraad_archief` | array | Gearchiveerde voorraadmutaties |
 | `voorraad_gesloten_bieren` | array | Afgesloten biersoorten |
-| `recepten` | array | Recepten (lokaal + Brewfather; versies als `<parent>__v<_id>` met `parent_id`/`is_huidige: false`). Eigen velden van de app (`kostprijs_overig` = vaste kosten per brouw, `kostprijs_verlies_pct` = handmatig verliespercentage, `vastgepind`) blijven bij een Brewfather-sync behouden — zie `RECEPT_EIGEN_VELDEN` in `utils/receptSync.ts`; `niet_in_brewfather` = verdwenen uit Brewfather maar nog verwezen, dus bewaard |
+| `recepten` | array | Recepten (lokaal + Brewfather; versies als `<parent>__v<_id>` met `parent_id`/`is_huidige: false`). Eigen velden van de app (`kostprijs_overig` = vaste kosten per brouw, `kostprijs_verlies_pct` = handmatig verliespercentage, `vastgepind`) blijven bij een Brewfather-sync behouden — zie `RECEPT_EIGEN_VELDEN` in `utils/receptSync.ts`; `niet_in_brewfather` = verdwenen uit Brewfather maar nog verwezen, dus bewaard. `installatie` = kopie van het installatieprofiel waarmee het recept in Brewfather is ontworpen (bij elke sync ververst) |
 | `recepten_verborgen` | array | Verborgen recept-IDs |
 | `recepten_gearchiveerde_tags` | array | Gearchiveerde recepttags |
 | `recepten_tag_volgorde` | array | Volgorde recepttags |
 | `recepten_gesloten_groepen` | array | Ingeklapte receptgroepen |
-| `tanks` | array | Tanks / fermentoren |
+| `tanks` | array | Tanks / fermentoren. `werkvolume_max_l`/`werkvolume_min_l` en `installatie` (installatieprofiel: ketel + gisttank, `utils/installatie.ts`; Instellingen › Tanks › Installatie, `components/tank/InstallatieProfielBlad.tsx`) — basis voor schalen in *Wat brouw je?* en het water op de brouwdag |
 | `artikelen` | array | WooCommerce-artikelen (SKU-mapping) |
 | `merch_artikelen` | array | Merch die je verkoopt maar niet als bier levert: `{sku, naam}`. Een WooCommerce-importregel die hierop matcht wordt een vrije regel (`type: 'vrij'`, `merch: true`) i.p.v. een pickregel — anders kan zo'n order nooit afgerond worden. Vult zich vanzelf via "markeer als merch" op een orderregel. Met `voorraad_volgen` erbij houdt de app een eigen `voorraad` bij (+ `inkoopprijs`/`verkoopprijs`/`btw_pct`/`wc_push`): afboeken bij order/kassa, aanvullen via een inkoopfactuur, meesturen in de WooCommerce-voorraadpush. Géén lots/THT/accijns/AGP — dat blijft strikt bier |
 | `merch_voorraad_log` | array | Voorraadmutaties op merch: `{merch_id, datum, aantal, reden: inkoop\|verkoop\|retour\|correctie\|telling, referentie, stand}`. Elke af-/bijboeking schrijft hier een regel; `stand` maakt de log zelfstandig leesbaar |

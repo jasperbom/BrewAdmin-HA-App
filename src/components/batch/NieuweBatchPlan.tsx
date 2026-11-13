@@ -9,6 +9,8 @@ import type {
 import type { PlanProduct, ProductBesluit, ProductKeuzeWaarde } from '../../utils/batchKeten'
 import type { ReceptGebruik } from '../../utils/receptGebruik'
 import type { TankBeschikbaarheid } from '../../utils/productKeten'
+import type { SchaalInfo } from '../../utils/receptSchalen'
+import type { WaterPlan } from '../../utils/installatie'
 import Inp from '../ui/Inp'
 import Icon from '../ui/Icon'
 import PlanProductKeuze from './PlanProductKeuze'
@@ -53,7 +55,17 @@ export interface NieuweBatchPlanProps {
   liters: string
   /** De liters van het recept (null = het recept noemt er geen). */
   litersRecept: number | null
+  /** Waar de liters vandaan komen: zelf ingevuld, het profiel van de tank of het recept. */
+  litersBron?: 'eigen' | 'tank' | 'recept'
   onLiters: (v: string) => void
+  /** Wat schalen naar deze liters en deze tank doet (null = niets te schalen). */
+  schaal?: SchaalInfo | null
+  schalen?: boolean
+  onSchalen?: (v: boolean) => void
+  /** Te veel of te weinig voor het werkvolume van de tank. */
+  werkvolume?: { soort: 'te_veel' | 'te_weinig'; grens: number } | null
+  /** Het water van de brouwdag volgens het profiel van de tank. */
+  water?: WaterPlan | null
   batchNummer: string
   naam: string
   onNaam: (v: string) => void
@@ -158,6 +170,16 @@ const NieuweBatchPlan: React.FC<NieuweBatchPlanProps> = (p) => {
   const litersGetal = Number(String(p.liters).replace(',', '.'))
   const litersAnders = p.liters.trim() !== '' && Number.isFinite(litersGetal) && litersGetal > 0 &&
     (p.litersRecept == null || litersGetal !== p.litersRecept)
+  const geschaald = !!p.schaal && p.schalen !== false
+  const tankNaam = gekozenTank?.naam || p.tank
+  const L = (n: number, d = 1) => `${fmtGetal(Math.round(n * Math.pow(10, d)) / Math.pow(10, d), d, taal)}\u00a0L`
+  const factor = (n: number) => `×${fmtGetal(Math.round(n * 100) / 100, 2, taal)}`
+  const litersHint: { tekst: string; let: boolean } | null =
+    litersAnders && !geschaald ? { tekst: t('nb_liters_anders').replace('{n}', String(p.litersRecept ?? '—')), let: true }
+    : litersAnders && geschaald ? { tekst: t('nb_liters_geschaald').replace('{n}', String(p.litersRecept ?? '—')), let: false }
+    : p.litersBron === 'tank' ? { tekst: t('nb_liters_tank').replace('{tank}', tankNaam), let: false }
+    : p.litersRecept != null ? { tekst: t('nb_liters_recept'), let: false }
+    : null
   const naamHint = p.naam.trim() ? null
     : p.naamBron === 'product' ? t('nb_naam_product')
     : p.naamBron === 'recept' ? t('nb_naam_recept')
@@ -288,9 +310,13 @@ const NieuweBatchPlan: React.FC<NieuweBatchPlanProps> = (p) => {
       <div className="grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] gap-3">
         <div className="min-w-0">
           <Inp label={t('nb_liters')} type="number" min={0} step="any" value={p.liters} onChange={p.onLiters} />
-          {litersAnders
-            ? <p className="text-xs text-orange-700 mt-1">{t('nb_liters_anders').replace('{n}', String(p.litersRecept ?? '—'))}</p>
-            : p.litersRecept != null && <p className="text-xs text-gray-500 mt-1">{t('nb_liters_recept')}</p>}
+          {litersHint && <p className={`text-xs mt-1 ${litersHint.let ? 'text-orange-700' : 'text-gray-500'}`}>{litersHint.tekst}</p>}
+          {p.werkvolume && (
+            <p role="alert" className="text-xs text-orange-700 mt-1">
+              {t(p.werkvolume.soort === 'te_veel' ? 'nb_werkvolume_te_veel' : 'nb_werkvolume_te_weinig')
+                .replace('{tank}', tankNaam).replace('{n}', fmtGetal(p.werkvolume.grens, 0, taal))}
+            </p>
+          )}
         </div>
         <div className="min-w-0">
           <div className="block text-sm font-medium text-gray-700 mb-1">{t('nb_batchnummer')}</div>
@@ -301,6 +327,64 @@ const NieuweBatchPlan: React.FC<NieuweBatchPlanProps> = (p) => {
           {naamHint && <p className={`text-xs mt-1 ${p.zonderRecept && !p.naam.trim() ? 'text-orange-700' : 'text-gray-500'}`}>{naamHint}</p>}
         </div>
       </div>
+
+      {/* ── Schalen naar de liters en de installatie van de tank ── */}
+      {p.recept && p.schaal && (
+        <Blok titel={t('nb_schalen_titel').replace('{n}', L(p.schaal.batch_l, 0))}>
+          <label className="flex items-start gap-2.5 text-sm text-gray-900 cursor-pointer min-h-tap md:min-h-0">
+            <input type="checkbox" className="t-checkbox w-4 h-4 mt-0.5 flex-shrink-0" checked={geschaald}
+              onChange={e => p.onSchalen?.(e.target.checked)} />
+            <span className="min-w-0">{t('nb_schalen_aan').replace('{n}', L(p.schaal.recept_batch_l, 0))}</span>
+          </label>
+          {geschaald ? (
+            <div className="mt-1.5 space-y-0.5 text-sm text-gray-700">
+              <p className="cijfer break-words">
+                {[
+                  t('nb_schalen_mout').replace('{f}', factor(p.schaal.factor_mout)),
+                  t('nb_schalen_hop').replace('{f}', factor(p.schaal.factor_volume)),
+                  t('nb_schalen_gist').replace('{f}', factor(p.schaal.factor_gist)),
+                ].join(' · ')}
+              </p>
+              <p className="text-xs text-gray-500">{t('nb_schalen_gelijk')}</p>
+              {p.schaal.rendement_recept != null && p.schaal.rendement_installatie != null &&
+                Math.abs(p.schaal.rendement_recept - p.schaal.rendement_installatie) >= 0.05 && (
+                <p className="text-xs text-gray-500">
+                  {t('nb_schalen_rendement')
+                    .replace('{van}', fmtGetal(p.schaal.rendement_recept, 1, taal))
+                    .replace('{naar}', fmtGetal(p.schaal.rendement_installatie, 1, taal))}
+                </p>
+              )}
+              {p.schaal.ebc_recept != null && p.schaal.ebc_geschaald != null &&
+                Math.round(p.schaal.ebc_recept) !== Math.round(p.schaal.ebc_geschaald) && (
+                <p className="text-xs text-gray-500">
+                  {t('nb_schalen_ebc').replace('{van}', String(Math.round(p.schaal.ebc_recept))).replace('{naar}', String(Math.round(p.schaal.ebc_geschaald)))}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="mt-1.5 text-xs text-orange-700">{t('nb_schalen_uit')}</p>
+          )}
+        </Blok>
+      )}
+
+      {/* ── Het water van de brouwdag (profiel van de tank) ── */}
+      {p.recept && p.water && (
+        <Blok titel={t('nb_water_titel').replace('{tank}', tankNaam)}>
+          <p className="text-sm font-medium text-gray-900 cijfer break-words">
+            {[
+              p.water.maischwater_l != null ? t('water_maisch').replace('{l}', L(p.water.maischwater_l)) : '',
+              p.water.spoelwater_l != null
+                ? (p.water.spoelwater_temp_c != null
+                  ? t('water_spoel_temp').replace('{l}', L(p.water.spoelwater_l)).replace('{c}', fmtGetal(p.water.spoelwater_temp_c, 0, taal))
+                  : t('water_spoel').replace('{l}', L(p.water.spoelwater_l)))
+                : t('water_totaal').replace('{l}', L(p.water.totaal_l)),
+              t('water_kookvolume').replace('{l}', L(p.water.voor_koken_l)),
+            ].filter(Boolean).map(x => x.replace(/ /g, '\u00a0')).join(' · ')}
+          </p>
+          {p.water.heetwatertank_te_klein && <p className="text-xs text-orange-700 mt-0.5">{t('water_hlt_te_klein')}</p>}
+          {p.water.maisch_te_veel && <p className="text-xs text-orange-700 mt-0.5">{t('water_maisch_te_veel')}</p>}
+        </Blok>
+      )}
 
       {/* ── Wat het recept meebrengt ── */}
       {p.recept && doelTekst && (

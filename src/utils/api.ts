@@ -7,6 +7,7 @@ import { parseWcFout } from './wcFout'
 import { bfFermType } from './ingTypes'
 import { bfFoutUitAntwoord, bfFoutTekst, BfFoutError, BfFout } from './bfFout'
 import { ebcUitSrm } from './bierKleur'
+import { installatieUitBrewfather } from './installatie'
 
 // KRITIEK: relatieve paden voor HA Ingress compatibiliteit.
 // Fallback '/' voor niet-browser-omgevingen (Vitest, fase 3.1): daar worden
@@ -1392,6 +1393,9 @@ export const bfMapRecipe = (r: any, opts: {
   type: r.type || '',
   stijl: r.style?.name || '',
   equipment: r.equipment?.name || '',
+  // De kopie van het installatieprofiel waarmee het recept is ontworpen
+  // (utils/installatie.ts): basis voor schalen en het profiel van een tank.
+  installatie: installatieUitBrewfather(r.equipment),
   batch_size: r.batchSize || '',
   // Gravity (3 dec) en ABV (2 dec) afronden — Brewfather kan floating-point-
   // artefacten teruggeven (bv. 1.0479999…) die anders lelijk in beeld komen.

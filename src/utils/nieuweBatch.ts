@@ -21,7 +21,7 @@
 // batchnummer en tijdstempel geeft de aanroeper uit; het scherm
 // (components/batch/NieuweBatchBlad.tsx) maakt de teksten uit de sleutels hier.
 
-import type { Allergeen, Batch, BatchIngredient, Ingredient, Product, Recept, Tank } from '../types'
+import type { Allergeen, Batch, BatchIngredient, BrouwPlan, Ingredient, Product, Recept, Tank } from '../types'
 import {
   hoofdIdResolver, huidigReceptVoorProduct, nieuwProductUitBatch, receptVoorBatch, tankBeschikbaarOp,
 } from './productKeten'
@@ -37,6 +37,9 @@ import {
 } from './etiket'
 import type { EtiketStatus, EtiketWaarden, ProductEtiketCtx } from './etiket'
 import { ingredientVoorReceptRegel, receptRegelVoorraad, receptVoorraadOordeel } from './ingredientVoorraad'
+import { installatieVanTank } from './installatie'
+import { schaalRecept } from './receptSchalen'
+import type { GeschaaldRecept } from './receptSchalen'
 import type { ReceptVoorraadStatus } from './ingredientVoorraad'
 
 type ReceptLike = Pick<Recept, 'id'> & Partial<Recept>
@@ -381,6 +384,35 @@ export const litersVoorBatch = (recept: ReceptLike | null | undefined, invoer: u
   return uitRecept != null && uitRecept === n ? null : n
 }
 
+/**
+ * Het batchvolume van de installatie van een tank (zijn profiel), of null.
+ * Het blad stelt die liters voor zodra de tank gekozen is.
+ */
+export const tankLiters = (tank: TankLike | null | undefined): number | null => {
+  const n = getal(installatieVanTank(tank)?.batch_l)
+  return n != null && n > 0 ? n : null
+}
+
+/**
+ * Het recept omgerekend naar de liters en de installatie van de gekozen tank
+ * (`utils/receptSchalen.ts`): mout op OG (met het maischrendement), hop op
+ * IBU, gist op de liters in de gisttank. Null als er niets te schalen valt —
+ * dezelfde liters en hetzelfde rendement, of geen liters in het recept.
+ * Leeg = de liters van het recept.
+ */
+export const schaalVoorPlan = <R extends ReceptLike>(
+  recept: R | null | undefined,
+  invoer: { liters?: unknown; tank?: TankLike | null },
+): GeschaaldRecept<R> | null => {
+  if (!recept) return null
+  const liters = getal(invoer.liters)
+  const r = schaalRecept(recept, {
+    batch_l: liters != null && liters > 0 ? liters : recept.batch_size,
+    installatie: installatieVanTank(invoer.tank),
+  })
+  return r && r.info.nodig ? r : null
+}
+
 /** De doelen uit het recept (SPEC C: "OG 1.062 · FG 1.011 · 6,8 % · 22 IBU · 9 EBC · 58 kcal / 241 kJ"). */
 export interface ReceptDoelen {
   og: number | null
@@ -583,6 +615,11 @@ export interface NieuweBatchInvoer {
   tank?: string | null
   /** Zoals ingevuld; leeg of gelijk aan het recept = de liters van het recept. */
   liters?: unknown
+  /**
+   * De ingrediënten meeschalen naar de liters en de installatie van de tank
+   * (`schaalVoorPlan`). Uit = alleen andere liters, de hoeveelheden van het recept.
+   */
+  schalen?: boolean
   productKeuze?: ProductKeuzeWaarde | null
 }
 
@@ -630,11 +667,44 @@ export interface NieuweBatchPlan<P extends ProductLike> {
   automatisch: boolean
   /** De naam die de batch zonder product had gekregen (voor die terugweg). */
   naamZonder: string
+  /** Het recept waaruit de regels komen: geschaald als dat gevraagd is, anders het recept zelf. */
+  recept: ReceptLike | null
 }
 
 export type NieuweBatchUitkomst<P extends ProductLike, B> =
   | { ok: true; plan: NieuweBatchPlan<P> }
   | { ok: false; fout: NieuweBatchFout<B> }
+
+/**
+ * Het brouwplan op de batch: hoe hij naar zijn tank is omgerekend, of alleen
+ * andere liters dan het recept. Null als het recept gewoon gevolgd wordt.
+ */
+export const brouwPlanVoor = (
+  recept: ReceptLike | null,
+  schaal: GeschaaldRecept<ReceptLike> | null,
+  andereLiters: number | null,
+  tank: string,
+): BrouwPlan | null => {
+  const receptL = getal(recept?.batch_size)
+  if (schaal) {
+    const i = schaal.info
+    return {
+      geschaald: true,
+      recept_batch_l: i.recept_batch_l,
+      batch_l: i.batch_l,
+      ...(tank ? { tank } : {}),
+      factor_mout: Math.round(i.factor_mout * 1000) / 1000,
+      factor_hop: Math.round(i.factor_volume * 1000) / 1000,
+      factor_gist: Math.round(i.factor_gist * 1000) / 1000,
+      rendement_recept: i.rendement_recept,
+      rendement_installatie: i.rendement_installatie,
+    }
+  }
+  if (andereLiters != null) {
+    return { geschaald: false, recept_batch_l: receptL, batch_l: andereLiters, ...(tank ? { tank } : {}) }
+  }
+  return null
+}
 
 /**
  * Een nieuwe batch plannen: dezelfde stappen als het planformulier dat dit
@@ -649,7 +719,14 @@ export const planNieuweBatch = <P extends ProductLike, B extends BatchLike>(
   ctx: NieuweBatchCtx<P, B>,
   uitgifte: NieuweBatchUitgifte,
 ): NieuweBatchUitkomst<P, B> => {
-  const recept = invoer.recept || null
+  const origineel = invoer.recept || null
+  const tankRecord = invoer.tank
+    ? (ctx.tanks || []).find((tk): tk is TankLike => !!tk && String(tk.id) === String(invoer.tank)) || null
+    : null
+  const schaal = invoer.schalen ? schaalVoorPlan(origineel, { liters: invoer.liters, tank: tankRecord }) : null
+  // Het recept waaruit de batch en zijn regels komen; het schema van de tank
+  // (vergistingsprofiel) is van beide hetzelfde.
+  const recept = schaal ? schaal.recept : origineel
   const nieuw: NieuweBatchBasis = {
     id: uitgifte.id,
     batch_nummer: uitgifte.batchNummer,
@@ -691,6 +768,8 @@ export const planNieuweBatch = <P extends ProductLike, B extends BatchLike>(
   const batch = (product ? receptNaarBatch(recept, { ...opties, product }).batch : zonderProduct) as BatchUitRecept & { id: number }
   const liters = litersVoorBatch(recept, invoer.liters)
   if (liters !== null) batch.liter_vergist = liters
+  const brouwplan = brouwPlanVoor(origineel, schaal, liters, nieuw.tank || '')
+  if (brouwplan) batch.brouwplan = brouwplan
 
   return {
     ok: true,
@@ -698,6 +777,7 @@ export const planNieuweBatch = <P extends ProductLike, B extends BatchLike>(
       batch, nieuw, nieuwProduct, product,
       automatisch: besluit.automatisch && !!besluit.product,
       naamZonder: String(zonderProduct.naam || ''),
+      recept,
     },
   }
 }

@@ -14,8 +14,9 @@ import { verkoopOverzicht } from '../../utils/verkoopOverzicht'
 import type { VerkoopCtx } from '../../utils/verkoopOverzicht'
 import {
   bladBegin, besluitVoorBlad, etiketVooruitblik, ingredientenOordeel, nieuweBatchRegels, planNieuweBatch,
-  productKeuzeNaKies, productPlanVoor, receptDoelen, receptVoorKeuze, tanksOpDatum, watLijst,
+  productKeuzeNaKies, productPlanVoor, receptDoelen, receptVoorKeuze, schaalVoorPlan, tankLiters, tanksOpDatum, watLijst,
 } from '../../utils/nieuweBatch'
+import { graanKg, installatieVanTank, waterPlan, werkvolumeOordeel } from '../../utils/installatie'
 import type { BladKeuze, NieuweBatchFout, NieuweBatchVerzoek } from '../../utils/nieuweBatch'
 import type { ProductKeuzeWaarde } from '../../utils/batchKeten'
 import Btn from '../ui/Btn'
@@ -101,8 +102,11 @@ const NieuweBatchBlad: React.FC<NieuweBatchBladProps> = (p) => {
   const [zoek, setZoek] = React.useState('')
   const [datum, setDatum] = React.useState(begin.datum)
   const [tank, setTank] = React.useState(begin.tank)
-  // null = de liters van het recept (ook na een ander recept of een andere versie).
+  // null = de liters van de tank (zijn installatieprofiel), anders van het
+  // recept (ook na een ander recept of een andere versie).
   const [liters, setLiters] = React.useState<string | null>(null)
+  // De ingrediënten meeschalen naar de liters en de installatie van de tank.
+  const [schalen, setSchalen] = React.useState(true)
   const [naam, setNaam] = React.useState('')
   const [productKeuze, setProductKeuze] = React.useState<ProductKeuzeWaarde | null>(begin.productKeuze)
   // Waarom Inplannen niet doorging; elke wijziging wist hem.
@@ -163,6 +167,21 @@ const NieuweBatchBlad: React.FC<NieuweBatchBladProps> = (p) => {
     const n = Number(String(recept?.batch_size ?? '').replace(',', '.'))
     return recept?.batch_size != null && recept.batch_size !== '' && Number.isFinite(n) && n > 0 ? n : null
   })()
+  // De tank met zijn installatieprofiel: zijn liters gaan voor die van het
+  // recept, en daarmee rekent het blad het recept om (utils/receptSchalen.ts).
+  const tankRecord = tank ? (tanks || []).find((tk: any) => String(tk?.id) === String(tank)) || null : null
+  const litersTank = tankLiters(tankRecord)
+  const litersInvoer = liters ?? (litersTank != null ? String(litersTank) : (litersRecept != null ? String(litersRecept) : ''))
+  const litersBron: 'eigen' | 'tank' | 'recept' = liters != null ? 'eigen' : litersTank != null ? 'tank' : 'recept'
+  const schaal = React.useMemo(() => schaalVoorPlan(recept, { liters: litersInvoer, tank: tankRecord }),
+    [recept, litersInvoer, tankRecord])
+  const installatie = installatieVanTank(tankRecord)
+  const werkvolume = werkvolumeOordeel(tankRecord, litersInvoer)
+  const water = React.useMemo(() => {
+    if (!installatie || !recept) return null
+    const bron = schalen && schaal ? schaal.recept : recept
+    return waterPlan(installatie, { batch_l: litersInvoer, graan_kg: graanKg(bron.mout), kooktijd_min: recept.kooktijd })
+  }, [installatie, recept, schalen, schaal, litersInvoer])
   const naamVoorstel = besluit.product?.naam || besluit.nieuwNaam || recept?.naam || t('flow_nieuw_naam_ph')
   const naamBron: 'product' | 'recept' | null = besluit.product || besluit.nieuwNaam ? 'product' : recept ? 'recept' : null
   const gekozen = !!recept || zonderRecept
@@ -224,7 +243,7 @@ const NieuweBatchBlad: React.FC<NieuweBatchBladProps> = (p) => {
     if (ingepland.current) return
     if (!gekozen) { setFout(t('nb_kies_eerst')); return }
     const r = planNieuweBatch(
-      { recept, naam, datum, tank, liters: liters ?? '', productKeuze },
+      { recept, naam, datum, tank, liters: litersInvoer, schalen, productKeuze },
       { batches: bat, ingredienten: ing, producten, recepten, tanks, tankStatussen: p.tankStatussen, conditionerenDagen },
       { id: newId(bat || []), batchNummer: nextBatchNummer(bat || []), nu: new Date().toISOString(), vandaag: tod(), productId: newId(producten || []) },
     )
@@ -246,7 +265,7 @@ const NieuweBatchBlad: React.FC<NieuweBatchBladProps> = (p) => {
         omschrijving: t('audit_brewfather_gekoppeld').replace('{naam}', `${bfBatchNaam(bfB)}${nr}`) })
     }
     // De regels tegen de verse lijst: hun id's lopen door vanaf het hoogste.
-    if (recept) setBi((prev: any[]) => nieuweBatchRegels(recept, r.plan, prev, ing))
+    if (recept) setBi((prev: any[]) => nieuweBatchRegels(r.plan.recept || recept, r.plan, prev, ing))
     if (automatisch && product) koppeling.meldAutomatischeKoppeling(batch.id, product, naamZonder)
     onGepland(batch.id)
   }
@@ -279,8 +298,10 @@ const NieuweBatchBlad: React.FC<NieuweBatchBladProps> = (p) => {
       plan={plan} productKeuze={productKeuze} onProductKeuze={wijzig(setProductKeuze)} besluit={besluit}
       producten={producten} recepten={recepten}
       datum={datum} onDatum={wijzig(setDatum)} tank={tank} onTank={wijzig(setTank)} tanks={tankRijen} batchLabel={batchLabel}
-      liters={liters ?? (litersRecept != null ? String(litersRecept) : '')} litersRecept={litersRecept}
+      liters={litersInvoer} litersRecept={litersRecept} litersBron={litersBron}
       onLiters={wijzig<string>(v => setLiters(v))}
+      schaal={schaal?.info ?? null} schalen={schalen} onSchalen={wijzig(setSchalen)}
+      werkvolume={werkvolume} water={water}
       batchNummer={batchNummer} naam={naam} onNaam={wijzig(setNaam)} naamVoorstel={naamVoorstel} naamBron={naamBron}
       doelen={doelen} ingredienten={ingredienten} vooruitblik={vooruitblik} vooruitProduct={vooruitProduct}
       onEtiketBijwerken={p.onEtiketBijwerken} />
