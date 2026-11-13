@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.49] — 2026-11-13
+
+### Werkafspraak: algemeen bouwen
+
+- `CLAUDE.md` legt vast dat een idee uit de eigen praktijk altijd uitgewerkt
+  wordt tot een algemene functie die elke brouwerij kan gebruiken: specifieke
+  waarden in de gegevens of instellingen, geen vaste opstelling aannemen,
+  nieuwe koppelingen standaard uit. Geen wijziging in de app zelf.
+
+---
+
 ## [1.13.48] — 2026-11-11
 
 ### Installatieprofiel per tank, recepten schalen en het water op de brouwdag

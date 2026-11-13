@@ -20,6 +20,45 @@ The app is "fully built with Claude AI" (noted in README). UI text and many code
 
 ---
 
+## Uitgangspunt: algemeen bouwen, ook als het idee specifiek is (blijvend)
+
+BrewAdmin draait bij één brouwerij, maar is bedoeld voor élke kleine
+brouwerij. De gebruiker komt vaak met een idee uit de eigen praktijk: de eigen
+webshop, leverancier, bank, tanks, airco, mailtekst of WhatsApp-groep. **Werk
+zo'n vraag altijd uit tot een algemene functie of oplossing**, waarin het
+specifieke geval één instelling is.
+
+- **Zoek het onderliggende probleem.** Wat wil de gebruiker eigenlijk
+  bereiken, en hoe ziet dat eruit bij een brouwerij met een andere opstelling?
+  Bouw dat; het voorbeeld van de gebruiker is de eerste testcase.
+- **Specifieke waarden zijn gegevens, geen code.** Namen, URL's, teksten,
+  drempels, entity-id's, leveranciers, pagina-ID's en huisstijl staan in de
+  administratie of de instellingen. In de code staat alleen een redelijke
+  standaard die voor de meeste brouwerijen klopt; leeg = die standaard of
+  niets, nooit een gok.
+- **Neem geen vaste opstelling aan:** aantal tanks, wel of geen koeling of
+  verwarming, kwartaal- of maandaangifte, land, vijf talen, acht thema's, wel
+  of geen webshop, Brewfather, Home Assistant-sensoren, Mollie of postvak.
+- **Een nieuwe koppeling of bijzondere werkwijze staat standaard uit** en gaat
+  aan in Instellingen. Wie hem niet heeft, merkt er niets van.
+- **Hoort het echt bij alleen deze brouwerij** (zoals de huisstijl van
+  Craftery), dan staat het in de gegevens van die installatie, niet in de
+  code — en krijgt de code hooguit het algemene mechanisme dat het mogelijk
+  maakt (zie "Thema Craftery").
+- **Zeg in je antwoord hoe je het veralgemeniseerd hebt:** welke instelling
+  erbij kwam, wat de standaard is en wat de gebruiker zelf moet invullen,
+  zodat die kan bijsturen. Twijfel je of iets algemeen moet, kies dan de
+  algemene vorm.
+
+Voorbeelden die al zo gebouwd zijn: de mailteksten (`mail_templates`), de
+"Wist je dat?"-uitnodiging (de WhatsApp-link staat in de administratie), de
+eigen factuur- en pakbonlayout, de airco voor de tanks (elke `climate`,
+richting en tanks kiesbaar), facturen per e-mail (elk IMAP-postvak), de
+brouwlog (per batch aan te vinken) en de afgeleide brouwkosten (bron per
+brouwerij).
+
+---
+
 ## Architecture
 
 ```
