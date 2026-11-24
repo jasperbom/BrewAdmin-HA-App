@@ -1271,6 +1271,19 @@ class TestBijlagen:
         req(app, 'POST', '/api/data/bank_transacties', body=[tx])
         assert req(app, 'POST', '/api/delete_upload/psp_1.pdf', body={})[0] == 200
 
+    def test_etiketfoto_bij_ccp3_gaat_niet_weg(self, app):
+        # De foto van het etiket bij een etiketcontrole is bewijs (CCP 3).
+        srv._write_json('haccp_etiketcontroles', [{'id': 1, 'sessie_id': 1, 'batch_id': 1,
+            'bijlagen': [{'naam': 'etiket.jpg', 'bestand': 'etiket_1.jpg', 'rol': 'etiket'}]}])
+        try:
+            assert srv._bijlage_in_gebruik('etiket_1.jpg') == 'haccp_etiketcontroles'
+            assert srv._bijlage_in_gebruik('etiket_2.jpg') is None
+        finally:
+            conn = srv._db()
+            with conn:
+                conn.execute("DELETE FROM records WHERE key='haccp_etiketcontroles'")
+                conn.execute("DELETE FROM versies WHERE key='haccp_etiketcontroles'")
+
     def test_bijlage_in_gebruik_negeert_een_kapotte_fotolijst(self, app):
         # Een lot met een rare waarde in etiket_fotos mag de controle niet laten vallen.
         req(app, 'POST', '/api/data/lots', body=[{'id': 8, 'etiket_fotos': 'geen-lijst'},
@@ -2220,6 +2233,24 @@ class TestSluitcontroleHerinnering:
         try:
             srv._sluitcontrole_tick()
             assert calls == []
+        finally:
+            self._clean()
+
+    def test_zwijgt_bij_lege_flessen_en_zonder_ccp2(self, app, monkeypatch):
+        # Sinds 1.13.51 draagt een sessie haar CCP 2: de inspectie van de lege
+        # flessen en een fust kennen geen halfuurcontrole, dus ook geen melding.
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append((s, t, m)) or True))
+        self._seed(
+            [{'id': 1, 'batch_id': 1, 'lotcode': 'L1', 'status': 'open', 'ccp2': 'lege_flessen',
+              'start': self._iso_min_geleden(120)},
+             {'id': 2, 'batch_id': 2, 'lotcode': 'L2', 'status': 'open', 'ccp2': 'geen',
+              'start': self._iso_min_geleden(120)},
+             {'id': 3, 'batch_id': 3, 'lotcode': 'L3', 'status': 'open', 'ccp2': 'sluitcontrole',
+              'start': self._iso_min_geleden(120)}])
+        try:
+            srv._sluitcontrole_tick()
+            assert len(calls) == 1 and 'L3' in calls[0][2]
         finally:
             self._clean()
 

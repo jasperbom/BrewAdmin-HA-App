@@ -19,7 +19,7 @@ import type {
   Allergeen, Batch, BatchIngredient, Ingredient, Product,
   HaccpVrijgave, HaccpInst, HaccpAfwijking, AfwijkingBron, Paraaf,
   RisicoKlasse, ToevoegingSoort, VrijgaveOordeel,
-  AfvulSessie, SluitControle, ControleResultaat, CorrigierendeActie,
+  AfvulSessie, SluitControle, ControleResultaat, CorrigierendeActie, Ccp2Soort,
 } from '../types'
 import { DEFAULT_HACCP_INST } from './constants'
 import { fmtDagMaand } from './format'
@@ -431,6 +431,82 @@ export const kroonkurkVerplicht = (
   return types.some(x => tp.includes(String(x).toLowerCase()))
 }
 
+/** Welke CCP 2 bij een verpakking hoort. Blik: de sluitcontrole (met
+ *  omkeerproef). Fles: de inspectie van de lege flessen, tenzij de brouwerij
+ *  de sluitcontrole kiest (`ccp2_fles`). Fust en de rest: geen CCP 2 — daar
+ *  houden reinigen en de pH van het naspoelwater het gevaar klein. */
+export const ccp2Voor = (
+  verpakkingType: string | undefined | null,
+  instRaw?: Partial<HaccpInst> | null
+): Ccp2Soort => {
+  const inst = haccpInst(instRaw)
+  if (omkeerproefVerplicht(verpakkingType, inst)) return 'sluitcontrole'
+  if (kroonkurkVerplicht(verpakkingType, inst)) {
+    return inst.ccp2_fles === 'sluitcontrole' ? 'sluitcontrole' : 'lege_flessen'
+  }
+  return 'geen'
+}
+
+/** De CCP 2 van een sessie: bevroren bij het aanmaken; een sessie van vóór
+ *  1.13.51 kende alleen de sluitcontrole. */
+export const sessieCcp2 = (sessie: Pick<AfvulSessie, 'ccp2'> | null | undefined): Ccp2Soort =>
+  sessie?.ccp2 === 'lege_flessen' || sessie?.ccp2 === 'geen' ? sessie.ccp2 : 'sluitcontrole'
+
+/** Inspectie van de lege flessen (CCP 2): elke fles tegen het licht, wat
+ *  afwijkt eruit. Eén registratie per sessie. */
+export const beoordeelFlesinspectie = (inv: {
+  bekeken?: boolean
+  afgekeurd?: number | string | null
+}): BlokkadeReden[] => {
+  const redenen: BlokkadeReden[] = []
+  if (!inv.bekeken) redenen.push({code: 'flessen_niet_bekeken', i18nKey: 'haccp_blok_flessen_niet_bekeken'})
+  const n = Number(inv.afgekeurd ?? 0)
+  if (inv.afgekeurd !== '' && inv.afgekeurd != null && (!isFinite(n) || n < 0 || !Number.isInteger(n))) {
+    redenen.push({code: 'afgekeurd_ongeldig', i18nKey: 'haccp_blok_afgekeurd_ongeldig'})
+  }
+  return redenen
+}
+
+// ── CCP 1, grens (c): koolzuur bij het afvullen ─────────────────────────────
+
+/** Toets het koolzuur alleen bij flessen, en alleen met een grens. */
+export const co2VanToepassing = (
+  verpakkingType: string | undefined | null,
+  instRaw?: Partial<HaccpInst> | null
+): boolean => {
+  const inst = haccpInst(instRaw)
+  return Number(inst.co2_max_volumes) > 0 && kroonkurkVerplicht(verpakkingType, inst)
+}
+
+/** Ontbreekt het koolzuur, of ligt het boven wat de fles aankan? */
+/** Koolzuur in volumes zoals je hem leest: twee decimalen in de notatie van
+ *  de taal ("2,66"; in het Engels "2.66"). */
+export const fmtCo2 = (volumes: number, taal?: string | null): string =>
+  Number(volumes).toFixed(2).replace('.', decimaalVoor(taal))
+
+/** De grens zoals ingesteld, zonder extra nullen ("2,7"). */
+export const fmtCo2Grens = (max: number, taal?: string | null): string =>
+  String(Number(max)).replace('.', decimaalVoor(taal))
+
+const decimaalVoor = (taal?: string | null): string =>
+  String(taal || 'nl').toLowerCase().startsWith('en') ? '.' : ','
+
+export const beoordeelCo2 = (
+  volumes: number | null | undefined,
+  instRaw?: Partial<HaccpInst> | null,
+  taal?: string | null
+): BlokkadeReden[] => {
+  const max = Number(haccpInst(instRaw).co2_max_volumes)
+  if (volumes == null || !isFinite(Number(volumes))) {
+    return [{code: 'co2_ontbreekt', i18nKey: 'haccp_blok_co2_ontbreekt'}]
+  }
+  if (max > 0 && Number(volumes) > max + 1e-9) {
+    return [{code: 'co2_te_hoog', i18nKey: 'haccp_blok_co2_te_hoog',
+      params: {volumes: fmtCo2(Number(volumes), taal), max: fmtCo2Grens(max, taal)}}]
+  }
+  return []
+}
+
 export interface SluitcontroleInvoer {
   aanleiding?: string
   visueel_ok?: boolean
@@ -578,22 +654,29 @@ export const magSessieAfsluiten = (
 ): BlokkadeResultaat => {
   const eigen = (controles || []).filter(c => c.sessie_id === sessie.id)
   const redenen: BlokkadeReden[] = []
-  if (!eigen.some(c => c.aanleiding === 'start')) {
-    redenen.push({code: 'geen_startcontrole', i18nKey: 'haccp_blok_geen_startcontrole'})
-  }
-  if (!eigen.some(c => c.aanleiding === 'einde')) {
-    redenen.push({code: 'geen_eindcontrole', i18nKey: 'haccp_blok_geen_eindcontrole'})
-  }
-  const openAfkeur = eigen.filter(c => c.resultaat === 'afgekeurd').filter(c => {
-    const maatregel = (capa || []).find(x => x.sluitcontrole_id === c.id)
-    return !maatregel || maatregel.status !== 'afgerond'
-  })
-  if (openAfkeur.length) {
-    redenen.push({
-      code: 'open_afkeur',
-      i18nKey: 'haccp_blok_open_afkeur',
-      params: {aantal: openAfkeur.length},
+  const soort = sessieCcp2(sessie)
+  if (soort === 'lege_flessen') {
+    if (!eigen.some(c => c.methode === 'lege_flessen')) {
+      redenen.push({code: 'geen_flesinspectie', i18nKey: 'haccp_blok_geen_flesinspectie'})
+    }
+  } else if (soort === 'sluitcontrole') {
+    if (!eigen.some(c => c.aanleiding === 'start')) {
+      redenen.push({code: 'geen_startcontrole', i18nKey: 'haccp_blok_geen_startcontrole'})
+    }
+    if (!eigen.some(c => c.aanleiding === 'einde')) {
+      redenen.push({code: 'geen_eindcontrole', i18nKey: 'haccp_blok_geen_eindcontrole'})
+    }
+    const openAfkeur = eigen.filter(c => c.resultaat === 'afgekeurd').filter(c => {
+      const maatregel = (capa || []).find(x => x.sluitcontrole_id === c.id)
+      return !maatregel || maatregel.status !== 'afgerond'
     })
+    if (openAfkeur.length) {
+      redenen.push({
+        code: 'open_afkeur',
+        i18nKey: 'haccp_blok_open_afkeur',
+        params: {aantal: openAfkeur.length},
+      })
+    }
   }
   if (!(etiketcontroles || []).some(e => e.sessie_id === sessie.id)) {
     redenen.push({code: 'geen_etiketcontrole', i18nKey: 'haccp_blok_geen_etiketcontrole'})
@@ -621,6 +704,11 @@ export const sluitcontroleHerinnering = (
   instRaw?: Partial<HaccpInst> | null
 ): {due: boolean; minutenSinds: number; volgendeOverMin: number} => {
   const inst = haccpInst(instRaw)
+  // Alleen de sluitcontrole loopt op de klok; de lege-flesseninspectie en een
+  // sessie zonder CCP 2 kennen geen halfuurritme.
+  if (sessieCcp2(sessie) !== 'sluitcontrole') {
+    return {due: false, minutenSinds: 0, volgendeOverMin: 0}
+  }
   const eigen = (controles || [])
     .filter(c => c.sessie_id === sessie.id)
     .sort((a, b) => controleTs(a) - controleTs(b))

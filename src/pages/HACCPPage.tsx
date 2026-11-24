@@ -1,5 +1,5 @@
 import React from 'react'
-import { t } from '../i18n'
+import { t, getLang } from '../i18n'
 import { newId } from '../utils/api'
 import { fmtD, fmtSg, tod } from '../utils/format'
 import { logAudit } from '../utils/audit'
@@ -14,7 +14,7 @@ import TraceTab from '../components/haccp/TraceTab'
 import ReinigingTab from '../components/haccp/ReinigingTab'
 import RegistersTab from '../components/haccp/RegistersTab'
 import { oefeningStatus, geldigeOefeningen, oefeningenNieuwsteEerst } from '../utils/trace'
-import { allergenenUitBatch } from '../utils/haccp'
+import { allergenenUitBatch, sessieCcp2, fmtCo2 } from '../utils/haccp'
 import { allergeenRegel } from '../utils/etiket'
 import { datumKort } from '../utils/etiketKaart'
 import { useEtiketBijwerken } from '../components/batch/EtiketBijwerken'
@@ -417,6 +417,29 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
 // hun sluit- en etiketcontroles, de afwijkingen en de CAPA's die daaruit
 // volgen. De eerste drie zijn read-only — registreren gebeurt in de
 // batchflow, op het moment dat de handeling plaatsvindt.
+// CCP 2 van een afvulsessie in een paar woorden: de inspectie van de lege
+// flessen (aantal afgekeurd), het aantal sluitcontroles, of niets (fust).
+const ccp2Kort = (x: any, sc: any[]): string => {
+  const soort = sessieCcp2(x)
+  if (soort === 'geen') return t('haccp_ccp2_nvt')
+  if (soort === 'lege_flessen') {
+    const insp = sc.find((c: any) => c.methode === 'lege_flessen')
+    return insp ? t('batchdossier_flessen_afgekeurd').replace('{n}', String(insp.afgekeurd_aantal ?? 0)) : '—'
+  }
+  return String(sc.length)
+}
+
+// Wat er bij het afvullen is vastgelegd: koolzuur, SG, lots en klapflessen.
+const afvulDetails = (x: any): string => [
+  x.co2_volumes != null ? t('haccp_co2_kort').replace('{volumes}', fmtCo2(Number(x.co2_volumes), getLang()))
+    + (x.co2_afwijking_id != null ? ` (${t('haccp_afw_kort')})` : '') : '',
+  x.sg_afvullen != null ? `${t('haccp_sg_afvullen')} ${fmtSg(x.sg_afvullen)}` : '',
+  x.flessenlot ? `${t('haccp_flessenlot')} ${x.flessenlot}` : '',
+  x.kroonkurkenlot ? `${t('haccp_kroonkurkenlot')} ${x.kroonkurkenlot}` : '',
+  x.klapflessen?.aantal ? t('haccp_klapflessen_stand').replace('{aantal}', String(x.klapflessen.aantal))
+    .replace('{vernietigd}', String(x.klapflessen.vernietigd ?? 0)) : '',
+].filter(Boolean).join(' · ')
+
 function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontroles,
                       afwijkingen, traceOefeningen, breweryDetails,
                       capa, setCapa, auditLog, setAuditLog, modal, setModal, edit, setEdit}: any) {
@@ -485,7 +508,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
         <td>${esc(x.lotcode)}</td><td>${esc(batchNaam(x.batch_id))}</td>
         <td>${esc(tijd(x.start))}</td><td>${esc(x.eind?tijd(x.eind):'—')}</td>
         <td>${esc(x.tht?fmtD(x.tht):(x.tht_klasse&&x.tht_klasse!=='geen'?'—':t('haccp_tht_klasse_geen')))}</td>
-        <td>${sc.length}${afgekeurd?` <span class="nok">(${afgekeurd} ${esc(t('haccp_ccp2_afgekeurd'))})</span>`:''}</td>
+        <td>${esc(ccp2Kort(x, sc))}${afgekeurd?` <span class="nok">(${afgekeurd} ${esc(t('haccp_ccp2_afgekeurd'))})</span>`:''}${afvulDetails(x)?`<br><span class="klein">${esc(afvulDetails(x))}</span>`:''}</td>
         <td>${ec.length}</td>
         <td>${esc(t(`haccp_sessie_${x.status}`))}</td></tr>`
     }).join('')
@@ -512,6 +535,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
       th,td{border:1px solid #ccc;padding:5px;text-align:left;font-size:11px;vertical-align:top}
       th{background:#f5f5f5} .ok{color:#15803d} .nok{color:#b91c1c;font-weight:600}
       .leeg{font-size:11px;color:#888;font-style:italic}
+      .klein{font-size:10px;color:#666}
       @media print{body{padding:0}}
     </style></head><body>
       <h1>${esc(t('haccp_rap_titel'))}</h1>
@@ -519,7 +543,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
       <h2>${esc(t('haccp_ccp1_titel'))}</h2>
       ${vrij.length?`<table><tr><th>${esc(t('lbl_datum'))}</th><th>Batch</th><th>${esc(t('haccp_ccp1_stabiel'))}</th><th>${esc(t('haccp_ccp1_verschil'))}</th><th>${esc(t('haccp_ccp1_oordeel'))}</th><th>${esc(t('haccp_ccp1_paraaf'))}</th></tr>${rijenVrij}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
       <h2>${esc(t('haccp_sessie_titel'))} — ${esc(t('haccp_ccp2_titel'))} / ${esc(t('haccp_ccp3_titel'))}</h2>
-      ${sess.length?`<table><tr><th>${esc(t('haccp_sessie_lotcode'))}</th><th>Batch</th><th>${esc(t('haccp_sessie_gestart'))}</th><th>${esc(t('haccp_sessie_afgesloten'))}</th><th>${esc(t('haccp_sessie_tht'))}</th><th>${esc(t('haccp_ccp2_titel'))}</th><th>${esc(t('haccp_ccp3_titel'))}</th><th>${esc(t('haccp_rap_status'))}</th></tr>${rijenSess}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
+      ${sess.length?`<table><tr><th>${esc(t('haccp_sessie_lotcode'))}</th><th>Batch</th><th>${esc(t('haccp_sessie_gestart'))}</th><th>${esc(t('haccp_sessie_afgesloten'))}</th><th>${esc(t('haccp_sessie_tht'))}</th><th>${esc(t('batchdossier_ccp2'))}</th><th>${esc(t('haccp_ccp3_titel'))}</th><th>${esc(t('haccp_rap_status'))}</th></tr>${rijenSess}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
       <h2>${esc(t('haccp_tab_afwijkingen'))}</h2>
       ${afw.length?`<table><tr><th>${esc(t('lbl_datum'))}</th><th>${esc(t('haccp_rap_bron'))}</th><th>Batch</th><th>${esc(t('haccp_afw_geblokkeerd_omdat'))}</th><th>${esc(t('haccp_afw_onderbouwing'))}</th><th>${esc(t('haccp_ccp1_paraaf'))}</th></tr>${rijenAfw}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
       <h2>${esc(t('haccp_trace_oefening_titel'))}</h2>
@@ -604,7 +628,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
                     </span>
                   </div>
                   <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-2">
-                    <span>{t('haccp_ccp2_titel')}: {sc.length}</span>
+                    <span>{t('batchdossier_ccp2')}: {ccp2Kort(x, sc)}</span>
                     {!!afgekeurd && <span className="text-red-600 font-medium">{afgekeurd}× {t('haccp_ccp2_afgekeurd')}</span>}
                     <span>{t('haccp_ccp3_titel')}: {ec.length}</span>
                     {!!geblokkeerd && (
@@ -614,6 +638,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
                     )}
                     <span>{tijd(x.start)}{x.eind?` — ${tijd(x.eind)}`:''}</span>
                   </div>
+                  {afvulDetails(x) && <div className="text-xs text-gray-500 mt-0.5 break-words">{afvulDetails(x)}</div>}
                 </div>
               )
             })}

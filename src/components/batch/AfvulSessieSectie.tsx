@@ -1,7 +1,12 @@
 import React from 'react'
 import { t, getLang } from '../../i18n'
-import { newId } from '../../utils/api'
-import { fmtD, tod } from '../../utils/format'
+import { newId, haGetState } from '../../utils/api'
+import { fmtD, fmtSg, tod } from '../../utils/format'
+import { carbVolumes, drukNaarBar } from '../../utils/calculations'
+import { uploadBijlage, uploadFoutSleutel, type Bijlage } from '../../utils/bijlage'
+import {
+  naarJpeg, alsBestand, naamMetExtensie, ARCHIEF_MAX_PX, AfbeeldingFout, afbeeldingFoutSleutel,
+} from '../../utils/afbeelding'
 import { logAudit } from '../../utils/audit'
 import {
   SLUIT_AANLEIDINGEN, ETIKET_AANLEIDINGEN, THT_KLASSE_LABEL_KEY, ALLERGENEN_LIJST,
@@ -19,11 +24,12 @@ import {
   beoordeelSluitcontrole, afvullingenSindsLaatsteGoedkeuring, magSessieAfsluiten,
   sluitcontroleHerinnering, allergenenUitBatch, allergenenVanProduct,
   vergelijkAllergenen, magEtiketterenDoorgaan, bouwAfwijking, capaUitAfwijking,
+  ccp2Voor, sessieCcp2, beoordeelFlesinspectie, co2VanToepassing, beoordeelCo2, fmtCo2, fmtCo2Grens, tankSgMetingen,
 } from '../../utils/haccp'
 import {
   nieuweLotcode, thtKlasseVoorBatch, thtHandmatigBlokkade,
   berekenTht, openSessiesVoorBatch, actieveSessie, magSessieStarten,
-  verwachteControleMomenten, controleDekking,
+  verwachteControleMomenten, controleDekking, vorigeLots,
 } from '../../utils/afvulsessie'
 import { verpakkingVoorraad } from '../../utils/verpakkingVoorraad'
 import { ccp3AbvRegel, etiketBlokMetVersie as metVersie, etiketControleGetallen } from '../../utils/etiket'
@@ -32,7 +38,7 @@ import type { AfvulControle } from '../../utils/afvulControle'
 import { productVoorBatch } from '../../utils/productKeten'
 import { productenVoorBatchKeuze } from '../../utils/batchKeten'
 import { productSelOpties } from './ProductOpties'
-import type { AfvulSessie, SluitControle, EtiketControle } from '../../types'
+import type { AfvulSessie, SluitControle, EtiketControle, HaccpBijlage } from '../../types'
 
 // De afvulsessie is het anker voor CCP 2 en CCP 3: één afvulmoment met een
 // eigen lotcode (L2431-B1), zodat bij een sluitprobleem alleen die sessie
@@ -117,7 +123,34 @@ interface Props {
   verlies?: React.ReactNode
   verliesDone?: boolean
   verliesDetail?: React.ReactNode
+  /** Home Assistant: de druksensor van de tank (CO2 bij het afvullen) en de
+   *  live tanktemperaturen. */
+  haInst?: any
+  haTankTemps?: Record<string, number>
+  /** De metingen: SG bij het afvullen en de tanktemperatuur als er geen
+   *  sensor is. */
+  gistMetingen?: any[]
 }
+
+// Wat de afvuldag naast CCP 2 en 3 vastlegt (1.13.51): het koolzuur (CCP 1,
+// grens c), de SG bij het afvullen, de lots van fles en kroonkurk en de
+// klapflessen. `null` = het voorstel van de app (sensor, laatste meting,
+// vorige sessie); wat je zelf intypt gaat altijd voor, ook leeg.
+interface ExtraInvoer {
+  co2_druk: string | null
+  co2_temp: string | null
+  sg_afvullen: string | null
+  flessenlot: string | null
+  kroonkurkenlot: string | null
+  klap_aantal: string
+  klap_vernietigd: string
+  klap_gereinigd: boolean
+}
+const leegExtra: ExtraInvoer = {
+  co2_druk: null, co2_temp: null, sg_afvullen: null, flessenlot: null, kroonkurkenlot: null,
+  klap_aantal: '', klap_vernietigd: '', klap_gereinigd: false,
+}
+const getal = (v: string | null | undefined): number => Number(String(v ?? '').trim().replace(',', '.'))
 
 type RegelStatus = 'done' | 'open' | 'optioneel'
 
@@ -145,6 +178,11 @@ const leegNa = {
   // formulier meldt dan hoeveel er volgens het halfuurritme ontbreken. Zelf
   // aanvullen zou controles verzinnen die niemand heeft gedaan.
   tussen: [] as string[],
+  // CCP 2 als inspectie van de lege flessen.
+  flessen_bekeken: false,
+  afgekeurd: '',
+  etiket_foto: null as Bijlage | null,
+  ...leegExtra,
 }
 
 // Eén regel van de afvulchecklist. De hele fase is één lijst: hygiëne, sessie,
@@ -198,7 +236,8 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const batchProduct = productVoorBatch(p.batch, {afvullingen: p.av, producten: p.producten}).productId
   const [na, setNa] = React.useState({...leegNa, datum: tod(), product_id: batchProduct ?? ''})
   const [nu, setNu] = React.useState(() => new Date())
-  const [afwijking, setAfwijking] = React.useState<{blok: any; titel: string; bron: any} | null>(null)
+  const [afwijking, setAfwijking] = React.useState<{blok: any; titel: string; bron: any;
+    actie?: 'achteraf' | 'start'} | null>(null)
   // Eén regel tegelijk open. Zonder eigen keuze staat de regel open die aan de
   // beurt is (zie `autoRegel` hieronder); '' betekent: alles dicht.
   const [openRegel, setOpenRegel] = React.useState<string | null>(null)
@@ -228,16 +267,183 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     () => risicoVoorBatch(p.batch, p.bi || [], p.ing || [], inst, p.lots),
     [p.batch, p.bi, p.ing, p.lots, p.haccpInstellingen])
 
+  // ── Wat de app al weet: druk, temperatuur, SG, lots ─────────────────────
+  // De druk van de tank één keer ophalen als het formulier openstaat (niet op
+  // een klok): het koolzuur meet je bij het afvullen, niet de hele dag.
+  const drukSensor = (p.haInst?.enabled ? (p.haInst?.druk_sensors || []) : [])
+    .find((x: any) => x?.entity && x?.tank && String(x.tank) === String(p.batch?.tank))
+  const [drukLive, setDrukLive] = React.useState<number | null>(null)
+  React.useEffect(() => {
+    let weg = false
+    setDrukLive(null)
+    if (!drukSensor?.entity) return
+    haGetState(drukSensor.entity)
+      .then(d => { if (!weg) setDrukLive(drukNaarBar(d?.state, drukSensor.eenheid)) })
+      .catch(() => { /* geen sensor = zelf invullen */ })
+    return () => { weg = true }
+  }, [drukSensor?.entity, drukSensor?.eenheid])
+  const eigenMetingen = (p.gistMetingen || []).filter((m: any) => m?.batch_id === p.batch?.id)
+  const tempLive = p.batch?.tank != null ? p.haTankTemps?.[p.batch.tank] : undefined
+  const laatsteTemp = eigenMetingen.slice().reverse().find((m: any) => m?.temp != null && m.temp !== '')?.temp
+  const tempVoorstel = typeof tempLive === 'number' && isFinite(tempLive) ? tempLive
+    : (laatsteTemp != null && isFinite(Number(laatsteTemp)) ? Number(laatsteTemp) : null)
+  const sgVoorstel = tankSgMetingen(eigenMetingen).slice(-1)[0]?.sg ?? null
+
+  // Alles wat er bij één verpakking hoort: welke CCP 2, of het koolzuur
+  // getoetst wordt, de waarden (voorstel of eigen invoer) en wat er ontbreekt.
+  const extraVoor = (x: ExtraInvoer, vp: any) => {
+    const type = vp?.type || vp?.naam
+    const fles = !!vp && kroonkurkVerplicht(type, inst)
+    const co2Nodig = !!vp && co2VanToepassing(type, inst)
+    const druk = x.co2_druk ?? (drukLive != null ? String(drukLive) : '')
+    const temp = x.co2_temp ?? (tempVoorstel != null ? String(tempVoorstel) : '')
+    const volumes = carbVolumes(druk.trim() === '' ? '' : getal(druk), temp.trim() === '' ? '' : getal(temp))
+    const co2Redenen = co2Nodig ? beoordeelCo2(volumes, inst, getLang()) : []
+    const lotsV = vorigeLots(p.sessies || [], vp?.id)
+    const flessenlot = x.flessenlot ?? lotsV.flessenlot
+    const kroonkurkenlot = x.kroonkurkenlot ?? lotsV.kroonkurkenlot
+    const sg = x.sg_afvullen ?? (sgVoorstel != null ? String(sgVoorstel) : '')
+    const klapAantal = getal(x.klap_aantal || '0')
+    const klapVernietigd = getal(x.klap_vernietigd || '0')
+    const klapOk = !(klapAantal > 0) || (x.klap_gereinigd && Number.isInteger(klapVernietigd) && klapVernietigd >= 0)
+    const sensor = x.co2_druk == null && drukLive != null
+    return {type, fles, co2Nodig, druk, temp, volumes, co2Redenen, flessenlot, kroonkurkenlot, sg,
+      klapAantal, klapVernietigd, klapOk, sensor, ccp2: vp ? ccp2Voor(type, inst) : null}
+  }
+  type Extra = ReturnType<typeof extraVoor>
+
+  // De velden die met de sessie bevroren worden.
+  const sessieExtra = (e: Extra, metKlap: boolean): Partial<AfvulSessie> => {
+    const sg = getal(e.sg)
+    return {
+      ...(e.co2Nodig && e.volumes != null ? {
+        co2_druk_bar: getal(e.druk), co2_temp_c: getal(e.temp), co2_volumes: e.volumes,
+        co2_max: Number(inst.co2_max_volumes), co2_bron: e.sensor ? 'sensor' as const : 'handmatig' as const,
+      } : {}),
+      ...(sg > 0.9 && sg < 1.2 ? {sg_afvullen: Math.round(sg * 10000) / 10000} : {}),
+      ...(e.fles && e.flessenlot.trim() ? {flessenlot: e.flessenlot.trim()} : {}),
+      ...(e.fles && e.kroonkurkenlot.trim() ? {kroonkurkenlot: e.kroonkurkenlot.trim()} : {}),
+      ...(metKlap && e.fles && e.klapAantal > 0 ? {
+        klapflessen: {aantal: e.klapAantal, vernietigd: e.klapVernietigd, gereinigd: true},
+      } : {}),
+    }
+  }
+
+  // De velden zelf — dezelfde in het achteraf-formulier en bij het starten.
+  const extraVelden = (x: ExtraInvoer, zet: (patch: Partial<ExtraInvoer>) => void, e: Extra, metKlap: boolean) => (
+    <div className="space-y-2">
+      {e.co2Nodig && (
+        <div>
+          <Label>{t('haccp_co2_titel')}</Label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
+            <Inp label={t('haccp_co2_druk')} type="number" step="0.01" value={e.druk}
+              onChange={v => zet({co2_druk: v})} />
+            <Inp label={t('haccp_co2_temp')} type="number" step="0.1" value={e.temp}
+              onChange={v => zet({co2_temp: v})} />
+            <div className="col-span-2 text-sm pb-2">
+              {e.volumes != null ? (
+                <span className={e.co2Redenen.length ? 'text-red-600 font-medium' : 'text-gray-800'}>
+                  {e.co2Redenen.length ? '✕' : '✓'}{' '}
+                  {t('haccp_co2_volumes').replace('{volumes}', fmtCo2(e.volumes, getLang()))
+                    .replace('{max}', fmtCo2Grens(inst.co2_max_volumes, getLang()))}
+                </span>
+              ) : <span className="text-gray-500">{t('haccp_co2_vul_in')}</span>}
+            </div>
+          </div>
+          {e.sensor && (
+            <div className="text-xs text-gray-500 mt-0.5">{t('haccp_co2_uit_sensor')}</div>
+          )}
+        </div>
+      )}
+      <div className="grid sm:grid-cols-3 gap-2">
+        <div>
+          <Inp label={t('haccp_sg_afvullen')} type="number" step="0.001" value={e.sg}
+            onChange={v => zet({sg_afvullen: v})} />
+          {x.sg_afvullen == null && sgVoorstel != null && (
+            <div className="text-xs text-gray-500 mt-0.5">{t('haccp_sg_afvullen_uit_meting')}</div>
+          )}
+        </div>
+        {e.fles && (
+          <>
+            <Inp label={t('haccp_flessenlot')} value={e.flessenlot} onChange={v => zet({flessenlot: v})} />
+            <Inp label={t('haccp_kroonkurkenlot')} value={e.kroonkurkenlot} onChange={v => zet({kroonkurkenlot: v})} />
+          </>
+        )}
+      </div>
+      {metKlap && e.fles && (
+        <div className="grid sm:grid-cols-3 gap-2 items-end">
+          <Inp label={t('haccp_klapflessen')} type="number" step="1" min={0} value={x.klap_aantal}
+            onChange={v => zet({klap_aantal: v})} />
+          {e.klapAantal > 0 && (
+            <>
+              <Inp label={t('haccp_klap_vernietigd')} type="number" step="1" min={0} value={x.klap_vernietigd}
+                onChange={v => zet({klap_vernietigd: v})} />
+              <label className="flex items-start gap-2 text-sm text-gray-700 pb-2">
+                <input type="checkbox" className="t-checkbox mt-0.5" checked={x.klap_gereinigd}
+                  onChange={ev => zet({klap_gereinigd: ev.target.checked})} />
+                {t('haccp_klap_gereinigd')}
+              </label>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+
+  // Etiketfoto (CCP 3): verkleind tot een archieffoto en geüpload.
+  const [fotoBezig, setFotoBezig] = React.useState(false)
+  const [fotoFout, setFotoFout] = React.useState('')
+  const kiesEtiketFoto = async (file: File | null | undefined, zet: (b: Bijlage) => void) => {
+    if (!file) return
+    setFotoBezig(true)
+    setFotoFout('')
+    try {
+      const jpg = await naarJpeg(file, ARCHIEF_MAX_PX)
+      const u = await uploadBijlage(alsBestand(jpg.blob, naamMetExtensie(file.name, 'jpg')), 'etiket')
+      if (!u.ok || !u.bijlage) { setFotoFout(t(uploadFoutSleutel(u.status)).replace('{naam}', u.naam)); return }
+      zet(u.bijlage)
+    } catch (err) {
+      setFotoFout(err instanceof AfbeeldingFout ? t(afbeeldingFoutSleutel(err.code))
+        : t('err_upload_mislukt').replace('{naam}', file.name))
+    } finally {
+      setFotoBezig(false)
+    }
+  }
+  const fotoVeld = (foto: Bijlage | null, zet: (b: Bijlage | null) => void) => (
+    <div className="text-sm">
+      <Label>{t('haccp_etiket_foto')}</Label>
+      {foto ? (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-gray-700 break-words min-w-0">✓ {foto.naam}</span>
+          <button type="button" onClick={() => zet(null)}
+            className="min-h-tap sm:min-h-0 text-xs text-gray-500 underline underline-offset-2">{t('btn_delete')}</button>
+        </div>
+      ) : (
+        <label className="inline-flex items-center gap-2 min-h-tap sm:min-h-0 px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
+          <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={fotoBezig}
+            onChange={ev => { const f = ev.target.files?.[0]; ev.target.value = ''; void kiesEtiketFoto(f, zet) }} />
+          {fotoBezig ? t('haccp_etiket_foto_bezig') : t('haccp_etiket_foto_maken')}
+        </label>
+      )}
+      {fotoFout && <div className="text-xs text-red-600 mt-0.5">{fotoFout}</div>}
+    </div>
+  )
+  const fotoBijlagen = (foto: Bijlage | null): HaccpBijlage[] | undefined =>
+    foto ? [{naam: foto.naam, bestand: foto.bestand, rol: 'etiket', geupload_op: new Date().toISOString()}] : undefined
+
   // ── Sessie starten ───────────────────────────────────────────────────────
-  const [start, setStart] = React.useState({
+  const leegStart = {
     verpakking_id: '' as string | number,
     reiniging_bevestigd: false,
     tht_handmatig: false,
     tht: '',
     tht_reden: '',
-  })
+    ...leegExtra,
+  }
+  const [start, setStart] = React.useState(leegStart)
 
   const gekozenVp = (p.verpakkingen || []).find((v: any) => v.id === Number(start.verpakking_id))
+  const startExtra = extraVoor(start, gekozenVp)
   const thtKlasse = thtKlasseVoorBatch(p.batch?.ABV, risico, inst)
   const thtBerekend = berekenTht(tod(), thtKlasse, inst)
   // Ook de vastgezette ABV hoort bij de eerste sessie (net als CCP 1); een
@@ -250,8 +456,12 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   // datum — anders start de sessie zonder THT en erven alle afvullingen dat.
   const thtBlok = thtHandmatigBlokkade(start.tht_handmatig, start.tht, start.tht_reden, thtKlasse)
 
-  const startSessie = async () => {
+  // Te veel koolzuur voor de fles: niet afvullen, of alleen met een afwijking.
+  const startCo2Blok = {toegestaan: startExtra.co2Redenen.length === 0, redenen: startExtra.co2Redenen}
+
+  const startSessie = async (co2AfwijkingId?: number) => {
     if (!startBlok.toegestaan || thtBlok || bezig) return
+    if (!startCo2Blok.toegestaan && co2AfwijkingId == null) return
     setBezig(true)
     let sessiesNu: AfvulSessie[]
     try { sessiesNu = await verseSessies() } finally { setBezig(false) }
@@ -278,6 +488,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       tht_handmatig: start.tht_handmatig || undefined,
       tht_reden: start.tht_handmatig ? start.tht_reden.trim() : undefined,
       start_paraaf: paraaf,
+      ccp2: startExtra.ccp2 || undefined,
+      ...sessieExtra(startExtra, false),
+      co2_afwijking_id: co2AfwijkingId,
     }
     p.setSessies((prev: AfvulSessie[]) => [...(prev || []), record])
     logAudit(p.auditLog, p.setAuditLog, {
@@ -287,7 +500,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     // De net gestarte sessie is de sessie waarin je gaat afvullen.
     p.setActieveSessieId?.(id)
     setStartOpen(false)
-    setStart({verpakking_id: '', reiniging_bevestigd: false, tht_handmatig: false, tht: '', tht_reden: ''})
+    setStart(leegStart)
   }
 
   // ── CCP 2 — sluitcontrole ────────────────────────────────────────────────
@@ -366,6 +579,46 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     setNu(new Date())
   }
 
+  // ── CCP 2 — lege flessen inspecteren (live) ─────────────────────────────
+  // Eén registratie per sessie: elke fles is tegen het licht bekeken, zoveel
+  // zijn er afgekeurd. Geen halfuurritme.
+  const [fi, setFi] = React.useState({bekeken: false, afgekeurd: ''})
+  const fiRedenen = beoordeelFlesinspectie(fi)
+  const flesinspectie = eigenControles.find(c => c.methode === 'lege_flessen') || null
+  const slaFlesinspectieOp = () => {
+    if (!sessie || fiRedenen.length || flesinspectie) return
+    const paraaf = maakParaaf(p.whoami)
+    const id = newId(p.sluitcontroles || [])
+    const record: SluitControle = {
+      id, sessie_id: sessie.id, batch_id: p.batch.id,
+      methode: 'lege_flessen', afgekeurd_aantal: Math.max(0, Math.round(getal(fi.afgekeurd || '0'))),
+      aanleiding: 'start', visueel_ok: true, resultaat: 'goedgekeurd', paraaf,
+    }
+    p.setSluitcontroles((prev: SluitControle[]) => [...(prev || []), record])
+    logAudit(p.auditLog, p.setAuditLog, {
+      entiteit: 'SluitControle', entiteit_id: id, actie: 'aangemaakt',
+      omschrijving: `${sessie.lotcode}: ${t('haccp_flesinspectie_titel')} · ${record.afgekeurd_aantal} ${t('haccp_afgekeurd_kort')}`,
+    })
+    setFi({bekeken: false, afgekeurd: ''})
+  }
+
+  // Klapfles tijdens een lopende sessie: vaste procedure, één regel erbij.
+  const [klap, setKlap] = React.useState({open: false, vernietigd: '', gereinigd: false})
+  const sessieIsFles = !!sessie && kroonkurkVerplicht(sessie.verpakking_type, inst)
+  const legKlapflesVast = () => {
+    if (!sessie || !klap.gereinigd) return
+    const v = Math.max(0, Math.round(getal(klap.vernietigd || '0')))
+    p.setSessies((prev: AfvulSessie[]) => (prev || []).map(s => s.id === sessie.id
+      ? {...s, klapflessen: {aantal: (s.klapflessen?.aantal || 0) + 1,
+          vernietigd: (s.klapflessen?.vernietigd || 0) + v, gereinigd: true}}
+      : s))
+    logAudit(p.auditLog, p.setAuditLog, {
+      entiteit: 'AfvulSessie', entiteit_id: sessie.id, actie: 'gewijzigd',
+      omschrijving: `${sessie.lotcode}: ${t('haccp_klapfles')} · ${v} ${t('haccp_klap_vernietigd_kort')}`,
+    })
+    setKlap({open: false, vernietigd: '', gereinigd: false})
+  }
+
   // ── CCP 3 — etiketcontrole ───────────────────────────────────────────────
   const eigenEtiket = (p.etiketcontroles || []).filter(e => e.sessie_id === sessie?.id)
   const [ec, setEc] = React.useState({
@@ -376,6 +629,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     tht_ok: false,
     alcohol_ok: false,
     opmerking: '',
+    foto: null as Bijlage | null,
   })
   const gekozenProduct = (p.producten || []).find((x: any) => x.id === Number(ec.product_id))
   // Laden de producten (of de koppeling van de batch) pas na het openen, dan
@@ -461,6 +715,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       resultaat: etiketBlok.toegestaan ? 'goedgekeurd' : 'afgekeurd',
       afwijking_id: afwijkingId,
       opmerking: ec.opmerking.trim() || undefined,
+      bijlagen: fotoBijlagen(ec.foto),
       paraaf,
     }
     p.setEtiketcontroles((prev: EtiketControle[]) => [...(prev || []), record])
@@ -469,7 +724,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       omschrijving: `${sessie.lotcode}: ${gekozenProduct?.naam || ''}`,
     })
     setEc(e => ({...e, aanleiding: 'rolwissel', lotcode_ok: false, tht_ok: false,
-                 alcohol_ok: false, opmerking: ''}))
+                 alcohol_ok: false, opmerking: '', foto: null}))
   }
 
   // Wisselen van sessie betekent wisselen van afvuller-opstelling: de controle-
@@ -482,7 +737,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
            flesmond_ok: true, draaitest_ok: true,
            rolinstelling: '', opmerking: ''})
     setEc(e => ({...e, aanleiding: 'start', etiket_versie: '', lotcode_ok: false,
-                 tht_ok: false, alcohol_ok: false, opmerking: ''}))
+                 tht_ok: false, alcohol_ok: false, opmerking: '', foto: null}))
+    setFi({bekeken: false, afgekeurd: ''})
+    setKlap({open: false, vernietigd: '', gereinigd: false})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessie?.id])
 
@@ -529,8 +786,12 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     p.setCapa((prev: any[]) => [...(prev || []),
       {...capaUitAfwijking(rec, capaId), bron: afwijking.bron === 'ccp3_etiket' ? 'ccp3' : 'afwijking'}])
     const bron = afwijking.bron
+    const actie = afwijking.actie
     setAfwijking(null)
     if (bron === 'ccp3_etiket') slaEtiketOp(afwId)
+    // Te veel koolzuur en toch afgevuld: de sessie draagt de afwijking.
+    if (actie === 'start') void startSessie(afwId)
+    if (actie === 'achteraf') void legAchterafVast(true, afwId)
   }
 
   const Label = ({children}: {children: React.ReactNode}) => (
@@ -591,6 +852,8 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           )}
         </div>
 
+        {gekozenVp && extraVelden(start, patch => setStart(st => ({...st, ...patch})), startExtra, false)}
+
         <label className="flex items-center gap-2 text-sm text-gray-700">
           <input type="checkbox" className="t-checkbox" checked={start.reiniging_bevestigd}
             onChange={e => setStart({...start, reiniging_bevestigd: e.target.checked})} />
@@ -598,9 +861,16 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         </label>
 
         <BlokkadeKaart blok={startBlok} compact />
+        {gekozenVp && !startCo2Blok.toegestaan && (
+          <BlokkadeKaart blok={startCo2Blok} compact
+            onAfwijking={startExtra.volumes != null && startBlok.toegestaan && !thtBlok
+              ? () => setAfwijking({blok: startCo2Blok, titel: t('haccp_co2_titel'), bron: 'sessie_start', actie: 'start'})
+              : undefined} />
+        )}
 
         <div className="flex justify-end">
-          <Btn s="sm" disabled={!startBlok.toegestaan || !!thtBlok || bezig} onClick={startSessie}>
+          <Btn s="sm" disabled={!startBlok.toegestaan || !startCo2Blok.toegestaan || !!thtBlok || bezig}
+            onClick={() => startSessie()}>
             {t('haccp_sessie_starten')}
           </Btn>
         </div>
@@ -640,17 +910,29 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   }, p.sessies || [], {batch: p.batch, afvullingen: p.av})
   const naThtKlasse = thtKlasse
   const naTht = berekenTht(na.datum || tod(), naThtKlasse, inst)
+  // CCP 2 volgt de verpakking: lege flessen inspecteren (fles), de sluiting
+  // (blik, of fles als de brouwerij dat kiest) of geen CCP 2 (fust).
+  const naExtra = extraVoor(na, naVp)
+  const naCcp2 = naExtra.ccp2 || 'geen'
+  const naFlesRedenen = naCcp2 === 'lege_flessen'
+    ? beoordeelFlesinspectie({bekeken: na.flessen_bekeken, afgekeurd: na.afgekeurd}) : []
+  const naCcp2Ok = naCcp2 === 'lege_flessen' ? naFlesRedenen.length === 0
+    : naCcp2 === 'sluitcontrole'
+      ? na.visueel_ok && (!naOmkeerNodig || na.omkeerproef_ok)
+        && (!naKroonNodig || (na.flesmond_ok && na.draaitest_ok))
+        && naBeoordeling.onvolledig.length === 0
+        // Een afkeuring hoort niet achteraf en losstaand: daar horen een
+        // corrigerende maatregel en een blokkade van de betrokken verpakkingen
+        // bij, en die lopen via de gewone sluitcontrole.
+        && naBeoordeling.resultaat === 'goedgekeurd'
+      : true
   const naCompleet = !!na.product_id && Number(na.hoeveelheid) > 0
-    && na.visueel_ok && (!naOmkeerNodig || na.omkeerproef_ok)
-    && (!naKroonNodig || (na.flesmond_ok && na.draaitest_ok))
-    && naBeoordeling.onvolledig.length === 0
-    // Een afkeuring hoort niet achteraf en losstaand: daar horen een
-    // corrigerende maatregel en een blokkade van de betrokken verpakkingen
-    // bij, en die lopen via de gewone sluitcontrole.
-    && naBeoordeling.resultaat === 'goedgekeurd'
+    && naCcp2Ok && naExtra.klapOk
     && na.lotcode_ok && na.tht_ok && na.alcohol_ok
     && (!naVerwachteVersie || !!na.etiket_versie.trim())
   const naToegestaan = naBlok.toegestaan && naCompleet && naEtiketBlok.toegestaan
+  // Het koolzuur apart: boven de grens kan het alleen met een afwijking.
+  const naCo2Blok = {toegestaan: naExtra.co2Redenen.length === 0, redenen: naExtra.co2Redenen}
 
   // De afvulling zelf loopt via de pagina: die kent voorraad, accijns en logs.
   const naDatum = na.datum || tod()
@@ -670,8 +952,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const naControle: AfvulControle | null = naVelden && p.onAchterafControleren
     ? p.onAchterafControleren(naVelden) : null
 
-  const legAchterafVast = async (bevestigd = false) => {
+  const legAchterafVast = async (bevestigd = false, co2AfwijkingId?: number) => {
     if (!naToegestaan || !naVp || !naVelden || bezig) return
+    if (!naCo2Blok.toegestaan && co2AfwijkingId == null) return
     const datum = naDatum
     const startMoment = `${datum}T${na.van || '12:00'}:00`
     const eindMoment = `${datum}T${na.tot || na.van || '12:00'}:00`
@@ -710,6 +993,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       start_paraaf: paraaf,
       afgesloten_paraaf: paraaf,
       achteraf: true,
+      ccp2: naCcp2,
+      ...sessieExtra(naExtra, true),
+      co2_afwijking_id: co2AfwijkingId,
     }
     p.setSessies((prev: AfvulSessie[]) => [...(prev || []), sessieRec])
 
@@ -730,12 +1016,22 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       opmerking: na.opmerking.trim() || undefined,
       paraaf,
     })
-    const tussenControles = na.tussen
-      .filter(Boolean)
-      .map(tijd => bouwControle('halfuur', `${datum}T${tijd}:00`))
-    p.setSluitcontroles((prev: SluitControle[]) => [...(prev || []),
-      bouwControle('start', startMoment), ...tussenControles,
-      bouwControle('einde', eindMoment)])
+    if (naCcp2 === 'sluitcontrole') {
+      const tussenControles = na.tussen
+        .filter(Boolean)
+        .map(tijd => bouwControle('halfuur', `${datum}T${tijd}:00`))
+      p.setSluitcontroles((prev: SluitControle[]) => [...(prev || []),
+        bouwControle('start', startMoment), ...tussenControles,
+        bouwControle('einde', eindMoment)])
+    } else if (naCcp2 === 'lege_flessen') {
+      // Eén registratie: elke fles bekeken, zoveel eruit.
+      p.setSluitcontroles((prev: SluitControle[]) => [...(prev || []), {
+        id: newId(prev || []), sessie_id: sessieId, batch_id: p.batch.id,
+        methode: 'lege_flessen', afgekeurd_aantal: Math.max(0, Math.round(getal(na.afgekeurd || '0'))),
+        aanleiding: 'start', visueel_ok: true, uitgevoerd_op: startMoment,
+        resultaat: 'goedgekeurd', opmerking: na.opmerking.trim() || undefined, paraaf,
+      }])
+    }
 
     // CCP 3 — etiketcontrole met dezelfde allergenenvergelijking als live.
     const etiketId = newId(p.etiketcontroles || [])
@@ -757,6 +1053,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       alcohol_ok: na.alcohol_ok,
       resultaat: 'goedgekeurd',
       opmerking: na.opmerking.trim() || undefined,
+      bijlagen: fotoBijlagen(na.etiket_foto),
       paraaf,
     }])
 
@@ -821,76 +1118,100 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
             onChange={e => setNa({...na, reiniging_bevestigd: e.target.checked})} />
           {t('haccp_sessie_reiniging')}
         </label>
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input type="checkbox" className="t-checkbox" checked={na.visueel_ok}
-            onChange={e => setNa({...na, visueel_ok: e.target.checked})} />
-          {t('haccp_achteraf_sluit_ok')}
-        </label>
-        {naOmkeerNodig && (
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" className="t-checkbox" checked={na.omkeerproef_ok}
-              onChange={e => setNa({...na, omkeerproef_ok: e.target.checked})} />
-            {t('haccp_ccp2_omkeerproef')}
-          </label>
-        )}
-        {naKroonNodig && (
-          <>
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input type="checkbox" className="t-checkbox" checked={na.flesmond_ok}
-                onChange={e => setNa({...na, flesmond_ok: e.target.checked})} />
-              {t('haccp_ccp2_flesmond')}
+        {/* CCP 2 volgt de verpakking (ccp2Voor). */}
+        {naCcp2 === 'lege_flessen' && (
+          <div className="space-y-1.5">
+            <label className="flex items-start gap-2 text-sm text-gray-700">
+              <input type="checkbox" className="t-checkbox mt-0.5" checked={na.flessen_bekeken}
+                onChange={e => setNa({...na, flessen_bekeken: e.target.checked})} />
+              <span>{t('haccp_flessen_bekeken')}</span>
             </label>
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input type="checkbox" className="t-checkbox" checked={na.draaitest_ok}
-                onChange={e => setNa({...na, draaitest_ok: e.target.checked})} />
-              {t('haccp_ccp2_draaitest')}
-            </label>
-          </>
-        )}
-
-        {/* Tussencontroles: de start en het eind zitten er automatisch in, de
-            halfuurcontroles vul je zelf in met hun tijdstip. */}
-        <div className="pt-2 space-y-1.5">
-          <Label>{t('haccp_achteraf_tussen')}</Label>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {na.tussen.map((tijd, i) => (
-              <span key={i} className="flex items-center gap-1">
-                <input type="time" value={tijd}
-                  onChange={e => setNa({...na, tussen: na.tussen.map((x, j) => j === i ? e.target.value : x)})}
-                  className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white t-input shadow-sm" />
-                <button type="button" title={t('btn_delete')}
-                  onClick={() => setNa({...na, tussen: na.tussen.filter((_, j) => j !== i)})}
-                  className="px-1.5 py-1 text-gray-400 hover:text-red-500">✕</button>
-              </span>
-            ))}
-            <button type="button"
-              onClick={() => {
-                // Het eerstvolgende halfuurmoment na de laatste die er al staat
-                // wordt voorgesteld; wat je niet gedaan hebt, haal je weg.
-                const momenten = verwachteControleMomenten(na.van, na.tot, inst.sluitcontrole_interval_min)
-                const gebruikt = new Set([na.van, na.tot, ...na.tussen])
-                const volgende = momenten.find(m => !gebruikt.has(m)) || ''
-                setNa({...na, tussen: [...na.tussen, volgende]})
-              }}
-              className="px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:bg-gray-50">
-              + {t('haccp_achteraf_tussen_toevoegen')}
-            </button>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <Inp label={t('haccp_afgekeurd')} type="number" step="1" min={0} value={na.afgekeurd}
+                onChange={v => setNa({...na, afgekeurd: v})} />
+            </div>
+            <div className="text-xs text-gray-500">{t('haccp_afgekeurd_hint')}</div>
           </div>
-          {naDekking.tekort > 0 && (
-            <div className="text-xs text-orange-600">
-              {t('haccp_achteraf_tussen_tekort')
-                .replace('{verwacht}', String(naDekking.verwacht))
-                .replace('{vastgelegd}', String(naDekking.vastgelegd))}
+        )}
+        {naCcp2 === 'sluitcontrole' && (
+          <>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" className="t-checkbox" checked={na.visueel_ok}
+              onChange={e => setNa({...na, visueel_ok: e.target.checked})} />
+            {t('haccp_achteraf_sluit_ok')}
+          </label>
+          {naOmkeerNodig && (
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" className="t-checkbox" checked={na.omkeerproef_ok}
+                onChange={e => setNa({...na, omkeerproef_ok: e.target.checked})} />
+              {t('haccp_ccp2_omkeerproef')}
+            </label>
+          )}
+          {naKroonNodig && (
+            <>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" className="t-checkbox" checked={na.flesmond_ok}
+                  onChange={e => setNa({...na, flesmond_ok: e.target.checked})} />
+                {t('haccp_ccp2_flesmond')}
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" className="t-checkbox" checked={na.draaitest_ok}
+                  onChange={e => setNa({...na, draaitest_ok: e.target.checked})} />
+                {t('haccp_ccp2_draaitest')}
+              </label>
+            </>
+          )}
+
+          {/* Tussencontroles: de start en het eind zitten er automatisch in, de
+              halfuurcontroles vul je zelf in met hun tijdstip. */}
+          <div className="pt-2 space-y-1.5">
+            <Label>{t('haccp_achteraf_tussen')}</Label>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {na.tussen.map((tijd, i) => (
+                <span key={i} className="flex items-center gap-1">
+                  <input type="time" value={tijd}
+                    onChange={e => setNa({...na, tussen: na.tussen.map((x, j) => j === i ? e.target.value : x)})}
+                    className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white t-input shadow-sm" />
+                  <button type="button" title={t('btn_delete')}
+                    onClick={() => setNa({...na, tussen: na.tussen.filter((_, j) => j !== i)})}
+                    className="px-1.5 py-1 text-gray-400 hover:text-red-500">✕</button>
+                </span>
+              ))}
+              <button type="button"
+                onClick={() => {
+                  // Het eerstvolgende halfuurmoment na de laatste die er al staat
+                  // wordt voorgesteld; wat je niet gedaan hebt, haal je weg.
+                  const momenten = verwachteControleMomenten(na.van, na.tot, inst.sluitcontrole_interval_min)
+                  const gebruikt = new Set([na.van, na.tot, ...na.tussen])
+                  const volgende = momenten.find(m => !gebruikt.has(m)) || ''
+                  setNa({...na, tussen: [...na.tussen, volgende]})
+                }}
+                className="px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:bg-gray-50">
+                + {t('haccp_achteraf_tussen_toevoegen')}
+              </button>
+            </div>
+            {naDekking.tekort > 0 && (
+              <div className="text-xs text-orange-600">
+                {t('haccp_achteraf_tussen_tekort')
+                  .replace('{verwacht}', String(naDekking.verwacht))
+                  .replace('{vastgelegd}', String(naDekking.vastgelegd))}
+              </div>
+            )}
+          </div>
+
+          {/* Een afkeuring hoort bij een corrigerende maatregel en een blokkade
+              van wat er sinds de laatste goedkeuring is gemaakt — dat gaat via
+              de gewone sluitcontrole, niet via dit formulier. */}
+          {naBeoordeling.resultaat === 'afgekeurd' && (
+            <div className="text-xs text-red-700 font-medium">
+              {t('haccp_achteraf_afgekeurd')}
             </div>
           )}
-        </div>
-
-        {/* Een afkeuring hoort bij een corrigerende maatregel en een blokkade
-            van wat er sinds de laatste goedkeuring is gemaakt — dat gaat via
-            de gewone sluitcontrole, niet via dit formulier. */}
-        {naBeoordeling.resultaat === 'afgekeurd' && (
-          <div className="text-xs text-red-700 font-medium">
-            {t('haccp_achteraf_afgekeurd')}
+          </>
+        )}
+        {naVp && (
+          <div className="pt-2 border-t border-gray-200">
+            {extraVelden(na, patch => setNa(n => ({...n, ...patch})), naExtra, true)}
           </div>
         )}
         {([['lotcode_ok', 'haccp_ccp3_lotcode_ok'],
@@ -917,6 +1238,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           <Inp label={t('lbl_opmerking')} value={na.opmerking}
             onChange={v => setNa({...na, opmerking: v})} />
         </div>
+        {fotoVeld(na.etiket_foto, b => setNa(n => ({...n, etiket_foto: b})))}
       </div>
 
       {/* Allergenen blijven blokkeren: dat is de reden dat CCP 3 bestaat. */}
@@ -960,13 +1282,22 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         </div>
       )}
 
+      {/* Te veel koolzuur voor de fles: niet afvullen, of met een afwijking. */}
+      {naVp && !naCo2Blok.toegestaan && naExtra.volumes != null && (
+        <BlokkadeKaart blok={naCo2Blok} compact
+          onAfwijking={naToegestaan && !naControle?.fout
+            ? () => setAfwijking({blok: naCo2Blok, titel: t('haccp_co2_titel'), bron: 'sessie_start', actie: 'achteraf'})
+            : undefined} />
+      )}
+
       <div className="flex justify-end">
-        {naControle && !naControle.fout && naControle.waarschuwingen.length > 0 && naToegestaan
+        {naControle && !naControle.fout && naControle.waarschuwingen.length > 0 && naToegestaan && naCo2Blok.toegestaan
           ? <BevestigKnop v="primary" s="sm" vraag={t('afvul_toch_vastleggen')} disabled={bezig}
               onBevestig={() => legAchterafVast(true)}>
               {t('haccp_achteraf_vastleggen')}
             </BevestigKnop>
-          : <Btn s="sm" disabled={!naToegestaan || bezig || !!naControle?.fout} onClick={() => legAchterafVast()}>
+          : <Btn s="sm" disabled={!naToegestaan || !naCo2Blok.toegestaan || bezig || !!naControle?.fout}
+              onClick={() => legAchterafVast()}>
               {t('haccp_achteraf_vastleggen')}
             </Btn>}
       </div>
@@ -1032,6 +1363,43 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
               </Btn>
             </div>
           </div>
+          {(() => {
+            const delen = [
+              sessie.co2_volumes != null ? t('haccp_co2_kort').replace('{volumes}', fmtCo2(sessie.co2_volumes, getLang())) : '',
+              sessie.sg_afvullen != null ? `${t('haccp_sg_afvullen')} ${fmtSg(sessie.sg_afvullen)}` : '',
+              sessie.flessenlot ? `${t('haccp_flessenlot')} ${sessie.flessenlot}` : '',
+              sessie.kroonkurkenlot ? `${t('haccp_kroonkurkenlot')} ${sessie.kroonkurkenlot}` : '',
+            ].filter(Boolean)
+            return delen.length ? <div className="text-xs text-gray-500 break-words">{delen.join(' · ')}</div> : null
+          })()}
+          {sessieIsFles && (
+            <div className="pt-1">
+              {klap.open ? (
+                <div className="flex flex-wrap items-end gap-2">
+                  <Inp cls="w-36" label={t('haccp_klap_vernietigd')} type="number" step="1" min={0}
+                    value={klap.vernietigd} onChange={v => setKlap(k => ({...k, vernietigd: v}))} />
+                  <label className="flex items-start gap-2 text-sm text-gray-700 pb-2 max-w-sm">
+                    <input type="checkbox" className="t-checkbox mt-0.5" checked={klap.gereinigd}
+                      onChange={e => setKlap(k => ({...k, gereinigd: e.target.checked}))} />
+                    {t('haccp_klap_gereinigd')}
+                  </label>
+                  <Btn s="sm" disabled={!klap.gereinigd} onClick={legKlapflesVast}>{t('haccp_klapfles_vastleggen')}</Btn>
+                  <Btn s="sm" v="ghost" onClick={() => setKlap({open: false, vernietigd: '', gereinigd: false})}>{t('btn_cancel')}</Btn>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <button type="button" onClick={() => setKlap(k => ({...k, open: true}))}
+                    className="min-h-tap sm:min-h-0 font-medium underline underline-offset-2 text-gray-600">
+                    + {t('haccp_klapfles')}
+                  </button>
+                  {!!sessie.klapflessen?.aantal && (
+                    <span>{t('haccp_klapflessen_stand').replace('{aantal}', String(sessie.klapflessen.aantal))
+                      .replace('{vernietigd}', String(sessie.klapflessen.vernietigd))}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {/* Wat het afsluiten tegenhoudt is pas nieuws als er iets in de sessie
               zit; direct na het starten is die lijst alleen maar ruis. */}
           {!afsluitBlok.toegestaan && (aantalVerpakt > 0 || eigenControles.length > 0) && (
@@ -1166,6 +1534,33 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     </>
   )
 
+  // ── CCP 2 — lege flessen (live) ──────────────────────────────────────────
+  const flesInhoud = flesinspectie ? (
+    <div className="text-sm text-gray-700">
+      ✓ {t('haccp_flessen_bekeken')}
+      {' · '}{flesinspectie.afgekeurd_aantal ?? 0} {t('haccp_afgekeurd_kort')}
+      <span className="text-xs text-gray-500"> · {new Date(flesinspectie.paraaf.tijdstip).toLocaleTimeString()}</span>
+    </div>
+  ) : (
+    <>
+      <label className="flex items-start gap-2 text-sm text-gray-700">
+        <input type="checkbox" className="t-checkbox mt-0.5" checked={fi.bekeken}
+          onChange={e => setFi({...fi, bekeken: e.target.checked})} />
+        <span>{t('haccp_flessen_bekeken')}</span>
+      </label>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <Inp label={t('haccp_afgekeurd')} type="number" step="1" min={0} value={fi.afgekeurd}
+          onChange={v => setFi({...fi, afgekeurd: v})} />
+      </div>
+      <div className="text-xs text-gray-500">{t('haccp_afgekeurd_hint')}</div>
+      <div className="flex justify-end">
+        <Btn s="sm" disabled={fiRedenen.length > 0} onClick={slaFlesinspectieOp}>
+          {t('haccp_flesinspectie_vastleggen')}
+        </Btn>
+      </div>
+    </>
+  )
+
   // ── CCP 3 — etiketcontrole ───────────────────────────────────────────────
   const ccp3Inhoud = (
     <>
@@ -1254,6 +1649,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         {!!verwachteVersie && !ec.etiket_versie.trim() && !!ec.product_id && (
           <div className="text-xs text-gray-500">{t('haccp_ccp3_versie_nodig')}</div>
         )}
+        {fotoVeld(ec.foto, b => setEc(e => ({...e, foto: b})))}
         <Inp label={t('lbl_opmerking')} value={ec.opmerking}
           onChange={v => setEc({...ec, opmerking: v})} />
 
@@ -1299,8 +1695,11 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const mijnAv = (p.av || []).filter((a: any) => a.batch_id === p.batch?.id)
   const avLiter = mijnAv.reduce((s: number, a: any) =>
     s + (Number(a.inhoud_per_eenheid ?? a.inhoud_liter) || 0) * (Number(a.hoeveelheid) || 0), 0)
-  const ccp2Ok = eigenControles.some(c => c.aanleiding === 'start' && c.resultaat === 'goedgekeurd')
-    && !herinnering?.due
+  const sessieSoort = sessie ? sessieCcp2(sessie) : null
+  const ccp2Ok = sessieSoort === 'geen' ? true
+    : sessieSoort === 'lege_flessen' ? !!flesinspectie
+    : eigenControles.some(c => c.aanleiding === 'start' && c.resultaat === 'goedgekeurd')
+      && !herinnering?.due
   const laatsteControle = eigenControles.length
     ? new Date(eigenControles[eigenControles.length - 1].paraaf.tijdstip).toLocaleTimeString()
     : null
@@ -1320,7 +1719,13 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         : geslotenSessies.map(s => s.lotcode).join(', ') || undefined,
       inhoud: sessieInhoud,
     },
-    sessie ? {
+    sessie && sessieSoort === 'lege_flessen' ? {
+      key: 'ccp2', titel: t('haccp_flesinspectie_titel'),
+      status: ccp2Ok ? 'done' : 'open',
+      detail: flesinspectie ? `${flesinspectie.afgekeurd_aantal ?? 0} ${t('haccp_afgekeurd_kort')}` : undefined,
+      inhoud: flesInhoud,
+    } : null,
+    sessie && sessieSoort === 'sluitcontrole' ? {
       key: 'ccp2', titel: t('haccp_ccp2_titel'),
       status: ccp2Ok ? 'done' : 'open',
       detail: herinnering?.due
@@ -1357,7 +1762,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   // Welke regel staat open zonder eigen keuze: draait er een sessie waarvan de
   // controles staan, dan is afvullen de handeling die je herhaalt. Anders de
   // eerste regel die nog niet af is.
-  const autoRegel = sessie && ccp2Ok && eigenEtiket.length
+  // De lege flessen bekijk je tijdens het vullen; die registratie hoort bij
+  // het afsluiten, dus hij houdt het afvullen niet tegen.
+  const autoRegel = sessie && (ccp2Ok || sessieSoort === 'lege_flessen') && eigenEtiket.length
     ? 'afvullen'
     : zichtbaar.find(r => r.status === 'open')?.key || ''
 

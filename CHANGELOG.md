@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.51] — 2026-11-24
+
+### De afvuldag als één checklist
+
+- **CCP 2 per verpakking.** Bij flessen bekijk je de lege flessen één keer
+  per afvulsessie tegen het licht en noteer je hoeveel er zijn afgekeurd;
+  de sluitcontrole met omkeerproef elk half uur vervalt voor flessen (in te
+  stellen: Instellingen → Brouwerij → Kritische grenzen, *CCP 2 bij
+  flessen*). Blik houdt de sluitcontrole, een fust heeft geen CCP 2. Oude
+  sessies blijven sluitcontrolesessies; de halfuurmelding van de server
+  zwijgt bij de nieuwe soorten.
+- **Koolzuur bij het afvullen** (alleen flessen): druk in de tank en de
+  temperatuur van het bier geven de volumes CO₂, getoetst aan de grens
+  (standaard 2,7, 0 = niet toetsen). Een druksensor in Home Assistant per
+  tank (Instellingen → Home Assistant → *Druksensoren*, bar/psi/kPa) en de
+  tanktemperatuur vullen het vanzelf in. Boven de grens niet afvullen, of
+  met een afwijking.
+- **SG bij afvullen** uit de laatste tankmeting, **flessen- en
+  kroonkurkenlot** voorgesteld uit de vorige sessie met dezelfde fles.
+- **Klapfles:** "+ Klapfles" op een lopende sessie (flessen eromheen
+  vernietigd, glas opgeruimd); in het achteraf-formulier als aantal.
+- **Foto van het etiket** bij CCP 3, als bewijs bij de controle (de foto
+  blijft vast zolang de controle ernaar wijst).
+- Het batchdossier en het HACCP-overzicht tonen per sessie de soort CCP 2,
+  het koolzuur, de SG, de lots en de klapflessen.
+
 ## [1.13.50] — 2026-11-24
 
 ### CCP 1 vóór het koelen

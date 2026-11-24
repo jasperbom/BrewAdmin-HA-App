@@ -12,7 +12,7 @@ import type {
   AfvulSessie, Batch, HaccpInst, HaccpVrijgave, SluitControle, ThtKlasse,
 } from '../types'
 import type { BlokkadeReden, BlokkadeResultaat, EtiketDekking, RisicoResultaat } from './haccp'
-import { etiketDektProduct, haccpInst, isLegacyBatch, magAfvullen } from './haccp'
+import { etiketDektProduct, haccpInst, isLegacyBatch, magAfvullen, sessieCcp2 } from './haccp'
 
 const blokkade = (redenen: BlokkadeReden[]): BlokkadeResultaat =>
   ({toegestaan: redenen.length === 0, redenen})
@@ -301,13 +301,18 @@ export const magAfvullingRegistreren = (
   }
   const eigen = (controles || []).filter(c => c.sessie_id === sessie.id)
   const redenen: BlokkadeReden[] = []
-  if (!eigen.some(c => c.aanleiding === 'start' && c.resultaat === 'goedgekeurd')) {
-    redenen.push({code: 'geen_startcontrole', i18nKey: 'haccp_blok_geen_startcontrole'})
-  }
-  const laatste = eigen.slice().sort((a, b) =>
-    String(a.paraaf?.tijdstip || '').localeCompare(String(b.paraaf?.tijdstip || '')))
-  if (laatste.length && laatste[laatste.length - 1].resultaat === 'afgekeurd') {
-    redenen.push({code: 'open_afkeur', i18nKey: 'haccp_blok_open_afkeur_afvullen'})
+  // Alleen de sluitcontrole vraagt een controle vóór de eerste verpakking. De
+  // lege-flesseninspectie gebeurt fles voor fles tijdens het vullen; die leg je
+  // vast vóór het afsluiten (`magSessieAfsluiten`).
+  if (sessieCcp2(sessie) === 'sluitcontrole') {
+    if (!eigen.some(c => c.aanleiding === 'start' && c.resultaat === 'goedgekeurd')) {
+      redenen.push({code: 'geen_startcontrole', i18nKey: 'haccp_blok_geen_startcontrole'})
+    }
+    const laatste = eigen.slice().sort((a, b) =>
+      String(a.paraaf?.tijdstip || '').localeCompare(String(b.paraaf?.tijdstip || '')))
+    if (laatste.length && laatste[laatste.length - 1].resultaat === 'afgekeurd') {
+      redenen.push({code: 'open_afkeur', i18nKey: 'haccp_blok_open_afkeur_afvullen'})
+    }
   }
   if (etiketcontroles && productId != null && productId !== ''
       && !etiketDektProduct(etiketcontroles, sessie.id, productId)) {
@@ -372,6 +377,27 @@ export const controleDekking = (
   const verwacht = verwachteControleMomenten(startTijd, eindTijd, intervalMin).length
   const vastgelegd = Math.max(0, Number(aantalVastgelegd) || 0)
   return {verwacht, vastgelegd, tekort: Math.max(0, verwacht - vastgelegd)}
+}
+
+// ── Lots van de verpakking ──────────────────────────────────────────────────
+
+/** De lots van de vorige afvulling als voorstel: het flessenlot van de laatste
+ *  sessie met dezelfde verpakking (33 en 75 cl komen uit andere leveringen), het
+ *  kroonkurkenlot van de laatste sessie die er een had (dezelfde zak gaat over
+ *  formaten heen). Leeg als er niets is — nooit een gok. */
+export const vorigeLots = (
+  sessies: ReadonlyArray<Pick<AfvulSessie, 'verpakking_id' | 'start' | 'flessenlot' | 'kroonkurkenlot'>> | null | undefined,
+  verpakkingId: number | string | null | undefined,
+): {flessenlot: string; kroonkurkenlot: string} => {
+  const nieuwsteEerst = (sessies || []).filter(Boolean).slice()
+    .sort((a, b) => String(b.start || '').localeCompare(String(a.start || '')))
+  const fles = verpakkingId == null || verpakkingId === '' ? undefined
+    : nieuwsteEerst.find(s => Number(s.verpakking_id) === Number(verpakkingId) && String(s.flessenlot || '').trim())
+  const kurk = nieuwsteEerst.find(s => String(s.kroonkurkenlot || '').trim())
+  return {
+    flessenlot: String(fles?.flessenlot || '').trim(),
+    kroonkurkenlot: String(kurk?.kroonkurkenlot || '').trim(),
+  }
 }
 
 /** Batches die geselecteerd mogen worden voor een nieuwe afvulsessie. */

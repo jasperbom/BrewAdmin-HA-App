@@ -21,8 +21,9 @@
 import type {
   Afvulling, AfvulSessie, Allergeen, Batch, BatchIngredient, BatchNotitie, EtiketControle,
   GistMeting, HaccpAfwijking, HaccpInst, HaccpVrijgave, Ingredient, Lot, Paraaf, Product,
-  SluitControle, VerliesRegistratie, Verpakking,
+  SluitControle, VerliesRegistratie, Verpakking, Ccp2Soort,
 } from '../types'
+import { sessieCcp2 } from './haccp'
 import { BUILTIN_ING_TYPES, FASE_LABEL_KEYS } from './constants'
 import { bouwBatchTijdlijn, type BatchTijdlijn, type StatusLogRegel } from './vergisting'
 import { lotLabel } from './trace'
@@ -158,6 +159,23 @@ export interface RapportSessie {
   tht: string
   sluitcontroles: RapportControleTelling
   etiketcontroles: RapportControleTelling
+  /** CCP 2 van deze sessie (vanaf 1.13.51): lege flessen bekeken,
+   *  sluitcontrole met omkeerproef, of geen (fust). Oud = sluitcontrole. */
+  ccp2: Ccp2Soort
+  /** Lege flessen: hoeveel er zijn afgekeurd (som van de inspecties);
+   *  null = er is (nog) geen inspectie. */
+  flessenAfgekeurd: number | null
+  /** Koolzuur bij het afvullen (CCP 1, grens c), alleen bij flessen. */
+  co2Volumes: number | null
+  co2Max: number | null
+  /** 'sensor' of 'handmatig'; leeg bij een sessie zonder koolzuurmeting. */
+  co2Bron: string
+  /** Boven de grens afgevuld met een afwijking. */
+  co2Afwijking: boolean
+  sgAfvullen: number | null
+  flessenlot: string
+  kroonkurkenlot: string
+  klapflessen: {aantal: number, vernietigd: number} | null
 }
 
 /** CCP 1 — de vrijgave voor afvullen. Het belangrijkste formulier van het
@@ -439,16 +457,35 @@ const sessieRegels = (
   sluitcontroles: SluitControle[],
   etiketcontroles: EtiketControle[]
 ): RapportSessie[] =>
-  sessies.map(s => ({
-    lotcode: tekst(s.lotcode),
-    verpakking: tekst(s.verpakking_naam) || tekst(s.verpakking_type),
-    start: tekst(s.start),
-    eind: tekst(s.eind),
-    statusKey: `haccp_sessie_${tekst(s.status) || 'open'}`,
-    tht: tekst(s.tht),
-    sluitcontroles: telControles(sluitcontroles.filter(c => zelfdeId(c.sessie_id, s.id))),
-    etiketcontroles: telControles(etiketcontroles.filter(c => zelfdeId(c.sessie_id, s.id))),
-  }))
+  sessies.map(s => {
+    const eigen = sluitcontroles.filter(c => zelfdeId(c.sessie_id, s.id))
+    const inspecties = eigen.filter(c => c.methode === 'lege_flessen')
+    const klap = s.klapflessen
+    return {
+      lotcode: tekst(s.lotcode),
+      verpakking: tekst(s.verpakking_naam) || tekst(s.verpakking_type),
+      start: tekst(s.start),
+      eind: tekst(s.eind),
+      statusKey: `haccp_sessie_${tekst(s.status) || 'open'}`,
+      tht: tekst(s.tht),
+      sluitcontroles: telControles(eigen),
+      etiketcontroles: telControles(etiketcontroles.filter(c => zelfdeId(c.sessie_id, s.id))),
+      ccp2: sessieCcp2(s),
+      flessenAfgekeurd: inspecties.length
+        ? inspecties.reduce((n, c) => n + getal(c.afgekeurd_aantal), 0)
+        : null,
+      co2Volumes: getalOfNull(s.co2_volumes),
+      co2Max: getalOfNull(s.co2_max),
+      co2Bron: tekst(s.co2_bron),
+      co2Afwijking: s.co2_afwijking_id != null,
+      sgAfvullen: getalOfNull(s.sg_afvullen),
+      flessenlot: tekst(s.flessenlot),
+      kroonkurkenlot: tekst(s.kroonkurkenlot),
+      klapflessen: klap && getal(klap.aantal) > 0
+        ? {aantal: getal(klap.aantal), vernietigd: getal(klap.vernietigd)}
+        : null,
+    }
+  })
 
 const getalOfNull = (v: unknown): number | null => (v == null || v === '' ? null : getal(v))
 

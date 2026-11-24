@@ -272,6 +272,37 @@ describe('bouwBatchRapport — CCP-registraties', () => {
     expect(r.vrijgaven[0].ffOk).toBeNull()
   })
 
+  it('neemt de afvuldag mee: CCP 2 per soort, koolzuur, SG, lots en klapflessen', () => {
+    const r = bouwBatchRapport(invoer({
+      sessies: [
+        {id: 61, batch_id: 7, sessie_nr: 1, lotcode: 'L2614', status: 'afgesloten', ccp2: 'lege_flessen',
+          verpakking_type: 'Fles 33cl', start: '2026-06-20T09:00', vrijgave_id: 41,
+          co2_volumes: 2.62, co2_max: 2.7, co2_bron: 'sensor', sg_afvullen: 1.011,
+          flessenlot: 'F-101', kroonkurkenlot: 'K-8',
+          klapflessen: {aantal: 1, vernietigd: 3, gereinigd: true}},
+        {id: 62, batch_id: 7, sessie_nr: 2, lotcode: 'L2614-B2', status: 'afgesloten', ccp2: 'geen',
+          verpakking_type: 'Fust 20L', start: '2026-06-21T09:00', vrijgave_id: 41},
+      ] as any,
+      sluitcontroles: [
+        {id: 71, batch_id: 7, sessie_id: 61, methode: 'lege_flessen', afgekeurd_aantal: 4, resultaat: 'goedgekeurd'},
+      ] as any,
+    }))
+    const [fles, fust] = r.sessies
+    expect(fles.ccp2).toBe('lege_flessen')
+    expect(fles.flessenAfgekeurd).toBe(4)
+    expect(fles).toMatchObject({co2Volumes: 2.62, co2Max: 2.7, co2Bron: 'sensor', co2Afwijking: false,
+      sgAfvullen: 1.011, flessenlot: 'F-101', kroonkurkenlot: 'K-8', klapflessen: {aantal: 1, vernietigd: 3}})
+    expect(fust.ccp2).toBe('geen')
+    expect(fust).toMatchObject({flessenAfgekeurd: null, co2Volumes: null, sgAfvullen: null, klapflessen: null})
+  })
+
+  it('leest een sessie van vóór de afvuldag als sluitcontrole, zonder extra velden', () => {
+    const s = bouwBatchRapport(invoer()).sessies[0]
+    expect(s.ccp2).toBe('sluitcontrole')
+    expect(s.flessenAfgekeurd).toBeNull()
+    expect(s.flessenlot).toBe('')
+  })
+
   it('zet de afwijkingen erbij — een dossier dat die weglaat is een folder', () => {
     const a = bouwBatchRapport(invoer()).afwijkingen[0]
     expect(a.bronKey).toBe('haccp_bron_ccp2_sluitcontrole')

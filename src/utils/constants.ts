@@ -436,6 +436,12 @@ export const DEFAULT_HACCP_INST = {
   stabiel_min_uur: 48,
   stabiel_tolerantie_sg: 0.001,
   ff_marge_sg: 0.002,
+  // Hooguit 2,7 volumes CO2 bij het afvullen in flessen: een veilige grens
+  // voor een gewone (lichte) bierfles. 0 = niet toetsen.
+  co2_max_volumes: 2.7,
+  // CCP 2 bij flessen: de lege flessen inspecteren (Hygiënecode). Wie de
+  // sluiting elk halfuur wil controleren, kiest 'sluitcontrole'.
+  ccp2_fles: 'lege_flessen' as 'lege_flessen' | 'sluitcontrole',
   tht_maanden_standaard: 9,
   tht_maanden_gepasteuriseerd: 6,
   tht_maanden_ongekookt: 3,

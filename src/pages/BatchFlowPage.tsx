@@ -4294,6 +4294,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             onAchterafControleren={controleerAfvulling}
             onAchterafAfvullen={boekAfvulling}
             refreshSessies={refreshAfvulSessies}
+            haInst={haInst} haTankTemps={haTankTemps} gistMetingen={gistMetingen}
             onderdelen={onderdelen}
             registratie={renderAfvulForm()}
             registratieZonderSessie={isLegacyBatch(selB.id, av || [])}

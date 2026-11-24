@@ -1533,6 +1533,13 @@ export interface HaSensor {
   entity: string
 }
 
+export interface HaDrukSensor {
+  id: number
+  tank: string
+  entity: string
+  eenheid?: 'bar' | 'psi' | 'kpa'   // leeg = bar
+}
+
 // Klimaatapparaat (thermostaat, koelcel, HVAC). Kan optioneel aan een tank
 // gekoppeld worden zodat we het setpoint automatisch op het vergistings­profiel
 // kunnen afstemmen. Laatst bekende waarden worden gecached voor dashboard.
@@ -1578,6 +1585,11 @@ export interface HaInst {
   co2_enabled?: boolean
   co2_entity?: string           // entity_id (sensor.*) van de weegschaal
   co2_unit?: 'kg' | 'g'         // eenheid die de sensor rapporteert
+  // ── Druk per tank ─────────────────────────────────────────────────────────
+  // Overdruk in de tank, voor het koolzuur bij het afvullen (CCP 1). Een eigen
+  // lijst, los van `sensors` (temperatuur): wat de server als temperatuur
+  // leest, blijft temperatuur.
+  druk_sensors?: HaDrukSensor[]
   // ── Temperatuurbewaking ──────────────────────────────────────────────────
   // Drempelwaarden voor het beoordelen van de automatische metingen; de
   // rekenregels staan in src/utils/tankbewaking.ts (server.py spiegelt ze).
@@ -2046,7 +2058,31 @@ export interface AfvulSessie {
   // en de controlemomenten zijn dan opgegeven tijden, geen kloktijden.
   achteraf?: boolean
   opmerking?: string
+  // Welke CCP 2 bij deze sessie hoort, bevroren bij het aanmaken
+  // (`ccp2Voor` in utils/haccp.ts). Leeg = van vóór 1.13.51: sluitcontrole.
+  ccp2?: Ccp2Soort
+  // CCP 1, grens (c): het koolzuur bij het afvullen (flessen). Uit de druk
+  // van de tank (overdruk, bar) en de temperatuur, bevroren bij het aanmaken.
+  co2_druk_bar?: number
+  co2_temp_c?: number
+  co2_volumes?: number
+  co2_max?: number
+  co2_bron?: 'sensor' | 'handmatig'
+  // Boven de grens toch afgevuld: alleen met een afwijking.
+  co2_afwijking_id?: number
+  // SG bij het afvullen — de warm-houdtest vergelijkt daarmee.
+  sg_afvullen?: number
+  // Lot van de flessen en de kroonkurken (traceerbaarheid; de volgende sessie
+  // van dezelfde verpakking stelt ze voor).
+  flessenlot?: string
+  kroonkurkenlot?: string
+  // Klapflessen tijdens het vullen of afdoppen (vaste procedure, geen CCP).
+  klapflessen?: {aantal: number; vernietigd: number; gereinigd: boolean}
 }
+
+// CCP 2 per verpakking: lege flessen inspecteren (fles), de sluiting
+// controleren (blik, of fles als de brouwerij dat zo kiest), of geen CCP 2 (fust).
+export type Ccp2Soort = 'lege_flessen' | 'sluitcontrole' | 'geen'
 
 export type SluitAanleiding = 'start' | 'halfuur' | 'na_verstelling' | 'einde'
 export type ControleResultaat = 'goedgekeurd' | 'afgekeurd'
@@ -2070,6 +2106,11 @@ export interface SluitControle {
   id: number
   sessie_id: number
   batch_id: number
+  // 'lege_flessen' = CCP 2 als inspectie van de lege flessen (één per
+  // sessie): elke fles tegen het licht, `afgekeurd_aantal` eruit. Leeg = een
+  // sluitcontrole zoals hieronder.
+  methode?: 'lege_flessen'
+  afgekeurd_aantal?: number
   aanleiding: SluitAanleiding
   visueel_ok: boolean
   // Verplicht bij blik; null/undefined bij fles en fust.
@@ -2207,6 +2248,13 @@ export interface HaccpInst {
   stabiel_tolerantie_sg: number
   // Hoeveel de tank hooguit boven de forceertest mag staan (SG).
   ff_marge_sg: number
+  // CCP 1, grens (c): hooguit zoveel volumes CO2 bij het afvullen in flessen
+  // (wat de fles aankan). 0 = niet toetsen.
+  co2_max_volumes: number
+  // CCP 2 bij flessen: de lege flessen inspecteren (standaard) of de sluiting
+  // elk halfuur controleren. Blik houdt altijd de sluitcontrole, fust heeft
+  // geen CCP 2.
+  ccp2_fles: 'lege_flessen' | 'sluitcontrole'
   tht_maanden_standaard: number
   tht_maanden_gepasteuriseerd: number
   tht_maanden_ongekookt: number

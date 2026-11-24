@@ -272,9 +272,14 @@ BrewAdmin-HA-App/
 │   │   ├── haccp.ts        # Kritische beheerspunten CCP 1/2/3: CCP 1 = één regel (`beoordeelCcp1`: forceertest +
 │   │   │                   # twee handmatige tankmetingen ≥ `stabiel_min_uur` uit elkaar, `bouwVrijgave` bevriest ze;
 │   │   │                   # geen risicoklasse/drukproef/smaakoordeel meer), risicoklasse (alleen nog voor de THT),
-│   │   │                   # sluitcontrole, allergenenvergelijking, afwijkingen
+│   │   │                   # sluitcontrole, allergenenvergelijking, afwijkingen. CCP 2 per verpakking (`ccp2Voor`:
+│   │   │                   # fles = `lege_flessen` — één inspectie per sessie, `beoordeelFlesinspectie` —, blik =
+│   │   │                   # sluitcontrole, fust = geen; bevroren op de sessie, `sessieCcp2`: zonder = sluitcontrole)
+│   │   │                   # en het koolzuur bij het afvullen (`co2VanToepassing`/`beoordeelCo2`, alleen flessen,
+│   │   │                   # `fmtCo2` in de notatie van de taal; volumes uit `carbVolumes` in calculations.ts)
 │   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch> (tweede afvulmoment L<batch>-B2; oude codes
-│   │   │                   # L<batch>-B1 blijven), THT per klasse, sessie-blokkades
+│   │   │                   # L<batch>-B1 blijven), THT per klasse, sessie-blokkades per soort CCP 2,
+│   │   │                   # `vorigeLots` (flessen-/kroonkurkenlot uit de vorige sessie — nooit gegokt)
 │   │   ├── agp.ts          # Verplaatsen/uitslaan uit de AGP (verplaatsing + accijns), uitslag op
 │   │   │                   # productniveau (FEFO) en `bouwUitslagBoekingen` (gedeeld door kassa en
 │   │   │                   # bestellingen); `verkoopUitAgpToegestaan` = de regel "verkoop nooit
@@ -872,7 +877,8 @@ app), de Excel-backup-round-trip, de
 tanktemperatuurbewaking (incl. het werkelijke setpoint van
 de koeling) en de HACCP-beheerspunten
 (risicoclassificatie, CCP 1 met forceertest en het stabiele paar, sluitcontrole,
-allergenenvergelijking, lotcode en THT), de traceerbaarheid
+allergenenvergelijking, lotcode en THT; de afvuldag in `afvuldag.test.ts`: koolzuur uit druk en
+temperatuur, CCP 2 per verpakking, afsluiten per soort, de koolzuurgrens, de lots), de traceerbaarheid
 (één stap terug/vooruit, massabalans, traceergaten, oefeningstatus) en de
 conflict-samenvoeging (`merge.ts` + het 409-pad van `api.ts`), de hash-routing
 van de schil (`route.ts`), het themacontrast (`kleurContrast.ts`, alle zeven
@@ -965,7 +971,7 @@ key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
 optimistic locking (409), atomaire commits, atomaire nummerreeksen (ook
 onder parallelle clients), rate-limiting (429), secrets-maskering, de
 server-audit, de SQLite-opslaglaag (WAL, JSON-migratie, backup-export), de
-HACCP-sluitcontrole-herinnering, de WooCommerce-ordercontrole (`_wc_orders_tick`:
+HACCP-sluitcontrole-herinnering (zwijgt bij een sessie met lege flessen of zonder CCP 2), de WooCommerce-ordercontrole (`_wc_orders_tick`:
 nieuwe webshoporders eenmalig melden, `wc_import_status` alleen bij verandering
 schrijven, de import-lease van de app ongemoeid laten), de website-telemetrie
 (het bericht: schakelaars, lege tanks, sensorstatus, temperatuurleeftijd,
@@ -1645,12 +1651,12 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_ongedierte` | array | Ongediertecontroles en -waarnemingen |
 | `haccp_opleidingen` | array | Opleidings- en instructieregister |
 | `haccp_vrijgaven` | array | **CCP 1** — vrijgave vóór koelen per batch (sinds 1.13.50 aan het eind van Vergisten, `renderCcp1` in BatchFlowPage; nog open in Conditioneren = bovenaan die fase, `volgendeStap` geeft dan eerst `vrijgave`; afvullen blijft geblokkeerd zonder). Vanaf 1.13.49 `methode: 'ff_paar'`: forceertest (`ff_dichtheid_ff`) tegen de laatste tankmeting, en de twee bevroren tankmetingen (`tank_sg_1`/`_op`, `tank_sg_2`/`_op`, `stabiel_uren`, `stabiel_verschil`) met de grenzen van dat moment; alleen `vrijgegeven` wordt nog vastgelegd (`oordeel_voorgesteld` = wat de regel zei, rood alleen met een afwijking). Oudere records (risicoklasse, dagen stabiel, drukproef, smaakoordeel) blijven geldig en leesbaar. Server-side append-only; correctie via een nieuwe registratie met `vervangt_id`. Zonder vrijgegeven registratie kan er niet afgevuld worden |
-| `afvul_sessies` | array | Afvulsessie met lotcode `L<batchnr>` (bijv. `L2431`; een tweede afvulmoment van dezelfde batch `L2431-B2`; sessies van vóór 1.13.49 heten `L2431-B1` en veranderen nooit) en berekende THT; anker voor CCP 2 en CCP 3. Bewust **niet** append-only: een sessie wordt afgesloten |
-| `haccp_sluitcontroles` | array | **CCP 2** — sluitcontroles per sessie (visueel + omkeerproef). Append-only. Bij afkeur worden de afvullingen sinds de laatste goedkeuring geblokkeerd |
-| `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket. Nieuwe records bevriezen ook `etiket_versie_gelezen`/`_verwacht`, `abv_batch`, `abv_etiket_verwacht`, `abv_marge`. Append-only |
+| `afvul_sessies` | array | Afvulsessie met lotcode `L<batchnr>` (bijv. `L2431`; een tweede afvulmoment van dezelfde batch `L2431-B2`; sessies van vóór 1.13.49 heten `L2431-B1` en veranderen nooit) en berekende THT; anker voor CCP 2 en CCP 3. `ccp2` = de soort CCP 2 (`lege_flessen`/`sluitcontrole`/`geen`, bevroren bij het starten; ontbreekt = sluitcontrole). De afvuldag (1.13.51): `co2_druk_bar`/`co2_temp_c`/`co2_volumes`/`co2_max`/`co2_bron` (`sensor`/`handmatig`) + `co2_afwijking_id` boven de grens, `sg_afvullen`, `flessenlot`/`kroonkurkenlot`, `klapflessen: {aantal, vernietigd, gereinigd}`. Bewust **niet** append-only: een sessie wordt afgesloten |
+| `haccp_sluitcontroles` | array | **CCP 2** — sluitcontroles per sessie (visueel + omkeerproef), of bij flessen één inspectie van de lege flessen (`methode: 'lege_flessen'`, `afgekeurd_aantal`). Append-only. Bij afkeur worden de afvullingen sinds de laatste goedkeuring geblokkeerd |
+| `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket, met een foto van het etiket in `bijlagen` (`_bijlage_in_gebruik` houdt hem vast). Nieuwe records bevriezen ook `etiket_versie_gelezen`/`_verwacht`, `abv_batch`, `abv_etiket_verwacht`, `abv_marge`. Append-only |
 | `haccp_afwijkingen` | array | Expliciete afwijkingsregistraties: de enige manier om langs een harde CCP-blokkade te komen, altijd met onderbouwing + CAPA. Append-only |
 | `haccp_trace_oefeningen` | array | **Traceeroefeningen** (hoofdstuk 11): periodieke mock recall met bevroren omvang (lotcodes, afnemers), massabalans, traceergaten, doorlooptijd en conclusie. Append-only — een tegenvallende oefening mag niet achteraf bijgesteld worden |
-| `haccp_instellingen` | object | Kritische grenzen uit het handboek: CCP 1 (`stabiel_min_uur` = 48, `stabiel_tolerantie_sg` = 0,001, `ff_marge_sg` = 0,002; oude `stabiel_dagen_*` worden genegeerd), THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |
+| `haccp_instellingen` | object | Kritische grenzen uit het handboek: CCP 1 (`stabiel_min_uur` = 48, `stabiel_tolerantie_sg` = 0,001, `ff_marge_sg` = 0,002; oude `stabiel_dagen_*` worden genegeerd), `co2_max_volumes` (2,7; 0 = niet toetsen) en `ccp2_fles` (`lege_flessen`/`sluitcontrole`), THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |
 | `inkoop_facturen` | array | Inkoopfacturen. `betaald_via_alt_id` = betaald vanaf een alt-rekening; `betaald_door_verrekening` = de factuur van een PSP staat op betaald omdat de uitbetalingen hem dekken (`kostenVerrekend` in `bank_koppelingen`); `vorige_stand` = de stand van vóór een afrekening via een alt-rekening (ongedaan maken zet hem terug) |
 | `scan_correcties` | array | Het scangeheugen (`utils/scanGeheugen.ts`): `{tekst, soort, leverancier?, artikelcode?, naam?, kostensoort?, eenheid?}`, de nieuwste 500. Bij elk opslaan van een gescande factuur geleerd (per leverancier + artikelnummer, anders omschrijving); de oude `{tekst, soort}` blijft gelden als algemene correctie. Gaat vóór de indeling van het model |
 | `inkoop_inbox` | array | Facturen per e-mail: de PDF-bijlagen die de server-tick `_inbox_tick` uit het postvak (IMAP) haalde, met `status` `nieuw`/`verwerkt`/`genegeerd`. Item: `{id, ontvangen, mail_datum, van, van_naam, onderwerp, message_id, bijlage: {naam, bestand}, grootte, sha256, status, factuur_id?, afgehandeld?}`. De server voegt alleen nieuwe items toe (bestand `inbox_<sha256[:20]>.pdf` in de bijlagenmap); verwerken, negeren, terugzetten en verwijderen doet de app. Een PDF met een `sha256` die er al in staat (ook genegeerd/verwerkt) komt er nooit nog eens bij. Financiële key: alleen `boekhouding`/`beheer` schrijven. Wel in de Excel-backup |
@@ -1695,7 +1701,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `login_instellingen` | object | Styling van de loginpagina op de directe-toegangspoort: titel/ondertitel/knoptekst, accent-/achtergrondkleur (hex), achtergrondafbeelding (data-url), `logo_tonen`. Server rendert met strikte validatie (`_login_pagina`) — pre-auth, dus nooit ongefilterd |
 | `factuur_counter` | object | *(legacy)* Doorlopend factuurnummer per jaar — vervangen door `nummer_reeksen`, alleen nog als migratie-seed gelezen |
 | `nummer_reeksen` | object | Server-beheerde nummerreeksen (`factuur`/`creditnota` per jaar; `bestelling` = kort doorlopend `M-`-nummer voor handmatige orders, geen jaarreset), atomair uitgegeven via `POST /api/nextnr` — nooit client-side muteren |
-| `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`, en `bewaking` = drempels van de temperatuurbewaking; leeg veld = default uit `utils/tankbewaking.ts`; `ruimteklimaat` = de airco voor de tanks: `{enabled, entity, richting (koelen/verwarmen/beide), koelen_tot, verwarmen_tot, tanks, start_marge, start_min, herstel, stop_marge, stop_min}`, defaults in `utils/ruimteklimaat.ts`) |
+| `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`, en `bewaking` = drempels van de temperatuurbewaking; leeg veld = default uit `utils/tankbewaking.ts`; `ruimteklimaat` = de airco voor de tanks: `{enabled, entity, richting (koelen/verwarmen/beide), koelen_tot, verwarmen_tot, tanks, start_marge, start_min, herstel, stop_marge, stop_min}`, defaults in `utils/ruimteklimaat.ts`; `druk_sensors` = `[{id, tank, entity, eenheid: bar\|psi\|kpa}]`, de druk per tank voor het koolzuur op de afvuldag) |
 | `notificatie_instellingen` | object | Meldingsinstellingen: HA `notify`-service + scherm-melding (herbruikbaar voor alle notificaties) |
 | `bank_koppelingen` | object | Koppeling banktransacties (sleutel `txKey`) aan facturen, BTW, accijns, SNd, kapitaal, aflossing en PSP-bundels — dé bron van wat er gekoppeld is; de vlaggen op `bank_transacties` volgen hieruit (zie hieronder) |
 | `app_logo` | string\|null | Base64 app-logo |
@@ -1869,7 +1875,7 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 | POST | `/api/backups/trigger` | Nu een backup maken (beheer-only) |
 | POST | `/api/backups/restore` | Eén data-key terugzetten uit een serverbackup (`{date, key}`) — beheer-only, geweigerd voor append-only keys, credentials en server-beheerde keys (`_NIET_TERUGZETBAAR`: `nummer_reeksen` + afgeleide serverdata), zelfde schrijfweg als `/api/data` (schemavalidatie, rollenvalidatie + lockout-guard via `_key_guard_fout`, versie, audit `backup_restore`). De rest van de administratie blijft staan |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB). Overschrijft nooit een bestaande bijlage: bij een botsing wijkt de server uit naar een vrije naam en geeft die terug als `bestand` — de client bewaart díé naam |
-| POST | `/api/delete_upload/<naam>` | Bijlage verwijderen; 409 zolang een inkoopfactuur, postvak-item, afboeking, verliesregistratie, lot (`etiket_fotos`) of banktransactie (`verslag`, het uitbetalingsverslag van een PSP) ernaar verwijst (`_bijlage_in_gebruik`) |
+| POST | `/api/delete_upload/<naam>` | Bijlage verwijderen; 409 zolang een inkoopfactuur, postvak-item, afboeking, verliesregistratie, lot (`etiket_fotos`), etiketcontrole (CCP 3, `bijlagen`) of banktransactie (`verslag`, het uitbetalingsverslag van een PSP) ernaar verwijst (`_bijlage_in_gebruik`) |
 | GET | `/*` | Serve `index.html` (SPA fallback) |
 
 ### Security constraints (do not remove)

@@ -19,6 +19,7 @@ import { DOC_CSS, esc, breweryBlock, openPrint } from './PakbonExport'
 import { metHuisstijl } from '../utils/huisstijl'
 import { htmlNaarPdfDownload } from '../utils/pdf'
 import { rapportBestandsnaam } from '../utils/batchRapport'
+import { fmtCo2, fmtCo2Grens } from '../utils/haccp'
 import { etiketKaartBlokken } from '../utils/etiketKaart'
 import type { KaartCel, KaartProductBlok, KaartRegel } from '../utils/etiketKaart'
 import { fmtAbv, fmtGetal } from '../utils/etiket'
@@ -312,19 +313,48 @@ const sessieBlok = (rijen: RapportSessie[]): string => {
     : esc(t('batchdossier_controles_telling')
         .replace('{goed}', String(c.goedgekeurd))
         .replace('{af}', String(c.afgekeurd)))
+  // CCP 2 per soort: de inspectie van de lege flessen is één registratie met
+  // het aantal afgekeurde flessen; een fust heeft geen CCP 2.
+  const ccp2 = (s: RapportSessie): string => {
+    if (s.ccp2 === 'geen') return `<span class="muted">${esc(t('haccp_ccp2_nvt'))}</span>`
+    if (s.ccp2 === 'lege_flessen') {
+      return s.flessenAfgekeurd == null
+        ? `<span class="muted">${LEEG}</span>`
+        : `${jaNee(true)} ${esc(t('batchdossier_flessen_afgekeurd').replace('{n}', String(s.flessenAfgekeurd)))}`
+    }
+    return telling(s.sluitcontroles)
+  }
+  // Wat er bij het afvullen is vastgelegd, onder de verpakking: koolzuur,
+  // SG, de lots van flessen en kroonkurken en de klapflessen.
+  const details = (s: RapportSessie): string => {
+    const delen: string[] = []
+    if (s.co2Volumes != null) {
+      const te = s.co2Max != null && s.co2Volumes > s.co2Max
+      delen.push(`<span class="${te ? 'nok' : ''}">${esc(t('haccp_co2_kort').replace('{volumes}', fmtCo2(s.co2Volumes, getLang())))}`
+        + `${s.co2Max != null ? ` (${esc(t('batchdossier_co2_max').replace('{max}', fmtCo2Grens(s.co2Max, getLang())))})` : ''}</span>`
+        + `${s.co2Afwijking ? ` ${esc(t('haccp_afw_kort'))}` : ''}`)
+    }
+    if (s.sgAfvullen != null) delen.push(`${esc(t('haccp_sg_afvullen'))} ${esc(fmtSg(s.sgAfvullen))}`)
+    if (s.flessenlot) delen.push(`${esc(t('haccp_flessenlot'))} ${esc(s.flessenlot)}`)
+    if (s.kroonkurkenlot) delen.push(`${esc(t('haccp_kroonkurkenlot'))} ${esc(s.kroonkurkenlot)}`)
+    if (s.klapflessen) delen.push(esc(t('haccp_klapflessen_stand')
+      .replace('{aantal}', String(s.klapflessen.aantal))
+      .replace('{vernietigd}', String(s.klapflessen.vernietigd))))
+    return delen.length ? `<span class="bron">${delen.join(' · ')}</span>` : ''
+  }
   return tabel(
     [
       {label: t('haccp_sessie_lotcode')}, {label: t('lbl_pakbon_verpakking')},
       {label: t('lbl_date')}, {label: t('lbl_tht')}, {label: t('lbl_status')},
-      {label: t('haccp_ccp2_titel')}, {label: t('haccp_ccp3_titel')},
+      {label: t('batchdossier_ccp2')}, {label: t('haccp_ccp3_titel')},
     ],
     rijen.map(s => `<tr class="blok">
       <td class="nw"><strong>${esc(s.lotcode || LEEG)}</strong></td>
-      <td>${esc(s.verpakking || LEEG)}</td>
+      <td>${esc(s.verpakking || LEEG)}${details(s)}</td>
       <td class="nw">${fmtPeriode(s.start, s.eind)}</td>
       <td class="nw">${s.tht ? esc(fmtDate(s.tht)) : LEEG}</td>
       <td>${esc(t(s.statusKey, s.statusKey))}</td>
-      <td>${telling(s.sluitcontroles)}</td>
+      <td>${ccp2(s)}</td>
       <td>${telling(s.etiketcontroles)}</td>
     </tr>`))
 }

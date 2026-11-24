@@ -1070,6 +1070,29 @@ export const carbDrukBar = (volsCO2: number, tempC: number): number => {
   return bar > 0 ? bar : 0
 }
 
+// Het omgekeerde: hoeveel volumes CO2 er in het bier zitten bij een overdruk
+// (bar) en temperatuur in evenwicht — dezelfde vergelijking als carbDrukBar.
+// Voor CCP 1 bij het afvullen: tankdruk en -temperatuur → volumes. Afgerond
+// op twee decimalen; null zonder bruikbare invoer.
+export const carbVolumes = (drukBar: number | string | null | undefined, tempC: number | string | null | undefined): number | null => {
+  const p = Number(drukBar)
+  const t = Number(tempC)
+  if (drukBar == null || drukBar === '' || tempC == null || tempC === '' || !isFinite(p) || !isFinite(t)) return null
+  if (p < 0 || p > 10 || t < -5 || t > 40) return null
+  const tF = t * 9 / 5 + 32
+  const v = (p * 14.5038 + 14.695) * (0.01821 + 0.09011 * Math.exp(-(tF - 32) / 43.11)) - 0.003342
+  return Math.round(v * 100) / 100
+}
+
+// Druk van een sensor in bar, ook als hij psi of kPa meldt.
+export const drukNaarBar = (waarde: number | string | null | undefined, eenheid?: string | null): number | null => {
+  const n = Number(waarde)
+  if (waarde == null || waarde === '' || !isFinite(n)) return null
+  const e = String(eenheid || 'bar').toLowerCase()
+  const bar = e === 'psi' ? n / 14.5038 : e === 'kpa' ? n / 100 : n
+  return Math.round(bar * 1000) / 1000
+}
+
 // Bar → PSI conversie (1 bar = 14.5038 PSI).
 export const barToPsi = (bar: number): number => (Number(bar) || 0) * 14.5038
 

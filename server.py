@@ -5948,6 +5948,11 @@ def _sluitcontrole_tick() -> None:
     updates: dict = {}
 
     for sessie in open_sessies:
+        # Alleen de sluitcontrole loopt op de klok. De inspectie van de lege
+        # flessen en een sessie zonder CCP 2 (fust) kennen geen halfuurritme;
+        # een sessie zonder `ccp2` is van vóór 1.13.51 en was een sluitcontrole.
+        if (sessie.get('ccp2') or 'sluitcontrole') != 'sluitcontrole':
+            continue
         eigen = [c for c in controles if c.get('sessie_id') == sessie.get('id')]
         tijdstippen = [
             (c.get('paraaf') or {}).get('tijdstip') for c in eigen
@@ -7340,8 +7345,10 @@ def _bijlage_in_gebruik(filename: str) -> str | None:
     facturen per e-mail), `verslag.bestand` (het uitbetalingsverslag van een
     PSP bij een banktransactie), `bijlagen[].bestand` (afboeking,
     verliesregistratie, vernietiging) en `etiket_fotos[].bestand` (de foto's
-    van het etiket bij een ingrediëntlot: bewijs voor traceerbaarheid)."""
-    for key in ('inkoop_facturen', 'inkoop_inbox', 'afboekingen', 'verlies_registraties', 'lots', 'bank_transacties'):
+    van het etiket bij een ingrediëntlot: bewijs voor traceerbaarheid), en de
+    foto van het etiket bij CCP 3 (`haccp_etiketcontroles[].bijlagen`)."""
+    for key in ('inkoop_facturen', 'inkoop_inbox', 'afboekingen', 'verlies_registraties', 'lots', 'bank_transacties',
+                'haccp_etiketcontroles'):
         rijen = _read_json(key, [])
         if not isinstance(rijen, list):
             continue
