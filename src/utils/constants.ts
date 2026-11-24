@@ -430,14 +430,11 @@ export const THT_KLASSE_LABEL_KEY: Record<string, string> = {
 // Kritische grenzen en marges achter de CCP-beoordelingen. Beheer-only: dit is
 // beleid uit het voedselveiligheidsplan, geen dagelijkse werkinstelling.
 export const DEFAULT_HACCP_INST = {
-  // Stabiele dichtheid over 3 opeenvolgende dagen bij standaardbier, 7 dagen
-  // bij vers fruit/hout — wilde gist vergist traag en een korte
-  // stabiliteitsperiode geeft daar een vals-positief resultaat.
-  stabiel_dagen_standaard: 3,
-  stabiel_dagen_verhoogd: 7,
-  // Meetnauwkeurigheid waarbinnen twee dichtheden als gelijk gelden.
+  // CCP 1 (utils/haccp.ts, beoordeelCcp1): twee tankmetingen met minstens
+  // 48 uur ertussen verschillen hooguit 0,001, en de tank staat hooguit 0,002
+  // boven de forceertest.
+  stabiel_min_uur: 48,
   stabiel_tolerantie_sg: 0.001,
-  // Toegestaan verschil tussen tankdichtheid en de forced fermentation test.
   ff_marge_sg: 0.002,
   tht_maanden_standaard: 9,
   tht_maanden_gepasteuriseerd: 6,

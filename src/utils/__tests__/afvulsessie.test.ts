@@ -37,18 +37,19 @@ describe('sessienummering en lotcode', () => {
     expect(volgendSessieNr([sessie(1, 1, 1, 'afgebroken')], 1)).toBe(2)
   })
 
-  it('bouwt de lotcode als L + batchnummer + sessie', () => {
-    expect(lotcodeVoorSessie({id: 9, batch_nummer: '2431'}, 1)).toBe('L2431-B1')
+  it('bouwt de lotcode als L + batchnummer, met -B<n> pas vanaf het tweede afvulmoment', () => {
+    expect(lotcodeVoorSessie({id: 9, batch_nummer: '2431'}, 1)).toBe('L2431')
     expect(lotcodeVoorSessie({id: 9, batch_nummer: '2431'}, 2)).toBe('L2431-B2')
+    expect(lotcodeVoorSessie({id: 9, batch_nummer: '2431'}, 3)).toBe('L2431-B3')
   })
 
   it('normaliseert een batchnummer met scheidingstekens', () => {
-    expect(lotcodeVoorSessie({id: 9, batch_nummer: 'B-2026/001'}, 1)).toBe('LB2026001-B1')
+    expect(lotcodeVoorSessie({id: 9, batch_nummer: 'B-2026/001'}, 1)).toBe('LB2026001')
   })
 
   it('valt terug op het batch-id als er geen batchnummer is', () => {
-    expect(lotcodeVoorSessie({id: 42}, 1)).toBe('L42-B1')
-    expect(lotcodeVoorSessie({id: 42, batch_nummer: '  '}, 1)).toBe('L42-B1')
+    expect(lotcodeVoorSessie({id: 42}, 1)).toBe('L42')
+    expect(lotcodeVoorSessie({id: 42, batch_nummer: '  '}, 2)).toBe('L42-B2')
   })
 
   it('signaleert een botsende lotcode', () => {
@@ -247,15 +248,25 @@ describe('magAfvullingRegistreren — etiketcontrole per product (CCP 3)', () =>
 describe('nieuweLotcode', () => {
   it('neemt het volgende sessienummer van de batch', () => {
     expect(nieuweLotcode([], {id: 1, batch_nummer: '2431'} as any))
-      .toEqual({sessie_nr: 1, lotcode: 'L2431-B1'})
+      .toEqual({sessie_nr: 1, lotcode: 'L2431'})
     expect(nieuweLotcode([sessie(1, 1, 1)], {id: 1, batch_nummer: '2431'} as any))
       .toEqual({sessie_nr: 2, lotcode: 'L2431-B2'})
   })
 
+  it('laat een oude sessie L2431-B1 staan en gaat door met -B2', () => {
+    const oud = [{...sessie(1, 1, 1), lotcode: 'L2431-B1'}]
+    expect(nieuweLotcode(oud, {id: 1, batch_nummer: '2431'} as any))
+      .toEqual({sessie_nr: 2, lotcode: 'L2431-B2'})
+  })
+
   it('schuift door zolang de code al bestaat, ook bij een andere batch', () => {
-    // Batch 2 draagt per ongeluk hetzelfde batchnummer en heeft L2431-B1 al.
+    // Batch 2 draagt per ongeluk hetzelfde batchnummer en heeft L2431-B1 al:
+    // dan is ook L2431 niet vrij.
     const bestaand = [{...sessie(9, 2, 1), lotcode: 'L2431-B1'}]
     expect(nieuweLotcode(bestaand, {id: 1, batch_nummer: '2431'} as any))
+      .toEqual({sessie_nr: 2, lotcode: 'L2431-B2'})
+    const nieuwStijl = [{...sessie(9, 2, 1), lotcode: 'L2431'}]
+    expect(nieuweLotcode(nieuwStijl, {id: 1, batch_nummer: '2431'} as any))
       .toEqual({sessie_nr: 2, lotcode: 'L2431-B2'})
   })
 })

@@ -79,7 +79,7 @@ export interface KaartOordeel {
 }
 
 export interface KaartLot {
-  /** "L2609-B1 e.v." of "L2608-B1". */
+  /** "L2609 e.v." of "L2608-B2". */
   lotcode: string
   /** Toelichting bij een voorspelde lotcode ("één per verpakking, …"). */
   toelichting: string

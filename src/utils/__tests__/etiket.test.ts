@@ -235,10 +235,10 @@ describe('etiketWaarden — Kadeblond #2609 in Conditioneren', () => {
     })
   })
 
-  it('vóór de eerste sessie: L2609-B1 e.v. en THT ± 16-7-2027 (9 maanden)', () => {
+  it('vóór de eerste sessie: L2609 e.v. en THT ± 16-7-2027 (9 maanden)', () => {
     expect(w.lots).toHaveLength(1)
     expect(w.lots[0]).toMatchObject({
-      lotcode: 'L2609-B1', voorspeld: true, sessieNr: 1, tht: '2027-07-16',
+      lotcode: 'L2609', voorspeld: true, sessieNr: 1, tht: '2027-07-16',
       thtBron: 'berekend', thtMaanden: 9, thtKlasse: 'm9', productIds: [1], artikelOntbreekt: false,
     })
   })
@@ -421,7 +421,7 @@ describe('etiketWaarden — lotcode en THT per verpakking', () => {
 
   it('in Afvullen, vóór de eerste sessie: nog steeds de voorspelling (de sessie komt nu)', () => {
     const w = etiketWaarden({...b2609, status: 'Afgevuld'}, ctx2609)
-    expect(w.lots.map(l => [l.lotcode, l.voorspeld])).toEqual([['L2609-B1', true]])
+    expect(w.lots.map(l => [l.lotcode, l.voorspeld])).toEqual([['L2609', true]])
   })
 
   it('een afgeronde batch zonder sessies krijgt geen voorspelde lotcode', () => {

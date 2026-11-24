@@ -1614,8 +1614,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <p className="text-sm text-gray-500 mb-4">{t('haccp_inst_uitleg')}</p>
         <div className="grid sm:grid-cols-2 gap-3">
           {([
-            ['stabiel_dagen_standaard', 'haccp_inst_dagen_standaard', 1, DEFAULT_HACCP_INST.stabiel_dagen_standaard],
-            ['stabiel_dagen_verhoogd', 'haccp_inst_dagen_verhoogd', 1, DEFAULT_HACCP_INST.stabiel_dagen_verhoogd],
+            ['stabiel_min_uur', 'haccp_inst_min_uur', 1, DEFAULT_HACCP_INST.stabiel_min_uur],
             ['stabiel_tolerantie_sg', 'haccp_inst_tolerantie', 0.001, DEFAULT_HACCP_INST.stabiel_tolerantie_sg],
             ['ff_marge_sg', 'haccp_inst_ff_marge', 0.001, DEFAULT_HACCP_INST.ff_marge_sg],
             ['tht_maanden_standaard', 'haccp_inst_tht_standaard', 1, DEFAULT_HACCP_INST.tht_maanden_standaard],

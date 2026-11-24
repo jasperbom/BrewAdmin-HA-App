@@ -128,10 +128,16 @@ export interface Batch {
   botteldag_checks?: Record<number, boolean>   // @deprecated: gemigreerd naar taken_checks
   taken_checks?: Record<number, boolean>       // Unified batch-takensysteem (check-type items)
   allergeen_notities?: string
-  // HACCP: handmatige correctie op de automatisch afgeleide risicoklasse van
-  // CCP 1. Altijd met motivatie — de afleiding uit de ingrediënten is leidend.
+  // HACCP: handmatige correctie op de automatisch afgeleide risicoklasse.
+  // Altijd met motivatie — de afleiding uit de ingrediënten is leidend. CCP 1
+  // gebruikt de klasse niet meer (sinds 1.13.49 één regel voor elk bier).
   risico_override?: RisicoKlasse
   risico_override_reden?: string
+  // CCP 1: eind-SG van de forceertest (het monster dat op de brouwdag warm is
+  // weggezet) en wanneer die is afgelezen ('JJJJ-MM-DDTUU:MM'). Leeg = nog
+  // niet gemeten. Eigen velden: Brewfather-sync en recept raken ze niet aan.
+  ff_sg?: number | ''
+  ff_op?: string
   // Id van het recept waarvan deze batch is aangemaakt. Wordt gezet bij het
   // klikken op "Brouwen" in de Recepten-pagina en blijft staan zodat een
   // geplande batch later via "Sync recept" opnieuw kan worden bijgewerkt.
@@ -1954,27 +1960,43 @@ export interface HaccpVrijgave {
   id: number
   batch_id: number
   datum: string
-  // Automatisch afgeleid en als snapshot bevroren, zodat een latere wijziging
-  // aan een ingrediënt de historische registratie niet verandert.
-  risico_klasse: RisicoKlasse
+  // Hoe beoordeeld. 'ff_paar' (vanaf 1.13.49, `beoordeelCcp1`): forceertest +
+  // twee tankmetingen met minstens `stabiel_min_uur` ertussen. Leeg = de oude
+  // regel met risicoklasse, dagen stabiel, drukproef en smaakoordeel; die
+  // records blijven geldig en leesbaar.
+  methode?: 'ff_paar'
+  // Oude regel (snapshot): risicoklasse en dagen stabiel.
+  risico_klasse?: RisicoKlasse
   risico_redenen?: string[]
-  vereiste_dagen_stabiel: number
-  dagen_stabiel: number
+  vereiste_dagen_stabiel?: number
+  dagen_stabiel?: number
   stabiel_ok: boolean
-  // Forced fermentation test: standaardmethode om de werkelijke eindvergisting
-  // te bepalen. Verplicht uitgevoerd.
+  // De twee tankmetingen waarop de stabiliteit beoordeeld is, bevroren
+  // ('JJJJ-MM-DDTUU:MM', lokale tijd zoals in de metingenlijst).
+  tank_sg_1?: number
+  tank_sg_1_op?: string
+  tank_sg_2?: number
+  tank_sg_2_op?: string
+  stabiel_uren?: number
+  stabiel_verschil?: number
+  stabiel_min_uur?: number
+  stabiel_tolerantie?: number
+  // Forceertest (forced fermentation): hoe ver het bier kán uitgisten.
+  // `ff_dichtheid_tank` = de laatste tankmeting, `ff_verschil` = tank − test
+  // (oude records: het absolute verschil).
   ff_uitgevoerd: boolean
   ff_dichtheid_tank?: number
   ff_dichtheid_ff?: number
   ff_verschil?: number
   ff_marge?: number
   ff_ok?: boolean
-  // Alleen bij verhoogd risico: 30 °C-monster op drukopbouw beoordeeld.
+  // Oude regel: 30 °C-monster op drukopbouw (alleen bij verhoogd risico).
   druk30_uitgevoerd?: boolean
   druk30_waarneming?: string
   druk30_ok?: boolean
-  sensorisch: string
-  sensorisch_ok: boolean
+  // Oude regel: smaakoordeel bij de vrijgave (nu bij de warm-houdtest).
+  sensorisch?: string
+  sensorisch_ok?: boolean
   oordeel: VrijgaveOordeel
   // Wat het systeem voorstelde op grond van de criteria. Wijkt `oordeel`
   // hiervan af, dan hoort er een afwijkingsregistratie bij.
@@ -2179,10 +2201,11 @@ export interface TraceOefening {
 // Marges en beleid achter de CCP-beoordelingen. Beheer-only: dit zijn de
 // kritische grenzen uit het handboek, geen dagelijkse werkinstellingen.
 export interface HaccpInst {
-  stabiel_dagen_standaard: number
-  stabiel_dagen_verhoogd: number
-  // Meetnauwkeurigheid waarbinnen twee dichtheden als gelijk gelden (SG).
+  // CCP 1: twee tankmetingen met minstens zoveel uur ertussen…
+  stabiel_min_uur: number
+  // …mogen hooguit zoveel verschillen (SG).
   stabiel_tolerantie_sg: number
+  // Hoeveel de tank hooguit boven de forceertest mag staan (SG).
   ff_marge_sg: number
   tht_maanden_standaard: number
   tht_maanden_gepasteuriseerd: number

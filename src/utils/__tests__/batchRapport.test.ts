@@ -226,11 +226,32 @@ describe('bouwBatchRapport — één stap terug', () => {
 })
 
 describe('bouwBatchRapport — CCP-registraties', () => {
-  it('neemt de vrijgave integraal over', () => {
+  it('neemt een vrijgave volgens de regel van forceertest en twee metingen integraal over', () => {
+    const r = bouwBatchRapport(invoer({
+      vrijgaven: [{id: 43, batch_id: 7, datum: '2026-06-18', methode: 'ff_paar',
+        ff_uitgevoerd: true, ff_dichtheid_ff: 1.010, ff_dichtheid_tank: 1.011,
+        ff_verschil: 0.001, ff_marge: 0.002, ff_ok: true,
+        tank_sg_1: 1.012, tank_sg_1_op: '2026-06-16T09:00',
+        tank_sg_2: 1.011, tank_sg_2_op: '2026-06-18T09:00',
+        stabiel_uren: 48, stabiel_verschil: 0.001, stabiel_ok: true,
+        oordeel: 'vrijgegeven', oordeel_voorgesteld: 'niet_vrijgegeven', afwijking_id: 9,
+        paraaf: {gebruiker: 'jasper', tijdstip: '2026-06-18T10:00:00.000Z', bron: 'whoami'}}] as any,
+    }))
+    expect(r.vrijgaven[0]).toMatchObject({
+      methode: 'ff_paar', risicoKey: null, dagenStabiel: null,
+      ffSg: 1.010, tankSg: 1.011, ffOk: true,
+      tankSg1: 1.012, tankSg1Op: '2026-06-16T09:00', tankSg2: 1.011, stabielUren: 48,
+      stabielOk: true, afwijking: true,
+    })
+  })
+
+  it('neemt een vrijgave volgens de oude regel integraal over', () => {
     const v = bouwBatchRapport(invoer()).vrijgaven[0]
     expect(v).toMatchObject({
       datum: '2026-06-18',
       oordeelKey: 'haccp_ccp1_vrijgegeven',
+      methode: 'dagen',
+      afwijking: false,
       risicoKey: 'haccp_risico_standaard',
       dagenStabiel: 4,
       vereisteDagen: 3,

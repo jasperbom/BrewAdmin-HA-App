@@ -26,8 +26,12 @@ export const volgendSessieNr = (sessies: AfvulSessie[], batchId: number): number
   return eigen.reduce((max, s) => Math.max(max, Number(s.sessie_nr) || 0), 0) + 1
 }
 
-/** Partij-aanduiding conform Richtlijn 2011/91/EU: de letter L, gevolgd door
- *  het batchnummer en de afvulsessie — bijvoorbeeld `L2431-B1`. Zonder
+/** Partij-aanduiding conform Richtlijn 2011/91/EU: de letter L en het
+ *  batchnummer — bijvoorbeeld `L2431`. Wordt dezelfde batch op een tweede
+ *  moment afgevuld, dan krijgt dat moment zijn eigen code: `L2431-B2`, `-B3`
+ *  enzovoort. Zo blijft de gewone code kort, en kan een terugroepactie zich
+ *  toch tot één afvulmoment beperken. Sessies van vóór 1.13.49 heten
+ *  `L2431-B1`; die codes staan op de verpakking en veranderen nooit. Zonder
  *  batchnummer valt de code terug op het interne batch-id, zodat er altijd een
  *  code is. */
 export const lotcodeVoorSessie = (
@@ -36,7 +40,7 @@ export const lotcodeVoorSessie = (
 ): string => {
   const ruw = String(batch?.batch_nummer || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
   const kern = ruw || String(batch?.id ?? '')
-  return `L${kern}-B${sessieNr}`
+  return sessieNr > 1 ? `L${kern}-B${sessieNr}` : `L${kern}`
 }
 
 export const lotcodeIsUniek = (code: string, sessies: AfvulSessie[]): boolean =>
@@ -54,9 +58,15 @@ export const nieuweLotcode = (
   batch: Pick<Batch, 'id' | 'batch_nummer'>,
 ): {sessie_nr: number; lotcode: string} => {
   const lijst = sessies || []
+  // Draagt een andere batch per ongeluk hetzelfde batchnummer en heeft die al
+  // `L2431-B…`, dan is `L2431` ook niet vrij: een terugroepactie op L2431 zou
+  // anders twee bieren raken.
+  const bezet = (code: string, nr: number): boolean => !lotcodeIsUniek(code, lijst)
+    || (nr === 1 && lijst.some(s => s.batch_id !== batch.id
+      && String(s.lotcode || '').toUpperCase().startsWith(`${code}-B`)))
   let nr = volgendSessieNr(lijst, batch.id)
   let code = lotcodeVoorSessie(batch, nr)
-  while (!lotcodeIsUniek(code, lijst)) {
+  while (bezet(code, nr)) {
     nr += 1
     code = lotcodeVoorSessie(batch, nr)
   }

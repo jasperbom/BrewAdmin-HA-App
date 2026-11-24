@@ -22,6 +22,7 @@ import type {
   AfvulSessie, SluitControle, ControleResultaat, CorrigierendeActie,
 } from '../types'
 import { DEFAULT_HACCP_INST } from './constants'
+import { fmtDagMaand } from './format'
 import { ingredientVoorBatchRegel } from './batchIngredienten'
 import type { LotKoppeling } from './batchIngredienten'
 
@@ -136,169 +137,221 @@ export const risicoVoorBatch = (
   }
 }
 
-export const vereisteStabiliteitsdagen = (
-  klasse: RisicoKlasse,
-  instRaw?: Partial<HaccpInst> | null
-): number => {
-  const inst = haccpInst(instRaw)
-  return klasse === 'verhoogd' ? inst.stabiel_dagen_verhoogd : inst.stabiel_dagen_standaard
-}
-
-// ── Stabiliteit van de dichtheid ────────────────────────────────────────────
-
-interface SgMeting { sg?: number | string | null; datum?: string; tijd?: string }
-
-const metingTs = (m: SgMeting): number =>
-  new Date(`${m.datum || ''}T${m.tijd || '00:00'}`).getTime()
-
-const sorteerMetingen = (metingen: SgMeting[]): SgMeting[] =>
-  (metingen || [])
-    .filter(m => m && m.sg != null && Number(m.sg) > 0 && !!m.datum)
-    .slice()
-    .sort((a, b) => metingTs(a) - metingTs(b))
-
-/** Aantal dagen dat de dichtheid onveranderd is: de langste aaneengesloten
- *  reeks metingen die eindigt bij de laatste meting en waarin elke waarde
- *  binnen `tol` van die laatste waarde ligt. Minder dan twee bruikbare
- *  metingen levert 0 op — één meting zegt niets over stabiliteit. */
-export const dagenStabiel = (
-  metingen: SgMeting[],
-  instRaw?: Partial<HaccpInst> | null
-): number => {
-  const inst = haccpInst(instRaw)
-  const ms = sorteerMetingen(metingen)
-  if (ms.length < 2) return 0
-  const laatste = ms[ms.length - 1]
-  const ref = Number(laatste.sg)
-  let start = ms.length - 1
-  while (start > 0 && Math.abs(Number(ms[start - 1].sg) - ref) <= inst.stabiel_tolerantie_sg) {
-    start--
-  }
-  if (start === ms.length - 1) return 0
-  const span = metingTs(laatste) - metingTs(ms[start])
-  if (!isFinite(span) || span <= 0) return 0
-  return Math.floor(span / 86400000)
-}
-
-// ── Forced fermentation ─────────────────────────────────────────────────────
-// De standaardmethode om de werkelijke eindvergisting te bepalen: een monster
-// warm en met overmaat gist laten doorgisten. Blijft het bier in de tank op
-// die waarde staan, dan is nagisting door de brouwersgist uitgesloten.
-
-// Afgerond op vier decimalen: dichtheden worden op drie decimalen gemeten en
-// het verschil belandt onafgerond in een registratie die bewijs moet zijn.
-// Drijvende-komma-ruis als 0.001000000000000112 hoort daar niet in.
-export const ffVerschil = (dichtheidTank: number, dichtheidFf: number): number =>
-  Math.round(Math.abs(Number(dichtheidTank) - Number(dichtheidFf)) * 10000) / 10000
-
-export const ffBinnenMarge = (verschil: number, marge: number): boolean =>
-  verschil <= marge + 1e-9
-
 // ── CCP 1 — vrijgave voor afvullen ──────────────────────────────────────────
+// Eén regel voor elk bier (Hygiënecode voor de Bierbrouwerijen, EBC):
+//
+//   (a) de forceertest: een monster wort met gist dat warm is weggezet, laat
+//       zien hoe ver het bier kán uitgisten. De tank mag daar hooguit
+//       `ff_marge_sg` boven staan.
+//   (b) de tank is stabiel: twee metingen met minstens `stabiel_min_uur`
+//       ertussen verschillen hooguit `stabiel_tolerantie_sg`.
+//
+// Geen risicoklassen, geen drukproef en geen smaakoordeel meer bij deze stap:
+// de warm-houdtest na het afvullen laat zien of de vrijgave klopte, en daar
+// wordt ook geproefd. Wie na de kook vergistbare suiker toevoegt (fruit,
+// honing, siroop), zet na die toevoeging een nieuwe forceertest weg.
 
-export interface VrijgaveInvoer {
-  risico_klasse: RisicoKlasse
-  dagen_stabiel: number
-  ff_uitgevoerd: boolean
-  ff_dichtheid_tank?: number | string | null
-  ff_dichtheid_ff?: number | string | null
-  druk30_uitgevoerd?: boolean
-  druk30_ok?: boolean
-  sensorisch?: string
+/** Afgerond op vier decimalen: dichtheden worden op drie decimalen gemeten en
+ *  het verschil belandt in een registratie die bewijs moet zijn. Drijvende-
+ *  kommaruis als 0.001000000000000112 hoort daar niet in. */
+const rond4 = (x: number): number => Math.round(x * 10000) / 10000
+
+const binnen = (x: number, grens: number): boolean => x <= grens + 1e-9
+
+/** Hoeveel de tank boven de forceertest staat; negatief = eronder (dat is
+ *  goed: de tank kan niet verder uitgisten dan de test). */
+export const ffVerschil = (tankSg: number, ffSg: number): number =>
+  rond4(Number(tankSg) - Number(ffSg))
+
+interface SgMeting { sg?: number | string | null; datum?: string; tijd?: string; auto?: boolean }
+
+/** Een handmatige SG-meting van de tank. */
+export interface TankSg {
+  sg: number
+  /** Lokaal tijdstip 'JJJJ-MM-DDTUU:MM', zoals de meting in de lijst staat. */
+  op: string
+  ts: number
 }
 
-export interface VrijgaveBeoordeling {
-  /** Wat het systeem voorstelt op grond van de criteria. */
-  oordeel: VrijgaveOordeel
-  vereiste_dagen: number
-  stabiel_ok: boolean
-  ff_ok: boolean
-  ff_verschil: number | null
-  ff_marge: number
-  druk30_ok: boolean
-  sensorisch_ok: boolean
-  /** Verplichte velden die nog ontbreken — het formulier kan nog niet weg. */
-  onvolledig: BlokkadeReden[]
-  /** Waarom het voorstel 'niet vrijgegeven' is. */
-  redenen: BlokkadeReden[]
+const metingOp = (m: SgMeting): string => `${m.datum || ''}T${m.tijd || '00:00'}`
+
+/** De handmatige SG-metingen van de tank, oud → nieuw. Een drijvende sensor
+ *  (Tilt, iSpindel, RAPT) is rond de einddichtheid te onnauwkeurig voor een
+ *  kritische grens: automatische metingen tellen hier niet mee, in de grafiek
+ *  wel. */
+export const tankSgMetingen = (metingen: SgMeting[] | null | undefined): TankSg[] =>
+  (metingen || [])
+    .filter(m => !!m && !m.auto && m.sg != null && m.sg !== '' && Number(m.sg) > 0 && !!m.datum)
+    .map(m => ({sg: Number(m.sg), op: metingOp(m), ts: new Date(metingOp(m)).getTime()}))
+    .filter(m => isFinite(m.ts))
+    .sort((a, b) => a.ts - b.ts)
+
+export interface StabielPaar {
+  eerste: TankSg
+  laatste: TankSg
+  uren: number
+  verschil: number
 }
 
-export const beoordeelVrijgave = (
-  inv: VrijgaveInvoer,
-  instRaw?: Partial<HaccpInst> | null
-): VrijgaveBeoordeling => {
-  const inst = haccpInst(instRaw)
-  const vereiste = vereisteStabiliteitsdagen(inv.risico_klasse, inst)
-  const verhoogd = inv.risico_klasse === 'verhoogd'
-  const onvolledig: BlokkadeReden[] = []
-  const redenen: BlokkadeReden[] = []
-
-  const stabielOk = inv.dagen_stabiel >= vereiste
-  if (!stabielOk) {
-    redenen.push({
-      code: 'niet_stabiel',
-      i18nKey: 'haccp_blok_niet_stabiel',
-      params: {dagen: inv.dagen_stabiel, vereist: vereiste},
-    })
-  }
-
-  // De forced fermentation test is verplicht uitgevoerd — zonder die test is
-  // er geen onderbouwing dat het bier daadwerkelijk uitgegist is.
-  let ffVersch: number | null = null
-  let ffOk = false
-  if (!inv.ff_uitgevoerd) {
-    redenen.push({code: 'ff_niet_uitgevoerd', i18nKey: 'haccp_blok_ff_niet_uitgevoerd'})
-  } else {
-    const tank = Number(inv.ff_dichtheid_tank)
-    const ff = Number(inv.ff_dichtheid_ff)
-    if (!isFinite(tank) || tank <= 0 || !isFinite(ff) || ff <= 0) {
-      onvolledig.push({code: 'ff_dichtheden_ontbreken', i18nKey: 'haccp_blok_ff_dichtheden'})
-    } else {
-      ffVersch = ffVerschil(tank, ff)
-      ffOk = ffBinnenMarge(ffVersch, inst.ff_marge_sg)
-      if (!ffOk) {
-        redenen.push({
-          code: 'ff_buiten_marge',
-          i18nKey: 'haccp_blok_ff_buiten_marge',
-          params: {verschil: ffVersch.toFixed(3), marge: inst.ff_marge_sg.toFixed(3)},
-        })
+/** De twee metingen waarop de stabiliteit beoordeeld wordt: de laatste meting
+ *  en de laatste meting die minstens `minUur` eerder lag. Null zolang zo'n
+ *  paar er niet is. */
+export const stabielPaar = (tank: TankSg[], minUur: number): StabielPaar | null => {
+  if (!tank || tank.length < 2) return null
+  const laatste = tank[tank.length - 1]
+  const grens = laatste.ts - minUur * 3600000
+  for (let i = tank.length - 2; i >= 0; i--) {
+    if (tank[i].ts <= grens) {
+      const eerste = tank[i]
+      return {
+        eerste, laatste,
+        uren: Math.floor((laatste.ts - eerste.ts) / 3600000),
+        verschil: rond4(Math.abs(laatste.sg - eerste.sg)),
       }
     }
   }
+  return null
+}
 
-  // Drukcontrole op een 30 °C-monster: alleen bij vers fruit en hout, waar
-  // wilde gist traag vergist en pas na weken zichtbaar wordt.
-  let druk30Ok = true
-  if (verhoogd) {
-    if (!inv.druk30_uitgevoerd) {
-      redenen.push({code: 'druk30_ontbreekt', i18nKey: 'haccp_blok_druk30_ontbreekt'})
-      druk30Ok = false
-    } else if (inv.druk30_ok === false) {
-      redenen.push({code: 'druk30_afwijkend', i18nKey: 'haccp_blok_druk30_afwijkend'})
-      druk30Ok = false
+const lokaalOp = (ts: number): string => {
+  const d = new Date(ts)
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+export interface Ccp1Invoer {
+  /** Eind-SG van de forceertest. */
+  ff_sg?: number | string | null
+  /** Alle metingen van de batch; de automatische tellen niet mee. */
+  metingen: SgMeting[] | null | undefined
+}
+
+export interface Ccp1Beoordeling {
+  oordeel: VrijgaveOordeel
+  ff_sg: number | null
+  /** De laatste handmatige meting van de tank. */
+  tank: TankSg | null
+  ff_verschil: number | null
+  ff_marge: number
+  ff_ok: boolean
+  paar: StabielPaar | null
+  stabiel_min_uur: number
+  stabiel_tolerantie: number
+  stabiel_ok: boolean
+  /** Zonder paar: vanaf wanneer een nieuwe meting er een maakt ('JJJJ-MM-DDTUU:MM'). */
+  volgende_meting_op: string | null
+  /** Wat er nog ontbreekt of niet klopt; leeg = vrijgeven kan. */
+  redenen: BlokkadeReden[]
+}
+
+export const beoordeelCcp1 = (
+  inv: Ccp1Invoer,
+  instRaw?: Partial<HaccpInst> | null
+): Ccp1Beoordeling => {
+  const inst = haccpInst(instRaw)
+  const minUur = Number(inst.stabiel_min_uur) > 0 ? Number(inst.stabiel_min_uur) : 48
+  const tol = inst.stabiel_tolerantie_sg
+  const redenen: BlokkadeReden[] = []
+
+  const metingen = tankSgMetingen(inv.metingen)
+  const tank = metingen.length ? metingen[metingen.length - 1] : null
+  const ffRuw = Number(inv.ff_sg)
+  const ff = inv.ff_sg != null && inv.ff_sg !== '' && isFinite(ffRuw) && ffRuw > 0 ? ffRuw : null
+
+  // (a) De forceertest.
+  let ffVersch: number | null = null
+  let ffOk = false
+  if (ff == null) {
+    redenen.push({code: 'ff_ontbreekt', i18nKey: 'haccp_blok_ff_ontbreekt'})
+  } else if (tank) {
+    ffVersch = ffVerschil(tank.sg, ff)
+    ffOk = binnen(ffVersch, inst.ff_marge_sg)
+    if (!ffOk) {
+      redenen.push({
+        code: 'ff_buiten_marge',
+        i18nKey: 'haccp_blok_ff_boven',
+        params: {verschil: ffVersch.toFixed(3), marge: inst.ff_marge_sg.toFixed(3)},
+      })
     }
   }
 
-  // De smaakbeoordeling volgt op de stabiliteitsbeoordeling, niet andersom.
-  const sensorisch = (inv.sensorisch || '').trim()
-  const sensorischOk = sensorisch.length > 0
-  if (!sensorischOk) {
-    onvolledig.push({code: 'sensorisch_ontbreekt', i18nKey: 'haccp_blok_sensorisch'})
+  // (b) Twee metingen met genoeg tijd ertussen.
+  const paar = stabielPaar(metingen, minUur)
+  let stabielOk = false
+  let volgende: string | null = null
+  if (!tank) {
+    redenen.push({code: 'tank_ontbreekt', i18nKey: 'haccp_blok_tank_ontbreekt'})
+  } else if (!paar) {
+    volgende = lokaalOp(tank.ts + minUur * 3600000)
+    redenen.push({
+      code: 'tweede_meting',
+      i18nKey: 'haccp_blok_tweede_meting',
+      params: {uur: minUur, moment: fmtDagMaand(volgende, {tijd: true})},
+    })
+  } else {
+    stabielOk = binnen(paar.verschil, tol)
+    if (!stabielOk) {
+      redenen.push({
+        code: 'niet_stabiel',
+        i18nKey: 'haccp_blok_niet_stabiel_paar',
+        params: {verschil: paar.verschil.toFixed(3), tolerantie: tol.toFixed(3), uur: paar.uren},
+      })
+    }
   }
 
   return {
     oordeel: redenen.length === 0 ? 'vrijgegeven' : 'niet_vrijgegeven',
-    vereiste_dagen: vereiste,
-    stabiel_ok: stabielOk,
-    ff_ok: ffOk,
+    ff_sg: ff,
+    tank,
     ff_verschil: ffVersch,
     ff_marge: inst.ff_marge_sg,
-    druk30_ok: druk30Ok,
-    sensorisch_ok: sensorischOk,
-    onvolledig,
+    ff_ok: ffOk,
+    paar,
+    stabiel_min_uur: minUur,
+    stabiel_tolerantie: tol,
+    stabiel_ok: stabielOk,
+    volgende_meting_op: volgende,
     redenen,
   }
 }
+
+/** Het record dat CCP 1 vastlegt, met de gebruikte metingen bevroren: een
+ *  latere meting of een gewijzigde grens verandert de registratie niet. */
+export const bouwVrijgave = (
+  id: number,
+  batchId: number,
+  b: Ccp1Beoordeling,
+  paraaf: Paraaf,
+  extra: {vervangt_id?: number; afwijking_id?: number; opmerking?: string} = {},
+): HaccpVrijgave => ({
+  id,
+  batch_id: batchId,
+  datum: (paraaf.tijdstip || new Date().toISOString()).slice(0, 10),
+  methode: 'ff_paar',
+  ff_uitgevoerd: b.ff_sg != null,
+  ff_dichtheid_tank: b.tank?.sg,
+  ff_dichtheid_ff: b.ff_sg ?? undefined,
+  ff_verschil: b.ff_verschil ?? undefined,
+  ff_marge: b.ff_marge,
+  ff_ok: b.ff_ok,
+  tank_sg_1: b.paar?.eerste.sg,
+  tank_sg_1_op: b.paar?.eerste.op,
+  tank_sg_2: b.paar?.laatste.sg,
+  tank_sg_2_op: b.paar?.laatste.op,
+  stabiel_uren: b.paar?.uren,
+  stabiel_verschil: b.paar?.verschil,
+  stabiel_min_uur: b.stabiel_min_uur,
+  stabiel_tolerantie: b.stabiel_tolerantie,
+  stabiel_ok: b.stabiel_ok,
+  // Met een afwijking gaat het door ondanks een rood voorstel; het voorstel
+  // zelf blijft bewaard.
+  oordeel: 'vrijgegeven',
+  oordeel_voorgesteld: b.oordeel,
+  afwijking_id: extra.afwijking_id,
+  vervangt_id: extra.vervangt_id,
+  opmerking: (extra.opmerking || '').trim() || undefined,
+  paraaf,
+})
 
 /** De vrijgave die op dit moment geldt voor een batch: de nieuwste registratie
  *  die niet door een latere is vervangen. Append-only betekent dat oude

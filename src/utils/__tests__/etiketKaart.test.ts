@@ -98,10 +98,10 @@ describe('etiketKaartModel — Kadeblond #2609 (SPEC scherm E)', () => {
     expect(r.bevat).toEqual({nu: 'Bevat: gerst.', moet: 'Bevat: gerst, tarwe.'})
   })
 
-  it('lotcode en THT: L2609-B1 e.v. en THT ± 16-7-2027 (9 mnd, standaard)', () => {
+  it('lotcode en THT: L2609 e.v. en THT ± 16-7-2027 (9 mnd, standaard)', () => {
     const r = regel(b, 'lot')
     expect(r.lots).toEqual([{
-      lotcode: 'L2609-B1 e.v.', toelichting: 'één per verpakking, bij de afvulsessie', verpakking: '',
+      lotcode: 'L2609 e.v.', toelichting: 'één per verpakking, bij de afvulsessie', verpakking: '',
       tht: 'THT ± 16-7-2027 (9 mnd, standaard)', voorspeld: true, artikelMaken: null,
     }])
     expect(r.etiket).toBeNull()
@@ -140,7 +140,7 @@ describe('etiketKaartModel — Kadeblond #2609 (SPEC scherm E)', () => {
     ])
     expect(b.allergenen.etiketLabel).toBe('Etiket v3')
     expect(b.allergenen.bevat?.moet).toBe('Bevat: gerst, tarwe.')
-    expect(b.lotRegel).toBe('volgt bij de afvulsessie (L2609-B1 e.v.)')
+    expect(b.lotRegel).toBe('volgt bij de afvulsessie (L2609 e.v.)')
   })
 
   it('de bronketen per waarde (onderblad en "Bron per waarde")', () => {
@@ -156,7 +156,7 @@ describe('etiketKaartModel — Kadeblond #2609 (SPEC scherm E)', () => {
     // ABV binnen de marge: het etiket hoeft niet te veranderen (6,2). De
     // allergenen wel: tarwe ontbreekt, dus de Bevat-regel van de batch.
     expect(b.kopie).toBe([
-      'Kadeblond', 'Belgian Blond Ale', '6,2 % vol', 'Bevat: gerst, tarwe.', 'L2609-B1',
+      'Kadeblond', 'Belgian Blond Ale', '6,2 % vol', 'Bevat: gerst, tarwe.', 'L2609',
       'Ten minste houdbaar tot 16-07-2027',
     ].join('\n'))
   })

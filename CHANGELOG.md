@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.49] — 2026-11-24
+
+### CCP 1 in één regel, en de lotcode zonder -B1
+
+Het werk wordt lichter: de vrijgave voor afvullen vraagt minder en vult zich
+zelf in.
+
+- **Eén regel voor elk bier** (Hygiënecode, EBC): de tank staat hooguit 0,002
+  boven de forceertest, en twee tankmetingen met minstens 48 uur ertussen
+  verschillen hooguit 0,001. Geen risicoklassen (3 of 7 dagen stabiel), geen
+  drukproef op 30 °C en geen smaakoordeel meer bij deze stap — dat laatste
+  hoort bij de warm-houdtest na het afvullen. De drie grenzen staan in
+  Instellingen › App › HACCP.
+- **De kaart vult zich zelf:** de tankmetingen komen uit de metingen van de
+  batch (alleen handmatige: een drijvende sensor is rond de einddichtheid te
+  onnauwkeurig). Je legt de forceertest één keer vast op de kaart, een nieuwe
+  tankmeting kan er ook direct. Ontbreekt de tweede meting, dan zegt de kaart
+  vanaf wanneer hij kan. Klopt alles, dan is het één knop: *Vrijgeven voor
+  afvullen*. Klopt iets niet, dan alleen met een afwijking (onderbouwing en
+  maatregel), zoals altijd.
+- **Toevoeging na de kook** (fruit, puree, hout): de kaart herinnert eraan na de
+  toevoeging een nieuwe forceertest weg te zetten.
+- **Lotcode:** `L` + batchnummer (`L2431`). Pas als dezelfde batch op een
+  tweede moment wordt afgevuld komt er `-B2` achter. Bestaande codes
+  (`L2431-B1`) staan op de verpakking en blijven zoals ze zijn.
+- Oude vrijgaven blijven geldig en leesbaar in het batchdossier en het
+  HACCP-overzicht; een batch met een oude afkeuring krijgt meteen de nieuwe
+  kaart.
+
 ## [1.13.48] — 2026-11-11
 
 ### Installatieprofiel per tank, recepten schalen en het water op de brouwdag

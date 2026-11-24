@@ -539,7 +539,7 @@ export type ThtBron = 'sessie' | 'handmatig' | 'berekend' | 'afvulling' | 'geen'
 
 export interface EtiketLot {
   lotcode: string
-  /** Vóór de eerste sessie: de voorspelling "L2609-B1 e.v." */
+  /** Vóór de eerste sessie: de voorspelling "L2609 e.v." */
   voorspeld: boolean
   sessieId: number | null
   sessieNr: number | null

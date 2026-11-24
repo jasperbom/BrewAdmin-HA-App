@@ -4244,6 +4244,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               detail={clMap.vrijgave?.detail} {...so('vrijgave', !!clMap.vrijgave?.done)}>
               <VrijgaveSectie
                 batch={selB} bi={bi} ing={ing} lots={lots} gistMetingen={gistMetingen}
+                setGistMetingen={setGistMetingen} updateBatch={updateBatch}
                 vrijgaven={haccpVrijgaven} setVrijgaven={setHaccpVrijgaven}
                 capa={capa} setCapa={setCapa}
                 afwijkingen={haccpAfwijkingen} setAfwijkingen={setHaccpAfwijkingen}

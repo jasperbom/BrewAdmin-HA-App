@@ -1,7 +1,7 @@
 import React from 'react'
 import { t } from '../i18n'
 import { newId } from '../utils/api'
-import { fmtD, tod } from '../utils/format'
+import { fmtD, fmtSg, tod } from '../utils/format'
 import { logAudit } from '../utils/audit'
 import { escapeHtml } from '../utils/template'
 import { ALLERGENEN_LIJST, TOEVOEGING_SOORTEN } from '../utils/constants'
@@ -455,6 +455,14 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
   // Inspectie-export: alles van de gekozen periode in één afdruk. Bij een
   // controle is de vraag niet of de brouwer weet hoe het moet, maar of
   // aantoonbaar is dat het ook zo gedaan is.
+  // Eén regel per vrijgave: de regel van nu (forceertest + twee tankmetingen)
+  // of de oude (risicoklasse + dagen stabiel) — oude registraties blijven
+  // zoals ze zijn vastgelegd.
+  const ccp1Kort = (v:any): string => v.methode==='ff_paar'
+    ? `${t('haccp_ccp1_ff')} ${fmtSg(v.ff_dichtheid_ff)} · ${t('haccp_ccp1_tank')} ${fmtSg(v.ff_dichtheid_tank)}`
+      + (v.tank_sg_1!=null ? ` · ${fmtSg(v.tank_sg_1)} → ${fmtSg(v.tank_sg_2)} (${t('haccp_ccp1_na_uur').replace('{n}', String(v.stabiel_uren??''))})` : '')
+    : `${t(v.risico_klasse==='verhoogd'?'haccp_risico_verhoogd':'haccp_risico_standaard')} · ${v.dagen_stabiel??''}/${v.vereiste_dagen_stabiel??''} ${t('haccp_ccp1_dagen')}`
+
   const printRapport = () => {
     const w = window.open('','_blank')
     if(!w) return
@@ -465,9 +473,8 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
       : t('haccp_rap_alle_data')
     const rijenVrij = vrij.map((v:any)=>`<tr>
       <td>${esc(fmtD(v.datum))}</td><td>${esc(batchNaam(v.batch_id))}</td>
-      <td>${esc(t(v.risico_klasse==='verhoogd'?'haccp_risico_verhoogd':'haccp_risico_standaard'))}</td>
-      <td>${esc(v.dagen_stabiel)}/${esc(v.vereiste_dagen_stabiel)}</td>
-      <td>${v.ff_uitgevoerd ? esc(v.ff_verschil ?? '') : t('lbl_nee')}</td>
+      <td>${esc(ccp1Kort(v))}</td>
+      <td>${v.ff_uitgevoerd ? esc(v.ff_verschil ?? '') : esc(t('lbl_nee'))}</td>
       <td class="${v.oordeel==='vrijgegeven'?'ok':'nok'}">${esc(t(v.oordeel==='vrijgegeven'?'haccp_ccp1_vrijgegeven':'haccp_ccp1_niet_vrijgegeven'))}${v.afwijking_id!=null?` (${esc(t('haccp_afw_kort'))})`:''}</td>
       <td>${esc(v.paraaf?.gebruiker||'')}</td></tr>`).join('')
     const rijenSess = sess.map((x:any)=>{
@@ -510,7 +517,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
       <h1>${esc(t('haccp_rap_titel'))}</h1>
       <div class="meta">${esc(breweryDetails?.naam||'')} · ${esc(t('haccp_rap_periode'))}: ${esc(periode)} · ${esc(new Date().toLocaleString())}</div>
       <h2>${esc(t('haccp_ccp1_titel'))}</h2>
-      ${vrij.length?`<table><tr><th>${esc(t('lbl_datum'))}</th><th>Batch</th><th>${esc(t('haccp_ccp1_producttype'))}</th><th>${esc(t('haccp_ccp1_stabiel'))}</th><th>${esc(t('haccp_ccp1_ff'))}</th><th>${esc(t('haccp_ccp1_oordeel'))}</th><th>${esc(t('haccp_ccp1_paraaf'))}</th></tr>${rijenVrij}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
+      ${vrij.length?`<table><tr><th>${esc(t('lbl_datum'))}</th><th>Batch</th><th>${esc(t('haccp_ccp1_stabiel'))}</th><th>${esc(t('haccp_ccp1_verschil'))}</th><th>${esc(t('haccp_ccp1_oordeel'))}</th><th>${esc(t('haccp_ccp1_paraaf'))}</th></tr>${rijenVrij}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
       <h2>${esc(t('haccp_sessie_titel'))} — ${esc(t('haccp_ccp2_titel'))} / ${esc(t('haccp_ccp3_titel'))}</h2>
       ${sess.length?`<table><tr><th>${esc(t('haccp_sessie_lotcode'))}</th><th>Batch</th><th>${esc(t('haccp_sessie_gestart'))}</th><th>${esc(t('haccp_sessie_afgesloten'))}</th><th>${esc(t('haccp_sessie_tht'))}</th><th>${esc(t('haccp_ccp2_titel'))}</th><th>${esc(t('haccp_ccp3_titel'))}</th><th>${esc(t('haccp_rap_status'))}</th></tr>${rijenSess}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
       <h2>${esc(t('haccp_tab_afwijkingen'))}</h2>
@@ -560,14 +567,11 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
                         {t('haccp_afw_kort')}
                       </span>
                     )}
-                    <span className="text-xs text-gray-500">
-                      {t(v.risico_klasse==='verhoogd'?'haccp_risico_verhoogd':'haccp_risico_standaard')}
-                      {' · '}{v.dagen_stabiel}/{v.vereiste_dagen_stabiel} {t('haccp_ccp1_dagen')}
-                    </span>
+                    <span className="text-xs text-gray-500">{ccp1Kort(v)}</span>
                   </div>
-                  <span className="text-xs text-gray-400">{fmtD(v.datum)} · {v.paraaf?.gebruiker||'—'}</span>
+                  <span className="text-xs text-gray-500">{fmtD(v.datum)} · {v.paraaf?.gebruiker||'—'}</span>
                 </div>
-                {v.sensorisch && <div className="text-xs text-gray-500 italic mt-1">{v.sensorisch}</div>}
+                {(v.opmerking || v.sensorisch) && <div className="text-xs text-gray-500 italic mt-1">{v.opmerking || v.sensorisch}</div>}
               </div>
             ))}
           </div>)}

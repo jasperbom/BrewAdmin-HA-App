@@ -166,15 +166,31 @@ export interface RapportVrijgave {
   datum: string
   /** i18n-sleutel: `haccp_ccp1_vrijgegeven` of `haccp_ccp1_niet_vrijgegeven`. */
   oordeelKey: string
-  /** i18n-sleutel `haccp_risico_<klasse>`. */
-  risicoKey: string
-  dagenStabiel: number
-  vereisteDagen: number
+  /** 'ff_paar' = forceertest + twee tankmetingen (vanaf 1.13.49); 'dagen' =
+   *  de oude regel met risicoklasse en dagen stabiel. */
+  methode: 'ff_paar' | 'dagen'
+  /** Oude regel: i18n-sleutel `haccp_risico_<klasse>`, de dagen stabiel. */
+  risicoKey: string | null
+  dagenStabiel: number | null
+  vereisteDagen: number | null
   stabielOk: boolean
+  /** Nieuwe regel: de twee tankmetingen ('JJJJ-MM-DDTUU:MM') en hun verschil. */
+  tankSg1: number | null
+  tankSg1Op: string
+  tankSg2: number | null
+  tankSg2Op: string
+  stabielUren: number | null
+  stabielVerschil: number | null
+  /** Forceertest en de tankmeting ertegenover. */
+  ffSg: number | null
+  tankSg: number | null
   ffVerschil: number | null
   ffOk: boolean | null
+  /** Oude regel: het smaakoordeel bij de vrijgave. */
   sensorisch: string
   sensorischOk: boolean
+  /** Met een afwijking doorgezet. */
+  afwijking: boolean
   opmerking: string
   paraaf: RapportParaaf
 }
@@ -434,21 +450,36 @@ const sessieRegels = (
     etiketcontroles: telControles(etiketcontroles.filter(c => zelfdeId(c.sessie_id, s.id))),
   }))
 
+const getalOfNull = (v: unknown): number | null => (v == null || v === '' ? null : getal(v))
+
 const vrijgaveRegels = (vrijgaven: HaccpVrijgave[]): RapportVrijgave[] =>
-  vrijgaven.map(v => ({
-    datum: tekst(v.datum),
-    oordeelKey: v.oordeel === 'vrijgegeven' ? 'haccp_ccp1_vrijgegeven' : 'haccp_ccp1_niet_vrijgegeven',
-    risicoKey: `haccp_risico_${tekst(v.risico_klasse) || 'standaard'}`,
-    dagenStabiel: getal(v.dagen_stabiel),
-    vereisteDagen: getal(v.vereiste_dagen_stabiel),
-    stabielOk: v.stabiel_ok === true,
-    ffVerschil: v.ff_verschil != null ? getal(v.ff_verschil) : null,
-    ffOk: v.ff_ok == null ? null : v.ff_ok === true,
-    sensorisch: tekst(v.sensorisch),
-    sensorischOk: v.sensorisch_ok === true,
-    opmerking: tekst(v.opmerking),
-    paraaf: paraafVan(v.paraaf),
-  }))
+  vrijgaven.map(v => {
+    const nieuw = v.methode === 'ff_paar'
+    return {
+      datum: tekst(v.datum),
+      oordeelKey: v.oordeel === 'vrijgegeven' ? 'haccp_ccp1_vrijgegeven' : 'haccp_ccp1_niet_vrijgegeven',
+      methode: nieuw ? 'ff_paar' : 'dagen',
+      risicoKey: nieuw ? null : `haccp_risico_${tekst(v.risico_klasse) || 'standaard'}`,
+      dagenStabiel: nieuw ? null : getal(v.dagen_stabiel),
+      vereisteDagen: nieuw ? null : getal(v.vereiste_dagen_stabiel),
+      stabielOk: v.stabiel_ok === true,
+      tankSg1: getalOfNull(v.tank_sg_1),
+      tankSg1Op: tekst(v.tank_sg_1_op),
+      tankSg2: getalOfNull(v.tank_sg_2),
+      tankSg2Op: tekst(v.tank_sg_2_op),
+      stabielUren: getalOfNull(v.stabiel_uren),
+      stabielVerschil: getalOfNull(v.stabiel_verschil),
+      ffSg: getalOfNull(v.ff_dichtheid_ff),
+      tankSg: getalOfNull(v.ff_dichtheid_tank),
+      ffVerschil: getalOfNull(v.ff_verschil),
+      ffOk: v.ff_ok == null ? null : v.ff_ok === true,
+      sensorisch: tekst(v.sensorisch),
+      sensorischOk: v.sensorisch_ok === true,
+      afwijking: v.afwijking_id != null,
+      opmerking: tekst(v.opmerking),
+      paraaf: paraafVan(v.paraaf),
+    }
+  })
 
 const afwijkingRegels = (afwijkingen: HaccpAfwijking[]): RapportAfwijking[] =>
   afwijkingen.map(a => ({

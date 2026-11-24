@@ -76,7 +76,7 @@ describe('etiketVoorschrift — een nieuw etiket', () => {
   it('vóór het afvullen: de verwachte THT en de lotcode van de eerste sessie', () => {
     expect(rij(v, 'tht').tekst).toMatch(/^Ten minste houdbaar tot \d{2}-\d{2}-\d{4}$/)
     expect(rij(v, 'tht').uitleg[0]).toMatch(/^Verwacht bij afvullen nu \(\d+ maanden\)/)
-    expect(rij(v, 'lot')).toMatchObject({ tekst: 'L2610-B1 e.v.', stand: 'info' })
+    expect(rij(v, 'lot')).toMatchObject({ tekst: 'L2610 e.v.', stand: 'info' })
   })
 
   it('naam en adres van de brouwerij, en de benaming', () => {

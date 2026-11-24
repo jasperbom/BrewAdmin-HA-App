@@ -96,6 +96,10 @@ const fmtDate = fmtDatumDoc
 
 const LEEG = '—'
 
+// 'JJJJ-MM-DDTUU:MM' (lokale tijd van een meting) → '24-11-2026 09:00'.
+const fmtTijd = (op: string): string =>
+  op ? `${fmtDate(op.slice(0, 10))} ${op.slice(11, 16)}`.trim() : LEEG
+
 /** Datum met tijd uit een ISO-timestamp; leeg blijft leeg. */
 const fmtMoment = (iso: string): string => {
   const s = String(iso || '')
@@ -288,9 +292,14 @@ const vrijgaveBlok = (rijen: RapportVrijgave[]): string => rijen.map(v => `<div 
       <span class="muted">${esc(fmtDate(v.datum))}</span>
     </div>
     <div class="kv">
-      <div><span>${esc(t('haccp_ccp1_producttype'))}:</span> ${esc(t(v.risicoKey))}</div>
-      <div><span>${esc(t('haccp_ccp1_stabiel'))}:</span> ${esc(String(v.dagenStabiel))}/${esc(String(v.vereisteDagen))} ${esc(t('haccp_ccp1_dagen'))} ${jaNee(v.stabielOk)}</div>
-      ${v.ffVerschil != null ? `<div><span>${esc(t('haccp_ccp1_ff'))}:</span> ${getalOfLeeg(v.ffVerschil)} ${v.ffOk == null ? '' : jaNee(v.ffOk)}</div>` : ''}
+      ${v.methode === 'ff_paar' ? `
+      <div><span>${esc(t('haccp_ccp1_ff'))}:</span> ${fmtSg(v.ffSg, LEEG)} · ${esc(t('haccp_ccp1_tank'))} ${fmtSg(v.tankSg, LEEG)} ${v.ffOk == null ? '' : jaNee(v.ffOk)}</div>
+      <div><span>${esc(t('haccp_ccp1_stabiel'))}:</span> ${v.tankSg1 == null ? LEEG : `${fmtSg(v.tankSg1, LEEG)} (${esc(fmtTijd(v.tankSg1Op))}) → ${fmtSg(v.tankSg2, LEEG)} (${esc(fmtTijd(v.tankSg2Op))}) · ${esc(t('haccp_ccp1_na_uur').replace('{n}', String(v.stabielUren ?? '')))}`} ${jaNee(v.stabielOk)}</div>`
+      : `
+      <div><span>${esc(t('haccp_ccp1_producttype'))}:</span> ${esc(t(v.risicoKey || 'haccp_risico_standaard'))}</div>
+      <div><span>${esc(t('haccp_ccp1_stabiel'))}:</span> ${esc(String(v.dagenStabiel ?? ''))}/${esc(String(v.vereisteDagen ?? ''))} ${esc(t('haccp_ccp1_dagen'))} ${jaNee(v.stabielOk)}</div>
+      ${v.ffVerschil != null ? `<div><span>${esc(t('haccp_ccp1_ff'))}:</span> ${getalOfLeeg(v.ffVerschil)} ${v.ffOk == null ? '' : jaNee(v.ffOk)}</div>` : ''}`}
+      ${v.afwijking ? `<div><span>${esc(t('haccp_afw_kort'))}</span></div>` : ''}
       <div><span>${esc(t('haccp_ccp1_paraaf'))}:</span> ${esc(paraafTekst(v.paraaf))}</div>
     </div>
     ${v.sensorisch ? `<div class="kv" style="margin-top:1.5mm"><div><span>${esc(t('haccp_ccp1_sensorisch'))}:</span> ${esc(v.sensorisch)} ${jaNee(v.sensorischOk)}</div></div>` : ''}
