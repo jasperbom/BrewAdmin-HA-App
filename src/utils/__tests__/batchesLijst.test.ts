@@ -296,7 +296,8 @@ describe('de volgende stap in de rij', () => {
   it('elke stap van volgendeStap landt op een fase en (als hij er een heeft) een anker op de batchpagina', () => {
     // Elke stapsoort komt ergens uit; hier alleen de vorm van het doel.
     expect(VOLGENDE_STAP_SOORTEN.length).toBeGreaterThan(10)
-    const s = volgendeStap({ id: 2609, status: 'Conditioneren', OG: 1.064, FG: 1.012 }, { vandaag: VANDAAG, nu: Date.parse('2026-10-07T12:00:00Z') })
+    const vrijgaven = [{ id: 1, batch_id: 2609, oordeel: 'vrijgegeven' }] as any
+    const s = volgendeStap({ id: 2609, status: 'Conditioneren', OG: 1.064, FG: 1.012 }, { vandaag: VANDAAG, nu: Date.parse('2026-10-07T12:00:00Z'), vrijgaven })
     expect(s.soort).toBe('abv_vastzetten')
     const doel = stapNaarBatchDoel(2609, 'Conditioneren', s)
     const a = batchAankomst('Conditioneren', doel.tab, doel.filter)

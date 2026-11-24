@@ -57,7 +57,8 @@ describe('balkStap — de ActieBalk van de batchpagina', () => {
   })
 
   it('werkt op wat volgendeStap echt teruggeeft (Conditioneren, ABV nog niet vast)', () => {
-    const s = volgendeStap({ id: 1, status: 'Conditioneren', datum: '2026-09-15', FG: 1.012, OG: 1.064 }, { vandaag: '2026-10-07', abvWaarde: 7.0 })
+    const vrijgaven = [{ id: 1, batch_id: 1, oordeel: 'vrijgegeven' }] as any
+    const s = volgendeStap({ id: 1, status: 'Conditioneren', datum: '2026-09-15', FG: 1.012, OG: 1.064 }, { vandaag: '2026-10-07', abvWaarde: 7.0, vrijgaven })
     expect(s.soort).toBe('abv_vastzetten')
     expect(balkStap(s, 'Conditioneren', { naar: 'Afgevuld', blokkade: 'x', vraag: null })?.actie).toEqual({ soort: 'abv' })
   })

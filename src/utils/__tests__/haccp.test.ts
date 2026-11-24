@@ -205,7 +205,18 @@ describe('beoordeelCcp1 (CCP 1)', () => {
     const m = [...metingen.slice(0, 2), {sg: 1.010, datum: '2026-07-12', tijd: '09:00'}]
     const b = beoordeelCcp1({ff_sg: 1.009, metingen: m})
     expect(codes(b)).toEqual(['niet_stabiel'])
-    expect(b.redenen[0].params).toEqual({verschil: '0.002', tolerantie: '0.001', uur: 48})
+    expect(b.redenen[0].params).toEqual({verschil: '0.002', tolerantie: '0.001', uur: 48, moment: '14-7 09:00'})
+    // De volgende meting vormt een paar met de laatste: 48 uur later.
+    expect(b.volgende_meting_op).toBe('2026-07-14T09:00')
+  })
+
+  it('vergelijkt een enkele eindmeting met de OG als die de enige eerdere is, en zegt wanneer opnieuw', () => {
+    const b = beoordeelCcp1({ff_sg: 1.010, metingen: [
+      {sg: 1.050, datum: '2026-07-01', tijd: '12:00'},
+      {sg: 1.011, datum: '2026-07-12', tijd: '09:00'},
+    ]})
+    expect(codes(b)).toEqual(['niet_stabiel'])
+    expect(b.volgende_meting_op).toBe('2026-07-14T09:00')
   })
 
   it('zegt wanneer de tweede meting kan als er nog geen paar is', () => {

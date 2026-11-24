@@ -238,7 +238,8 @@ export interface Ccp1Beoordeling {
   stabiel_min_uur: number
   stabiel_tolerantie: number
   stabiel_ok: boolean
-  /** Zonder paar: vanaf wanneer een nieuwe meting er een maakt ('JJJJ-MM-DDTUU:MM'). */
+  /** Geen paar, of een paar dat niet stabiel is: vanaf wanneer een nieuwe meting
+   *  een paar maakt met de laatste ('JJJJ-MM-DDTUU:MM'). */
   volgende_meting_op: string | null
   /** Wat er nog ontbreekt of niet klopt; leeg = vrijgeven kan. */
   redenen: BlokkadeReden[]
@@ -291,10 +292,13 @@ export const beoordeelCcp1 = (
   } else {
     stabielOk = binnen(paar.verschil, tol)
     if (!stabielOk) {
+      // Een nieuwe meting vormt een paar met de laatste: zeg wanneer die kan.
+      volgende = lokaalOp(tank.ts + minUur * 3600000)
       redenen.push({
         code: 'niet_stabiel',
         i18nKey: 'haccp_blok_niet_stabiel_paar',
-        params: {verschil: paar.verschil.toFixed(3), tolerantie: tol.toFixed(3), uur: paar.uren},
+        params: {verschil: paar.verschil.toFixed(3), tolerantie: tol.toFixed(3), uur: paar.uren,
+          moment: fmtDagMaand(volgende, {tijd: true})},
       })
     }
   }

@@ -19,7 +19,7 @@ import {
   BUILTIN_ING_TYPES, EENHEDEN,
 } from '../utils/constants'
 import {
-  markTankVuilBijVertrek, markTankVuilBijVerwijderen, fgStabiel, tankRestVolume, appendTankHistorie,
+  markTankVuilBijVertrek, markTankVuilBijVerwijderen, tankRestVolume, appendTankHistorie,
   carbDrukBar, barToPsi, co2GramOpgelost, co2GramTotaalVerbruik, defaultCarbVols,
   carbRangeForStyle, CARB_STYLE_OPTIONS,
   berekenVoorcalcVoorAfvulling, berekenTanktijd, sumVergistingDagen,
@@ -1109,8 +1109,23 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       ]
       return items.filter(Boolean) as ChecklistItem[]
     }
+    // CCP 1 — één item voor Vergisten (waar hij hoort: vóór het koelen) en
+    // Conditioneren (voor wie hem daar nog moet doen). Een vrijgave die onder
+    // afwijking is doorgedrukt mag niet als een gewone "vrijgegeven" wegvallen
+    // zodra de stap dichtklapt — juist die zichtbaarheid is het punt van de
+    // afwijkingsregistratie.
+    const vrijgaveItem = (): ChecklistItem => {
+      const vrijgave = actueleVrijgave(haccpVrijgaven || [], selB.id)
+      return {key: 'vrijgave', label: t('haccp_chk_vrijgave'),
+        done: vrijgave?.oordeel === 'vrijgegeven',
+        detail: vrijgave
+          ? (vrijgave.afwijking_id != null
+              ? `${t('haccp_ccp1_vrijgegeven')} · ${t('haccp_afw_kort')}`
+              : t(vrijgave.oordeel === 'vrijgegeven'
+                  ? 'haccp_ccp1_vrijgegeven' : 'haccp_ccp1_niet_vrijgegeven'))
+          : undefined}
+    }
     if (fase === 'Vergisten') {
-      const stabiel = fgStabiel(mijnMetingen as any)
       const handmatig = mijnMetingen.filter((m: any) => !m.auto).length
       const dryHopBi = mijnBi.filter((x: any) => isDryHopRij(x))
       const dhAfgeboekt = dryHopBi.filter((x: any) => x.afgeboekt).length
@@ -1122,7 +1137,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
          detail: handmatig > 0 ? String(handmatig) : undefined},
         {key: 'fg', label: t('flow_chk_fg'), done: Number(selB.FG) > 0,
          detail: Number(selB.FG) > 0 ? fmtSg(selB.FG) : undefined},
-        {key: 'fg_stabiel', label: t('flow_chk_fg_stabiel'), done: stabiel},
+        // Uitgegist en stabiel = CCP 1 (forceertest + twee metingen); geen
+        // tweede, eigen stabiliteitsregel ernaast.
+        vrijgaveItem(),
         dryHopBi.length > 0 ? {key: 'dryhop', label: t('flow_chk_dryhop'), done: dhAfgeboekt === dryHopBi.length,
          detail: `${dhAfgeboekt}/${dryHopBi.length}`} : null,
         takenItem('taken', 'flow_chk_taken'),
@@ -1131,27 +1148,15 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     }
     if (fase === 'Conditioneren') {
       const carbKlaar = mijnCarb.some((c: any) => c.status === 'voltooid')
-      // CCP 1 sluit de conditioneerfase af: zonder vrijgave kan er niet
-      // afgevuld worden.
-      const vrijgave = actueleVrijgave(haccpVrijgaven || [], selB.id)
       const items: (ChecklistItem | null)[] = [
+        // CCP 1 hoort vóór het koelen; staat hij nog open, dan eerst dat.
+        vrijgaveItem(),
         {key: 'carb', label: t('flow_chk_carb'), done: carbKlaar,
          detail: mijnCarb.length ? String(mijnCarb.length) : undefined},
         // Vastgezet = het oude vinkje "Definitieve ABV bevestigd" met een ABV
         // erbij (abv_definitief + ABV), zoals utils/etiket.ts het leest.
         {key: 'abv', label: t('flow_chk_abv'), done: !!selB.abv_definitief && Number(selB.ABV) > 0,
          detail: Number(selB.ABV) > 0 ? fmtAbv(selB.ABV, getLang()) : undefined},
-        // Een vrijgave die onder afwijking is doorgedrukt mag niet als een
-        // gewone "vrijgegeven" wegvallen zodra de stap dichtklapt — juist die
-        // zichtbaarheid is het punt van de afwijkingsregistratie.
-        {key: 'vrijgave', label: t('haccp_chk_vrijgave'),
-         done: vrijgave?.oordeel === 'vrijgegeven',
-         detail: vrijgave
-           ? (vrijgave.afwijking_id != null
-               ? `${t('haccp_ccp1_vrijgegeven')} · ${t('haccp_afw_kort')}`
-               : t(vrijgave.oordeel === 'vrijgegeven'
-                   ? 'haccp_ccp1_vrijgegeven' : 'haccp_ccp1_niet_vrijgegeven'))
-           : undefined},
         takenItem('taken', 'flow_chk_taken'),
       ]
       return items.filter(Boolean) as ChecklistItem[]
@@ -1801,9 +1806,14 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // afbouwen. Startpunt van de ramp: huidig climate-setpoint, anders de
   // gemeten tanktemperatuur, anders het target (nooit per ongeluk warmer).
   // De vraag vooraf zit in de knop (BevestigKnop, `coldCrashVraag`).
-  const coldCrashVraag = (): string => coldcrashInst?.enabled
-    ? t('dashboard_coldcrash_confirm').replace('{t}', String(coldcrashInst.target_temp))
-    : t('dashboard_coldcrash_confirm_off')
+  const coldCrashVraag = (): string => {
+    const vraag = coldcrashInst?.enabled
+      ? t('dashboard_coldcrash_confirm').replace('{t}', String(coldcrashInst.target_temp))
+      : t('dashboard_coldcrash_confirm_off')
+    // CCP 1 hoort vóór het koelen: zeg het in de knop, blokkeer niet.
+    const vrij = selB && actueleVrijgave(haccpVrijgaven || [], selB.id)?.oordeel === 'vrijgegeven'
+    return vrij ? vraag : `${t('haccp_ccp1_koelen_eerst')} ${vraag}`
+  }
   const startColdCrash = async () => {
     if (!selB) return
     const target = Number(coldcrashInst?.target_temp ?? 2)
@@ -3941,6 +3951,22 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       onToggle: () => toggleStap(`${i}:${id}`, done),
       anker: batchSectieAnker(faseStatus, id),
     })
+    // CCP 1 — vrijgave vóór koelen. Eén kaart: aan het eind van Vergisten, en
+    // bovenaan Conditioneren zolang hij daar nog open staat.
+    const renderCcp1 = () => (
+      <FlowStap title={t('haccp_ccp1_titel')} done={!!clMap.vrijgave?.done}
+        detail={clMap.vrijgave?.detail} {...so('vrijgave', !!clMap.vrijgave?.done)}>
+        <VrijgaveSectie
+          batch={selB} bi={bi} ing={ing} lots={lots} gistMetingen={gistMetingen}
+          setGistMetingen={setGistMetingen} updateBatch={updateBatch}
+          vrijgaven={haccpVrijgaven} setVrijgaven={setHaccpVrijgaven}
+          capa={capa} setCapa={setCapa}
+          afwijkingen={haccpAfwijkingen} setAfwijkingen={setHaccpAfwijkingen}
+          haccpInstellingen={haccpInst} whoami={whoami}
+          auditLog={auditLog} setAuditLog={setAuditLog}
+        />
+      </FlowStap>
+    )
     return (
       <div className="p-4 space-y-3">
         {/* Compacte kop — de fase is al geselecteerd via de tijdlijn hierboven,
@@ -4172,6 +4198,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             onderaan, zodat de grafiek niet dwars door de kolommen snijdt. */}
         {faseStatus === 'Conditioneren' && (
           <>
+            {/* CCP 1 hoort aan het eind van de gisting. Staat hij hier nog
+                open (batch eerder doorgezet), dan bovenaan: eerst vrijgeven,
+                dan koelen. Vrijgegeven = hier geen kaart meer. */}
+            {!clMap.vrijgave?.done && renderCcp1()}
             {/* Alcohol voor accijns en THT — bovenaan: zonder vastgezette ABV
                 geen afvulsessie (opzet 5.3). Dit was de taak "Definitieve ABV
                 bevestigd" met een invulveld; één plek, geen tweede veld. */}
@@ -4238,20 +4268,6 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               detail={handmatigeMetingen.length ? `${handmatigeMetingen.length}×` : undefined} {...so('meting', true)}>
               {renderMetingen()}
             </FlowStap>
-            {/* CCP 1 — sluitstuk van de conditioneerfase: zonder vrijgave gaat
-                de batch niet naar Afgevuld. */}
-            <FlowStap title={t('haccp_ccp1_titel')} done={!!clMap.vrijgave?.done}
-              detail={clMap.vrijgave?.detail} {...so('vrijgave', !!clMap.vrijgave?.done)}>
-              <VrijgaveSectie
-                batch={selB} bi={bi} ing={ing} lots={lots} gistMetingen={gistMetingen}
-                setGistMetingen={setGistMetingen} updateBatch={updateBatch}
-                vrijgaven={haccpVrijgaven} setVrijgaven={setHaccpVrijgaven}
-                capa={capa} setCapa={setCapa}
-                afwijkingen={haccpAfwijkingen} setAfwijkingen={setHaccpAfwijkingen}
-                haccpInstellingen={haccpInst} whoami={whoami}
-                auditLog={auditLog} setAuditLog={setAuditLog}
-              />
-            </FlowStap>
           </>
         )}
 
@@ -4305,26 +4321,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
 
         {/* ── Vergisten: FG-meting als sluitstuk (volle breedte, onderaan) ──── */}
         {faseStatus === 'Vergisten' && (() => {
-          // De stap is afgevinkt zodra de FG is ingevuld. De stabiliteitstoets
-          // is een aparte, zichtbare controle (eigen checklistpunt + regel
-          // hieronder) en niet langer een verborgen extra eis op deze stap.
+          // De stap is afgevinkt zodra de FG is ingevuld. Of het bier
+          // uitgegist en stabiel is, beoordeelt CCP 1 hieronder — één regel.
           const fgIngevuld = !!clMap.fg?.done
-          const stabiel = !!clMap.fg_stabiel?.done
-          const detail = [
-            clMap.fg?.detail,
-            fgIngevuld ? t(stabiel ? 'flow_fg_stabiel_badge' : 'flow_fg_nog_niet_stabiel') : null,
-          ].filter(Boolean).join(' · ')
           return (
-            <FlowStap title={t('flow_stap_fg')} done={fgIngevuld} detail={detail || undefined}
-              {...so('fg', fgIngevuld && stabiel)}>
-              {renderFaseVelden('Vergisten')}
-              <div className="space-y-0.5">
-                <div className={`text-xs ${stabiel ? 'text-green-600' : 'text-gray-500'}`}>
-                  {stabiel ? t('flow_fg_stabiel_klaar') : t('flow_fg_stabiel_hint')}
-                </div>
-                <div className="text-xs text-gray-400">{t('flow_fg_auto_meting')}</div>
-              </div>
-            </FlowStap>
+            <>
+              <FlowStap title={t('flow_stap_fg')} done={fgIngevuld} detail={clMap.fg?.detail || undefined}
+                {...so('fg', fgIngevuld)}>
+                {renderFaseVelden('Vergisten')}
+                <div className="text-xs text-gray-500">{t('flow_fg_auto_meting')}</div>
+              </FlowStap>
+              {/* CCP 1 — sluitstuk van de gisting: pas na de vrijgave koelen,
+                  gist dumpen en carboneren. */}
+              {renderCcp1()}
+            </>
           )
         })()}
 

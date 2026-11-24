@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.50] — 2026-11-24
+
+### CCP 1 vóór het koelen
+
+- CCP 1 heet nu *Vrijgave vóór koelen* en staat aan het eind van Vergisten,
+  direct na de FG-meting: eerst vrijgeven, dan pas koelen, gist dumpen en
+  carboneren. Na het koelen valt er niets meer bij te sturen. De oude regel
+  "SG stabiel (3 metingen / 48 uur)" in Vergisten is weg; CCP 1 beoordeelt het.
+- De volgende stap (tankkaart, Batches, ActieBalk): in Vergisten eerst
+  *Vrijgave CCP 1*, dan *Naar conditioneren*. Staat een batch al in
+  Conditioneren zonder vrijgave, dan staat de kaart daar bovenaan en komt hij
+  vóór het vastzetten van de ABV.
+- De Cold-crash-knop zegt erbij als CCP 1 nog openstaat (geen blokkade).
+- Is het paar niet stabiel, dan zegt de kaart vanaf wanneer je opnieuw kunt
+  meten.
+- Afvullen blijft geblokkeerd zonder vrijgave, zoals altijd.
+
 ## [1.13.49] — 2026-11-24
 
 ### CCP 1 in één regel, en de lotcode zonder -B1

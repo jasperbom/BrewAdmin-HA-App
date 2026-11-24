@@ -273,6 +273,12 @@ const VrijgaveSectie: React.FC<Props> = ({
                 {' · '}{t('haccp_ccp1_na_uur').replace('{n}', String(b.paar.uren))}
                 {' · '}{t('haccp_ccp1_verschil')} {b.paar.verschil.toFixed(3)}
               </span>
+              {!b.stabiel_ok && b.volgende_meting_op && (
+                <div className="text-sm text-gray-800 mt-0.5">
+                  {blokkadeTekst({code: 'tweede_meting', i18nKey: 'haccp_blok_tweede_meting',
+                    params: {uur: b.stabiel_min_uur, moment: fmtDagMaand(b.volgende_meting_op, {tijd: true})}})}
+                </div>
+              )}
             </>
           ) : (
             <span className="text-gray-500">

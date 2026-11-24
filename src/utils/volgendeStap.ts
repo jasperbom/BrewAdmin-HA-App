@@ -257,6 +257,10 @@ const stap = (
   ...extra,
 })
 
+/** CCP 1 is vrijgegeven (of de batch is van vóór de afvulsessies). */
+const ccp1Vrijgegeven = (batchId: number, ctx: VolgendeStapCtx): boolean =>
+  magAfvullen(batchId, ctx.vrijgaven || []).toegestaan || isLegacyBatch(batchId, ctx.afvullingen || [])
+
 /**
  * De ene volgende stap voor een batch. Elke fase levert precies één stap:
  *
@@ -338,19 +342,28 @@ export const volgendeStap = (batch: BatchInvoer, ctx: VolgendeStapCtx = {}): Vol
       .map(m => ({ sg: m.sg ?? undefined, datum: m.datum, tijd: m.tijd ?? undefined }))
     const schemaKlaar = gereed || (!profiel.length && fgStabiel(metingen))
     if (schemaKlaar && getal(batch.FG) > 0) {
+      // CCP 1 hoort vóór het koelen: na crashen en gist dumpen valt er niets
+      // meer bij te sturen.
+      if (!ccp1Vrijgegeven(batch.id, ctx)) {
+        return af(stap('vrijgave', true, { doel: { fase: 'Vergisten', sectie: 'vrijgave' } }))
+      }
       return af(stap('naar_conditioneren', true, { doel: { fase: 'Conditioneren' }, overgang: 'Conditioneren' }))
     }
     return af(stap('meting', false, { doel: { fase: 'Vergisten', sectie: 'metingen' } }))
   }
 
   if (status === 'Conditioneren') {
-    const vrijgave = magAfvullen(batch.id, ctx.vrijgaven || [])
-    const vrijgegeven = vrijgave.toegestaan || isLegacyBatch(batch.id, ctx.afvullingen || [])
+    const vrijgegeven = ccp1Vrijgegeven(batch.id, ctx)
     const abvVast = !!batch.abv_definitief
     const totAfvullen = dagenTussen(vandaag, verwachteAfvulDatum(batch, ctx.conditionerenDagen))
     const afvullenNadert = (totAfvullen != null && totAfvullen <= ETIKET_URGENT_DAGEN) || (abvVast && vrijgegeven)
     if (ctx.etiketKleur === 'rood' && afvullenNadert) {
       return af(stap('etiket_bijwerken', true, { doel: { fase: 'Conditioneren', sectie: 'etiket' }, urgent: true }))
+    }
+    // Al in Conditioneren zonder CCP 1 (van vóór 1.13.50, of zonder de stap
+    // naar Conditioneren te volgen): eerst vrijgeven, dan pas koelen.
+    if (!vrijgegeven) {
+      return af(stap('vrijgave', true, { doel: { fase: 'Conditioneren', sectie: 'vrijgave' } }))
     }
     if (!abvVast) {
       const abv = ctx.abvWaarde != null && getal(ctx.abvWaarde) > 0 ? getal(ctx.abvWaarde) : getal(batch.ABV)
@@ -361,9 +374,6 @@ export const volgendeStap = (batch: BatchInvoer, ctx: VolgendeStapCtx = {}): Vol
         }))
       }
       return af(stap('meting', false, { doel: { fase: 'Conditioneren', sectie: 'meting' } }))
-    }
-    if (!vrijgegeven) {
-      return af(stap('vrijgave', true, { doel: { fase: 'Conditioneren', sectie: 'vrijgave' } }))
     }
     return af(stap('afvullen', true, { doel: { fase: 'Afgevuld', sectie: 'sessie' }, overgang: 'Afgevuld' }))
   }
