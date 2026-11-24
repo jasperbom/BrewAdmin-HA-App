@@ -215,7 +215,7 @@ const etiketBlok = (blokken: KaartProductBlok[]): string => blokken.map(b => `
   <div class="etiket-sub">${esc(t('etiket_kaart_website'))} <span class="muted">${esc(t('etiket_kaart_website_sub'))}</span></div>
   ${etiketTabel(t('etiket_kolom_waarde'), b.website)}`).join('')
 
-// CCP 3 — elke etiketcontrole met de versie op de rol en de getallen erbij.
+// CCP 3 — elke etiketcontrole met de getallen erbij.
 const ccp3Blok = (rijen: RapportEtiketControle[]): string => {
   const taal = getLang()
   const abv = (n: number | null) => (n == null ? LEEG : fmtGetal(Math.round(n * 10) / 10, 1, taal))
@@ -223,14 +223,13 @@ const ccp3Blok = (rijen: RapportEtiketControle[]): string => {
   return tabel(
     [
       {label: esc(t('lbl_date'))}, {label: esc(t('haccp_sessie_lotcode'))}, {label: esc(t('lbl_pakbon_bier'))},
-      {label: esc(t('batchdossier_kol_versie'))}, {label: esc(t('batchdossier_kol_abv'))},
+      {label: esc(t('batchdossier_kol_abv'))},
       {label: esc(t('batchdossier_kol_allergenen'))}, {label: esc(t('batchdossier_kol_resultaat'))},
     ],
     rijen.map(c => `<tr class="blok">
       <td class="nw">${fmtMoment(c.moment)}</td>
       <td class="nw">${esc(c.lotcode || LEEG)}</td>
       <td>${esc(c.product || LEEG)}</td>
-      <td>${esc(c.versieGelezen || LEEG)}${c.versieVerwacht ? `<span class="bron">${esc(t('batchdossier_verwacht').replace('{waarde}', c.versieVerwacht))}</span>` : ''}</td>
       <td class="nw">${c.snapshot ? `${esc(abv(c.abvBatch))} / ${esc(abv(c.abvEtiket))}${c.abvMarge != null ? `<span class="bron">±${esc(fmtGetal(c.abvMarge, 1, taal))} % vol</span>` : ''}` : LEEG}</td>
       <td>${esc(allergenen(c.allergenenBatch))}<span class="bron">${esc(t('batchdossier_etiket_kort'))}: ${esc(allergenen(c.allergenenEtiket))}</span></td>
       <td>${c.goedgekeurd ? `<span class="ok">${esc(t('haccp_ccp2_goedgekeurd'))}</span>` : `<span class="nok">${esc(t('haccp_ccp2_afgekeurd'))}</span>`}${c.afwijking ? `<span class="bron">${esc(t('haccp_afw_kort'))}</span>` : ''}</td>

@@ -315,20 +315,18 @@ describe('het detail: batches en versies', () => {
 describe('receptEtiketMelding', () => {
   const v = (onvolledig: string[] = []) => ({ allergenen: { onvolledig } } as any)
 
-  it('het zwaarste oordeel als zin, met of zonder etiketversie', () => {
-    expect(receptEtiketMelding(v(), { reden: 'allergeen_ontbreekt', kleur: 'rood', allergenen: ['tarwe'] }, true))
-      .toEqual({ kleur: 'rood', sleutel: 'recept_etiket_mist_versie', allergenen: ['tarwe'], ingredienten: [] })
-    expect(receptEtiketMelding(v(), { reden: 'allergeen_ontbreekt', kleur: 'rood', allergenen: ['tarwe'] }, false).sleutel)
-      .toBe('recept_etiket_mist')
-    expect(receptEtiketMelding(v(), { reden: 'buiten_marge', kleur: 'rood', allergenen: [] }, true).sleutel).toBe('recept_etiket_buiten_marge_versie')
-    expect(receptEtiketMelding(v(), { reden: 'niet_vastgelegd', kleur: 'oranje', allergenen: [] }, true).sleutel).toBe('recept_etiket_niet_vastgelegd')
-    expect(receptEtiketMelding(v(), { reden: 'allergeen_teveel', kleur: 'oranje', allergenen: ['haver'] }, false))
+  it('het zwaarste oordeel als zin (geen etiketversie)', () => {
+    expect(receptEtiketMelding(v(), { reden: 'allergeen_ontbreekt', kleur: 'rood', allergenen: ['tarwe'] }))
+      .toEqual({ kleur: 'rood', sleutel: 'recept_etiket_mist', allergenen: ['tarwe'], ingredienten: [] })
+    expect(receptEtiketMelding(v(), { reden: 'buiten_marge', kleur: 'rood', allergenen: [] }).sleutel).toBe('recept_etiket_buiten_marge')
+    expect(receptEtiketMelding(v(), { reden: 'niet_vastgelegd', kleur: 'oranje', allergenen: [] }).sleutel).toBe('recept_etiket_niet_vastgelegd')
+    expect(receptEtiketMelding(v(), { reden: 'allergeen_teveel', kleur: 'oranje', allergenen: ['haver'] }))
       .toMatchObject({ kleur: 'oranje', sleutel: 'recept_etiket_teveel', allergenen: ['haver'] })
-    expect(receptEtiketMelding(v(['Kandij']), { reden: 'onvolledig', kleur: 'oranje', allergenen: [] }, false))
+    expect(receptEtiketMelding(v(['Kandij']), { reden: 'onvolledig', kleur: 'oranje', allergenen: [] }))
       .toEqual({ kleur: 'oranje', sleutel: 'recept_etiket_onvolledig', allergenen: [], ingredienten: ['Kandij'] })
-    expect(receptEtiketMelding(v(), { reden: 'onvolledig', kleur: 'oranje', allergenen: [] }, false).sleutel).toBe('recept_etiket_onvolledig_geen')
-    expect(receptEtiketMelding(v(), { reden: 'klopt', kleur: 'groen', allergenen: [] }, true))
-      .toMatchObject({ kleur: 'groen', sleutel: 'recept_etiket_klopt_versie' })
+    expect(receptEtiketMelding(v(), { reden: 'onvolledig', kleur: 'oranje', allergenen: [] }).sleutel).toBe('recept_etiket_onvolledig_geen')
+    expect(receptEtiketMelding(v(), { reden: 'klopt', kleur: 'groen', allergenen: [] }))
+      .toMatchObject({ kleur: 'groen', sleutel: 'recept_etiket_klopt' })
   })
 })
 

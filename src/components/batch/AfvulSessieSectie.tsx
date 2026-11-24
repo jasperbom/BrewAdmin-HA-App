@@ -37,7 +37,7 @@ import {
   verwachteControleMomenten, controleDekking, vorigeLots,
 } from '../../utils/afvulsessie'
 import { verpakkingVoorraad } from '../../utils/verpakkingVoorraad'
-import { ccp3AbvRegel, etiketBlokMetVersie as metVersie, etiketControleGetallen } from '../../utils/etiket'
+import { ccp3AbvRegel, etiketControleGetallen } from '../../utils/etiket'
 import { afvulMeldingTekst } from '../../utils/afvulControle'
 import type { AfvulControle } from '../../utils/afvulControle'
 import { productVoorBatch } from '../../utils/productKeten'
@@ -180,7 +180,6 @@ const leegNa = {
   lotcode_ok: false,
   tht_ok: false,
   alcohol_ok: false,
-  etiket_versie: '',
   opmerking: '',
   // Tijdstippen van de controles tussen start en eind. Leeg laten mag; het
   // formulier meldt dan hoeveel er volgens het halfuurritme ontbreken. Zelf
@@ -657,7 +656,6 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const etiketDoel = teEtiket.find(x => x.sessie.id === etiketSessieId)?.sessie || teEtiket[0]?.sessie || null
   const [ec, setEc] = React.useState({
     product_id: (batchProduct ?? '') as string | number,
-    etiket_versie: '',
     aanleiding: 'start' as EtiketControle['aanleiding'],
     lotcode_ok: false,
     tht_ok: false,
@@ -687,13 +685,8 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     [p.batch, p.bi, p.ing, p.lots])
   const etiketInfo = allergenenVanProduct(gekozenProduct)
   const vergelijking = vergelijkAllergenen(receptAllergenen, etiketInfo.allergenen, etiketInfo.gezet)
-  // De versie op de rol: het veld begint leeg, de verwachte versie (die van
-  // het product) staat ernaast. Wijkt hij af, dan is dat een blokkade met
-  // hetzelfde mechanisme als de allergenen (afwijking registreren).
-  const verwachteVersie = String(gekozenProduct?.etiket_versie ?? '').trim()
-  const etiketBlok = metVersie(magEtiketterenDoorgaan(vergelijking), ec.etiket_versie, verwachteVersie)
+  const etiketBlok = magEtiketterenDoorgaan(vergelijking)
   const etiketOnvolledig = !ec.product_id || !ec.lotcode_ok || !ec.tht_ok || !ec.alcohol_ok
-    || (!!verwachteVersie && !ec.etiket_versie.trim())
   const abvRegel = (product: any) => ccp3AbvRegel(p.abvBatch, product?.abv, t, getLang())
   const allergeenLabel = (a: string) =>
     t(ALLERGENEN_LIJST.find(x => x.key === a)?.label || a)
@@ -715,7 +708,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   // Het etiket van een product vastleggen kan hier meteen, zonder de pagina
   // (en het half ingevulde formulier) te verlaten — maar altijd via dezelfde
   // dialoog "Etiket bijwerken" als op de batch, het product en de HACCP-
-  // matrix: de enige schrijfweg voor `product.allergenen` en de etiketversie.
+  // matrix: de enige schrijfweg voor `product.allergenen`.
   // Wat hier gebeurt blijft daardoor een eigen handeling, nooit "neem over".
   const etiketDienst = useEtiketBijwerken()
   const etiketBijwerkenKnop = (product: any) => etiketDienst && product ? (
@@ -735,10 +728,8 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       batch_id: p.batch.id,
       product_id: Number(ec.product_id),
       etiket_artikel: gekozenProduct?.etiket_artikel,
-      etiket_versie: ec.etiket_versie.trim() || gekozenProduct?.etiket_versie,
-      // De gelezen en de verwachte versie en de getallen van dat moment
-      // (alleen nieuwe records; append-only blijft gelden).
-      ...etiketControleGetallen({gelezen: ec.etiket_versie, product: gekozenProduct, abvBatch: p.abvBatch}),
+      // De getallen van dat moment (alleen nieuwe records; append-only blijft gelden).
+      ...etiketControleGetallen({product: gekozenProduct, abvBatch: p.abvBatch}),
       aanleiding: ec.aanleiding,
       allergenen_recept: receptAllergenen,
       allergenen_etiket: etiketInfo.allergenen,
@@ -775,7 +766,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     setSc({aanleiding: 'start', visueel_ok: true, omkeerproef_ok: true,
            flesmond_ok: true, draaitest_ok: true,
            rolinstelling: '', opmerking: ''})
-    setEc(e => ({...e, aanleiding: 'start', etiket_versie: '', lotcode_ok: false,
+    setEc(e => ({...e, aanleiding: 'start', lotcode_ok: false,
                  tht_ok: false, alcohol_ok: false, opmerking: '', foto: null}))
     setFi({bekeken: false, afgekeurd: ''})
     setKlap({open: false, vernietigd: '', gereinigd: false})
@@ -784,7 +775,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   // Een andere lotcode om te etiketteren: de controle begint opnieuw.
   React.useEffect(() => {
     if (!etiketDoel) return
-    setEc(e => ({...e, aanleiding: 'start', etiket_versie: '', lotcode_ok: false,
+    setEc(e => ({...e, aanleiding: 'start', lotcode_ok: false,
                  tht_ok: false, alcohol_ok: false, opmerking: '', foto: null}))
   }, [etiketDoel?.id])
 
@@ -946,9 +937,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const naProduct = (p.producten || []).find((x: any) => x.id === Number(na.product_id))
   const naEtiket = allergenenVanProduct(naProduct)
   const naVergelijking = vergelijkAllergenen(receptAllergenen, naEtiket.allergenen, naEtiket.gezet)
-  // Ook achteraf: de versie op de rol begint leeg, de verwachte staat ernaast.
-  const naVerwachteVersie = String(naProduct?.etiket_versie ?? '').trim()
-  const naEtiketBlok = metVersie(magEtiketterenDoorgaan(naVergelijking), na.etiket_versie, naVerwachteVersie)
+  const naEtiketBlok = magEtiketterenDoorgaan(naVergelijking)
   const naBlok = magSessieStarten(p.batch?.id, p.vrijgaven || [], {
     reiniging_bevestigd: na.reiniging_bevestigd,
     verpakking_id: na.verpakking_id ? Number(na.verpakking_id) : null,
@@ -977,8 +966,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const naCompleet = !!na.product_id && Number(na.hoeveelheid) > 0
     && naCcp2Ok && naExtra.klapOk
     && (!houdtestFlessenNieuw || na.houdtest_flessen)
-    && (!naMetEtiket || (na.lotcode_ok && na.tht_ok && na.alcohol_ok
-      && (!naVerwachteVersie || !!na.etiket_versie.trim())))
+    && (!naMetEtiket || (na.lotcode_ok && na.tht_ok && na.alcohol_ok))
   const naToegestaan = naBlok.toegestaan && naCompleet && (!naMetEtiket || naEtiketBlok.toegestaan)
   // Het koolzuur apart: boven de grens kan het alleen met een afwijking.
   const naCo2Blok = {toegestaan: naExtra.co2Redenen.length === 0, redenen: naExtra.co2Redenen}
@@ -1093,8 +1081,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       batch_id: p.batch.id,
       product_id: Number(na.product_id),
       etiket_artikel: naProduct?.etiket_artikel,
-      etiket_versie: na.etiket_versie.trim() || naProduct?.etiket_versie,
-      ...etiketControleGetallen({gelezen: na.etiket_versie, product: naProduct, abvBatch: p.abvBatch}),
+      ...etiketControleGetallen({product: naProduct, abvBatch: p.abvBatch}),
       aanleiding: 'start',
       uitgevoerd_op: startMoment,
       allergenen_recept: receptAllergenen,
@@ -1287,14 +1274,6 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           </label>
         ))}
         <div className="grid sm:grid-cols-2 gap-2 pt-1">
-          {naMetEtiket && <div>
-            <Inp label={t('haccp_ccp3_versie_rol')} value={na.etiket_versie}
-              placeholder={t('haccp_ccp3_versie_rol_ph')}
-              onChange={v => setNa({...na, etiket_versie: v})} />
-            {naVerwachteVersie && (
-              <div className="text-xs text-gray-500 mt-0.5">{t('haccp_ccp3_versie_verwacht').replace('{versie}', naVerwachteVersie)}</div>
-            )}
-          </div>}
           <Inp label={t('lbl_opmerking')} value={na.opmerking}
             onChange={v => setNa({...na, opmerking: v})} />
         </div>
@@ -1662,16 +1641,6 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           <Sel label={t('lbl_afvulling_product')} value={String(ec.product_id)}
             onChange={(v: string) => setEc({...ec, product_id: v})}
             ph={t('ph_select_product')} opts={productOpties(ec.product_id)} />
-          {/* Leeg: de afvuller vult de versie in van de rol in zijn hand. De
-              verwachte versie staat ernaast als tekst — zo valt een oude rol op. */}
-          <div>
-            <Inp label={t('haccp_ccp3_versie_rol')} value={ec.etiket_versie}
-              placeholder={t('haccp_ccp3_versie_rol_ph')}
-              onChange={v => setEc({...ec, etiket_versie: v})} />
-            {verwachteVersie && (
-              <div className="text-xs text-gray-500 mt-0.5">{t('haccp_ccp3_versie_verwacht').replace('{versie}', verwachteVersie)}</div>
-            )}
-          </div>
         </div>
         <Sel label={t('haccp_ccp2_aanleiding')} value={ec.aanleiding}
           onChange={(v: string) => setEc({...ec, aanleiding: v as EtiketControle['aanleiding']})}
@@ -1738,9 +1707,6 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
             </label>
           ))}
         </div>
-        {!!verwachteVersie && !ec.etiket_versie.trim() && !!ec.product_id && (
-          <div className="text-xs text-gray-500">{t('haccp_ccp3_versie_nodig')}</div>
-        )}
         {fotoVeld(ec.foto, b => setEc(e => ({...e, foto: b})))}
         <Inp label={t('lbl_opmerking')} value={ec.opmerking}
           onChange={v => setEc({...ec, opmerking: v})} />

@@ -445,7 +445,10 @@ export interface Product {
   // etiketcontrole moet die twee onderscheiden.
   allergenen?: Allergeen[]
   etiket_artikel?: string
+  // Legacy: de etiketversie bestaat sinds 1.13.53 niet meer (CCP 3 toetst de
+  // inhoud van het etiket). Oude waarden blijven staan, niets leest ze nog.
   etiket_versie?: string
+  // Wanneer het etiket voor het laatst is vastgelegd (`legEtiketVast`).
   etiket_bijgewerkt?: string
   // ── Bierinformatie ────────────────────────────────────────────────────
   // Gewone eigenschappen van het bier (zie `utils/bierinfo.ts`), naast de
@@ -2196,6 +2199,7 @@ export interface EtiketControle {
   batch_id: number
   product_id: number
   etiket_artikel?: string
+  // Legacy (vóór 1.13.53): de etiketversie van het product.
   etiket_versie?: string
   aanleiding: EtiketAanleiding
   // Wanneer de controle is uitgevoerd; leeg = op het moment van vastleggen.
@@ -2209,8 +2213,7 @@ export interface EtiketControle {
   tht_ok: boolean
   alcohol_ok: boolean
   // Snapshots bij de controle (vanaf v1.12.90; oudere records hebben ze niet).
-  // De afvuller vult de versie op de rol in die hij in zijn hand heeft; de
-  // verwachte versie is die van het product op dat moment.
+  // Legacy (v1.12.90–1.13.52): de versie op de rol en de verwachte versie.
   etiket_versie_gelezen?: string
   etiket_versie_verwacht?: string
   abv_batch?: number

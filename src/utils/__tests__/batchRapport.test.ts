@@ -488,7 +488,7 @@ describe('bouwBatchRapport — etiket & website (zoals de kaart in Gereed)', () 
     expect(r.etiket?.waarden.ebc.waarde).toBe(12)
     expect(r.etiket?.waarden.allergenen.lijst).toEqual(['gluten', 'gerst'])
     expect(r.etiket?.producten.map(p => p.product.id)).toEqual([3])
-    expect(r.etiket?.producten[0].etiket.etiketVersie).toBe('v2')
+    expect(r.etiket?.producten[0].etiket).not.toHaveProperty('etiketVersie')
   })
 
   it('lotcode en THT per verpakking uit de sessies', () => {
@@ -505,14 +505,14 @@ describe('bouwBatchRapport — CCP 3 met de getallen erbij', () => {
     paraaf: {gebruiker: 'jasper', tijdstip: '2026-06-20T09:05:00Z', bron: 'whoami'}, ...extra,
   })
 
-  it('een nieuw record: versie op de rol, verwacht, ABV van batch en etiket, marge', () => {
+  it('een nieuw record: ABV van batch en etiket, marge (een oude etiketversie doet niet meer mee)', () => {
     const r = bouwBatchRapport(invoer({producten: [{id: 3, naam: 'James Blond'}] as any, etiketcontroles: [controle({
       etiket_versie: 'v2', etiket_versie_gelezen: 'v2', etiket_versie_verwacht: 'v2',
       abv_batch: 5.5, abv_etiket_verwacht: 5.4, abv_marge: 0.5,
     })]}))
     expect(r.etiketcontroles).toEqual([{
       moment: '2026-06-20T09:05:00Z', lotcode: 'L2614-B1', product: 'James Blond',
-      versieGelezen: 'v2', versieVerwacht: 'v2', abvBatch: 5.5, abvEtiket: 5.4, abvMarge: 0.5,
+      abvBatch: 5.5, abvEtiket: 5.4, abvMarge: 0.5,
       allergenenBatch: ['gluten', 'gerst'], allergenenEtiket: ['gluten', 'gerst'],
       goedgekeurd: true, afwijking: false, snapshot: true,
       paraaf: {gebruiker: 'jasper', tijdstip: '2026-06-20T09:05:00Z'},
@@ -521,7 +521,7 @@ describe('bouwBatchRapport — CCP 3 met de getallen erbij', () => {
 
   it('een oud record (zonder snapshots) blijft zoals het was', () => {
     const r = bouwBatchRapport(invoer({etiketcontroles: [controle({etiket_versie: 'v1', afwijking_id: 4, resultaat: 'afgekeurd'})]}))
-    expect(r.etiketcontroles[0]).toMatchObject({versieGelezen: 'v1', versieVerwacht: '', abvBatch: null,
+    expect(r.etiketcontroles[0]).toMatchObject({abvBatch: null,
       snapshot: false, goedgekeurd: false, afwijking: true})
   })
 

@@ -8,9 +8,9 @@ import { CRAFTERY_SLEUTELS } from '../../utils/craftery'
 import { wcArtikelPush, wcMetaStandNaPush, wcMetStand, wcMetWinkelStand } from '../../utils/wcProduct'
 import {
   allergeenKeuzeTegenBatch, allergeenRegel, energieKeuze, etiketDialoogKop, etiketGetalReden, etiketGetalTekst,
-  etiketGetalVoorstellen, etiketVoorschrift, etiketWaarden, etiketWijzigingUitKeuze, keuzeVraagtNieuweVersie,
+  etiketGetalVoorstellen, etiketVoorschrift, etiketWaarden, etiketWijzigingUitKeuze,
   legEtiketVast, metEtiketVan, productEtiketWaarden, receptEtiketWaarden, referentieBatch, sorteerAllergenen,
-  volgendeEtiketVersie, webshopBevatRegel, webshopPayload, webshopVoorstel,
+  webshopBevatRegel, webshopPayload, webshopVoorstel,
 } from '../../utils/etiket'
 import type {
   EtiketCtx, EtiketGetalVoorstel, EtiketKeuze, EtiketWaarden, WebshopArtikelVoorstel, WebshopVoorraadCtx,
@@ -32,20 +32,20 @@ import { useSmalScherm } from '../ui/useSmalScherm'
 
 // "Etiket bijwerken" (opzet 5.4, SPEC scherm G en H) — de énige schrijfweg voor
 // wat er op het gedrukte etiket staat: allergenen, alcohol, bitterheid, kleur,
-// energie en de etiketversie (`legEtiketVast` in utils/etiket.ts). Te openen
+// en energie (`legEtiketVast` in utils/etiket.ts). Er is geen etiketversie
+// (1.13.53): het etiket wordt per batch gedrukt en CCP 3 toetst de inhoud. Te openen
 // vanaf de etiketkaart op de batch, vanaf het product, vanuit de
 // HACCP-allergenenmatrix en vanuit CCP 3 — overal dezelfde dialoog.
 //
 // Bovenaan "Zet dit op het etiket" (`etiketVoorschrift`): per verplicht
 // onderdeel de tekst die erop hoort, uit de batch of het recept — als
-// aanwijzing, niets wordt vanzelf aangevinkt. Dan drie blokken: (1) de
+// aanwijzing, niets wordt vanzelf aangevinkt. Dan twee blokken: (1) de
 // allergenen zoals ze op het nieuwe etiket gedrukt staan — beginnend bij het
 // huidige etiket, nooit bij de batch, met eronder wat er volgens de
 // ingrediënten nog mist; (2) de
 // getallen oud → nieuw uit de referentiebatch, alleen aangevinkt bij een leeg
-// veld of een ABV buiten de marge, en de energie (niet vermeld | vermeld);
-// (3) de etiketversie, verplicht nieuw als allergenen of alcohol wijzigen, met
-// het vinkje "Ik heb het gedrukte etiket v4 voor me". Daarna, als WooCommerce
+// veld of een ABV buiten de marge, en de energie (niet vermeld | vermeld).
+// Vastleggen zet de datum (`etiket_bijgewerkt`). Daarna, als WooCommerce
 // aan staat: "Ook naar de webshop?" met per artikel wat er verandert — alleen
 // bierinformatie, nooit prijs of voorraad, en nooit vanzelf.
 //
@@ -194,29 +194,18 @@ const EtiketBijwerken: React.FC<EtiketBijwerkenProps> = ({
     (vermeldBegin ? tekst(begin.kcal) : '') || (berekend ? heel(berekend.kcal) : ''))
   const [kj, setKj] = React.useState<string>(() =>
     (vermeldBegin ? tekst(begin.kj) : '') || (berekend ? heel(berekend.kj) : ''))
-  const [versieHand, setVersieHand] = React.useState<string | null>(null)
-  const [datum, setDatum] = React.useState<string>(tod())
-  const [bevestigd, setBevestigd] = React.useState(false)
+  const datum = tod()
   const [fout, setFout] = React.useState<string | null>(null)
 
   const allergenenKeuze: Allergeen[] | null = sel.length ? (sel as Allergeen[])
     : gezet ? [] : geenAllergenen ? [] : null
-  const huidigeVersie = tekst(begin.etiket_versie)
-  const voorstelVersie = volgendeEtiketVersie(huidigeVersie, datum)
-  const basisKeuze: EtiketKeuze = {
-    allergenen: allergenenKeuze, getallen: voorstellen, aan, energie, kcal, kj, versie: huidigeVersie,
-  }
-  const nieuweVersieNodig = keuzeVraagtNieuweVersie(begin, basisKeuze)
-  // De versie volgt de keuze (een voorstel als het moet) tot je hem zelf typt.
-  const versie = versieHand ?? (nieuweVersieNodig ? voorstelVersie.versie : huidigeVersie)
-  const keuze: EtiketKeuze = {...basisKeuze, versie}
+  const keuze: EtiketKeuze = {allergenen: allergenenKeuze, getallen: voorstellen, aan, energie, kcal, kj}
   const wijziging = etiketWijzigingUitKeuze(begin, keuze)
-  const versieWijzigt = wijziging.etiket_versie !== undefined
-  const proef = legEtiketVast(begin, wijziging, {datum, bevestigd: true, t})
+  const proef = legEtiketVast(begin, wijziging, {datum, t})
   // (`'fout' in`: de pagina's draaien zonder strict, daar versmalt `ok` niet.)
   const proefFout = 'fout' in proef ? proef.fout : null
   const heeftWijziging = proef.ok && proef.gewijzigd.length > 0
-  const magOpslaan = heeftWijziging && !proefFout && (!versieWijzigt || bevestigd)
+  const magOpslaan = heeftWijziging && !proefFout
 
   // ── De webshop: wat er per artikel verandert ──
   const voorstelVoor = (p: ProductLike): WebshopArtikelVoorstel[] => {
@@ -233,7 +222,7 @@ const EtiketBijwerken: React.FC<EtiketBijwerkenProps> = ({
 
   const opslaan = () => {
     setFout(null)
-    const r = legEtiketVast(begin, wijziging, {datum, bevestigd: !versieWijzigt || bevestigd, t})
+    const r = legEtiketVast(begin, wijziging, {datum, t})
     if ('fout' in r) { setFout(r.fout); return }
     if (!r.gewijzigd.length || !r.audit) { onSluit(); return }
     const id = Number(product.id)
@@ -241,7 +230,7 @@ const EtiketBijwerken: React.FC<EtiketBijwerkenProps> = ({
     logAudit(auditLog, setAuditLog, r.audit)
     const vorig = begin
     const audit = r.audit
-    undo.plan(`etiket-${id}`, vul('etiket_bijwerken_undo', {naam, versie: tekst(r.product.etiket_versie) || '—'}), () => {}, () => {
+    undo.plan(`etiket-${id}`, vul('etiket_bijwerken_undo', {naam}), () => {}, () => {
       setProducten(prev => (prev || []).map(p => (Number(p.id) === id ? metEtiketVan(p, vorig) : p)))
       logAudit([], setAuditLog, {
         entiteit: 'Product', entiteit_id: id, actie: 'gewijzigd',
@@ -255,7 +244,7 @@ const EtiketBijwerken: React.FC<EtiketBijwerkenProps> = ({
 
   const titel = smal ? vul('etiket_bijwerken_titel_kort', {naam}) : vul('etiket_bijwerken_titel', {naam})
 
-  // "Vergeleken met #2609 (conditioneert in GV1) · nu op het etiket: v3 van 8-4-2025"
+  // "Vergeleken met #2609 (conditioneert in GV1) · etiket vastgelegd op 8-4-2025"
   const kop = etiketDialoogKop({batch: ref, recept, product: begin, kort: smal}, t)
 
   const blokKop = (s: string) => <h4 className="text-base font-semibold text-gray-900">{s}</h4>
@@ -374,34 +363,8 @@ const EtiketBijwerken: React.FC<EtiketBijwerkenProps> = ({
     </section>
   )
 
-  // ── Blok 3: etiketversie ──
-  const blokVersie = (
-    <section className="space-y-3">
-      {blokKop(t('etiket_bijwerken_versie'))}
-      <div className="grid grid-cols-2 gap-3 sm:max-w-md">
-        <div>
-          <Inp label={t('etiket_bijwerken_versie_veld')} value={versie} onChange={v => setVersieHand(v)} />
-          <div className="text-xs text-gray-500 mt-1">
-            {versieWijzigt
-              ? (huidigeVersie ? vul('etiket_bijwerken_versie_voorstel', {vorige: huidigeVersie}) : t('etiket_bijwerken_versie_eerste'))
-              : t('etiket_bijwerken_versie_huidig')}
-          </div>
-        </div>
-        <Inp label={t('lbl_datum')} type="date" value={datum} onChange={v => setDatum(v || tod())} />
-      </div>
-      {versieWijzigt && (
-        <label className="flex items-center gap-3 min-h-tap px-3 py-2 rounded-xl border border-orange-200 bg-orange-50 cursor-pointer">
-          <input type="checkbox" className="t-checkbox w-5 h-5 flex-shrink-0" checked={bevestigd}
-            onChange={e => setBevestigd(e.target.checked)} />
-          <span className="text-sm font-medium text-gray-900">{vul('etiket_bijwerken_bevestig', {versie})}</span>
-        </label>
-      )}
-      <p className="text-xs text-gray-500">{vul('etiket_bijwerken_ccp3', {versie: versie || '—'})}</p>
-    </section>
-  )
-
   const meldingFout = fout || proefFout
-  const knopLabel = versieWijzigt ? vul('etiket_bijwerken_vastleggen_versie', {versie}) : t('etiket_bijwerken_vastleggen')
+  const knopLabel = t('etiket_bijwerken_vastleggen')
   const daarna = webshopAantal === 1 ? t('etiket_bijwerken_daarna_een')
     : webshopAantal > 1 ? vul('etiket_bijwerken_daarna', {n: webshopAantal}) : ''
 
@@ -413,8 +376,6 @@ const EtiketBijwerken: React.FC<EtiketBijwerkenProps> = ({
       {blokAllergenen}
       <div className="border-t border-gray-100" />
       {blokGetallen}
-      <div className="border-t border-gray-100" />
-      {blokVersie}
       {meldingFout && <p role="alert" className="text-sm text-red-700">{t(meldingFout)}</p>}
     </div>
   )
@@ -579,7 +540,7 @@ const useWebshopStap = ({product, naam, voorstel, webshop, vastgelegd, undoId, o
     <div className="space-y-4">
       {vastgelegd && (
         <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
-          <span>{vul('etiket_webshop_vastgelegd', {versie: tekst(product.etiket_versie) || '—'})}</span>
+          <span>{t('etiket_webshop_vastgelegd')}</span>
           {kanUndo && (
             <button type="button" onClick={() => { undo.ongedaan(); onSluit() }}
               className="min-h-tap sm:min-h-0 font-semibold underline underline-offset-2">

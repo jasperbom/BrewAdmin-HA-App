@@ -258,14 +258,11 @@ export interface RapportEtiket {
 }
 
 /** Eén etiketcontrole (CCP 3) met de getallen die erbij bevroren zijn. Oude
- *  records (van vóór de snapshots) hebben alleen de versie en de allergenen. */
+ *  records (van vóór de snapshots) hebben alleen de allergenen. */
 export interface RapportEtiketControle {
   moment: string
   lotcode: string
   product: string
-  /** De versie op de rol; bij een oud record de vastgelegde `etiket_versie`. */
-  versieGelezen: string
-  versieVerwacht: string
   abvBatch: number | null
   abvEtiket: number | null
   abvMarge: number | null
@@ -604,15 +601,12 @@ const etiketControleRegels = (
   controles.map(c => {
     const sessie = sessies.find(x => zelfdeId(x.id, c.sessie_id))
     const prod = producten.find(x => zelfdeId(x.id, c.product_id))
-    const snapshot = c.etiket_versie_gelezen !== undefined || c.etiket_versie_verwacht !== undefined
-      || c.abv_batch !== undefined || c.abv_etiket_verwacht !== undefined
+    const snapshot = c.abv_batch !== undefined || c.abv_etiket_verwacht !== undefined
     const getalOfNull = (v: unknown): number | null => (v === undefined || v === null || v === '' ? null : getal(v))
     return {
       moment: tekst(c.uitgevoerd_op) || tekst(c.paraaf?.tijdstip),
       lotcode: tekst(sessie?.lotcode),
       product: tekst(prod?.naam),
-      versieGelezen: tekst(c.etiket_versie_gelezen ?? c.etiket_versie),
-      versieVerwacht: tekst(c.etiket_versie_verwacht),
       abvBatch: getalOfNull(c.abv_batch),
       abvEtiket: getalOfNull(c.abv_etiket_verwacht),
       abvMarge: getalOfNull(c.abv_marge),

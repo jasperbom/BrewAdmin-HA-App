@@ -69,8 +69,8 @@ describe('het etiket van een product', () => {
     expect(etiketKortTekst(s, t)).toBe('gerst, tarwe ontbreken')
   })
 
-  it('kop regel 2: "Etiket v3:" en "6,2 % vol · Bevat: gerst" (gluten niet los naast de graansoort)', () => {
-    expect(etiketKopRegel(product(1), t, 'nl')).toEqual({ label: 'Etiket v3:', waarde: '6,2 % vol · Bevat: gerst' })
+  it('kop regel 2: "Etiket:" en "6,2 % vol · Bevat: gerst" (gluten niet los naast de graansoort)', () => {
+    expect(etiketKopRegel(product(1), t, 'nl')).toEqual({ label: 'Etiket:', waarde: '6,2 % vol · Bevat: gerst' })
     expect(etiketKopRegel({ id: 5, naam: 'X', abv: 5, allergenen: [] } as Product, t, 'nl'))
       .toEqual({ label: 'Etiket:', waarde: '5,0 % vol · geen allergenen' })
     expect(etiketKopRegel({ id: 5, naam: 'X', abv: 5 } as Product, t, 'nl').waarde).toBe('5,0 % vol · allergenen nog niet vastgelegd')

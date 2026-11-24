@@ -190,8 +190,7 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
   const {useState} = React
   const [selBatch, setSelBatch] = useState<number>(0)
   // Het etiket van een product wijzig je alleen in de dialoog "Etiket
-  // bijwerken" (met versie en het vinkje "gedrukt etiket voor me"); de matrix
-  // hieronder is alleen-lezen.
+  // bijwerken"; de matrix hieronder is alleen-lezen.
   const etiketDienst = useEtiketBijwerken()
   const opzoeken = useAllergenenOpzoeken()
   const wachtend = teBeoordelen(ing)
@@ -294,8 +293,7 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
       </div>
 
       {/* Etiketallergenen per product — de bron waartegen CCP 3 vergelijkt.
-          Alleen-lezen: wijzigen gaat via "Etiket bijwerken" (één schrijfweg,
-          met een nieuwe etiketversie als de allergenen veranderen). */}
+          Alleen-lezen: wijzigen gaat via "Etiket bijwerken" (één schrijfweg). */}
       <div>
         <SectionHeader title={t('haccp_product_allergenen')} />
         <div className="bg-white rounded-b-lg shadow-sm">
@@ -309,7 +307,7 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
                   <th className="text-left p-2 font-semibold text-gray-600">{t('nav_producten')}</th>
                   <th className="p-2 text-center font-semibold text-gray-600 whitespace-nowrap">{t('haccp_product_allergen_vastgelegd')}</th>
                   {ALLERGENEN_LIJST.map(a=><th key={a.key} className="p-2 text-center font-semibold text-gray-600 whitespace-nowrap">{t(a.label)}</th>)}
-                  <th className="text-left p-2 font-semibold text-gray-600 whitespace-nowrap">{t('haccp_ccp3_etiket_versie')}</th>
+                  <th className="text-left p-2 font-semibold text-gray-600 whitespace-nowrap">{t('haccp_etiket_bijgewerkt')}</th>
                   <th className="p-2"><span className="sr-only">{t('haccp_product_allergen_actie')}</span></th>
                 </tr></thead>
                 <tbody>
@@ -335,8 +333,7 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
                           )
                         })}
                         <td className="p-2 text-gray-700 whitespace-nowrap">
-                          {pr.etiket_versie || '—'}
-                          {pr.etiket_bijgewerkt && <span className="text-gray-400"> · {datumKort(pr.etiket_bijgewerkt)}</span>}
+                          {pr.etiket_bijgewerkt ? datumKort(pr.etiket_bijgewerkt) : '—'}
                         </td>
                         <td className="p-2 text-right">
                           {etiketDienst && (
@@ -361,7 +358,6 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-gray-900 break-words">
                         {pr.naam}
-                        {pr.etiket_versie && <span className="text-gray-500 font-normal"> · {pr.etiket_versie}</span>}
                       </div>
                       <div className={`text-xs break-words ${gezet?'text-gray-600':'text-orange-700'}`}>{bevat}</div>
                     </div>

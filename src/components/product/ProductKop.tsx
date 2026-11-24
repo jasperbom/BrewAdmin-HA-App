@@ -8,10 +8,10 @@ import type { ProductEtiketOordeel } from '../../utils/productPagina'
 import { PIL_KLEUR } from '../ui/StatusPil'
 
 // De kop van een product (SPEC M ①, N ①). Op het bureau de enige gevulde
-// themabalk van de pagina: stip, naam, stijl, de status en de etiketversie,
+// themabalk van de pagina: stip, naam, stijl en de status,
 // rechts één knop (Bewerken) en de rest in ⋯ — de naam wordt niet meer
 // weggedrukt. Op de telefoon staat de naam al in de kopbalk: een witte kaart
-// met stijl en status, daaronder wat het gedrukte etiket zegt ("Etiket v3:
+// met stijl en status, daaronder wat het gedrukte etiket zegt ("Etiket:
 // 6,2 % vol · Bevat: gerst") en de etiketchip, die naar het segment Etiket
 // springt. Bewerken staat daar in het ⋯-menu.
 
@@ -41,7 +41,6 @@ const statusVan = (p: any): { tekst: string; actief: boolean } =>
 
 const ProductKop: React.FC<ProductKopProps> = ({ product, ebc, etiketRegel, oordeel, onBewerken, acties, telefoon, onEtiket }) => {
   const status = statusVan(product)
-  const versie = String(product?.etiket_versie ?? '').trim()
   const naam = product?.naam || t('lbl_naamloos')
 
   if (telefoon) {
@@ -82,11 +81,6 @@ const ProductKop: React.FC<ProductKopProps> = ({ product, ebc, etiketRegel, oord
           <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${status.actief ? 'bg-green-100 text-green-800' : 'bg-white/20 text-white'}`}>
             {status.tekst}
           </span>
-          {versie && (
-            <span className="px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ring-1 ring-white/50 text-white">
-              {t('recept_etiket_versie').replace('{versie}', versie)}
-            </span>
-          )}
         </span>
       }
       info={<RowActions v="header" primair={{ id: 'bewerken', label: t('btn_bewerken'), onClick: onBewerken }} acties={acties} />}

@@ -10,14 +10,14 @@ import {
   abvBerekend, energiePer100ml, abvMarge, suikerNaKook, etiketWaarden, receptEtiketWaarden,
   referentieBatch, productEtiketWaarden, vergelijkEtiket, etiketStatus, etiketStatusTekst,
   etiketRegelTekst, allergeenRegel, allergeenNamen, allergeenSleutels, allergenenUitRecept,
-  volgendeEtiketVersie, etiketVersieVerplicht, legEtiketVast, websiteLooptAchter, websiteStand,
+  legEtiketVast, websiteLooptAchter, websiteStand,
   metBevatRegel, zonderBevatRegel, webshopAllergenen, etiketKopieTekst, batchRegelsAlsRecept,
   fmtAbv, fmtInhoud, sorteerAllergenen, ALLERGEEN_VOLGORDE, ETIKET_VELDEN,
   etiketGetalVoorstellen, abvVastzetten, bronKortSleutel,
-  zelfdeEtiketVersie, etiketVersieBlokkade, etiketBlokMetVersie, etiketControleGetallen, ccp3AbvRegel,
+  etiketControleGetallen, ccp3AbvRegel,
   etiketDoelStrook, ingredientenVerschil,
   afvullingenOpVoorraad, webshopBevatRegel, webshopVoorstel, webshopPayload,
-  etiketWijzigingUitKeuze, keuzeVraagtNieuweVersie, energieKeuze, metEtiketVan,
+  etiketWijzigingUitKeuze, energieKeuze, metEtiketVan,
   etiketGetalTekst, etiketGetalReden, etiketDialoogKop,
 } from '../etiket'
 import type { EtiketKeuze, EtiketWaarden, ProductEtiketWaarden } from '../etiket'
@@ -486,12 +486,11 @@ const pctx = {...ctx2609, batches: [b2607, b2609, b2611]}
 describe('productEtiketWaarden', () => {
   const p = productEtiketWaarden(kadeblond, pctx)
 
-  it('het etiket: ABV, versie, allergenen; IBU/EBC voor de website', () => {
-    expect(p.abv).toEqual({waarde: 6.2, bronSleutel: 'etiket_bron_etiket_versie', bronParams: {versie: 'v3'}})
+  it('het etiket: ABV, allergenen, de datum; IBU/EBC voor de website', () => {
+    expect(p.abv).toEqual({waarde: 6.2, bronSleutel: 'etiket_bron_etiket', bronParams: {}})
     expect(p.allergenen).toEqual({lijst: ['gluten', 'gerst'], gezet: true})
     expect(p.ibu.waarde).toBe(22)
     expect(p.ebc.waarde).toBe(9)
-    expect(p.etiketVersie).toBe('v3')
     expect(p.bijgewerkt).toBe('2025-04-08')
     expect(p.referentieBatchId).toBe(2609)
   })
@@ -840,96 +839,47 @@ describe('batchRegelsAlsRecept', () => {
   })
 })
 
-// ── 10. Etiketversie ────────────────────────────────────────────────────────
-
-describe('volgendeEtiketVersie', () => {
-  it('herkent v3, V3, 3 en leeg', () => {
-    expect(volgendeEtiketVersie('v3', '2026-10-07')).toEqual({versie: 'v4', datum: '2026-10-07', vorige: 'v3'})
-    expect(volgendeEtiketVersie('V3').versie).toBe('v4')
-    expect(volgendeEtiketVersie('3').versie).toBe('v4')
-    expect(volgendeEtiketVersie(' v 9 ').versie).toBe('v10')
-    expect(volgendeEtiketVersie('').versie).toBe('v1')
-    expect(volgendeEtiketVersie(undefined).versie).toBe('v1')
-  })
-
-  it('telt een getal aan het eind op, en nummert een tekst zonder getal', () => {
-    expect(volgendeEtiketVersie('2024-1').versie).toBe('2024-2')
-    expect(volgendeEtiketVersie('v3.1').versie).toBe('v3.2')
-    expect(volgendeEtiketVersie('lente').versie).toBe('lente (2)')
-    expect(volgendeEtiketVersie('lente (2)').versie).toBe('lente (3)')
-  })
-
-  it('geeft vandaag als er geen datum is', () => {
-    expect(volgendeEtiketVersie('v1').datum).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-  })
-})
-
-describe('etiketVersieVerplicht', () => {
-  it('bij een wijziging van allergenen of ABV', () => {
-    expect(etiketVersieVerplicht(kadeblond, {...kadeblond, allergenen: ['gluten', 'gerst', 'tarwe']})).toBe(true)
-    expect(etiketVersieVerplicht(kadeblond, {...kadeblond, abv: 7})).toBe(true)
-    expect(etiketVersieVerplicht({allergenen: undefined}, {allergenen: []})).toBe(true)
-    expect(etiketVersieVerplicht({abv: ''}, {abv: 5})).toBe(true)
-  })
-
-  it('niet bij dezelfde waarden (volgorde en notatie tellen niet) of alleen IBU', () => {
-    expect(etiketVersieVerplicht(kadeblond, {...kadeblond, allergenen: ['gerst', 'gluten'], abv: '6,2'})).toBe(false)
-    expect(etiketVersieVerplicht(kadeblond, {...kadeblond, ibu: 24})).toBe(false)
-    expect(etiketVersieVerplicht({allergenen: undefined}, {allergenen: undefined})).toBe(false)
-  })
-})
+// ── 10. Het etiket vastleggen ───────────────────────────────────────────────────
 
 // ── 11. Etiket vastleggen ───────────────────────────────────────────────────
 
 describe('legEtiketVast', () => {
   const nieuweAllergenen = {allergenen: ['gluten', 'gerst', 'tarwe'] as any[]}
 
-  it('weigert allergenen of ABV wijzigen zonder nieuwe versie', () => {
-    const r = legEtiketVast(kadeblond, nieuweAllergenen, {bevestigd: true})
-    expect(r).toMatchObject({ok: false, fout: 'etiket_fout_versie_verplicht'})
-    expect(r.product).toBe(kadeblond)
-    expect(legEtiketVast(kadeblond, {abv: 7, etiket_versie: 'v3'}, {bevestigd: true}))
-      .toMatchObject({ok: false, fout: 'etiket_fout_versie_verplicht'})
-    expect(legEtiketVast(kadeblond, {abv: 7, etiket_versie: 'V3'}, {bevestigd: true}))
-      .toMatchObject({ok: false, fout: 'etiket_fout_versie_verplicht'})
-  })
-
-  it('weigert zonder het vinkje "gedrukte etiket voor me"', () => {
-    expect(legEtiketVast(kadeblond, {...nieuweAllergenen, etiket_versie: 'v4'}))
-      .toMatchObject({ok: false, fout: 'etiket_fout_bevestiging'})
-  })
-
-  it('legt een nieuwe versie vast: alleen wat in de wijziging staat, met datum en auditregel', () => {
-    const r = legEtiketVast({...kadeblond, kcal: '67', smaakprofiel: 'fris'},
-      {...nieuweAllergenen, etiket_versie: 'v4'}, {bevestigd: true, datum: '2026-10-07', t})
+  it('legt allergenen vast zonder versie: alleen wat in de wijziging staat, met datum en auditregel', () => {
+    const r = legEtiketVast({...kadeblond, kcal: '67', smaakprofiel: 'fris'}, nieuweAllergenen, {datum: '2026-10-07', t})
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.product).toMatchObject({
-      allergenen: ['gluten', 'gerst', 'tarwe'], etiket_versie: 'v4', etiket_bijgewerkt: '2026-10-07',
+      allergenen: ['gluten', 'gerst', 'tarwe'], etiket_bijgewerkt: '2026-10-07',
       abv: 6.2, ibu: 22, ebc: 9, kcal: '67', smaakprofiel: 'fris', naam: 'Kadeblond',
     })
-    expect(r.gewijzigd).toEqual(['allergenen', 'etiket_versie', 'etiket_bijgewerkt'])
+    expect(r.gewijzigd).toEqual(['allergenen', 'etiket_bijgewerkt'])
     expect(r.audit).toMatchObject({entiteit: 'Product', entiteit_id: 1, actie: 'gewijzigd'})
-    expect(r.audit!.velden.etiket_versie).toEqual({oud: 'v3', nieuw: 'v4'})
     expect(r.audit!.omschrijving).toBe(
-      'Kadeblond — allergenen: gluten, gerst → gluten, gerst, tarwe; etiketversie: v3 → v4; etiket bijgewerkt: 2025-04-08 → 2026-10-07')
+      'Kadeblond — allergenen: gluten, gerst → gluten, gerst, tarwe; etiket bijgewerkt: 2025-04-08 → 2026-10-07')
     expect(AUDIT_SOORTEN).toContain(r.audit!.entiteit)
   })
 
-  it('een getal voor de website vraagt geen nieuwe versie', () => {
+  it('een andere ABV kan meteen, zonder versie of bevestiging', () => {
+    const r = legEtiketVast(kadeblond, {abv: 7}, {datum: '2026-10-07'})
+    expect(r.ok && r.product).toMatchObject({abv: 7, etiket_bijgewerkt: '2026-10-07'})
+  })
+
+  it('een getal voor de website verandert de etiketdatum niet', () => {
     const r = legEtiketVast(kadeblond, {ibu: '24', ebc: 9})
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.gewijzigd).toEqual(['ibu'])
     expect(r.product.ibu).toBe(24)
-    expect(r.product.etiket_versie).toBe('v3')
+    expect(r.product.etiket_bijgewerkt).toBe('2025-04-08')
   })
 
   it('ABV: leeg maakt leeg, ongeldig weigert', () => {
-    expect(legEtiketVast(kadeblond, {abv: 'abc', etiket_versie: 'v4'}, {bevestigd: true})).toMatchObject({fout: 'etiket_fout_abv'})
-    const r = legEtiketVast(kadeblond, {abv: '7,04', etiket_versie: 'v4'}, {bevestigd: true})
+    expect(legEtiketVast(kadeblond, {abv: 'abc'})).toMatchObject({fout: 'etiket_fout_abv'})
+    const r = legEtiketVast(kadeblond, {abv: '7,04'})
     expect(r.ok && r.product.abv).toBe(7.04)
-    const leeg = legEtiketVast(kadeblond, {abv: '', etiket_versie: 'v4'}, {bevestigd: true})
+    const leeg = legEtiketVast(kadeblond, {abv: ''})
     expect(leeg.ok && 'abv' in leeg.product).toBe(false)
   })
 
@@ -937,12 +887,12 @@ describe('legEtiketVast', () => {
     expect(legEtiketVast(kadeblond, {energie_op_etiket: 'vermeld', kcal: 60})).toMatchObject({fout: 'etiket_fout_energie'})
     const r = legEtiketVast(kadeblond, {energie_op_etiket: 'vermeld', kcal: 59.6, kj: '249'})
     expect(r.ok && r.product).toMatchObject({energie_op_etiket: 'vermeld', kcal: '60', kj: '249'})
-    const weg = legEtiketVast({...kadeblond, energie_op_etiket: 'vermeld', kcal: '60', kj: '249'}, {energie_op_etiket: 'niet_vermeld'})
+    const weg = legEtiketVast({...kadeblond, energie_op_etiket: 'vermeld', kcal: '60', kj: '249'}, {energie_op_etiket: 'niet_vermeld'}, {datum: '2026-10-07'})
     expect(weg.ok).toBe(true)
     if (!weg.ok) return
     expect(weg.product.energie_op_etiket).toBe('niet_vermeld')
     expect('kcal' in weg.product || 'kj' in weg.product).toBe(false)
-    expect(weg.gewijzigd).toEqual(['kcal', 'kj', 'energie_op_etiket'])
+    expect(weg.gewijzigd).toEqual(['kcal', 'kj', 'energie_op_etiket', 'etiket_bijgewerkt'])
   })
 
   it('kcal vastleggen zonder "Vermeld" kan niet', () => {
@@ -951,15 +901,14 @@ describe('legEtiketVast', () => {
   })
 
   it('weigert een onbekend allergeen', () => {
-    expect(legEtiketVast(kadeblond, {allergenen: ['gerst', 'pinda'] as any, etiket_versie: 'v4'}, {bevestigd: true}))
+    expect(legEtiketVast(kadeblond, {allergenen: ['gerst', 'pinda'] as any}))
       .toMatchObject({ok: false, fout: 'etiket_fout_allergeen'})
   })
 
-  it('eerste keer vastleggen: v1, en een lege lijst is ook een vastlegging', () => {
+  it('eerste keer vastleggen: een lege lijst is ook een vastlegging', () => {
     const nieuw: any = {id: 9, naam: 'Nieuw'}
-    expect(legEtiketVast(nieuw, {allergenen: []}, {bevestigd: true})).toMatchObject({fout: 'etiket_fout_versie_verplicht'})
-    const r = legEtiketVast(nieuw, {allergenen: [], etiket_versie: volgendeEtiketVersie('').versie}, {bevestigd: true, datum: '2026-10-07', t})
-    expect(r.ok && r.product).toMatchObject({allergenen: [], etiket_versie: 'v1', etiket_bijgewerkt: '2026-10-07'})
+    const r = legEtiketVast(nieuw, {allergenen: []}, {datum: '2026-10-07', t})
+    expect(r.ok && r.product).toMatchObject({allergenen: [], etiket_bijgewerkt: '2026-10-07'})
     expect(r.ok && r.audit!.omschrijving).toContain('allergenen: — → geen allergenen')
   })
 
@@ -970,18 +919,18 @@ describe('legEtiketVast', () => {
   })
 
   it('een veld met undefined telt als niet meegegeven: niets wordt stil gewist', () => {
-    const r = legEtiketVast(kadeblond, {allergenen: undefined, abv: undefined, etiket_versie: undefined, ibu: 24})
+    const r = legEtiketVast(kadeblond, {allergenen: undefined, abv: undefined, ibu: 24})
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.gewijzigd).toEqual(['ibu'])
-    expect(r.product).toMatchObject({allergenen: ['gluten', 'gerst'], abv: 6.2, etiket_versie: 'v3', ibu: 24})
+    expect(r.product).toMatchObject({allergenen: ['gluten', 'gerst'], abv: 6.2, ibu: 24})
     // Leegmaken blijft kunnen, met null.
     const leeg = legEtiketVast(kadeblond, {ibu: null})
     expect(leeg.ok && 'ibu' in leeg.product).toBe(false)
   })
 
-  it('kent alle etiketvelden', () => {
-    expect([...ETIKET_VELDEN]).toEqual(['allergenen', 'abv', 'ibu', 'ebc', 'kcal', 'kj', 'energie_op_etiket', 'etiket_versie', 'etiket_bijgewerkt'])
+  it('kent alle etiketvelden — zonder versie', () => {
+    expect([...ETIKET_VELDEN]).toEqual(['allergenen', 'abv', 'ibu', 'ebc', 'kcal', 'kj', 'energie_op_etiket', 'etiket_bijgewerkt'])
   })
 })
 
@@ -1086,7 +1035,7 @@ describe('webshopAllergenen', () => {
 
   it('de vereniging van het etiket en álle etiketten van de sessies op voorraad (ook na een rolwissel)', () => {
     expect(webshopAllergenen(product, opVoorraad, controles)).toEqual({
-      lijst: ['gluten', 'gerst', 'tarwe', 'lactose'], versies: ['v4', 'v3', 'v2'],
+      lijst: ['gluten', 'gerst', 'tarwe', 'lactose'],
     })
   })
 
@@ -1215,37 +1164,32 @@ describe('websiteLooptAchter met de Bevat-regel', () => {
   })
 })
 
-describe('etiketWijzigingUitKeuze / keuzeVraagtNieuweVersie (de dialoog)', () => {
+describe('etiketWijzigingUitKeuze (de dialoog)', () => {
   const voorstellen = etiketGetalVoorstellen(etiketWaarden(b2609, ctx2609), productEtiketWaarden(kadeblond, {...ctx2609, batches: [b2609]}))
   const keuze = (extra: Partial<EtiketKeuze> = {}): EtiketKeuze => ({
-    allergenen: kadeblond.allergenen, getallen: voorstellen, aan: {}, energie: 'niet_vermeld', versie: 'v3', ...extra,
+    allergenen: kadeblond.allergenen, getallen: voorstellen, aan: {}, energie: 'niet_vermeld', ...extra,
   })
 
   it('openen en opslaan zonder iets te kiezen = geen wijziging', () => {
     const w = etiketWijzigingUitKeuze(kadeblond, keuze())
-    expect(legEtiketVast(kadeblond, w, {bevestigd: false})).toMatchObject({ok: true, gewijzigd: []})
+    expect(legEtiketVast(kadeblond, w)).toMatchObject({ok: true, gewijzigd: []})
   })
 
   it('een nog niet vastgelegd etiket blijft dat, tot je bewust kiest (ook "geen allergenen")', () => {
     const nieuw: any = {id: 9, naam: 'Nieuw'}
-    expect(etiketWijzigingUitKeuze(nieuw, keuze({allergenen: null, versie: ''}))).toEqual({})
-    expect(etiketWijzigingUitKeuze(nieuw, keuze({allergenen: [], versie: 'v1'}))).toEqual({allergenen: [], etiket_versie: 'v1'})
+    expect(etiketWijzigingUitKeuze(nieuw, keuze({allergenen: null}))).toEqual({})
+    expect(etiketWijzigingUitKeuze(nieuw, keuze({allergenen: []}))).toEqual({allergenen: []})
   })
 
-  it('tarwe erbij: allergenen, een nieuwe versie verplicht (SPEC G)', () => {
-    const k = keuze({allergenen: ['tarwe', 'gluten', 'gerst'], versie: 'v4'})
-    expect(keuzeVraagtNieuweVersie(kadeblond, k)).toBe(true)
-    const w = etiketWijzigingUitKeuze(kadeblond, k)
-    expect(w).toEqual({allergenen: ['gluten', 'gerst', 'tarwe'], etiket_versie: 'v4'})
-    expect(legEtiketVast(kadeblond, w, {bevestigd: false})).toMatchObject({ok: false, fout: 'etiket_fout_bevestiging'})
-    const r = legEtiketVast(kadeblond, w, {bevestigd: true, datum: '2026-10-07'})
-    expect(r.ok && r.product).toMatchObject({allergenen: ['gluten', 'gerst', 'tarwe'], etiket_versie: 'v4', etiket_bijgewerkt: '2026-10-07'})
+  it('tarwe erbij: de allergenen, meteen vast te leggen (geen versie)', () => {
+    const w = etiketWijzigingUitKeuze(kadeblond, keuze({allergenen: ['tarwe', 'gluten', 'gerst']}))
+    expect(w).toEqual({allergenen: ['gluten', 'gerst', 'tarwe']})
+    const r = legEtiketVast(kadeblond, w, {datum: '2026-10-07'})
+    expect(r.ok && r.product).toMatchObject({allergenen: ['gluten', 'gerst', 'tarwe'], etiket_bijgewerkt: '2026-10-07'})
   })
 
-  it('een getal alleen met zijn vinkje; bitterheid alleen vraagt geen nieuwe versie', () => {
+  it('een getal alleen met zijn vinkje', () => {
     expect(etiketWijzigingUitKeuze(kadeblond, keuze({aan: {ibu: true}}))).toEqual({ibu: 24})
-    expect(keuzeVraagtNieuweVersie(kadeblond, keuze({aan: {ibu: true}}))).toBe(false)
-    expect(keuzeVraagtNieuweVersie(kadeblond, keuze({aan: {abv: true}}))).toBe(true)
     expect(etiketWijzigingUitKeuze(kadeblond, keuze({aan: {abv: true, ebc: true}}))).toEqual({abv: 7})
   })
 
@@ -1258,10 +1202,6 @@ describe('etiketWijzigingUitKeuze / keuzeVraagtNieuweVersie (de dialoog)', () =>
     expect(energieKeuze(kadeblond)).toBe('niet_vermeld')
   })
 
-  it('de versie alleen als hij anders is ("V3" = "v3")', () => {
-    expect(etiketWijzigingUitKeuze(kadeblond, keuze({versie: 'V3'}))).toEqual({})
-    expect(etiketWijzigingUitKeuze(kadeblond, keuze({versie: ' v3 '}))).toEqual({})
-  })
 })
 
 describe('de teksten van de dialoog (SPEC scherm G en H)', () => {
@@ -1290,13 +1230,13 @@ describe('de teksten van de dialoog (SPEC scherm G en H)', () => {
   it('de kopregel op het bureau en de telefoon', () => {
     const b = {...b2609, tank: 'GV1'}
     expect(etiketDialoogKop({batch: b, product: kadeblond}, t))
-      .toBe('Vergeleken met #2609 (conditioneert in GV1) · nu op het etiket: v3 van 8-4-2025')
-    expect(etiketDialoogKop({batch: b, product: kadeblond, kort: true}, t)).toBe('Tegen #2609 · nu etiket v3')
-    expect(etiketDialoogKop({batch: b2607, product: {etiket_versie: 'v3'}}, t))
-      .toBe('Vergeleken met #2607 (gereed) · nu op het etiket: v3')
+      .toBe('Vergeleken met #2609 (conditioneert in GV1) · etiket vastgelegd op 8-4-2025')
+    expect(etiketDialoogKop({batch: b, product: kadeblond, kort: true}, t)).toBe('Tegen #2609 · etiket van 8-4-2025')
+    expect(etiketDialoogKop({batch: b2607, product: {allergenen: ['gerst']}}, t))
+      .toBe('Vergeleken met #2607 (gereed) · etiket vastgelegd')
     expect(etiketDialoogKop({recept: receptV4, product: {}}, t))
-      .toBe('Vergeleken met het recept Kadeblond v4 · nog geen etiketversie vastgelegd')
-    expect(etiketDialoogKop({product: {}}, t)).toBe('nog geen etiketversie vastgelegd')
+      .toBe('Vergeleken met het recept Kadeblond v4 · nog geen etiket vastgelegd')
+    expect(etiketDialoogKop({product: {}}, t)).toBe('nog geen etiket vastgelegd')
   })
 
   it('elke sleutel van de dialoog staat in alle vijf talen', () => {
@@ -1306,7 +1246,7 @@ describe('de teksten van de dialoog (SPEC scherm G en H)', () => {
       'etiket_bijwerken_reden_gelijk', 'etiket_bijwerken_reden_verschil', 'etiket_bijwerken_tegen',
       'etiket_bijwerken_vergeleken', 'etiket_bijwerken_fase_in', 'etiket_bijwerken_tegen_recept',
       'etiket_bijwerken_vergeleken_recept', 'etiket_bijwerken_nu_geen', 'etiket_bijwerken_nu_kort',
-      'etiket_bijwerken_nu', 'etiket_bijwerken_nu_versie',
+      'etiket_bijwerken_nu', 'etiket_bijwerken_nu_vastgelegd',
       ...['gepland', 'brouwen', 'vergisten', 'conditioneren', 'afgevuld', 'gesloten'].map(f => `etiket_bijwerken_fase_${f}`),
     ]
     const ontbreekt: string[] = []
@@ -1318,17 +1258,17 @@ describe('de teksten van de dialoog (SPEC scherm G en H)', () => {
 describe('metEtiketVan — vastleggen op de nieuwste stand, en ongedaan maken', () => {
   it('neemt de etiketvelden over en laat de rest staan', () => {
     const nu: any = {...kadeblond, naam: 'Kadeblond (nieuw)', smaakprofiel: 'fris'}
-    const r = legEtiketVast(kadeblond, {allergenen: ['gluten', 'gerst', 'tarwe'], etiket_versie: 'v4'}, {bevestigd: true, datum: '2026-10-07'})
+    const r = legEtiketVast(kadeblond, {allergenen: ['gluten', 'gerst', 'tarwe']}, {datum: '2026-10-07'})
     if (!r.ok) throw new Error('verwacht ok')
     const opgeslagen = metEtiketVan(nu, r.product)
-    expect(opgeslagen).toMatchObject({naam: 'Kadeblond (nieuw)', smaakprofiel: 'fris', etiket_versie: 'v4', etiket_bijgewerkt: '2026-10-07'})
+    expect(opgeslagen).toMatchObject({naam: 'Kadeblond (nieuw)', smaakprofiel: 'fris', etiket_bijgewerkt: '2026-10-07'})
     // Ongedaan maken: de etiketvelden van vóór de wijziging terug, de rest blijft.
     const terug = metEtiketVan(opgeslagen, kadeblond)
     expect(terug).toEqual({...nu})
   })
 
   it('een veld dat er vóór de wijziging niet was, verdwijnt weer', () => {
-    const r = legEtiketVast({id: 9, naam: 'Nieuw'} as any, {allergenen: [], etiket_versie: 'v1'}, {bevestigd: true, datum: '2026-10-07'})
+    const r = legEtiketVast({id: 9, naam: 'Nieuw'} as any, {allergenen: []}, {datum: '2026-10-07'})
     if (!r.ok) throw new Error('verwacht ok')
     expect(metEtiketVan(r.product, {id: 9, naam: 'Nieuw'})).toEqual({id: 9, naam: 'Nieuw'})
   })
@@ -1412,49 +1352,11 @@ describe('i18n-sleutels van etiket.ts', () => {
 })
 
 
-// ── 13. CCP 3: versie op de rol en de getallen ──────────────────────────────
-
-describe('zelfdeEtiketVersie', () => {
-  it('"v4", "V4", "4" en " v 4 " zijn dezelfde versie', () => {
-    expect(zelfdeEtiketVersie('v4', '4')).toBe(true)
-    expect(zelfdeEtiketVersie('V4', ' v 4 ')).toBe(true)
-    expect(zelfdeEtiketVersie('v3', 'v4')).toBe(false)
-    expect(zelfdeEtiketVersie('lente', 'Lente')).toBe(true)
-  })
-})
-
-describe('etiketVersieBlokkade', () => {
-  it('blokkeert een andere versie op de rol dan verwacht', () => {
-    expect(etiketVersieBlokkade('v3', 'v4')).toEqual({
-      code: 'etiket_versie_wijkt_af', i18nKey: 'haccp_blok_etiket_versie', params: {gelezen: 'v3', verwacht: 'v4'}})
-  })
-  it('geen blokkade bij dezelfde versie, zonder invoer of zonder verwachte versie', () => {
-    expect(etiketVersieBlokkade('4', 'v4')).toBeNull()
-    expect(etiketVersieBlokkade('', 'v4')).toBeNull()
-    expect(etiketVersieBlokkade('v3', '')).toBeNull()
-  })
-  it('telt mee in de etiketblokkade van CCP 3 (zelfde afwijkingsroute als de allergenen)', () => {
-    const ok = {toegestaan: true, redenen: []}
-    expect(etiketBlokMetVersie(ok, 'v4', 'v4')).toBe(ok)
-    const r = etiketBlokMetVersie(ok, 'v3', 'v4')
-    expect(r.toegestaan).toBe(false)
-    expect(r.redenen.map(x => x.code)).toEqual(['etiket_versie_wijkt_af'])
-    const allergeen = {toegestaan: false, redenen: [{code: 'allergeen_ontbreekt', i18nKey: 'x'}]}
-    expect(etiketBlokMetVersie(allergeen, 'v3', 'v4').redenen.map(x => x.code))
-      .toEqual(['allergeen_ontbreekt', 'etiket_versie_wijkt_af'])
-  })
-  it('de tekst van de blokkade heeft dezelfde plaatshouders in elke taal', () => {
-    for (const taal of Object.keys(TALEN)) {
-      expect(TALEN[taal].haccp_blok_etiket_versie).toContain('{gelezen}')
-      expect(TALEN[taal].haccp_blok_etiket_versie).toContain('{verwacht}')
-    }
-  })
-})
+// ── 13. CCP 3: de getallen ───────────────────────────────────────────────────
 
 describe('etiketControleGetallen — de bevroren getallen op een nieuwe etiketcontrole', () => {
-  it('gelezen en verwachte versie, ABV van batch en etiket, en de marge', () => {
-    expect(etiketControleGetallen({gelezen: ' v3 ', product: kadeblond, abvBatch: 6.96})).toEqual({
-      etiket_versie_gelezen: 'v3', etiket_versie_verwacht: 'v3',
+  it('ABV van batch en etiket, en de marge (geen etiketversie)', () => {
+    expect(etiketControleGetallen({product: kadeblond, abvBatch: 6.96})).toEqual({
       abv_batch: 6.96, abv_etiket_verwacht: 6.2, abv_marge: 1,
     })
   })
@@ -1462,7 +1364,7 @@ describe('etiketControleGetallen — de bevroren getallen op een nieuwe etiketco
     expect(etiketControleGetallen({product: {abv: 5.6}, abvBatch: 5.2}).abv_marge).toBe(0.5)
   })
   it('laat weg wat er niet is (geen lege velden in een append-only record)', () => {
-    expect(etiketControleGetallen({gelezen: '', product: {}, abvBatch: null})).toEqual({})
+    expect(etiketControleGetallen({product: {}, abvBatch: null})).toEqual({})
     expect(etiketControleGetallen({product: {abv: 6.2}})).toEqual({abv_etiket_verwacht: 6.2})
   })
 })

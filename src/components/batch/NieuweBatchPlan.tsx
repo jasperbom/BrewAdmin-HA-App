@@ -91,7 +91,7 @@ const pct = (n: number, taal: string): string => {
 }
 
 /** De ene regel van de vooruitblik, met getallen en namen ingevuld. */
-const vooruitTekst = (r: VooruitblikRegel, product: string, versie: string, taal: string): string =>
+const vooruitTekst = (r: VooruitblikRegel, product: string, taal: string): string =>
   t(r.sleutel)
     .replace('{recept}', r.recept != null ? pct(r.recept, taal) : '')
     .replace('{etiket}', r.etiket != null ? pct(r.etiket, taal) : '')
@@ -99,7 +99,6 @@ const vooruitTekst = (r: VooruitblikRegel, product: string, versie: string, taal
     .replace('{allergenen}', r.allergenen?.length ? allergeenNamen(r.allergenen, t).join(', ') : t('nb_allergenen_geen'))
     .replace('{ingredienten}', (r.ingredienten || []).join(', '))
     .replace('{product}', product)
-    .replace('{versie}', versie)
 
 // De ketenchips, zoals de ketenregel in de batchkop: "Recept · Kadeblond v4 ▾" › "Product · Kadeblond".
 // Telefoon: twee chips naast elkaar (elk de halve breedte, de tekst loopt door).
@@ -419,8 +418,8 @@ const NieuweBatchPlan: React.FC<NieuweBatchPlanProps> = (p) => {
       {p.recept && vb && (
         <section className={`rounded-xl border px-3.5 py-3 ${vb.aandacht ? 'border-orange-300 bg-orange-50/40' : 'border-gray-200'}`}>
           <h4 className="text-sm font-semibold text-gray-800 mb-1">{t('nb_vooruitblik')}</h4>
-          <p className={`text-sm break-words ${KLEUR_TEKST[vb.alcohol.kleur]}`}>{vooruitTekst(vb.alcohol, vbProduct, vb.versie, taal)}</p>
-          <p className={`text-sm break-words mt-0.5 ${KLEUR_TEKST[vb.allergenen.kleur]}`}>{vooruitTekst(vb.allergenen, vbProduct, vb.versie, taal)}</p>
+          <p className={`text-sm break-words ${KLEUR_TEKST[vb.alcohol.kleur]}`}>{vooruitTekst(vb.alcohol, vbProduct, taal)}</p>
+          <p className={`text-sm break-words mt-0.5 ${KLEUR_TEKST[vb.allergenen.kleur]}`}>{vooruitTekst(vb.allergenen, vbProduct, taal)}</p>
           {vb.zonderEtiket && (
             <p className="text-xs text-gray-500 mt-1">{vb.zonderEtiket === 'nieuw' ? t('nb_etiket_nieuw_product') : t('nb_etiket_geen_product')}</p>
           )}

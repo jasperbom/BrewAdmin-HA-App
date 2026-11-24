@@ -72,18 +72,18 @@ describe('etiketKaartModel — Kadeblond #2609 (SPEC scherm E)', () => {
   const m = etiketKaartModel({modus: 'batch', batch: b2609, data: data(), taal: 'nl'}, t)
   const b = m.producten[0]
 
-  it('kop: rode chip "Etiket: tarwe ontbreekt", vergeleken met etiket v3 · 8-4-2025', () => {
+  it('kop: rode chip "Etiket: tarwe ontbreekt", vergeleken met het etiket van 8-4-2025', () => {
     expect(m.titel).toBe('Etiket & website')
     expect(m.status).toEqual({tekst: 'Etiket: tarwe ontbreekt', kleur: 'rood', actie: 'etiket_bijwerken'})
     expect(m.kolomBatch).toBe('Deze batch')
-    expect(b.vergelekenMet).toBe('vergeleken met etiket v3 · 8-4-2025')
+    expect(b.vergelekenMet).toBe('vergeleken met het etiket van 8-4-2025')
     expect(m.producten).toHaveLength(1)
   })
 
   it('alcohol: 7,0 % vol berekend, etiket 6,2, binnen ±1,0', () => {
     const r = regel(b, 'abv')
     expect(r.batch).toEqual({waarde: '7,0 % vol', bron: 'berekend uit OG 1.064 / FG 1.012 · nog niet vastgezet'})
-    expect(r.etiket).toEqual({waarde: '6,2 % vol', bron: 'etiket v3'})
+    expect(r.etiket).toEqual({waarde: '6,2 % vol', bron: 'etiket'})
     expect(r.oordeel).toEqual({tekst: 'Wijkt 0,8 af · binnen ±1,0 % vol (bier > 5,5 %)', kleur: 'grijs'})
   })
 
@@ -93,7 +93,7 @@ describe('etiketKaartModel — Kadeblond #2609 (SPEC scherm E)', () => {
       {tekst: 'gluten', nadruk: false}, {tekst: 'gerst', nadruk: false}, {tekst: 'tarwe', nadruk: true}])
     expect(r.batch.bron).toBe('uit Pilsmout, Tarwemout')
     expect(r.etiket?.chips).toEqual([{tekst: 'gluten', nadruk: false}, {tekst: 'gerst', nadruk: false}])
-    expect(r.etiket?.bron).toBe('etiket v3')
+    expect(r.etiket?.bron).toBe('etiket')
     expect(r.oordeel).toEqual({tekst: 'Ontbreekt op het etiket: tarwe', kleur: 'rood'})
     expect(r.bevat).toEqual({nu: 'Bevat: gerst.', moet: 'Bevat: gerst, tarwe.'})
   })
@@ -138,7 +138,7 @@ describe('etiketKaartModel — Kadeblond #2609 (SPEC scherm E)', () => {
       ['Kleur', '9 EBC', 'recept · gelijk', 'groen'],
       ['Energie', '60 kcal', '249 kJ · niet op etiket', 'grijs'],
     ])
-    expect(b.allergenen.etiketLabel).toBe('Etiket v3')
+    expect(b.allergenen.etiketLabel).toBe('Etiket')
     expect(b.allergenen.bevat?.moet).toBe('Bevat: gerst, tarwe.')
     expect(b.lotRegel).toBe('volgt bij de afvulsessie (L2609 e.v.)')
   })
@@ -147,7 +147,7 @@ describe('etiketKaartModel — Kadeblond #2609 (SPEC scherm E)', () => {
     const abv = b.tegels[0].keten
     expect(abv).toContain('berekend uit OG 1.064 / FG 1.012: 7,0 % vol')
     expect(abv).toContain('verwacht (recept): 6,8 % vol')
-    expect(abv).toContain('etiket v3: 6,2 % vol')
+    expect(abv).toContain('etiket: 6,2 % vol')
     expect(abv).toContain('marge ±1,0 % vol (bier > 5,5 %)')
     expect(regel(b, 'allergenen').keten).toContain('tarwe: Tarwemout')
   })

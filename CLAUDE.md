@@ -190,7 +190,7 @@ BrewAdmin-HA-App/
 │   │   │                   # `abvBalling`, + suiker na de kook), `energiePer100ml` (kcal én kJ), `abvMarge`,
 │   │   │                   # `vergelijkEtiket`/`etiketStatus`, `allergeenRegel` ("Bevat: …"),
 │   │   │                   # `referentieBatch`, `productEtiketWaarden`, `legEtiketVast` (énige schrijfweg),
-│   │   │                   # `volgendeEtiketVersie`, `websiteLooptAchter`, `webshopBevatRegel`,
+│   │   │                   # `websiteLooptAchter`, `webshopBevatRegel`,
 │   │   │                   # `etiketVoorschrift` (wat er op het etiket moet: per verplicht onderdeel de tekst,
 │   │   │                   # de stand t.o.v. het vastgelegde etiket en de uitleg; vrijwillig: energie en de
 │   │   │                   # ingrediëntenlijst met `ingredientenMetNadruk`) en `allergeenKeuzeTegenBatch`
@@ -948,7 +948,7 @@ werkruimte-badge = aantal dashboardrijen = som van de menubadges, één rij per
 BTW-periode en per accijnsmaand).
 Ook de keten en het etiket (opzet Productie & Verkoop): `etiket.ts` (Balling-ABV,
 energie in kcal/kJ met vaste testwaarden 1.050/1.010 → 46/194 … 1.090/1.018 →
-85/354, de ABV-marge, Bevat-regel, versie-ophoging, `legEtiketVast`),
+85/354, de ABV-marge, Bevat-regel, `legEtiketVast`),
 `productKeten.ts`, `batchKeten.ts`, `receptNaarBatch.ts` (karakteriseringstests
 op het oude gedrag), `receptGebruik.ts`/`receptLijst.ts`, `verkoopOverzicht.ts`
 (ook: dezelfde "vrij" als de kassa), `volgendeStap.ts`, `nieuweBatch.ts`,
@@ -1445,15 +1445,20 @@ website hoort (zie `docs/OPZET-PRODUCTIE-VERKOOP.md` hoofdstuk 5). Regels:
   nooit kJ = kcal × 4,184. Op het product staat energie alleen vast bij
   `energie_op_etiket === 'vermeld'`; anders volgt de website de afleiding.
   IBU is "berekend (Tinseth)", EBC "recept, niet gemeten" — nooit "gemeten".
-- **Het etiket schrijf je op één plek.** `product.allergenen` en
-  `etiket_versie` veranderen alleen via `legEtiketVast`, aangeroepen door de
-  dialoog `EtiketBijwerken` (`useEtiketBijwerken()?.open(…)`). Wijzigen
-  allergenen of ABV, dan is een nieuwe versie verplicht. De HACCP-matrix is
-  alleen-lezen. Nooit allergenen voorvinken vanuit de batch, nergens "neem
-  over" — CCP 3 blijft een onafhankelijke controle: het veld etiketversie
-  begint leeg ("verwacht: v4" als tekst), en nieuwe EtiketControle-records
-  bevriezen `etiket_versie_gelezen`/`_verwacht`, `abv_batch`,
-  `abv_etiket_verwacht` en `abv_marge`. Gluten wordt niet genormaliseerd
+- **Het etiket schrijf je op één plek.** `product.allergenen` en de
+  getallen veranderen alleen via `legEtiketVast`, aangeroepen door de
+  dialoog `EtiketBijwerken` (`useEtiketBijwerken()?.open(…)`). De HACCP-matrix
+  is alleen-lezen. Nooit allergenen voorvinken vanuit de batch, nergens "neem
+  over" — CCP 3 blijft een onafhankelijke controle; nieuwe
+  EtiketControle-records bevriezen `abv_batch`, `abv_etiket_verwacht` en
+  `abv_marge`.
+- **Geen etiketversie (1.13.53, blijvend).** Het etiket wordt per batch
+  opnieuw gedrukt: of het klopt, toetst CCP 3 aan de inhoud (allergenen,
+  alcohol, lotcode, THT). `etiket_bijgewerkt` (datum) is wanneer het etiket
+  voor het laatst is vastgelegd — `legEtiketVast` zet hem als allergenen,
+  alcohol of energie veranderen, niet bij IBU/EBC (alleen de website). Oude
+  velden (`product.etiket_versie`, `etiket_versie_gelezen`/`_verwacht` op een
+  EtiketControle) blijven in de data staan, maar niets leest ze nog. Gluten wordt niet genormaliseerd
   (gelijk aan CCP 3: een etiket met alleen "gerst" bij ingrediënten met
   "gluten" is rood).
 - **Allergenen via het lot**: geef `lots` mee aan `allergenenUitBatch` /
@@ -1486,7 +1491,8 @@ website hoort (zie `docs/OPZET-PRODUCTIE-VERKOOP.md` hoofdstuk 5). Regels:
   (nooit stil een batchwaarde). Bij elke push en pull bewaart de app de
   `_cf_`-meta als `wc.meta_stand` + `meta_stand_op` op het artikel; "website
   loopt achter" vergelijkt die stand met het product, nooit met de batch. De
-  Bevat-regel (vereniging van de etiketversies die nog op voorraad liggen,
+  Bevat-regel (vereniging van het huidige etiket en de etiketten van de lots
+  die nog op voorraad liggen,
   `webshopBevatRegel`) gaat als laatste zin achter `_cf_ingredienten` en gaat er
   bij een pull weer af. Nooit automatisch pushen; nooit prijs of voorraad in de
   etiketstap.
@@ -1636,7 +1642,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `ingredienten` | array | Ingrediënten. `allergenen` (ontbrekend = niet beoordeeld, `[]` = geen) met `allergenen_bron` (`regel`/`claude`/`handmatig`), `allergenen_toelichting` en `allergenen_model` (bij `claude`) — gezet door *Allergenen opzoeken* of de matrix (`handmatigBeoordeeld`) |
 | `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
 | `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). CCP 1: `ff_sg` + `ff_op` = de forceertest (eigen velden, de syncs raken ze niet aan). Brewfather: `brewfather_id`/`brewfather_batch_nummer`, `bf_verweesd` (datum waarop Brewfather de batch niet meer kende); bij lezen `bf_stand` (per veld de laatst overgenomen waarde, een schema als hash) en `bf_verschil` (waarden waarin Brewfather afwijkt van een hier aangepaste waarde) — `utils/bfBatchSync.ts`; bij schrijven `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht) en `bf_fout` (`{op, melding}` van de laatste mislukte poging) — `utils/bfTerugschrijven.ts`. Brouwlog: `brouwlog_publiek` (alleen een echte `true` telt: deze batch gaat naar /brouwlog/ van de webshop) `brouwlog_notitie` (publieke tekst, max 600 tekens — los van `notities`/`batch_notities`, die intern blijven) en `brouwlog_artikel` (het webshopartikel voor naam en link: een `product_artikelen`-id, `'geen'` = geen link, leeg = automatisch); eigen velden die Brewfather-sync, receptsync en "opnieuw toepassen" niet aanraken. `brouwplan` (`BrouwPlan`): hoe de batch bij het plannen naar zijn tank is omgerekend (`geschaald`, liters recept/plan, factoren, rendementen, tank) — de brouwdagwizard leest er de doel-liters uit |
-| `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
+| `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_bijgewerkt` (datum van het laatst vastgelegde etiket; een oud `etiket_versie` wordt niet meer gelezen), `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
 | `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull en `voorraad_gepusht`/`voorraad_gepusht_op` = de voorraad bij de laatste push en `winkel_stand` = `{status, afbeeldingen}` zoals de winkel ze bij het laatste contact had — ook op `merch_artikelen` en de oude `artikelen`) |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
 | `afvullingen` | array | Afvullingen / releases. `geblokkeerd` (CCP 2 of een afgekeurde houdtest), `in_quarantaine` (tot de vrijgave voor verkoop) en `etiket_volgt` (vrijgegeven, etiket nog niet gecontroleerd) maken een afvulling niet verkoopbaar — `utils/houdtest.ts` zet en wist de laatste twee |
@@ -1669,7 +1675,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_vrijgaven` | array | **CCP 1** — vrijgave vóór koelen per batch (sinds 1.13.50 aan het eind van Vergisten, `renderCcp1` in BatchFlowPage; nog open in Conditioneren = bovenaan die fase, `volgendeStap` geeft dan eerst `vrijgave`; afvullen blijft geblokkeerd zonder). Vanaf 1.13.49 `methode: 'ff_paar'`: forceertest (`ff_dichtheid_ff`) tegen de laatste tankmeting, en de twee bevroren tankmetingen (`tank_sg_1`/`_op`, `tank_sg_2`/`_op`, `stabiel_uren`, `stabiel_verschil`) met de grenzen van dat moment; alleen `vrijgegeven` wordt nog vastgelegd (`oordeel_voorgesteld` = wat de regel zei, rood alleen met een afwijking). Oudere records (risicoklasse, dagen stabiel, drukproef, smaakoordeel) blijven geldig en leesbaar. Server-side append-only; correctie via een nieuwe registratie met `vervangt_id`. Zonder vrijgegeven registratie kan er niet afgevuld worden |
 | `afvul_sessies` | array | Afvulsessie met lotcode `L<batchnr>` (bijv. `L2431`; een tweede afvulmoment van dezelfde batch `L2431-B2`; sessies van vóór 1.13.49 heten `L2431-B1` en veranderen nooit) en berekende THT; anker voor CCP 2 en CCP 3. `ccp2` = de soort CCP 2 (`lege_flessen`/`sluitcontrole`/`geen`, bevroren bij het starten; ontbreekt = sluitcontrole). De afvuldag (1.13.51): `co2_druk_bar`/`co2_temp_c`/`co2_volumes`/`co2_max`/`co2_bron` (`sensor`/`handmatig`) + `co2_afwijking_id` boven de grens, `sg_afvullen`, `flessenlot`/`kroonkurkenlot`, `klapflessen: {aantal, vernietigd, gereinigd}`. Quarantaine (1.13.52): `houdtest_dagen`, `houdtest_flessen` (twee warm, twee koel; één sessie per batch) en `etiketteren` (`na_vrijgave` = de sessie sluit zonder CCP 3). Bewust **niet** append-only: een sessie wordt afgesloten |
 | `haccp_sluitcontroles` | array | **CCP 2** — sluitcontroles per sessie (visueel + omkeerproef), of bij flessen één inspectie van de lege flessen (`methode: 'lege_flessen'`, `afgekeurd_aantal`). Append-only. Bij afkeur worden de afvullingen sinds de laatste goedkeuring geblokkeerd |
-| `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket, met een foto van het etiket in `bijlagen` (`_bijlage_in_gebruik` houdt hem vast). Nieuwe records bevriezen ook `etiket_versie_gelezen`/`_verwacht`, `abv_batch`, `abv_etiket_verwacht`, `abv_marge`. Append-only |
+| `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket, met een foto van het etiket in `bijlagen` (`_bijlage_in_gebruik` houdt hem vast). Nieuwe records bevriezen ook `abv_batch`, `abv_etiket_verwacht`, `abv_marge` (oude records kunnen `etiket_versie_gelezen`/`_verwacht` dragen; die worden niet meer getoond). Append-only |
 | `haccp_afwijkingen` | array | Expliciete afwijkingsregistraties: de enige manier om langs een harde CCP-blokkade te komen, altijd met onderbouwing + CAPA. Append-only |
 | `haccp_verkoopvrijgaven` | array | **Houdtest en vrijgave voor verkoop** (1.13.52) per batch: `{id, batch_id, datum, afgevuld_op, houdtest_dagen, sg_afvullen, sg_warm, sg_verschil, sg_marge, druk_ok, smaak_ok, oordeel: vrijgegeven\|afgekeurd, oordeel_voorgesteld, afwijking_id?, opmerking?, paraaf}`. De laatste beoordeling telt. Append-only, in de Excel-backup (`HACCPVerkoopVrijgaven`) |
 | `haccp_trace_oefeningen` | array | **Traceeroefeningen** (hoofdstuk 11): periodieke mock recall met bevroren omvang (lotcodes, afnemers), massabalans, traceergaten, doorlooptijd en conclusie. Append-only — een tegenvallende oefening mag niet achteraf bijgesteld worden |

@@ -519,8 +519,8 @@ export const versieRegels = <R extends ReceptLike>(
 export interface ReceptEtiketMelding {
   kleur: 'rood' | 'oranje' | 'groen'
   /**
-   * i18n-sleutel met `{product}` (en `{versie}`, `{allergenen}` of
-   * `{ingredienten}`): "Etiket van Kadeblond (v3) mist tarwe".
+   * i18n-sleutel met `{product}` (en `{allergenen}` of `{ingredienten}`):
+   * "Etiket van Kadeblond mist tarwe".
    */
   sleutel: string
   allergenen: Allergeen[]
@@ -536,18 +536,16 @@ export interface ReceptEtiketMelding {
 export const receptEtiketMelding = (
   v: Pick<EtiketVergelijking, 'allergenen'>,
   s: Pick<EtiketStatus, 'reden' | 'kleur' | 'allergenen'>,
-  heeftVersie: boolean,
 ): ReceptEtiketMelding => {
-  const met = (sleutel: string): string => heeftVersie ? `${sleutel}_versie` : sleutel
   switch (s.reden) {
     case 'allergeen_ontbreekt':
-      return { kleur: 'rood', sleutel: met('recept_etiket_mist'), allergenen: s.allergenen, ingredienten: [] }
+      return { kleur: 'rood', sleutel: 'recept_etiket_mist', allergenen: s.allergenen, ingredienten: [] }
     case 'buiten_marge':
-      return { kleur: 'rood', sleutel: met('recept_etiket_buiten_marge'), allergenen: [], ingredienten: [] }
+      return { kleur: 'rood', sleutel: 'recept_etiket_buiten_marge', allergenen: [], ingredienten: [] }
     case 'niet_vastgelegd':
       return { kleur: 'oranje', sleutel: 'recept_etiket_niet_vastgelegd', allergenen: [], ingredienten: [] }
     case 'allergeen_teveel':
-      return { kleur: 'oranje', sleutel: met('recept_etiket_teveel'), allergenen: s.allergenen, ingredienten: [] }
+      return { kleur: 'oranje', sleutel: 'recept_etiket_teveel', allergenen: s.allergenen, ingredienten: [] }
     case 'onvolledig': {
       const namen = v.allergenen.onvolledig || []
       return namen.length
@@ -555,7 +553,7 @@ export const receptEtiketMelding = (
         : { kleur: 'oranje', sleutel: 'recept_etiket_onvolledig_geen', allergenen: [], ingredienten: [] }
     }
     default:
-      return { kleur: 'groen', sleutel: met('recept_etiket_klopt'), allergenen: [], ingredienten: [] }
+      return { kleur: 'groen', sleutel: 'recept_etiket_klopt', allergenen: [], ingredienten: [] }
   }
 }
 

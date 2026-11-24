@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.53] — 2026-11-24
+
+### Geen etiketversie meer
+
+- **De etiketversie is weg.** Het etiket wordt per batch opnieuw gedrukt; of
+  het klopt, toetst CCP 3 aan wat erop staat (allergenen, alcohol, lotcode,
+  THT). Bij CCP 3 vul je geen "versie op de rol" meer in en blokkeert een
+  andere versie niets meer.
+- **Etiket bijwerken** zonder versieblok en zonder het vinkje "Ik heb het
+  gedrukte etiket voor me": je legt de allergenen en getallen vast en de app
+  onthoudt de datum. Een andere ABV of andere allergenen kunnen meteen.
+- Overal waar "Etiket v3" stond, staat nu "Etiket" of de datum waarop het
+  etiket is vastgelegd: etiketkaart, productkop, recept, *Wat brouw je?*,
+  HACCP-allergenenmatrix (kolom *Etiket vastgelegd*) en het batchdossier
+  (zonder kolom *Versie op de rol*).
+- Oude etiketversies blijven in de data staan, maar de app leest ze niet meer.
+
+---
+
 ## [1.13.52] — 2026-11-24
 
 ### Quarantaine, houdtest en etiketteren na de vrijgave

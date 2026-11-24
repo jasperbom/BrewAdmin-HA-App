@@ -286,8 +286,7 @@ const chipsVan = (lijst: Allergeen[], nadruk: Allergeen[], t: Vertaal): KaartChi
 
 const vergelekenMet = (pe: ProductEtiketWaarden | null, naam: string, t: Vertaal): string => {
   if (!pe) return ''
-  if (pe.etiketVersie && pe.bijgewerkt) return vul(t, 'etiket_kaart_vergeleken_versie', {versie: pe.etiketVersie, datum: datumKort(pe.bijgewerkt)})
-  if (pe.etiketVersie) return vul(t, 'etiket_kaart_vergeleken_versie_kort', {versie: pe.etiketVersie})
+  if (pe.bijgewerkt) return vul(t, 'etiket_kaart_vergeleken_datum', {datum: datumKort(pe.bijgewerkt)})
   return vul(t, 'etiket_kaart_vergeleken_product', {product: naam || t('lbl_naamloos')})
 }
 
@@ -507,7 +506,7 @@ const productBlok = (
     tegels,
     allergenen: {
       batch: allergenen.batch.chips || [],
-      etiketLabel: pe?.etiketVersie ? vul(t, 'etiket_tegel_etiket_versie', {versie: pe.etiketVersie}) : t('etiket_tegel_etiket_label'),
+      etiketLabel: t('etiket_tegel_etiket_label'),
       etiket: allergenen.etiket?.chips || [],
       etiketTekst: allergenen.etiket?.chips?.length ? '' : (allergenen.etiket?.waarde || allergenen.etiket?.bron || ''),
       oordeel: allergenen.oordeel,
