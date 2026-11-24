@@ -209,7 +209,7 @@ describe('voorraadPerProduct', () => {
     const fles = groep(basis(), 1, 1)
     expect(fles.lots).toEqual([{
       afvullingId: KB_FLES.id, lotcode: 'L2607-B1', tht: '2027-06-09', batchId: 2607, batchNummer: '2607',
-      perLocatie: { [WINKEL]: 46 }, vrij: 46, agp: 0, totaal: 46, geblokkeerd: false,
+      perLocatie: { [WINKEL]: 46 }, vrij: 46, agp: 0, totaal: 46, geblokkeerd: false, nietVrij: null,
     }])
     expect(fles.eersteTht).toBe('2027-06-09')
   })
@@ -231,6 +231,19 @@ describe('voorraadPerProduct', () => {
     expect(lot?.geblokkeerd).toBe(true)
     // De eerste THT komt van verkoopbare voorraad.
     expect(fles.eersteTht).toBe('2027-03-01')
+  })
+
+  it('quarantaine en een etiket dat nog volgt: apart geteld, niet te koop', () => {
+    const ctx = basis({ afvullingen: afvullingen.map(a => a.id === WH_GEBLOKKEERD.id
+      ? { ...a, geblokkeerd: false, in_quarantaine: true } : a) })
+    const fles = groep(ctx, 2, 1)
+    expect(fles.vrij + fles.agp).toBe(372)
+    expect(fles.quarantaine).toBe(50)
+    expect(fles.geblokkeerd).toBe(0)
+    expect(fles.lots.find(l => l.lotcode === 'L2605-B3')).toMatchObject({ geblokkeerd: true, nietVrij: 'quarantaine' })
+    const ctx2 = basis({ afvullingen: afvullingen.map(a => a.id === WH_GEBLOKKEERD.id
+      ? { ...a, geblokkeerd: false, etiket_volgt: true } : a) })
+    expect(groep(ctx2, 2, 1).etiketVolgt).toBe(50)
   })
 
   it('een open pick legt voorraad vast; een afgeronde order niet meer', () => {

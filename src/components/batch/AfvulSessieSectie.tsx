@@ -25,7 +25,12 @@ import {
   sluitcontroleHerinnering, allergenenUitBatch, allergenenVanProduct,
   vergelijkAllergenen, magEtiketterenDoorgaan, bouwAfwijking, capaUitAfwijking,
   ccp2Voor, sessieCcp2, beoordeelFlesinspectie, co2VanToepassing, beoordeelCo2, fmtCo2, fmtCo2Grens, tankSgMetingen,
+  sessieQuarantaine, sessieEtiketteren, houdtestFlessenNodig, sessieHoudtestDagen,
 } from '../../utils/haccp'
+import { houdtestVoorBatch, teEtiketteren, naEtiketControle } from '../../utils/houdtest'
+import { bouwKratkaart } from '../../utils/kratkaart'
+import { printKratkaart } from '../KratkaartExport'
+import HoudtestSectie from './HoudtestSectie'
 import {
   nieuweLotcode, thtKlasseVoorBatch, thtHandmatigBlokkade,
   berekenTht, openSessiesVoorBatch, actieveSessie, magSessieStarten,
@@ -38,7 +43,7 @@ import type { AfvulControle } from '../../utils/afvulControle'
 import { productVoorBatch } from '../../utils/productKeten'
 import { productenVoorBatchKeuze } from '../../utils/batchKeten'
 import { productSelOpties } from './ProductOpties'
-import type { AfvulSessie, SluitControle, EtiketControle, HaccpBijlage } from '../../types'
+import type { AfvulSessie, SluitControle, EtiketControle, HaccpBijlage, VerkoopVrijgave } from '../../types'
 
 // De afvulsessie is het anker voor CCP 2 en CCP 3: één afvulmoment met een
 // eigen lotcode (L2431-B1), zodat bij een sluitprobleem alleen die sessie
@@ -130,6 +135,9 @@ interface Props {
   /** De metingen: SG bij het afvullen en de tanktemperatuur als er geen
    *  sensor is. */
   gistMetingen?: any[]
+  /** Houdtest en vrijgave voor verkoop (`haccp_verkoopvrijgaven`). */
+  verkoopvrijgaven?: VerkoopVrijgave[]
+  setVerkoopvrijgaven?: (fn: any) => void
 }
 
 // Wat de afvuldag naast CCP 2 en 3 vastlegt (1.13.51): het koolzuur (CCP 1,
@@ -182,6 +190,7 @@ const leegNa = {
   flessen_bekeken: false,
   afgekeurd: '',
   etiket_foto: null as Bijlage | null,
+  houdtest_flessen: false,
   ...leegExtra,
 }
 
@@ -225,6 +234,12 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const openSessies = openSessiesVoorBatch(p.sessies || [], p.batch?.id)
   const sessie = actieveSessie(p.sessies || [], p.batch?.id, p.actieveSessieId)
   const eigenSessies = (p.sessies || []).filter(s => s.batch_id === p.batch?.id)
+  // Quarantaine en etiketteren: wat een nieuwe sessie bevriest, en of die nog
+  // houdtestflessen moet apart zetten (één sessie per batch is genoeg).
+  const quarantaine = sessieQuarantaine(inst)
+  const houdtestFlessenNieuw = (quarantaine.houdtest_dagen || 0) > 0
+    && !eigenSessies.some(s => s.status !== 'afgebroken' && s.houdtest_flessen === true)
+  const houdtest = houdtestVoorBatch(p.batch?.id, p.sessies, p.verkoopvrijgaven)
   // Startformulier voor een extra verpakking naast de lopende sessie(s).
   const [startOpen, setStartOpen] = React.useState(false)
   // Achteraf vastleggen is de normale gang van zaken — tijdens het afvullen
@@ -237,7 +252,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   const [na, setNa] = React.useState({...leegNa, datum: tod(), product_id: batchProduct ?? ''})
   const [nu, setNu] = React.useState(() => new Date())
   const [afwijking, setAfwijking] = React.useState<{blok: any; titel: string; bron: any;
-    actie?: 'achteraf' | 'start'} | null>(null)
+    actie?: 'achteraf' | 'start'; doel?: AfvulSessie | null} | null>(null)
   // Eén regel tegelijk open. Zonder eigen keuze staat de regel open die aan de
   // beurt is (zie `autoRegel` hieronder); '' betekent: alles dicht.
   const [openRegel, setOpenRegel] = React.useState<string | null>(null)
@@ -390,6 +405,17 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     </div>
   )
 
+  // Houdtestflessen: bij flessen twee warm en twee koel uit de afvuller; bij
+  // alleen fusten vier flessen uit dezelfde tank vullen.
+  const houdtestFlessenTekst = (fles: boolean) =>
+    t(fles ? 'haccp_houdtest_flessen_fles' : 'haccp_houdtest_flessen_fust')
+  const houdtestFlessenVeld = (aan: boolean, zet: (v: boolean) => void, fles: boolean) => (
+    <label className="flex items-start gap-2 text-sm text-gray-700">
+      <input type="checkbox" className="t-checkbox mt-0.5" checked={aan} onChange={e => zet(e.target.checked)} />
+      <span>{houdtestFlessenTekst(fles)}</span>
+    </label>
+  )
+
   // Etiketfoto (CCP 3): verkleind tot een archieffoto en geüpload.
   const [fotoBezig, setFotoBezig] = React.useState(false)
   const [fotoFout, setFotoFout] = React.useState('')
@@ -491,6 +517,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       ccp2: startExtra.ccp2 || undefined,
       ...sessieExtra(startExtra, false),
       co2_afwijking_id: co2AfwijkingId,
+      ...quarantaine,
     }
     p.setSessies((prev: AfvulSessie[]) => [...(prev || []), record])
     logAudit(p.auditLog, p.setAuditLog, {
@@ -620,7 +647,14 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   }
 
   // ── CCP 3 — etiketcontrole ───────────────────────────────────────────────
-  const eigenEtiket = (p.etiketcontroles || []).filter(e => e.sessie_id === sessie?.id)
+  // In de lopende sessie (etiket bij het afvullen), of na de vrijgave voor
+  // verkoop per lotcode die nog op zijn etiket wacht (`etiketDoel`).
+  const etiketVan = (doel: AfvulSessie | null | undefined) =>
+    (p.etiketcontroles || []).filter(e => e.sessie_id === doel?.id)
+  const eigenEtiket = etiketVan(sessie)
+  const teEtiket = teEtiketteren(p.batch?.id, p.sessies, p.av)
+  const [etiketSessieId, setEtiketSessieId] = React.useState<number | null>(null)
+  const etiketDoel = teEtiket.find(x => x.sessie.id === etiketSessieId)?.sessie || teEtiket[0]?.sessie || null
   const [ec, setEc] = React.useState({
     product_id: (batchProduct ?? '') as string | number,
     etiket_versie: '',
@@ -691,13 +725,13 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     </button>
   ) : null
 
-  const slaEtiketOp = (afwijkingId?: number) => {
-    if (!sessie || etiketOnvolledig) return
+  const slaEtiketOp = (doel: AfvulSessie | null, afwijkingId?: number) => {
+    if (!doel || etiketOnvolledig) return
     const paraaf = maakParaaf(p.whoami)
     const id = newId(p.etiketcontroles || [])
     const record: EtiketControle = {
       id,
-      sessie_id: sessie.id,
+      sessie_id: doel.id,
       batch_id: p.batch.id,
       product_id: Number(ec.product_id),
       etiket_artikel: gekozenProduct?.etiket_artikel,
@@ -719,9 +753,14 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       paraaf,
     }
     p.setEtiketcontroles((prev: EtiketControle[]) => [...(prev || []), record])
+    // Etiketteren na de vrijgave: het etiket zit erop, dus dit product van
+    // deze lotcode is (wat het etiket betreft) te koop.
+    if (sessieEtiketteren(doel) === 'na_vrijgave') {
+      p.setAv((prev: any[]) => naEtiketControle(prev || [], doel.id, Number(ec.product_id)))
+    }
     logAudit(p.auditLog, p.setAuditLog, {
       entiteit: 'EtiketControle', entiteit_id: id, actie: 'aangemaakt',
-      omschrijving: `${sessie.lotcode}: ${gekozenProduct?.naam || ''}`,
+      omschrijving: `${doel.lotcode}: ${gekozenProduct?.naam || ''}`,
     })
     setEc(e => ({...e, aanleiding: 'rolwissel', lotcode_ok: false, tht_ok: false,
                  alcohol_ok: false, opmerking: '', foto: null}))
@@ -742,13 +781,19 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     setKlap({open: false, vernietigd: '', gereinigd: false})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessie?.id])
+  // Een andere lotcode om te etiketteren: de controle begint opnieuw.
+  React.useEffect(() => {
+    if (!etiketDoel) return
+    setEc(e => ({...e, aanleiding: 'start', etiket_versie: '', lotcode_ok: false,
+                 tht_ok: false, alcohol_ok: false, opmerking: '', foto: null}))
+  }, [etiketDoel?.id])
 
   // ── Sessie afsluiten ─────────────────────────────────────────────────────
   // Met de afvullingen erbij: elk afgevuld product moet zijn eigen
   // etiketcontrole hebben — ook wat al vóór die eis geregistreerd was.
   const afsluitBlok = sessie
     ? magSessieAfsluiten(sessie, eigenControles, eigenEtiket, p.capa || [],
-        p.av || [], p.producten || [])
+        p.av || [], p.producten || [], p.sessies || [])
     : {toegestaan: false, redenen: []}
 
   const sluitSessie = () => {
@@ -778,7 +823,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     const paraaf = maakParaaf(p.whoami)
     const afwId = newId(p.afwijkingen || [])
     const rec = bouwAfwijking(afwId, afwijking.bron, afwijking.blok,
-      {batch_id: p.batch.id, sessie_id: sessie?.id},
+      {batch_id: p.batch.id, sessie_id: afwijking.doel?.id ?? sessie?.id},
       onderbouwing, blokkadeSamenvatting(afwijking.blok), paraaf)
     if (!rec) return
     const capaId = newId(p.capa || [])
@@ -788,7 +833,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     const bron = afwijking.bron
     const actie = afwijking.actie
     setAfwijking(null)
-    if (bron === 'ccp3_etiket') slaEtiketOp(afwId)
+    if (bron === 'ccp3_etiket') slaEtiketOp(afwijking.doel ?? sessie, afwId)
     // Te veel koolzuur en toch afgevuld: de sessie draagt de afwijking.
     if (actie === 'start') void startSessie(afwId)
     if (actie === 'achteraf') void legAchterafVast(true, afwId)
@@ -926,11 +971,15 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         // bij, en die lopen via de gewone sluitcontrole.
         && naBeoordeling.resultaat === 'goedgekeurd'
       : true
+  // Etiketteren na de vrijgave: het etiket zit er nu nog niet op, CCP 3 volgt
+  // per lotcode na de houdtest.
+  const naMetEtiket = quarantaine.etiketteren === 'afvullen'
   const naCompleet = !!na.product_id && Number(na.hoeveelheid) > 0
     && naCcp2Ok && naExtra.klapOk
-    && na.lotcode_ok && na.tht_ok && na.alcohol_ok
-    && (!naVerwachteVersie || !!na.etiket_versie.trim())
-  const naToegestaan = naBlok.toegestaan && naCompleet && naEtiketBlok.toegestaan
+    && (!houdtestFlessenNieuw || na.houdtest_flessen)
+    && (!naMetEtiket || (na.lotcode_ok && na.tht_ok && na.alcohol_ok
+      && (!naVerwachteVersie || !!na.etiket_versie.trim())))
+  const naToegestaan = naBlok.toegestaan && naCompleet && (!naMetEtiket || naEtiketBlok.toegestaan)
   // Het koolzuur apart: boven de grens kan het alleen met een afwijking.
   const naCo2Blok = {toegestaan: naExtra.co2Redenen.length === 0, redenen: naExtra.co2Redenen}
 
@@ -996,6 +1045,8 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       ccp2: naCcp2,
       ...sessieExtra(naExtra, true),
       co2_afwijking_id: co2AfwijkingId,
+      ...quarantaine,
+      ...(houdtestFlessenNieuw && na.houdtest_flessen ? {houdtest_flessen: true} : {}),
     }
     p.setSessies((prev: AfvulSessie[]) => [...(prev || []), sessieRec])
 
@@ -1034,8 +1085,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     }
 
     // CCP 3 — etiketcontrole met dezelfde allergenenvergelijking als live.
+    // Etiketteren na de vrijgave: die volgt later, per lotcode.
     const etiketId = newId(p.etiketcontroles || [])
-    p.setEtiketcontroles((prev: EtiketControle[]) => [...(prev || []), {
+    if (naMetEtiket) p.setEtiketcontroles((prev: EtiketControle[]) => [...(prev || []), {
       id: etiketId,
       sessie_id: sessieId,
       batch_id: p.batch.id,
@@ -1214,7 +1266,15 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
             {extraVelden(na, patch => setNa(n => ({...n, ...patch})), naExtra, true)}
           </div>
         )}
-        {([['lotcode_ok', 'haccp_ccp3_lotcode_ok'],
+        {naVp && houdtestFlessenNieuw && (
+          <div className="pt-2 border-t border-gray-200">
+            {houdtestFlessenVeld(na.houdtest_flessen, v => setNa(n => ({...n, houdtest_flessen: v})), naExtra.fles)}
+          </div>
+        )}
+        {!naMetEtiket && (
+          <div className="pt-2 border-t border-gray-200 text-xs text-gray-500">{t('haccp_etiket_na_vrijgave_kort')}</div>
+        )}
+        {naMetEtiket && ([['lotcode_ok', 'haccp_ccp3_lotcode_ok'],
            ['tht_ok', 'haccp_ccp3_tht_ok'],
            ['alcohol_ok', 'haccp_ccp3_alcohol_ok']] as const).map(([veld, key]) => (
           <label key={veld} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-gray-700">
@@ -1227,22 +1287,22 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           </label>
         ))}
         <div className="grid sm:grid-cols-2 gap-2 pt-1">
-          <div>
+          {naMetEtiket && <div>
             <Inp label={t('haccp_ccp3_versie_rol')} value={na.etiket_versie}
               placeholder={t('haccp_ccp3_versie_rol_ph')}
               onChange={v => setNa({...na, etiket_versie: v})} />
             {naVerwachteVersie && (
               <div className="text-xs text-gray-500 mt-0.5">{t('haccp_ccp3_versie_verwacht').replace('{versie}', naVerwachteVersie)}</div>
             )}
-          </div>
+          </div>}
           <Inp label={t('lbl_opmerking')} value={na.opmerking}
             onChange={v => setNa({...na, opmerking: v})} />
         </div>
-        {fotoVeld(na.etiket_foto, b => setNa(n => ({...n, etiket_foto: b})))}
+        {naMetEtiket && fotoVeld(na.etiket_foto, b => setNa(n => ({...n, etiket_foto: b})))}
       </div>
 
       {/* Allergenen blijven blokkeren: dat is de reden dat CCP 3 bestaat. */}
-      {na.product_id && !naEtiketBlok.toegestaan && (
+      {naMetEtiket && na.product_id && !naEtiketBlok.toegestaan && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs space-y-1">
           <div>
             <span className="text-gray-500">{t('haccp_ccp3_volgens_recept')}: </span>
@@ -1304,6 +1364,31 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     </div>
   )
 
+  // ── Houdtestflessen en kratkaart ─────────────────────────────────────────
+  const zetHoudtestFlessen = (s: AfvulSessie) => {
+    p.setSessies((prev: AfvulSessie[]) => (prev || []).map(x => x.id === s.id ? {...x, houdtest_flessen: true} : x))
+    logAudit(p.auditLog, p.setAuditLog, {
+      entiteit: 'AfvulSessie', entiteit_id: s.id, actie: 'gewijzigd',
+      omschrijving: `${s.lotcode}: ${houdtestFlessenTekst(kroonkurkVerplicht(s.verpakking_type, inst))}`,
+    })
+  }
+  // De kratkaart: zolang het bier in quarantaine staat of het etiket nog
+  // volgt, herkenbaar op het krat (lotcode, bier, THT, niet verkopen vóór …).
+  const bierVoorSessie = (s: AfvulSessie): string => {
+    const a = (p.av || []).find((x: any) => x.sessie_id === s.id && x.product_id)
+    const id = a?.product_id ?? batchProduct
+    return (p.producten || []).find((x: any) => x.id === Number(id))?.naam || p.batch?.naam || ''
+  }
+  const kratknop = (s: AfvulSessie) =>
+    sessieHoudtestDagen(s) > 0 || sessieEtiketteren(s) === 'na_vrijgave' ? (
+      <button type="button"
+        onClick={() => printKratkaart(bouwKratkaart(s, {bier: bierVoorSessie(s),
+          batchNummer: p.batch?.batch_nummer ?? p.batch?.id, afvullingen: p.av, stand: houdtest}))}
+        className="min-h-tap sm:min-h-0 text-xs font-medium underline underline-offset-2 text-gray-600 hover:text-gray-800">
+        {t('krat_printen')}
+      </button>
+    ) : null
+
   // ── Sessiekiezer ─────────────────────────────────────────────────────────
   // Loopt er meer dan één sessie (fust én fles), dan bepaalt deze rij in welke
   // sessie het afvulformulier en de CCP-panelen hieronder werken.
@@ -1355,6 +1440,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
               {sessie.tht_reden && <span className="text-orange-600">· {sessie.tht_reden}</span>}
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
+              {kratknop(sessie)}
               <BevestigKnop s="sm" v="ghost" vraag={t('haccp_sessie_afbreken_vraag')} onBevestig={breekAf}>
                 {t('haccp_sessie_afbreken')}
               </BevestigKnop>
@@ -1398,6 +1484,11 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
                   )}
                 </div>
               )}
+            </div>
+          )}
+          {houdtestFlessenNodig(sessie, p.sessies) && (
+            <div className="pt-1">
+              {houdtestFlessenVeld(false, v => { if (v) zetHoudtestFlessen(sessie) }, sessieIsFles)}
             </div>
           )}
           {/* Wat het afsluiten tegenhoudt is pas nieuws als er iets in de sessie
@@ -1445,6 +1536,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
               {s.verpakking_naam && <span>· {s.verpakking_naam}</span>}
               {s.tht && <span>· {t('haccp_sessie_tht')} {fmtD(s.tht)}</span>}
               <span>· {(p.av || []).filter((a: any) => a.sessie_id === s.id).length} {t('haccp_sessie_verpakkingen')}</span>
+              {kratknop(s)}
             </div>
           ))}
         </div>
@@ -1562,7 +1654,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   )
 
   // ── CCP 3 — etiketcontrole ───────────────────────────────────────────────
-  const ccp3Inhoud = (
+  const ccp3Inhoud = (doel: AfvulSessie | null) => (
     <>
         <div className="grid sm:grid-cols-2 gap-2">
           {/* Sel zet zelf al een lege keuze bovenaan — geen tweede '—' erbij.
@@ -1656,20 +1748,20 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         <div className="flex items-center justify-end gap-2">
           {ec.product_id && !etiketBlok.toegestaan && !etiketOnvolledig && (
             <button
-              onClick={() => setAfwijking({blok: etiketBlok, titel: t('haccp_ccp3_titel'), bron: 'ccp3_etiket'})}
+              onClick={() => setAfwijking({blok: etiketBlok, titel: t('haccp_ccp3_titel'), bron: 'ccp3_etiket', doel})}
               className="text-xs font-medium text-red-700 underline underline-offset-2 hover:text-red-900">
               {t('haccp_afw_titel')}
             </button>
           )}
           <Btn s="sm" disabled={etiketOnvolledig || !etiketBlok.toegestaan}
-            onClick={() => slaEtiketOp()}>
+            onClick={() => slaEtiketOp(doel)}>
             {t('haccp_ccp3_vastleggen')}
           </Btn>
         </div>
 
-        {eigenEtiket.length > 0 ? (
+        {etiketVan(doel).length > 0 ? (
           <div className="space-y-0.5 pt-1 border-t border-gray-100">
-            {eigenEtiket.slice().reverse().map(e => (
+            {etiketVan(doel).slice().reverse().map(e => (
               <div key={e.id} className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
                 <span>{new Date(e.paraaf.tijdstip).toLocaleTimeString()}</span>
                 <span>{(p.producten || []).find((x: any) => x.id === e.product_id)?.naam || ''}</span>
@@ -1686,6 +1778,46 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           <div className="text-xs text-gray-400 italic">{t('haccp_ccp3_geen')}</div>
         )}
     </>
+  )
+
+  // ── Etiketteren na de vrijgave ───────────────────────────────────────────
+  // CCP 3 per lotcode die nog op zijn etiket wacht — pas na de houdtest.
+  const naVrijgaveSessies = eigenSessies.filter(s =>
+    sessieEtiketteren(s) === 'na_vrijgave' && s.status !== 'afgebroken')
+  const etiketterenInhoud = houdtest?.stand === 'quarantaine' ? (
+    <div className="text-sm text-gray-600">
+      {t('haccp_etiketteren_wacht').replace('{datum}', fmtD(houdtest.klaar_op))}
+    </div>
+  ) : houdtest?.stand === 'afgekeurd' ? (
+    <div className="text-sm text-red-700">{t('haccp_etiketteren_afgekeurd')}</div>
+  ) : !teEtiket.length || !etiketDoel ? (
+    <div className="text-sm text-gray-700">✓ {t('haccp_etiketteren_klaar')}</div>
+  ) : (
+    <div className="space-y-3">
+      {teEtiket.length > 1 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {teEtiket.map(x => {
+            const actief = x.sessie.id === etiketDoel.id
+            return (
+              <button key={x.sessie.id} type="button" onClick={() => setEtiketSessieId(x.sessie.id)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  actief ? 't-btn-text border-transparent' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+                style={actief ? {background: 'var(--t-accent)'} : undefined}>
+                <span className="font-mono">{x.sessie.lotcode}</span>
+                <span className="ml-1 opacity-80">{x.sessie.verpakking_naam || x.sessie.verpakking_type || ''}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      <div className="text-sm text-gray-700">
+        {t('haccp_etiketteren_uitleg')
+          .replace('{lotcode}', etiketDoel.lotcode)
+          .replace('{n}', String(teEtiket.find(x => x.sessie.id === etiketDoel.id)?.aantal ?? 0))
+          .replace('{verpakking}', etiketDoel.verpakking_naam || etiketDoel.verpakking_type || '')}
+      </div>
+      {ccp3Inhoud(etiketDoel)}
+    </div>
   )
 
   // ── De checklist ─────────────────────────────────────────────────────────
@@ -1735,11 +1867,11 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           : undefined,
       inhoud: ccp2Inhoud,
     } : null,
-    sessie ? {
+    sessie && sessieEtiketteren(sessie) === 'afvullen' ? {
       key: 'ccp3', titel: t('haccp_ccp3_titel'),
       status: eigenEtiket.length ? 'done' : 'open',
       detail: eigenEtiket.length ? `${eigenEtiket.length}×` : undefined,
-      inhoud: ccp3Inhoud,
+      inhoud: ccp3Inhoud(sessie),
     } : null,
     {
       key: 'afvullen', titel: t('flow_chk_afvulling'),
@@ -1756,6 +1888,30 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       key: 'verlies', titel: t('flow_chk_restvolume'),
       status: p.verliesDone ? 'done' : 'optioneel', detail: p.verliesDetail, inhoud: p.verlies,
     } : null,
+    // Na het afvullen: de houdtest en de vrijgave voor verkoop…
+    houdtest && p.setVerkoopvrijgaven ? {
+      key: 'houdtest', titel: t('haccp_houdtest_titel'),
+      status: houdtest.stand === 'quarantaine' ? 'open' : 'done',
+      detail: houdtest.stand === 'vrijgegeven' ? t('haccp_houdtest_vrijgegeven')
+        : houdtest.stand === 'afgekeurd' ? t('haccp_houdtest_afgekeurd')
+        : t('haccp_houdtest_vanaf').replace('{datum}', fmtD(houdtest.klaar_op)),
+      inhoud: (
+        <HoudtestSectie batch={p.batch} stand={houdtest}
+          bronLotcode={eigenSessies.find(s => s.houdtest_flessen)?.lotcode}
+          verkoopvrijgaven={p.verkoopvrijgaven || []} setVerkoopvrijgaven={p.setVerkoopvrijgaven}
+          setAv={p.setAv} capa={p.capa} setCapa={p.setCapa}
+          afwijkingen={p.afwijkingen} setAfwijkingen={p.setAfwijkingen}
+          haccpInstellingen={p.haccpInstellingen} whoami={p.whoami}
+          auditLog={p.auditLog} setAuditLog={p.setAuditLog} />
+      ),
+    } : null,
+    // …en daarna het etiket (etiketteren na de vrijgave).
+    naVrijgaveSessies.length ? {
+      key: 'etiketteren', titel: t('haccp_etiketteren_titel'),
+      status: teEtiket.length || houdtest?.stand === 'quarantaine' ? 'open' : 'done',
+      detail: teEtiket.length ? teEtiket.map(x => x.sessie.lotcode).join(', ') : undefined,
+      inhoud: etiketterenInhoud,
+    } : null,
   ]
   const zichtbaar = regels.filter(Boolean) as Exclude<(typeof regels)[number], null>[]
 
@@ -1764,7 +1920,8 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   // eerste regel die nog niet af is.
   // De lege flessen bekijk je tijdens het vullen; die registratie hoort bij
   // het afsluiten, dus hij houdt het afvullen niet tegen.
-  const autoRegel = sessie && (ccp2Ok || sessieSoort === 'lege_flessen') && eigenEtiket.length
+  const autoRegel = sessie && (ccp2Ok || sessieSoort === 'lege_flessen')
+    && (eigenEtiket.length || sessieEtiketteren(sessie) === 'na_vrijgave')
     ? 'afvullen'
     : zichtbaar.find(r => r.status === 'open')?.key || ''
 

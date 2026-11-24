@@ -1635,6 +1635,8 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             ['stabiel_tolerantie_sg', 'haccp_inst_tolerantie', 0.001, DEFAULT_HACCP_INST.stabiel_tolerantie_sg],
             ['ff_marge_sg', 'haccp_inst_ff_marge', 0.001, DEFAULT_HACCP_INST.ff_marge_sg],
             ['co2_max_volumes', 'haccp_inst_co2_max', 0.1, DEFAULT_HACCP_INST.co2_max_volumes],
+            ['houdtest_dagen', 'haccp_inst_houdtest_dagen', 1, DEFAULT_HACCP_INST.houdtest_dagen],
+            ['houdtest_sg_marge', 'haccp_inst_houdtest_marge', 0.001, DEFAULT_HACCP_INST.houdtest_sg_marge],
             ['tht_maanden_standaard', 'haccp_inst_tht_standaard', 1, DEFAULT_HACCP_INST.tht_maanden_standaard],
             ['tht_maanden_gepasteuriseerd', 'haccp_inst_tht_gepast', 1, DEFAULT_HACCP_INST.tht_maanden_gepasteuriseerd],
             ['tht_maanden_ongekookt', 'haccp_inst_tht_ongekookt', 1, DEFAULT_HACCP_INST.tht_maanden_ongekookt],
@@ -1671,6 +1673,23 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <option value="sluitcontrole">{t('haccp_inst_ccp2_sluitcontrole')}</option>
             </select>
             <p className="mt-1 text-xs text-gray-400">{t('haccp_inst_co2_uitleg')}</p>
+          </div>
+          {/* Wanneer het etiket erop gaat: bij het afvullen (CCP 3 in de sessie)
+              of pas na de vrijgave voor verkoop — dan gooi je bij een
+              afgekeurde houdtest geen etiketten weg. */}
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('haccp_inst_etiketteren')}</label>
+            <select value={haccpInst?.etiketteren === 'na_vrijgave' ? 'na_vrijgave' : 'afvullen'}
+              onChange={(e: any) => {
+                const v = e.target.value
+                setHaccpInst((prev: any) => ({...DEFAULT_HACCP_INST, ...(prev || {}), etiketteren: v}))
+                logAudit(auditLog, setAuditLog, {entiteit: 'Instelling', entiteit_id: 0, actie: 'gewijzigd', omschrijving: `HACCP etiketteren → ${v}`})
+              }}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input bg-white">
+              <option value="afvullen">{t('haccp_inst_etiketteren_afvullen')}</option>
+              <option value="na_vrijgave">{t('haccp_inst_etiketteren_na_vrijgave')}</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-400">{t('haccp_inst_houdtest_uitleg')}</p>
           </div>
         </div>
         {/* Per ingrediënttype een default; per ingrediënt kan het overschreven

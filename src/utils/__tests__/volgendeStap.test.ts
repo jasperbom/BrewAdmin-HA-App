@@ -277,6 +277,25 @@ describe('Afgevuld', () => {
     expect(volgendeStap(sluiswit, basis({ afvulSessies: [], afvullingen: [], etiketKleur: 'rood' }))).toMatchObject({ soort: 'etiket_bijwerken', urgent: true })
   })
 
+  it('in quarantaine: "Houdtest 30-9 ›", urgent vanaf die dag', () => {
+    const q = (extra: any = {}) => ({ ...sessie(1, 'afgesloten', 'L2608'), start: '2026-09-16T09:00:00',
+      houdtest_dagen: 14, houdtest_flessen: true, ...extra }) as unknown as AfvulSessie
+    const vroeg = volgendeStap(sluiswit, basis({ afvulSessies: [q()], afvullingen, vandaag: '2026-09-20' }))
+    expect(vroeg).toMatchObject({ soort: 'houdtest', labelParams: { datum: '30-9' }, detailParams: { n: 10 },
+      doel: { fase: 'Afgevuld', sectie: 'houdtest' }, urgent: false })
+    expect(volgendeStap(sluiswit, basis({ afvulSessies: [q()], afvullingen, vandaag: '2026-09-30' })))
+      .toMatchObject({ soort: 'houdtest', urgent: true })
+    // Vrijgegeven en het etiket volgt nog: "Etiketteren L2608 ›".
+    const vrij = [{ id: 1, batch_id: 2608, oordeel: 'vrijgegeven', paraaf: { tijdstip: '2026-09-30T10:00:00Z' } }] as any
+    const nog = [{ batch_id: 2608, sessie_id: 1, hoeveelheid: 400, etiket_volgt: true }]
+    expect(volgendeStap(sluiswit, basis({ afvulSessies: [q({ etiketteren: 'na_vrijgave' })], afvullingen: nog,
+      verkoopVrijgaven: vrij, vandaag: '2026-10-01' })))
+      .toMatchObject({ soort: 'etiketteren', labelParams: { lotcode: 'L2608', n: 1 }, doel: { fase: 'Afgevuld', sectie: 'etiketteren' } })
+    // Etiket erop: afronden.
+    expect(volgendeStap(sluiswit, basis({ afvulSessies: [q({ etiketteren: 'na_vrijgave' })], afvullingen,
+      verkoopVrijgaven: vrij, vandaag: '2026-10-01' })).soort).toBe('afronden')
+  })
+
   it('de oude status Verpakt telt als Afgevuld', () => {
     expect(normaliseerStatus('Verpakt')).toBe('Afgevuld')
     expect(volgendeStap({ ...sluiswit, status: 'Verpakt' }, basis()).soort).toBe('afronden')

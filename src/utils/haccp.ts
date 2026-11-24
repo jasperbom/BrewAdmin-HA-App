@@ -19,7 +19,7 @@ import type {
   Allergeen, Batch, BatchIngredient, Ingredient, Product,
   HaccpVrijgave, HaccpInst, HaccpAfwijking, AfwijkingBron, Paraaf,
   RisicoKlasse, ToevoegingSoort, VrijgaveOordeel,
-  AfvulSessie, SluitControle, ControleResultaat, CorrigierendeActie, Ccp2Soort,
+  AfvulSessie, SluitControle, ControleResultaat, CorrigierendeActie, Ccp2Soort, Etiketteren,
 } from '../types'
 import { DEFAULT_HACCP_INST } from './constants'
 import { fmtDagMaand } from './format'
@@ -452,6 +452,39 @@ export const ccp2Voor = (
 export const sessieCcp2 = (sessie: Pick<AfvulSessie, 'ccp2'> | null | undefined): Ccp2Soort =>
   sessie?.ccp2 === 'lege_flessen' || sessie?.ccp2 === 'geen' ? sessie.ccp2 : 'sluitcontrole'
 
+/** De houdtest van een sessie in dagen, bevroren bij het aanmaken (0 = geen
+ *  quarantaine; een sessie van vóór 1.13.52 kende er geen). */
+export const sessieHoudtestDagen = (sessie: Pick<AfvulSessie, 'houdtest_dagen'> | null | undefined): number => {
+  const n = Number(sessie?.houdtest_dagen)
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0
+}
+
+/** Wanneer het etiket op deze sessie gaat: bij het afvullen (ook alle oude
+ *  sessies) of na de vrijgave voor verkoop. */
+export const sessieEtiketteren = (sessie: Pick<AfvulSessie, 'etiketteren'> | null | undefined): Etiketteren =>
+  sessie?.etiketteren === 'na_vrijgave' ? 'na_vrijgave' : 'afvullen'
+
+/** Wat een nieuwe sessie bevriest van de quarantaine-instellingen. */
+export const sessieQuarantaine = (
+  instRaw?: Partial<HaccpInst> | null
+): Pick<AfvulSessie, 'houdtest_dagen' | 'etiketteren'> => {
+  const inst = haccpInst(instRaw)
+  return {
+    houdtest_dagen: sessieHoudtestDagen({houdtest_dagen: inst.houdtest_dagen}),
+    etiketteren: sessieEtiketteren({etiketteren: inst.etiketteren}),
+  }
+}
+
+/** Moet deze sessie nog houdtestflessen apart zetten? Eén sessie per batch is
+ *  genoeg: de warme flessen gelden ook voor de fusten van dezelfde tank. */
+export const houdtestFlessenNodig = (
+  sessie: Pick<AfvulSessie, 'id' | 'batch_id' | 'houdtest_dagen' | 'houdtest_flessen'>,
+  sessies?: Array<Pick<AfvulSessie, 'id' | 'batch_id' | 'status' | 'houdtest_flessen'>> | null
+): boolean =>
+  sessieHoudtestDagen(sessie) > 0 && !sessie.houdtest_flessen
+  && !(sessies || []).some(s => s && s.id !== sessie.id && s.batch_id === sessie.batch_id
+    && s.status !== 'afgebroken' && s.houdtest_flessen === true)
+
 /** Inspectie van de lege flessen (CCP 2): elke fles tegen het licht, wat
  *  afwijkt eruit. Eén registratie per sessie. */
 export const beoordeelFlesinspectie = (inv: {
@@ -588,12 +621,31 @@ export const afvullingenSindsLaatsteGoedkeuring = (
  *  bestellingen, verzamelpicklijst, webshopvoorraad en uitslag. Die filterden
  *  eerst elk zelf, en de kassa en de uitslag vergaten het: daar kon FEFO juist
  *  de geblokkeerde blikken kiezen. */
-export const afvullingVerkoopbaar = (a: {geblokkeerd?: boolean} | null | undefined): boolean =>
-  !!a && !a.geblokkeerd
+export const afvullingVerkoopbaar = (a: AfvullingVrij | null | undefined): boolean =>
+  afvullingNietVrij(a) === null
 
-export const verkoopbareAfvullingen = <T extends {geblokkeerd?: boolean}>(
+export const verkoopbareAfvullingen = <T extends AfvullingVrij>(
   afvullingen: T[] | null | undefined
 ): T[] => (afvullingen || []).filter(afvullingVerkoopbaar)
+
+/** De vlaggen die verkopen tegenhouden. Naast de afgekeurde sluitcontrole
+ *  (`geblokkeerd`) de quarantaine tot de houdtest (`in_quarantaine`) en een
+ *  etiket dat er na de vrijgave nog op moet (`etiket_volgt`, utils/houdtest.ts). */
+export interface AfvullingVrij {
+  geblokkeerd?: boolean
+  in_quarantaine?: boolean
+  etiket_volgt?: boolean
+}
+
+/** Waarom een afvulling (nog) niet te koop is, of null. Geblokkeerd gaat voor:
+ *  dat bier komt ook na de houdtest niet vrij. */
+export const afvullingNietVrij = (
+  a: AfvullingVrij | null | undefined
+): 'geblokkeerd' | 'quarantaine' | 'etiket' | null =>
+  !a || a.geblokkeerd ? 'geblokkeerd'
+    : a.in_quarantaine ? 'quarantaine'
+    : a.etiket_volgt ? 'etiket'
+    : null
 
 /** Minimale vorm van een etiketcontrole (CCP 3) voor de blokkades hieronder. */
 export interface EtiketDekking {
@@ -651,10 +703,14 @@ export const magSessieAfsluiten = (
   afvullingen?: Array<{sessie_id?: number | null; product_id?: number | string | null;
     rebrand_van_product_id?: number | null}> | null,
   producten?: Array<{id: number; naam?: string}> | null,
+  sessies?: AfvulSessie[] | null,
 ): BlokkadeResultaat => {
   const eigen = (controles || []).filter(c => c.sessie_id === sessie.id)
   const redenen: BlokkadeReden[] = []
   const soort = sessieCcp2(sessie)
+  if (houdtestFlessenNodig(sessie, sessies)) {
+    redenen.push({code: 'geen_houdtestflessen', i18nKey: 'haccp_blok_geen_houdtestflessen'})
+  }
   if (soort === 'lege_flessen') {
     if (!eigen.some(c => c.methode === 'lege_flessen')) {
       redenen.push({code: 'geen_flesinspectie', i18nKey: 'haccp_blok_geen_flesinspectie'})
@@ -678,7 +734,11 @@ export const magSessieAfsluiten = (
       })
     }
   }
-  if (!(etiketcontroles || []).some(e => e.sessie_id === sessie.id)) {
+  // Etiketteren na de vrijgave voor verkoop: het etiket zit er bij het
+  // afsluiten nog niet op, CCP 3 volgt per lotcode na de houdtest.
+  if (sessieEtiketteren(sessie) === 'na_vrijgave') {
+    // niets
+  } else if (!(etiketcontroles || []).some(e => e.sessie_id === sessie.id)) {
     redenen.push({code: 'geen_etiketcontrole', i18nKey: 'haccp_blok_geen_etiketcontrole'})
   } else if (afvullingen) {
     const missend = ongecontroleerdeProducten(sessie.id, afvullingen, etiketcontroles)

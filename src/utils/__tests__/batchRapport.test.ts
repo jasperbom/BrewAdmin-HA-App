@@ -303,6 +303,23 @@ describe('bouwBatchRapport — CCP-registraties', () => {
     expect(s.flessenlot).toBe('')
   })
 
+  it('neemt de houdtest en de vrijgave voor verkoop mee', () => {
+    const r = bouwBatchRapport(invoer({
+      verkoopvrijgaven: [
+        {id: 1, batch_id: 7, datum: '2026-07-04', afgevuld_op: '2026-06-20', houdtest_dagen: 14,
+          sg_afvullen: 1.011, sg_warm: 1.010, sg_verschil: 0.001, sg_marge: 0.002, druk_ok: true, smaak_ok: true,
+          oordeel: 'vrijgegeven', oordeel_voorgesteld: 'groen', paraaf: {gebruiker: 'jasper', tijdstip: '2026-07-04T10:00:00Z', bron: 'whoami'}},
+        {id: 2, batch_id: 8, datum: '2026-07-04', afgevuld_op: '2026-06-20', houdtest_dagen: 14, sg_marge: 0.002,
+          druk_ok: true, smaak_ok: true, oordeel: 'afgekeurd', oordeel_voorgesteld: 'onvolledig',
+          paraaf: {gebruiker: 'jasper', tijdstip: '2026-07-04T10:00:00Z', bron: 'whoami'}},
+      ] as any,
+    }))
+    expect(r.verkoopvrijgaven).toHaveLength(1)
+    expect(r.verkoopvrijgaven[0]).toMatchObject({oordeelKey: 'haccp_houdtest_vrijgegeven', vrijgegeven: true,
+      afgevuldOp: '2026-06-20', dagen: 14, sgAfvullen: 1.011, sgWarm: 1.01, sgVerschil: 0.001, afwijking: false})
+    expect(bouwBatchRapport(invoer()).verkoopvrijgaven).toEqual([])
+  })
+
   it('zet de afwijkingen erbij — een dossier dat die weglaat is een folder', () => {
     const a = bouwBatchRapport(invoer()).afwijkingen[0]
     expect(a.bronKey).toBe('haccp_bron_ccp2_sluitcontrole')

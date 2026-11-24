@@ -21,7 +21,7 @@
 import type {
   Afvulling, AfvulSessie, Allergeen, Batch, BatchIngredient, BatchNotitie, EtiketControle,
   GistMeting, HaccpAfwijking, HaccpInst, HaccpVrijgave, Ingredient, Lot, Paraaf, Product,
-  SluitControle, VerliesRegistratie, Verpakking, Ccp2Soort,
+  SluitControle, VerliesRegistratie, Verpakking, Ccp2Soort, VerkoopVrijgave,
 } from '../types'
 import { sessieCcp2 } from './haccp'
 import { BUILTIN_ING_TYPES, FASE_LABEL_KEYS } from './constants'
@@ -213,6 +213,25 @@ export interface RapportVrijgave {
   paraaf: RapportParaaf
 }
 
+/** De houdtest en de vrijgave voor verkoop (utils/houdtest.ts). */
+export interface RapportVerkoopVrijgave {
+  datum: string
+  /** i18n-sleutel: `haccp_houdtest_vrijgegeven` of `haccp_houdtest_afgekeurd`. */
+  oordeelKey: string
+  vrijgegeven: boolean
+  afgevuldOp: string
+  dagen: number
+  sgAfvullen: number | null
+  sgWarm: number | null
+  sgVerschil: number | null
+  sgMarge: number
+  drukOk: boolean
+  smaakOk: boolean
+  afwijking: boolean
+  opmerking: string
+  paraaf: RapportParaaf
+}
+
 /** Elke keer dat er langs een harde blokkade is gewerkt. Een dossier dat dit
  *  weglaat is geen dossier maar een reclamefolder. */
 export interface RapportAfwijking {
@@ -305,6 +324,8 @@ export interface BatchRapport {
   verliezen: RapportVerlies[]
   sessies: RapportSessie[]
   vrijgaven: RapportVrijgave[]
+  /** Houdtest en vrijgave voor verkoop, op tijdsvolgorde. */
+  verkoopvrijgaven: RapportVerkoopVrijgave[]
   afwijkingen: RapportAfwijking[]
   notities: RapportNotitie[]
   financieel: RapportFinancieel
@@ -331,6 +352,7 @@ export interface BatchRapportInvoer {
   sluitcontroles?: SluitControle[] | null
   etiketcontroles?: EtiketControle[] | null
   vrijgaven?: HaccpVrijgave[] | null
+  verkoopvrijgaven?: VerkoopVrijgave[] | null
   afwijkingen?: HaccpAfwijking[] | null
   notities?: BatchNotitie[] | null
   verpakkingen?: Verpakking[] | null
@@ -488,6 +510,24 @@ const sessieRegels = (
   })
 
 const getalOfNull = (v: unknown): number | null => (v == null || v === '' ? null : getal(v))
+
+const verkoopVrijgaveRegels = (lijst: VerkoopVrijgave[]): RapportVerkoopVrijgave[] =>
+  lijst.map(v => ({
+    datum: tekst(v.datum),
+    oordeelKey: v.oordeel === 'vrijgegeven' ? 'haccp_houdtest_vrijgegeven' : 'haccp_houdtest_afgekeurd',
+    vrijgegeven: v.oordeel === 'vrijgegeven',
+    afgevuldOp: tekst(v.afgevuld_op),
+    dagen: getal(v.houdtest_dagen),
+    sgAfvullen: getalOfNull(v.sg_afvullen),
+    sgWarm: getalOfNull(v.sg_warm),
+    sgVerschil: getalOfNull(v.sg_verschil),
+    sgMarge: getal(v.sg_marge),
+    drukOk: v.druk_ok === true,
+    smaakOk: v.smaak_ok === true,
+    afwijking: v.afwijking_id != null,
+    opmerking: tekst(v.opmerking),
+    paraaf: paraafVan(v.paraaf),
+  }))
 
 const vrijgaveRegels = (vrijgaven: HaccpVrijgave[]): RapportVrijgave[] =>
   vrijgaven.map(v => {
@@ -704,6 +744,7 @@ export function bouwBatchRapport(inv: BatchRapportInvoer): BatchRapport {
     verliezen: verliesRegels(verliezen),
     sessies: sessieRegels(sessies, vanBatch(inv.sluitcontroles), vanBatch(inv.etiketcontroles)),
     vrijgaven: vrijgaveRegels(vrijgaven),
+    verkoopvrijgaven: verkoopVrijgaveRegels(opDatum(vanBatch(inv.verkoopvrijgaven))),
     afwijkingen: afwijkingRegels(afwijkingen),
     notities: notities.map(n => ({ts: tekst(n.ts), tekst: tekst(n.tekst)})),
     financieel: financieel(batch, regels, afvullingen, inv, kern),

@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.52] — 2026-11-24
+
+### Quarantaine, houdtest en etiketteren na de vrijgave
+
+- **Quarantaine na het afvullen.** Een nieuwe afvulsessie onthoudt de
+  houdtest (Instellingen → Brouwerij → Kritische grenzen, *Houdtest na*,
+  standaard 14 dagen, 0 = geen quarantaine). Tot de vrijgave voor verkoop is
+  het bier niet te koop, niet te picken en niet uit te slaan; de voorraad
+  toont "in quarantaine". Fles en fust samen hebben genoeg aan de twee warme
+  flessen; alleen fust = vier flessen uit dezelfde tank (vinkje bij het
+  afvullen, één sessie per batch).
+- **Houdtest en vrijgave voor verkoop** als regel in de fase Afvullen: op de
+  dag zelf de SG van een warme fles (hooguit 0,002 gezakt t.o.v. de SG bij
+  afvullen, instelbaar), geen overdruk of gushing, geur en smaak. Vrijgeven,
+  afkeuren (het bier blijft geblokkeerd tot het vernietigd is), of bij
+  nagisting alleen met een afwijking. Nieuwe key `haccp_verkoopvrijgaven`
+  (append-only, in de backup), in het batchdossier en het HACCP-overzicht.
+- **Etiketteren na de vrijgave** (instelling *Etiketteren*): de sessie sluit
+  zonder CCP 3, en na de houdtest staat *Etiketteren (CCP 3)* per lotcode
+  klaar. Pas met het etiket erop is het bier te koop ("wacht op etiket").
+  Bij een afgekeurde houdtest gooi je geen etiketten weg.
+- **Kratkaart**: vier kaarten op een A4 met lotcode, bier, verpakking,
+  afvuldag, THT en zolang het zo is "Quarantaine — niet verkopen vóór …" en
+  "Etiket volgt".
+- De volgende stap zegt *Houdtest 8-12* (urgent op de dag zelf) en daarna
+  *Etiketteren L2611*; Productie meldt een houdtest die aan de beurt is.
+  Naar Gereed kan pas als de houdtest beoordeeld en alles geëtiketteerd is.
+
 ## [1.13.51] — 2026-11-24
 
 ### De afvuldag als één checklist

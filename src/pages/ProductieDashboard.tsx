@@ -65,6 +65,8 @@ interface ProductieDashboardProps {
   bi?: any[]
   dryHops?: any[]
   haccpVrijgaven?: any[]
+  /** Houdtest en vrijgave voor verkoop: de volgende stap van een afgevulde batch. */
+  verkoopVrijgaven?: any[]
   afvulSessies?: any[]
   /** `conditioneren_dagen`: de verwachte afvuldag. */
   planningInst?: any
@@ -103,7 +105,7 @@ function ProductieDashboard({
   tankStatussen = {}, setTankStatussen = () => {}, tankLog = [], setTankLog = () => {},
   batchTakenItems = [], batchTakenGroepen = [],
   lots = [], ing = [], gistMetingen = [], setGistMetingen = () => {}, auditLog = [], setAuditLog = () => {},
-  producten = [], recepten = [], bi = [], dryHops = [], haccpVrijgaven = [], afvulSessies = [],
+  producten = [], recepten = [], bi = [], dryHops = [], haccpVrijgaven = [], verkoopVrijgaven = [], afvulSessies = [],
   planningInst, log = [], attentie = [], gebruiker = '',
   onNieuweBatch, gaNaar, metingSignaal = 0,
 }: ProductieDashboardProps) {
@@ -138,9 +140,9 @@ function ProductieDashboard({
   const stapCtx = useMemo(() => ({
     vandaag, conditionerenDagen, batchTakenItems, batchTakenGroepen,
     batchIngredienten: bi, ingredienten: ing, lots, recepten, gistMetingen, dryHops,
-    vrijgaven: haccpVrijgaven, afvulSessies, afvullingen: av,
+    vrijgaven: haccpVrijgaven, afvulSessies, afvullingen: av, verkoopVrijgaven,
   }), [vandaag, conditionerenDagen, batchTakenItems, batchTakenGroepen, bi, ing, lots, recepten, gistMetingen, dryHops,
-    haccpVrijgaven, afvulSessies, av])
+    haccpVrijgaven, verkoopVrijgaven, afvulSessies, av])
   const perBatch = useMemo(() => {
     const uit = new Map<number, { stap: VolgendeStap, etiket: BatchEtiket }>()
     for (const b of bat) {

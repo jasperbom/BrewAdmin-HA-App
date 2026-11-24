@@ -442,6 +442,15 @@ export const DEFAULT_HACCP_INST = {
   // CCP 2 bij flessen: de lege flessen inspecteren (Hygiënecode). Wie de
   // sluiting elk halfuur wil controleren, kiest 'sluitcontrole'.
   ccp2_fles: 'lege_flessen' as 'lege_flessen' | 'sluitcontrole',
+  // Quarantaine (utils/houdtest.ts): twee flessen staan warm, na 14 dagen de
+  // houdtest; tot de vrijgave voor verkoop is het bier niet te koop. De SG van
+  // een warme fles mag hooguit 0,002 onder die bij het afvullen liggen.
+  houdtest_dagen: 14,
+  houdtest_sg_marge: 0.002,
+  // Het etiket gaat erop bij het afvullen (CCP 3 in de sessie) of pas na de
+  // vrijgave voor verkoop — dan gooi je bij een afgekeurde houdtest geen
+  // etiketten weg.
+  etiketteren: 'afvullen' as 'afvullen' | 'na_vrijgave',
   tht_maanden_standaard: 9,
   tht_maanden_gepasteuriseerd: 6,
   tht_maanden_ongekookt: 3,

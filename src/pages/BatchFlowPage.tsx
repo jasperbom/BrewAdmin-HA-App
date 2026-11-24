@@ -68,6 +68,7 @@ import AfvulSessieSectie from '../components/batch/AfvulSessieSectie'
 import TankReinigingForm from '../components/TankReinigingForm'
 import BlokkadeKaart, { blokkadeSamenvatting } from '../components/haccp/BlokkadeKaart'
 import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
+import { afvulVlaggen, houdtestVoorBatch, teEtiketteren } from '../utils/houdtest'
 import { bouwBatchRapport } from '../utils/batchRapport'
 import { downloadBatchDossierPdf, printBatchDossier } from '../components/BatchRapportExport'
 import { actieveSessie, magAfvullingRegistreren, magNaarAfvullen, abvVastgezetBlokkade, productVanLaatsteEtiketcontrole } from '../utils/afvulsessie'
@@ -177,6 +178,8 @@ interface BatchFlowPageProps {
   refreshAfvulSessies?: () => Promise<any>,
   haccpSluitcontroles: any[], setHaccpSluitcontroles: any,
   haccpEtiketcontroles: any[], setHaccpEtiketcontroles: any,
+  /** Houdtest en vrijgave voor verkoop (`haccp_verkoopvrijgaven`). */
+  verkoopVrijgaven?: any[], setVerkoopVrijgaven?: any,
   haccpAfwijkingen: any[], setHaccpAfwijkingen: any,
   haccpInst: any,
   // HACCP-schoonmaakschema: nodig om een reinigingsvinkje op de batch ook als
@@ -490,6 +493,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   haccpVrijgaven, setHaccpVrijgaven, afvulSessies, setAfvulSessies, refreshAfvulSessies,
   haccpSluitcontroles, setHaccpSluitcontroles,
   haccpEtiketcontroles, setHaccpEtiketcontroles,
+  verkoopVrijgaven = [], setVerkoopVrijgaven,
   haccpAfwijkingen, setHaccpAfwijkingen, haccpInst,
   schoonmaakTaken = [], schoonmaakLog = [], setSchoonmaakLog = () => {},
   capa, setCapa, whoami,
@@ -1162,6 +1166,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       return items.filter(Boolean) as ChecklistItem[]
     }
     if (fase === 'Afgevuld') {
+      const houdtestStand = houdtestVoorBatch(selB.id, afvulSessies, verkoopVrijgaven)
       const rest = tankRestVolume(selB, mijnAv as any, mijnVerlies as any)
       const afgevuldL = mijnAv.reduce((s: number, a: any) =>
         s + (Number(a.inhoud_per_eenheid ?? a.inhoud_liter) || 0) * (Number(a.hoeveelheid) || 0), 0)
@@ -1183,6 +1188,15 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
          detail: mijnAv.length ? `${mijnAv.length} — ${afgevuldL.toFixed(1)} L` : undefined},
         {key: 'restvolume', label: t('flow_chk_restvolume'), done: rest <= 0.5,
          detail: `${rest.toFixed(1)} L`},
+        // Na het afvullen: de houdtest en het etiket (als het er pas na de
+        // vrijgave op gaat).
+        houdtestStand ? {key: 'houdtest', label: t('haccp_houdtest_titel'),
+         done: houdtestStand.stand !== 'quarantaine',
+         detail: houdtestStand.stand === 'quarantaine'
+           ? t('haccp_houdtest_vanaf').replace('{datum}', fmtD(houdtestStand.klaar_op)) : undefined} : null,
+        mijnSessies.some((s: any) => s.etiketteren === 'na_vrijgave' && s.status !== 'afgebroken')
+          ? {key: 'etiketteren', label: t('haccp_etiketteren_titel'),
+             done: houdtestStand?.stand !== 'quarantaine' && teEtiketteren(selB.id, afvulSessies, av).length === 0} : null,
       ]
       return items.filter(Boolean) as ChecklistItem[]
     }
@@ -1235,6 +1249,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         return
       }
     }
+    if (nieuweStatus === 'Gesloten' && nieuweIdx > faseIndex(oudeStatus)) {
+      const poort = gereedPoort()
+      if (poort) { setFaseMelding(poort); return }
+    }
     const leegtTank = ['Afgevuld', 'Gesloten'].includes(nieuweStatus)
       && !['Afgevuld', 'Verpakt', 'Gesloten'].includes(oudeStatus) && selB.tank
     if (leegtTank) {
@@ -1248,6 +1266,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     // zodat je steeds maar één fase tegelijk ziet (de "flow"). Stap-status reset.
     setOpenFasen([nieuweIdx])
     setOpenStappen({})
+  }
+
+  // Naar Gereed pas als de houdtest beoordeeld is en het etiket erop zit: tot
+  // dan staat het bier in quarantaine of wacht het op zijn etiket, en die
+  // stappen staan in de fase Afvullen.
+  const gereedPoort = (): string | null => {
+    if (!selB) return null
+    const h = houdtestVoorBatch(selB.id, afvulSessies, verkoopVrijgaven)
+    if (h?.stand === 'quarantaine') return t('flow_poort_houdtest').replace('{datum}', fmtD(h.klaar_op))
+    if (h?.stand !== 'afgekeurd') {
+      const te = teEtiketteren(selB.id, afvulSessies, av)
+      if (te.length) return t('flow_poort_etiketteren').replace('{lotcode}', te.map(x => x.sessie.lotcode).join(', '))
+    }
+    return null
   }
 
   // De knop naar de volgende fase: wat hem tegenhoudt (dan staat hij uit, met
@@ -1267,6 +1299,10 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         return {volgende, vraag: null,
           blokkade: t(abv && ccp1 ? 'flow_poort_abv_ccp1' : abv ? 'flow_poort_abv' : 'flow_poort_ccp1')}
       }
+    }
+    if (nieuweStatus === 'Gesloten') {
+      const poort = gereedPoort()
+      if (poort) return {volgende, vraag: null, blokkade: poort}
     }
     const vragen: string[] = []
     const open = berekenChecklist(huidigeFase).filter(c => !c.done).length
@@ -2072,6 +2108,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       voorcalc_accijns_per_eenheid: voorcalc.perEenheid,
       voorcalc_accijns_totaal: voorcalc.totaal,
       voorcalc_tarief_snapshot: voorcalc.snapshot,
+      // Quarantaine tot de houdtest, en een etiket dat er pas na de vrijgave
+      // op gaat: niet te koop tot het zover is (utils/houdtest.ts).
+      ...afvulVlaggen(sessie, {verkoopvrijgaven: verkoopVrijgaven, etiketcontroles: haccpEtiketcontroles, productId: prodId}),
     }])
     const prod = (producten || []).find((p: any) => p.id === prodId)
     addLog({type: 'afvullen', batch_id: selB.id, batch_naam: selB?.naam || '', afvulling_id: avId,
@@ -2222,7 +2261,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     vandaag: tod(), conditionerenDagen: Number(planningInst?.conditioneren_dagen ?? 14),
     batchTakenItems: batchTakenItems || [], batchTakenGroepen: batchTakenGroepen || [],
     batchIngredienten: bi, ingredienten: ing, lots, recepten, gistMetingen, dryHops,
-    vrijgaven: haccpVrijgaven, afvulSessies, afvullingen: av,
+    vrijgaven: haccpVrijgaven, afvulSessies, afvullingen: av, verkoopVrijgaven,
     etiketKleur: batchEtiket(selB, etiketData).status.kleur, abvWaarde: etiketW.abv.waarde,
   })
   const ovToets = (() => {
@@ -2359,6 +2398,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     metingen: gistMetingen, afvullingen: av, verliesRegistraties,
     sessies: afvulSessies, sluitcontroles: haccpSluitcontroles,
     etiketcontroles: haccpEtiketcontroles, vrijgaven: haccpVrijgaven,
+    verkoopvrijgaven: verkoopVrijgaven,
     afwijkingen: haccpAfwijkingen, notities: batchNotities,
     verpakkingen, onderdelen, producten, productArtikelen, artikelen,
     recepten, accijns: acc, log,
@@ -4283,6 +4323,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             producten={producten} verpakkingen={verpakkingen}
             recepten={recepten} batches={bat}
             vrijgaven={haccpVrijgaven}
+            verkoopvrijgaven={verkoopVrijgaven} setVerkoopvrijgaven={setVerkoopVrijgaven}
             sessies={afvulSessies} setSessies={setAfvulSessies}
             sluitcontroles={haccpSluitcontroles} setSluitcontroles={setHaccpSluitcontroles}
             etiketcontroles={haccpEtiketcontroles} setEtiketcontroles={setHaccpEtiketcontroles}

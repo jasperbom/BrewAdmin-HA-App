@@ -37,7 +37,7 @@ import type { OpenReservering } from './calculations'
 import { beschikbaarVoorAfvulling, beschikbaarPerLocatieNaPicks, openPicks } from './beschikbaarheid'
 import type { BeschikbaarPerLocatieData, PickBestelling, PickRegel } from './beschikbaarheid'
 import { kassaVoorraadNaReservering } from './kassa'
-import { afvullingVerkoopbaar } from './haccp'
+import { afvullingVerkoopbaar, afvullingNietVrij } from './haccp'
 import { batchesVanProduct } from './productKeten'
 import { verpakProjectie } from './vergisting'
 import { gemiddeldVerlies } from './receptKostprijs'
@@ -438,8 +438,11 @@ export interface VoorraadLot {
   /** In de AGP, na open picks. */
   agp: number
   totaal: number
-  /** Afgekeurde sluitcontrole (CCP 2): telt niet mee in de groep. */
+  /** Niet te koop (telt niet mee in vrij/agp): afgekeurd (CCP 2 of houdtest),
+   *  in quarantaine of het etiket moet er nog op. */
   geblokkeerd: boolean
+  /** Waarom niet te koop (`afvullingNietVrij`), of null. */
+  nietVrij: 'geblokkeerd' | 'quarantaine' | 'etiket' | null
 }
 
 export interface VoorraadVerpakking {
@@ -472,8 +475,12 @@ export interface VoorraadVerpakking {
   verkoopbaar: number
   /** Na de reservering nog in de AGP (kassa: `agp`). */
   agpNaReservering: number
-  /** Stuks in afvullingen die door CCP 2 geblokkeerd zijn (niet in `vrij`/`agp`). */
+  /** Stuks in afvullingen die door CCP 2 of de houdtest geblokkeerd zijn (niet in `vrij`/`agp`). */
   geblokkeerd: number
+  /** Stuks in quarantaine tot de houdtest (niet in `vrij`/`agp`). */
+  quarantaine: number
+  /** Vrijgegeven, maar het etiket moet er nog op (niet in `vrij`/`agp`). */
+  etiketVolgt: number
   /** Lots met voorraad, oudste THT eerst (ook geblokkeerde, gemarkeerd). */
   lots: VoorraadLot[]
   /** Eerste THT van de niet-geblokkeerde voorraad. */
@@ -526,7 +533,7 @@ export const voorraadPerProduct = (productId: number, ctx: VerkoopCtx): Voorraad
         artikel: null,
         vrij: 0, agp: 0, gepickt: 0, gereserveerd: 0, besteld: 0, tekort: 0, uitTeSlaan: 0,
         verkoopbaar: 0, agpNaReservering: 0,
-        geblokkeerd: 0, lots: [], eersteTht: null, afvullingIds: [],
+        geblokkeerd: 0, quarantaine: 0, etiketVolgt: 0, lots: [], eersteTht: null, afvullingIds: [],
       }
       groepen.set(h.sleutel, g)
     }
@@ -556,7 +563,8 @@ export const voorraadPerProduct = (productId: number, ctx: VerkoopCtx): Voorraad
     g.gepickt += idx.picksPerAfvulling.get(a.id) || 0
     const s = idx.stand(a)
     if (s.totaal <= 0) continue
-    const geblokkeerd = !afvullingVerkoopbaar(a)
+    const nietVrij = afvullingNietVrij(a)
+    const geblokkeerd = nietVrij !== null
     g.lots.push({
       afvullingId: a.id,
       lotcode: a.lotcode ? String(a.lotcode) : null,
@@ -568,7 +576,10 @@ export const voorraadPerProduct = (productId: number, ctx: VerkoopCtx): Voorraad
       agp: s.agp,
       totaal: s.totaal,
       geblokkeerd,
+      nietVrij,
     })
+    if (nietVrij === 'quarantaine') { g.quarantaine += s.totaal; continue }
+    if (nietVrij === 'etiket') { g.etiketVolgt += s.totaal; continue }
     if (geblokkeerd) { g.geblokkeerd += s.totaal; continue }
     g.vrij += s.vrij
     g.agp += s.agp

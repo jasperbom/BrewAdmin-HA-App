@@ -27,6 +27,7 @@ import type { EtiketCtx } from './etiket'
 import type { BatchesStand, NavDoel } from './route'
 import { batchTitel } from './productKeten'
 import { normaliseerStatus, verwachteAfvulDatum } from './volgendeStap'
+import { houdtestAanDeBeurt } from './houdtest'
 
 export type WerkruimteId = 'productie' | 'verkoop' | 'administratie'
 
@@ -110,6 +111,10 @@ export interface AttentiePost extends Omit<AttentieDoel, 'id'> {
 
 export interface AttentieBron {
   batches: any[]
+  /** Afvulsessies en de beoordelingen van de houdtest: welke batch zijn
+      houdtest heeft (utils/houdtest.ts). Zonder valt de post `houdtest` weg. */
+  afvulSessies?: any[]
+  verkoopVrijgaven?: any[]
   batchTakenItems: any[]
   batchTakenGroepen: any[]
   schoonmaakTaken: any[]
@@ -298,6 +303,27 @@ const etiketPost = (
 // batch opent bij de takenkaart van die fase. De post zelf landt op Batches ›
 // Lopend, gefilterd op de batches met open taken. Telt batches, geen vinkjes
 // (dezelfde selectie als telBatchesMetOpenTaken in utils/taken.ts).
+// De houdtest is aan de beurt: de dag is er en er is nog geen beoordeling.
+// Per batch een regel; die opent de batch in de fase Afvullen.
+const houdtestPost = (bron: AttentieBron, producten: any[]): AttentiePost => {
+  const recepten = bron.etiket?.recepten || []
+  const ids = bron.afvulSessies
+    ? houdtestAanDeBeurt(bron.batches, bron.afvulSessies, bron.verkoopVrijgaven, bron.vandaagIso) : []
+  const details: AttentieDetail[] = ids.map(id => {
+    const batch = (bron.batches || []).find((b: any) => b && b.id === id)
+    const nr = String(batch?.batch_nummer ?? '').replace(/^#/, '').trim()
+    return {
+      sleutel: 'attentie_houdtest_detail', kortSleutel: 'attentie_houdtest_kort',
+      params: { batch: batchTitel(batch, { producten, recepten }).label || (nr ? `#${nr}` : String(id)) },
+      doel: { pagina: 'batches', id, tab: 'Afgevuld' },
+    }
+  })
+  return {
+    id: 'houdtest', sleutel: 'attentie_houdtest', pagina: 'batches', stand: 'lopend',
+    aantal: details.length, details, ...(details.length === 1 ? { recordId: ids[0] } : {}),
+  }
+}
+
 const batchTakenPost = (bron: AttentieBron, producten: any[]): AttentiePost => {
   const recepten = bron.etiket?.recepten || []
   const details: AttentieDetail[] = openstaandeBatchTaken(bron.batches, bron.batchTakenItems, bron.batchTakenGroepen)
@@ -395,6 +421,8 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
       // Eerst wat op de fles fout gaat: het etiket mist een allergeen of de
       // alcohol ligt buiten de marge — vóór het afvullen op te lossen.
       etiketPost(etiket, 'batch', afvuldag),
+      // De houdtest van een afgevulde batch: daarna pas te koop.
+      houdtestPost(bron, producten),
       // Batches › Lopend, alleen de batches met open taken; per batch een regel.
       batchTakenPost(bron, producten),
       {

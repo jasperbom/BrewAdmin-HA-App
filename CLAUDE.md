@@ -70,6 +70,7 @@ BrewAdmin-HA-App/
 │   │   │                           # op `ingredienten` (dan geen knop). Ingangen: etiketkaart, Wat brouw je?, recept,
 │   │   │                           # HACCP › Allergenen
 │   │   ├── BatchRapportExport.tsx  # Batchdossier → print-HTML / printvenster / PDF-download
+│   │   ├── KratkaartExport.tsx     # Kratkaart (utils/kratkaart.ts): vier per A4 via `openPrint`
 │   │   └── PakbonExport.tsx        # Pakbon, picklijst, factuur, herinnering. Deelt
 │   │                               # `DOC_CSS`/`esc`/`breweryBlock`/`openPrint` met het dossier.
 │   │                               # De picklijst drukt de pakbonnen voor in de doos mee
@@ -87,7 +88,9 @@ BrewAdmin-HA-App/
 │   │   │                           # met `useEtiketBijwerken()?.open({productId, batchId?})`; bovenaan
 │   │   │                           # EtiketVoorschriftLijst: "Zet dit op het etiket"), AbvVastzetten,
 │   │   │                           # NieuweBatchBlad ("Wat brouw je?", overal via `useNieuweBatch()?.open(…)`),
-│   │   │                           # MetingBlad, AfvulSessieSectie (CCP 2/3), useProductKoppeling, FaseKop
+│   │   │                           # MetingBlad, AfvulSessieSectie (CCP 2/3; ook "Houdtest en vrijgave voor
+│   │   │                           # verkoop" = HoudtestSectie, en "Etiketteren (CCP 3)" per lotcode na de
+│   │   │                           # vrijgave), useProductKoppeling, FaseKop
 │   │   │                           # (bureau: compacte stappenbalk; telefoon: "Fase 4 van 6" met een lijst),
 │   │   │                           # BrouwlogSectie (vinkje "Op de brouwlog", publieke notitie, wat er publiek komt)
 │   │   ├── brouwzaal/              # Brouwzaal: TankKaart (één knop = `volgendeStap`), LegeTank, AndereBatches
@@ -280,6 +283,17 @@ BrewAdmin-HA-App/
 │   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch> (tweede afvulmoment L<batch>-B2; oude codes
 │   │   │                   # L<batch>-B1 blijven), THT per klasse, sessie-blokkades per soort CCP 2,
 │   │   │                   # `vorigeLots` (flessen-/kroonkurkenlot uit de vorige sessie — nooit gegokt)
+│   │   ├── houdtest.ts     # Quarantaine, houdtest en vrijgave voor verkoop (1.13.52): de sessie bevriest
+│   │   │                   # `houdtest_dagen` + `etiketteren` (`sessieQuarantaine` in haccp.ts); een afvulling
+│   │   │                   # krijgt `in_quarantaine`/`etiket_volgt` (`afvulVlaggen`, in `boekAfvulling`) en is
+│   │   │                   # dan niet verkoopbaar — via `afvullingVerkoopbaar`/`afvullingNietVrij` in haccp.ts,
+│   │   │                   # dus kassa, picks, webshopvoorraad en uitslag volgen vanzelf. `houdtestVoorBatch`
+│   │   │                   # (stand per batch, de laatste beoordeling telt), `beoordeelHoudtest` (te vroeg,
+│   │   │                   # SG-daling > `houdtest_sg_marge` = nagisting, druk, smaak), `bouwVerkoopVrijgave`,
+│   │   │                   # `naVerkoopVrijgave` (vrijgegeven = quarantaine eraf, afgekeurd = geblokkeerd),
+│   │   │                   # `naEtiketControle`, `teEtiketteren`, `houdtestAanDeBeurt` (attentiepost)
+│   │   ├── kratkaart.ts    # De kratkaart: lotcode, bier, verpakking, aantal, afvuldag, THT, quarantaine tot
+│   │   │                   # en "etiket volgt" — zolang het bier in quarantaine staat of nog geen etiket heeft
 │   │   ├── agp.ts          # Verplaatsen/uitslaan uit de AGP (verplaatsing + accijns), uitslag op
 │   │   │                   # productniveau (FEFO) en `bouwUitslagBoekingen` (gedeeld door kassa en
 │   │   │                   # bestellingen); `verkoopUitAgpToegestaan` = de regel "verkoop nooit
@@ -878,7 +892,9 @@ tanktemperatuurbewaking (incl. het werkelijke setpoint van
 de koeling) en de HACCP-beheerspunten
 (risicoclassificatie, CCP 1 met forceertest en het stabiele paar, sluitcontrole,
 allergenenvergelijking, lotcode en THT; de afvuldag in `afvuldag.test.ts`: koolzuur uit druk en
-temperatuur, CCP 2 per verpakking, afsluiten per soort, de koolzuurgrens, de lots), de traceerbaarheid
+temperatuur, CCP 2 per verpakking, afsluiten per soort, de koolzuurgrens, de lots; quarantaine en houdtest in
+`houdtest.test.ts`: de stand per batch, de beoordeling, de vlaggen op de afvullingen, etiketteren na de
+vrijgave, de kratkaart), de traceerbaarheid
 (één stap terug/vooruit, massabalans, traceergaten, oefeningstatus) en de
 conflict-samenvoeging (`merge.ts` + het 409-pad van `api.ts`), de hash-routing
 van de schil (`route.ts`), het themacontrast (`kleurContrast.ts`, alle zeven
@@ -1623,7 +1639,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
 | `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull en `voorraad_gepusht`/`voorraad_gepusht_op` = de voorraad bij de laatste push en `winkel_stand` = `{status, afbeeldingen}` zoals de winkel ze bij het laatste contact had — ook op `merch_artikelen` en de oude `artikelen`) |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
-| `afvullingen` | array | Afvullingen / releases |
+| `afvullingen` | array | Afvullingen / releases. `geblokkeerd` (CCP 2 of een afgekeurde houdtest), `in_quarantaine` (tot de vrijgave voor verkoop) en `etiket_volgt` (vrijgegeven, etiket nog niet gecontroleerd) maken een afvulling niet verkoopbaar — `utils/houdtest.ts` zet en wist de laatste twee |
 | `uitslagen` | array | Biervoorraaduitslagen |
 | `accijns` | array | Accijnsrecords |
 | `verpakkingen` | array | Verpakkingstypen |
@@ -1651,12 +1667,13 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_ongedierte` | array | Ongediertecontroles en -waarnemingen |
 | `haccp_opleidingen` | array | Opleidings- en instructieregister |
 | `haccp_vrijgaven` | array | **CCP 1** — vrijgave vóór koelen per batch (sinds 1.13.50 aan het eind van Vergisten, `renderCcp1` in BatchFlowPage; nog open in Conditioneren = bovenaan die fase, `volgendeStap` geeft dan eerst `vrijgave`; afvullen blijft geblokkeerd zonder). Vanaf 1.13.49 `methode: 'ff_paar'`: forceertest (`ff_dichtheid_ff`) tegen de laatste tankmeting, en de twee bevroren tankmetingen (`tank_sg_1`/`_op`, `tank_sg_2`/`_op`, `stabiel_uren`, `stabiel_verschil`) met de grenzen van dat moment; alleen `vrijgegeven` wordt nog vastgelegd (`oordeel_voorgesteld` = wat de regel zei, rood alleen met een afwijking). Oudere records (risicoklasse, dagen stabiel, drukproef, smaakoordeel) blijven geldig en leesbaar. Server-side append-only; correctie via een nieuwe registratie met `vervangt_id`. Zonder vrijgegeven registratie kan er niet afgevuld worden |
-| `afvul_sessies` | array | Afvulsessie met lotcode `L<batchnr>` (bijv. `L2431`; een tweede afvulmoment van dezelfde batch `L2431-B2`; sessies van vóór 1.13.49 heten `L2431-B1` en veranderen nooit) en berekende THT; anker voor CCP 2 en CCP 3. `ccp2` = de soort CCP 2 (`lege_flessen`/`sluitcontrole`/`geen`, bevroren bij het starten; ontbreekt = sluitcontrole). De afvuldag (1.13.51): `co2_druk_bar`/`co2_temp_c`/`co2_volumes`/`co2_max`/`co2_bron` (`sensor`/`handmatig`) + `co2_afwijking_id` boven de grens, `sg_afvullen`, `flessenlot`/`kroonkurkenlot`, `klapflessen: {aantal, vernietigd, gereinigd}`. Bewust **niet** append-only: een sessie wordt afgesloten |
+| `afvul_sessies` | array | Afvulsessie met lotcode `L<batchnr>` (bijv. `L2431`; een tweede afvulmoment van dezelfde batch `L2431-B2`; sessies van vóór 1.13.49 heten `L2431-B1` en veranderen nooit) en berekende THT; anker voor CCP 2 en CCP 3. `ccp2` = de soort CCP 2 (`lege_flessen`/`sluitcontrole`/`geen`, bevroren bij het starten; ontbreekt = sluitcontrole). De afvuldag (1.13.51): `co2_druk_bar`/`co2_temp_c`/`co2_volumes`/`co2_max`/`co2_bron` (`sensor`/`handmatig`) + `co2_afwijking_id` boven de grens, `sg_afvullen`, `flessenlot`/`kroonkurkenlot`, `klapflessen: {aantal, vernietigd, gereinigd}`. Quarantaine (1.13.52): `houdtest_dagen`, `houdtest_flessen` (twee warm, twee koel; één sessie per batch) en `etiketteren` (`na_vrijgave` = de sessie sluit zonder CCP 3). Bewust **niet** append-only: een sessie wordt afgesloten |
 | `haccp_sluitcontroles` | array | **CCP 2** — sluitcontroles per sessie (visueel + omkeerproef), of bij flessen één inspectie van de lege flessen (`methode: 'lege_flessen'`, `afgekeurd_aantal`). Append-only. Bij afkeur worden de afvullingen sinds de laatste goedkeuring geblokkeerd |
 | `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket, met een foto van het etiket in `bijlagen` (`_bijlage_in_gebruik` houdt hem vast). Nieuwe records bevriezen ook `etiket_versie_gelezen`/`_verwacht`, `abv_batch`, `abv_etiket_verwacht`, `abv_marge`. Append-only |
 | `haccp_afwijkingen` | array | Expliciete afwijkingsregistraties: de enige manier om langs een harde CCP-blokkade te komen, altijd met onderbouwing + CAPA. Append-only |
+| `haccp_verkoopvrijgaven` | array | **Houdtest en vrijgave voor verkoop** (1.13.52) per batch: `{id, batch_id, datum, afgevuld_op, houdtest_dagen, sg_afvullen, sg_warm, sg_verschil, sg_marge, druk_ok, smaak_ok, oordeel: vrijgegeven\|afgekeurd, oordeel_voorgesteld, afwijking_id?, opmerking?, paraaf}`. De laatste beoordeling telt. Append-only, in de Excel-backup (`HACCPVerkoopVrijgaven`) |
 | `haccp_trace_oefeningen` | array | **Traceeroefeningen** (hoofdstuk 11): periodieke mock recall met bevroren omvang (lotcodes, afnemers), massabalans, traceergaten, doorlooptijd en conclusie. Append-only — een tegenvallende oefening mag niet achteraf bijgesteld worden |
-| `haccp_instellingen` | object | Kritische grenzen uit het handboek: CCP 1 (`stabiel_min_uur` = 48, `stabiel_tolerantie_sg` = 0,001, `ff_marge_sg` = 0,002; oude `stabiel_dagen_*` worden genegeerd), `co2_max_volumes` (2,7; 0 = niet toetsen) en `ccp2_fles` (`lege_flessen`/`sluitcontrole`), THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |
+| `haccp_instellingen` | object | Kritische grenzen uit het handboek: CCP 1 (`stabiel_min_uur` = 48, `stabiel_tolerantie_sg` = 0,001, `ff_marge_sg` = 0,002; oude `stabiel_dagen_*` worden genegeerd), `co2_max_volumes` (2,7; 0 = niet toetsen) en `ccp2_fles` (`lege_flessen`/`sluitcontrole`), `houdtest_dagen` (14; 0 = geen quarantaine), `houdtest_sg_marge` (0,002), `etiketteren` (`afvullen`/`na_vrijgave`), THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |
 | `inkoop_facturen` | array | Inkoopfacturen. `betaald_via_alt_id` = betaald vanaf een alt-rekening; `betaald_door_verrekening` = de factuur van een PSP staat op betaald omdat de uitbetalingen hem dekken (`kostenVerrekend` in `bank_koppelingen`); `vorige_stand` = de stand van vóór een afrekening via een alt-rekening (ongedaan maken zet hem terug) |
 | `scan_correcties` | array | Het scangeheugen (`utils/scanGeheugen.ts`): `{tekst, soort, leverancier?, artikelcode?, naam?, kostensoort?, eenheid?}`, de nieuwste 500. Bij elk opslaan van een gescande factuur geleerd (per leverancier + artikelnummer, anders omschrijving); de oude `{tekst, soort}` blijft gelden als algemene correctie. Gaat vóór de indeling van het model |
 | `inkoop_inbox` | array | Facturen per e-mail: de PDF-bijlagen die de server-tick `_inbox_tick` uit het postvak (IMAP) haalde, met `status` `nieuw`/`verwerkt`/`genegeerd`. Item: `{id, ontvangen, mail_datum, van, van_naam, onderwerp, message_id, bijlage: {naam, bestand}, grootte, sha256, status, factuur_id?, afgehandeld?}`. De server voegt alleen nieuwe items toe (bestand `inbox_<sha256[:20]>.pdf` in de bijlagenmap); verwerken, negeren, terugzetten en verwijderen doet de app. Een PDF met een `sha256` die er al in staat (ook genegeerd/verwerkt) komt er nooit nog eens bij. Financiële key: alleen `boekhouding`/`beheer` schrijven. Wel in de Excel-backup |
@@ -1725,7 +1742,7 @@ Backup en restore gaan via Excel (`.xlsx`) — **niet** via JSON. De functies `e
 - **Export:** `doExport()` in `App.tsx` → `excelExport(data)` → downloadt `brewadmin_backup_YYYY-MM-DD.xlsx`
 - **Import:** `doImport(e)` in `App.tsx` → `excelImport(file, cb, onError)` → stelt alle state in
 - **UI:** Instellingen → App → Data import & export (`accept=".xlsx"`)
-- **Bestandsstructuur:** 81 array-sheets (één per datasleutel, `bouwBackupWerkboek`; o.a. `BankTransacties` en `BankAfschriften` voor de bewaarde bankafschriften, `AccijnsAangiftes`, `BtwAangiftes`, `Journaal`; lijsten van losse waarden als rijen `{waarde}`) + één `Instellingen`-sheet voor objects (`INST_JSON_KEYS`, o.a. `bank_koppelingen` en `bank_saldi`), primitieven en logo's
+- **Bestandsstructuur:** 82 array-sheets (één per datasleutel, `bouwBackupWerkboek`; o.a. `BankTransacties` en `BankAfschriften` voor de bewaarde bankafschriften, `AccijnsAangiftes`, `BtwAangiftes`, `Journaal`; lijsten van losse waarden als rijen `{waarde}`) + één `Instellingen`-sheet voor objects (`INST_JSON_KEYS`, o.a. `bank_koppelingen` en `bank_saldi`), primitieven en logo's
 - **Geneste objecten** binnen array-items worden als JSON-string opgeslagen en bij import teruggeparsed
 - **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`, `imap_creds`) zitten **nooit** in de Excel-backup en alleen gemaskeerd in de download-ZIP van een serverbackup (zonder db-kopie, `_backup_to_zip`); de serverbackup op schijf en offsite bevat ze **alleen versleuteld** (ERP 5.8, zie "Security constraints"), zodat die volledig herstelbaar blijft zonder leesbare geheimen
 - **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`, `website_telemetrie_status`, `website_brouwlog_status`, `inkoop_inbox_status`, `ruimteklimaat_status`) staat bewust niet in de backup — die regenereert vanzelf
@@ -1917,7 +1934,7 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 - Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
 - Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`
 - Geen NaN/Infinity in de opslag: de schrijfwegen lezen via `_json_laden_strikt` (400), HA-waarden gaan door `_eindig_of_none`, en `_json_compact` maakt van een toch binnengekomen niet-eindig getal `null` (Python schreef anders letterlijk `NaN`, wat de app niet kan parsen)
-- Append-only keys: `_APPEND_ONLY` (`journaal` + de HACCP-registraties `haccp_vrijgaven`, `haccp_sluitcontroles`, `haccp_etiketcontroles`, `haccp_afwijkingen`, `haccp_trace_oefeningen`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno- resp. vervangende regels. `_append_only_ok` vergelijkt per id als multiset: een dubbele id, een nieuw record zonder id of een extra variant naast een bestaande id wordt ook geweigerd. Nooit omzeilen. Een CCP-registratie is bewijs richting de NVWA (HACCP-handboek bijlage A.1): wie en wanneer worden automatisch vastgelegd en zijn niet handmatig invulbaar
+- Append-only keys: `_APPEND_ONLY` (`journaal` + de HACCP-registraties `haccp_vrijgaven`, `haccp_sluitcontroles`, `haccp_etiketcontroles`, `haccp_afwijkingen`, `haccp_trace_oefeningen`, `haccp_verkoopvrijgaven`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno- resp. vervangende regels. `_append_only_ok` vergelijkt per id als multiset: een dubbele id, een nieuw record zonder id of een extra variant naast een bestaande id wordt ook geweigerd. Nooit omzeilen. Een CCP-registratie is bewijs richting de NVWA (HACCP-handboek bijlage A.1): wie en wanneer worden automatisch vastgelegd en zijn niet handmatig invulbaar
 - Gebruikers & rollen (ERP 4.2): mutaties worden per rol afgedwongen (`_rol_mag_key` + endpoint-gates in do_GET/do_POST, 403 met `reden: rol` + audit). Nieuwe financiële key? Voeg hem toe aan `_FINANCIELE_KEYS`; nieuwe instellingen-key aan `_BEHEER_KEYS`. Nooit omzeilen
 - Optimistic locking + atomaire commit: `X-Data-Version`-conflictdetectie op `/api/data`; multi-key writes via `POST /api/commit` (client bundelt saves per event-tick automatisch)
 - CSP headers: strict `default-src 'none'` policy

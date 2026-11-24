@@ -88,6 +88,25 @@ describe('attentiePosten', () => {
     })
   })
 
+  it('houdtest: de dag is er en er is nog geen beoordeling — de regel opent de batch', () => {
+    const bron = leegBron()
+    bron.batches = [{ id: 7, batch_nummer: '2609', product_id: 1, status: 'Afgevuld' }]
+    bron.producten = [{ id: 1, naam: 'Kadeblond' }]
+    bron.afvulSessies = [{ id: 1, batch_id: 7, lotcode: 'L2609', status: 'afgesloten', start: '2026-04-20T09:00:00',
+      houdtest_dagen: 14, houdtest_flessen: true }]
+    const post = attentiePosten(bron).productie.find(p => p.id === 'houdtest')!
+    expect(post.aantal).toBe(1)
+    expect(attentieDoel(post)).toEqual({ pagina: 'batches', stand: 'lopend', id: 7 })
+    expect(post.details?.[0]).toEqual({ sleutel: 'attentie_houdtest_detail', kortSleutel: 'attentie_houdtest_kort',
+      params: { batch: 'Kadeblond #2609' }, doel: { pagina: 'batches', id: 7, tab: 'Afgevuld' } })
+    // Nog niet aan de beurt, of al beoordeeld: geen post.
+    bron.vandaagIso = '2026-05-03'
+    expect(attentiePosten(bron).productie.find(p => p.id === 'houdtest')).toBeUndefined()
+    bron.vandaagIso = '2026-05-10'
+    bron.verkoopVrijgaven = [{ id: 1, batch_id: 7, oordeel: 'vrijgegeven', paraaf: { tijdstip: '2026-05-04T10:00:00Z' } }]
+    expect(attentiePosten(bron).productie.find(p => p.id === 'houdtest')).toBeUndefined()
+  })
+
   it('batchtaken: Batches › Lopend, met per batch een regel die de batch bij zijn taken opent', () => {
     const bron = leegBron()
     bron.batches = [

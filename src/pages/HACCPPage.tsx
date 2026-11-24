@@ -440,7 +440,16 @@ const afvulDetails = (x: any): string => [
     .replace('{vernietigd}', String(x.klapflessen.vernietigd ?? 0)) : '',
 ].filter(Boolean).join(' · ')
 
-function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontroles,
+// De houdtest in een paar woorden: SG van de warme fles tegen die bij het
+// afvullen, en of overdruk, geur en smaak in orde waren.
+const houdtestKort = (v: any): string => [
+  v.sg_warm != null ? `${t('haccp_houdtest_sg_warm')} ${fmtSg(v.sg_warm)}` : '',
+  v.sg_afvullen != null ? `${t('haccp_sg_afvullen')} ${fmtSg(v.sg_afvullen)}` : '',
+  `${t('haccp_houdtest_druk_kort')} ${v.druk_ok ? '✓' : '✕'}`,
+  `${t('haccp_houdtest_smaak_kort')} ${v.smaak_ok ? '✓' : '✕'}`,
+].filter(Boolean).join(' · ')
+
+function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontroles, verkoopVrijgaven,
                       afwijkingen, traceOefeningen, breweryDetails,
                       capa, setCapa, auditLog, setAuditLog, modal, setModal, edit, setEdit}: any) {
   const {useState, useMemo} = React
@@ -458,6 +467,11 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
     .filter((v:any)=>inPeriode(v.datum))
     .slice().sort((a:any,b:any)=>String(b.datum||'').localeCompare(String(a.datum||''))),
     [vrijgaven, fVan, fTot])
+  // De houdtesten (vrijgave voor verkoop) in dezelfde periode.
+  const houdtesten = useMemo(() => (verkoopVrijgaven||[])
+    .filter((v:any)=>inPeriode(v.datum))
+    .slice().sort((a:any,b:any)=>String(b.datum||'').localeCompare(String(a.datum||''))),
+    [verkoopVrijgaven, fVan, fTot])
 
   const sess = useMemo(() => (sessies||[])
     .filter((x:any)=>inPeriode(String(x.start||'').slice(0,10)))
@@ -518,6 +532,12 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
       <td>${esc(a.blokkade_omschrijving)}</td>
       <td>${esc(a.onderbouwing)}</td>
       <td>${esc(a.paraaf?.gebruiker||'')}</td></tr>`).join('')
+    const rijenHoud = houdtesten.map((v:any)=>`<tr>
+      <td>${esc(fmtD(v.datum))}</td><td>${esc(batchNaam(v.batch_id))}</td>
+      <td>${esc(fmtD(v.afgevuld_op))}</td>
+      <td>${esc(houdtestKort(v))}</td>
+      <td class="${v.oordeel==='vrijgegeven'?'ok':'nok'}">${esc(t(v.oordeel==='vrijgegeven'?'haccp_houdtest_vrijgegeven':'haccp_houdtest_afgekeurd'))}${v.afwijking_id!=null?` (${esc(t('haccp_afw_kort'))})`:''}</td>
+      <td>${esc(v.paraaf?.gebruiker||'')}</td></tr>`).join('')
     const rijenOef = oefeningen.map((o:any)=>`<tr>
       <td>${esc(fmtD(o.datum))}</td>
       <td>${esc(t(o.richting==='vooruit'?'haccp_trace_richting_vooruit':'haccp_trace_richting_terug'))}</td>
@@ -542,6 +562,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
       <div class="meta">${esc(breweryDetails?.naam||'')} · ${esc(t('haccp_rap_periode'))}: ${esc(periode)} · ${esc(new Date().toLocaleString())}</div>
       <h2>${esc(t('haccp_ccp1_titel'))}</h2>
       ${vrij.length?`<table><tr><th>${esc(t('lbl_datum'))}</th><th>Batch</th><th>${esc(t('haccp_ccp1_stabiel'))}</th><th>${esc(t('haccp_ccp1_verschil'))}</th><th>${esc(t('haccp_ccp1_oordeel'))}</th><th>${esc(t('haccp_ccp1_paraaf'))}</th></tr>${rijenVrij}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
+      ${houdtesten.length?`<h2>${esc(t('haccp_houdtest_titel'))}</h2><table><tr><th>${esc(t('lbl_datum'))}</th><th>Batch</th><th>${esc(t('batchdossier_houdtest_afgevuld'))}</th><th>${esc(t('haccp_houdtest_titel'))}</th><th>${esc(t('haccp_ccp1_oordeel'))}</th><th>${esc(t('haccp_ccp1_paraaf'))}</th></tr>${rijenHoud}</table>`:''}
       <h2>${esc(t('haccp_sessie_titel'))} — ${esc(t('haccp_ccp2_titel'))} / ${esc(t('haccp_ccp3_titel'))}</h2>
       ${sess.length?`<table><tr><th>${esc(t('haccp_sessie_lotcode'))}</th><th>Batch</th><th>${esc(t('haccp_sessie_gestart'))}</th><th>${esc(t('haccp_sessie_afgesloten'))}</th><th>${esc(t('haccp_sessie_tht'))}</th><th>${esc(t('batchdossier_ccp2'))}</th><th>${esc(t('haccp_ccp3_titel'))}</th><th>${esc(t('haccp_rap_status'))}</th></tr>${rijenSess}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
       <h2>${esc(t('haccp_tab_afwijkingen'))}</h2>
@@ -599,6 +620,29 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
               </div>
             ))}
           </div>)}
+      {sub==='vrijgaven' && houdtesten.length > 0 && (
+        <div className="space-y-1 pt-2">
+          <div className="text-sm font-semibold text-gray-800">{t('haccp_houdtest_titel')}</div>
+          {houdtesten.map((v:any)=>(
+            <div key={v.id} className={`bg-white rounded-lg p-2.5 shadow-sm text-sm border-l-4 ${v.oordeel==='vrijgegeven'?'border-green-500':'border-red-500'}`}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium">{batchNaam(v.batch_id)}</span>
+                  <Pill ok={v.oordeel==='vrijgegeven'}>
+                    {t(v.oordeel==='vrijgegeven'?'haccp_houdtest_vrijgegeven':'haccp_houdtest_afgekeurd')}
+                  </Pill>
+                  {v.afwijking_id!=null && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">{t('haccp_afw_kort')}</span>
+                  )}
+                  <span className="text-xs text-gray-500">{houdtestKort(v)}</span>
+                </div>
+                <span className="text-xs text-gray-500">{fmtD(v.datum)} · {v.paraaf?.gebruiker||'—'}</span>
+              </div>
+              {v.opmerking && <div className="text-xs text-gray-500 italic mt-1">{v.opmerking}</div>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {sub==='sessies' && (!sess.length
         ? <p className="text-sm text-gray-500 italic">{t('haccp_sessie_geen')}</p>

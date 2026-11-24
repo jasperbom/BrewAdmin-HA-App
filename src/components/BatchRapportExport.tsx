@@ -25,7 +25,7 @@ import type { KaartCel, KaartProductBlok, KaartRegel } from '../utils/etiketKaar
 import { fmtAbv, fmtGetal } from '../utils/etiket'
 import type {
   BatchRapport, RapportAfvulling, RapportEtiketControle, RapportIngredient, RapportMeting,
-  RapportParaaf, RapportSessie, RapportVrijgave,
+  RapportParaaf, RapportSessie, RapportVrijgave, RapportVerkoopVrijgave,
 } from '../utils/batchRapport'
 
 // Extra opmaak bovenop de gedeelde documentstijl. Bewust karig: het dossier
@@ -307,6 +307,23 @@ const vrijgaveBlok = (rijen: RapportVrijgave[]): string => rijen.map(v => `<div 
     ${v.opmerking ? `<div class="remarks">${esc(v.opmerking)}</div>` : ''}
   </div>`).join('')
 
+// De houdtest: wanneer afgevuld, na hoeveel dagen beoordeeld, de SG van de
+// warme fles tegen die bij het afvullen, overdruk, geur en smaak.
+const verkoopVrijgaveBlok = (rijen: RapportVerkoopVrijgave[]): string => rijen.map(v => `<div class="kaart blok${v.vrijgegeven ? '' : ' afw'}">
+    <div class="kaart-kop">
+      <span>${esc(t(v.oordeelKey))}${v.afwijking ? ` · <span class="nok">${esc(t('haccp_afw_kort'))}</span>` : ''}</span>
+      <span>${esc(fmtDate(v.datum))}</span>
+    </div>
+    <div class="kv">
+      <div><span>${esc(t('batchdossier_houdtest_afgevuld'))}:</span> ${esc(fmtDate(v.afgevuldOp))} · ${esc(t('batchdossier_houdtest_dagen').replace('{n}', String(v.dagen)))}</div>
+      <div><span>${esc(t('haccp_houdtest_sg_warm'))}:</span> ${v.sgWarm != null ? esc(fmtSg(v.sgWarm)) : LEEG}${v.sgAfvullen != null ? ` · ${esc(t('haccp_sg_afvullen'))} ${esc(fmtSg(v.sgAfvullen))}` : ''}${v.sgVerschil != null ? ` ${jaNee(v.sgVerschil <= v.sgMarge + 1e-9)}` : ''}</div>
+      <div><span>${esc(t('haccp_houdtest_druk_ok'))}</span> ${jaNee(v.drukOk)}</div>
+      <div><span>${esc(t('haccp_houdtest_smaak_ok'))}</span> ${jaNee(v.smaakOk)}</div>
+      <div><span>${esc(t('haccp_ccp1_paraaf'))}:</span> ${esc(paraafTekst(v.paraaf))}</div>
+    </div>
+    ${v.opmerking ? `<div class="remarks">${esc(v.opmerking)}</div>` : ''}
+  </div>`).join('')
+
 const sessieBlok = (rijen: RapportSessie[]): string => {
   const telling = (c: {goedgekeurd: number, afgekeurd: number}) => c.goedgekeurd + c.afgekeurd === 0
     ? `<span class="muted">${LEEG}</span>`
@@ -457,6 +474,7 @@ function bouwDossierBody(
     ${sectie(esc(t('batchdossier_sec_metingen')), metingenBlok(rapport.metingen))}
     ${sectie(esc(t('haccp_ccp1_titel')), vrijgaveBlok(rapport.vrijgaven))}
     ${sectie(esc(t('batchdossier_sec_sessies')), sessieBlok(rapport.sessies))}
+    ${sectie(esc(t('haccp_houdtest_titel')), verkoopVrijgaveBlok(rapport.verkoopvrijgaven || []))}
     ${sectie(esc(t('batchdossier_sec_ccp3')), ccp3Blok(rapport.etiketcontroles))}
     ${sectie(esc(t('batchdossier_sec_afvullingen')), afvullingenBlok(rapport.afvullingen))}
     ${sectie(esc(t('batchdossier_sec_verlies')), tabel(

@@ -175,7 +175,9 @@ class TestAppendOnly:
                 'haccp_etiketcontroles', 'haccp_afwijkingen',
                 # Hoofdstuk 11: een traceeroefening die tegenviel mag niet
                 # achteraf worden bijgesteld.
-                'haccp_trace_oefeningen')
+                'haccp_trace_oefeningen',
+                # De houdtest en de vrijgave voor verkoop (1.13.52).
+                'haccp_verkoopvrijgaven')
         for key in keys:
             assert key in srv._APPEND_ONLY, key
             srv._write_json(key, [{'id': 1, 'paraaf': {'gebruiker': 'jasper'}}])

@@ -373,6 +373,11 @@ export interface Afvulling {
   geblokkeerd_reden?: string
   geblokkeerd_controle_id?: number
   deblokkeerd_op?: string
+  // Quarantaine tot de vrijgave voor verkoop (houdtest) en een etiket dat er
+  // na die vrijgave nog op moet: allebei niet verkoopbaar, wel fysiek aanwezig
+  // (utils/houdtest.ts zet en wist ze).
+  in_quarantaine?: boolean
+  etiket_volgt?: boolean
 }
 
 export interface VoorraadLog {
@@ -2078,6 +2083,50 @@ export interface AfvulSessie {
   kroonkurkenlot?: string
   // Klapflessen tijdens het vullen of afdoppen (vaste procedure, geen CCP).
   klapflessen?: {aantal: number; vernietigd: number; gereinigd: boolean}
+  // Quarantaine (1.13.52), bevroren bij het aanmaken: zoveel dagen na het
+  // afvullen beoordeel je de warm bewaarde flessen (houdtest); tot de vrijgave
+  // voor verkoop is het bier niet te koop. 0 of leeg = geen quarantaine.
+  houdtest_dagen?: number
+  // Houdtestflessen apart gezet bij deze sessie: twee warm voor de test, twee
+  // koel voor klachten (bij alleen fusten vier flessen uit dezelfde tank). Eén
+  // sessie per batch is genoeg.
+  houdtest_flessen?: boolean
+  // Wanneer het etiket erop gaat, bevroren bij het aanmaken: bij het afvullen
+  // (CCP 3 in de sessie) of na de vrijgave voor verkoop. Leeg = bij het afvullen.
+  etiketteren?: Etiketteren
+}
+
+// Wanneer het etiket op de fles of het fust gaat (`haccp_instellingen.etiketteren`).
+export type Etiketteren = 'afvullen' | 'na_vrijgave'
+
+// De vrijgave voor verkoop na de houdtest (1.13.52), één record per
+// beoordeling van een batch. Append-only, net als de andere CCP-registraties:
+// een correctie is een nieuw record.
+export interface VerkoopVrijgave {
+  id: number
+  batch_id: number
+  // Dag van de beoordeling (YYYY-MM-DD).
+  datum: string
+  // De eerste afvuldag van de batch en de houdtest van dat moment.
+  afgevuld_op: string
+  houdtest_dagen: number
+  // SG bij het afvullen en van een warm bewaarde fles: zakt hij meer dan de
+  // marge, dan gist het bier na in de fles.
+  sg_afvullen?: number
+  sg_warm?: number
+  sg_verschil?: number
+  sg_marge: number
+  // Bij het openen geen overdruk of gushing; geur en smaak in orde.
+  druk_ok: boolean
+  smaak_ok: boolean
+  oordeel: 'vrijgegeven' | 'afgekeurd'
+  // Wat de regels zeiden: 'groen' = alles in orde, 'rood' = nagisting of te
+  // vroeg (vrijgeven alleen met een afwijking), 'onvolledig' = niet alles
+  // beoordeeld (alleen bij afkeuren).
+  oordeel_voorgesteld: 'groen' | 'rood' | 'onvolledig'
+  afwijking_id?: number
+  opmerking?: string
+  paraaf: Paraaf
 }
 
 // CCP 2 per verpakking: lege flessen inspecteren (fles), de sluiting
@@ -2178,7 +2227,7 @@ export interface EtiketControle {
 // Waar in de workflow een blokkade is omzeild.
 export type AfwijkingBron =
   | 'ccp1_vrijgave' | 'ccp2_sluitcontrole' | 'ccp3_etiket'
-  | 'sessie_start' | 'sessie_afsluiten' | 'fase_afvullen'
+  | 'sessie_start' | 'sessie_afsluiten' | 'fase_afvullen' | 'houdtest'
 
 // Expliciete afwijkingsregistratie: de enige manier om langs een harde
 // blokkade te komen. Het moet mogelijk zijn — er kan een goede reden zijn —
@@ -2255,6 +2304,14 @@ export interface HaccpInst {
   // elk halfuur controleren. Blik houdt altijd de sluitcontrole, fust heeft
   // geen CCP 2.
   ccp2_fles: 'lege_flessen' | 'sluitcontrole'
+  // Quarantaine: na zoveel dagen de houdtest en de vrijgave voor verkoop.
+  // 0 = geen quarantaine.
+  houdtest_dagen: number
+  // Hoeveel de SG van een warme fles hooguit onder die bij het afvullen mag
+  // liggen.
+  houdtest_sg_marge: number
+  // Wanneer het etiket erop gaat.
+  etiketteren: Etiketteren
   tht_maanden_standaard: number
   tht_maanden_gepasteuriseerd: number
   tht_maanden_ongekookt: number

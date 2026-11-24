@@ -28,7 +28,7 @@ export const AUDIT_SOORTEN = [
   'Instelling', 'Inventarisatie', 'Jaarafsluiting', 'Kapitaalboeking', 'Klant',
   'Koellog', 'Kostensoort', 'Locatie', 'Lot', 'Merch', 'Onderdeel', 'Ongedierte',
   'Opleiding', 'Postvak', 'Product', 'Recept', 'SchoonmaakLog', 'SchoonmaakTaak', 'Sessie',
-  'SluitControle', 'Tank', 'TraceOefening', 'Verkoopfactuur', 'Verliesregistratie',
+  'SluitControle', 'Tank', 'TraceOefening', 'Verkoopfactuur', 'VerkoopVrijgave', 'Verliesregistratie',
   'Verpakking', 'Verplaatsing', 'Waterbehandeling', 'Waterkwaliteit',
 ] as const
 export type AuditSoort = typeof AUDIT_SOORTEN[number]
