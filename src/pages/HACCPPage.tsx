@@ -20,6 +20,7 @@ import { datumKort } from '../utils/etiketKaart'
 import { useEtiketBijwerken } from '../components/batch/EtiketBijwerken'
 import { useAllergenenOpzoeken } from '../components/AllergenenOpzoeken'
 import { teBeoordelen, handmatigBeoordeeld } from '../utils/allergeenOpzoeken'
+import { nvwaStand } from '../utils/incident'
 
 // HACCP-borging. De pagina is een register: registreren gebeurt daar waar de
 // handeling plaatsvindt (vrijgave, sluit- en etiketcontrole in de batchflow,
@@ -81,7 +82,7 @@ function HACCPPage(props: any) {
 // scanwerk als twaalf rode — en verstopt juist de ene die telt.
 function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ongedierte,
                   opleidingen, bat, av, vrijgaven, sessies, afwijkingen, traceOefeningen,
-                  haccpInst, setTab}: any) {
+                  haccpInst, setTab, incidenten}: any) {
   const today = new Date(); today.setHours(0,0,0,0)
   const mAgo = (d:string,days:number) => { const dt=new Date(d); dt.setHours(0,0,0,0); return (today.getTime()-dt.getTime())/86400000 > days }
 
@@ -115,7 +116,10 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
   const traceStatus = oefeningStatus(traceOefeningen||[], haccpInst, today)
 
   type Punt = {key:string, label:string, waarde:string|number, sub?:string, ok:boolean, kleur:string, tab:Tab}
+  const openIncidenten = (incidenten||[]).filter((i:any)=>i?.status==='open').length
   const punten: Punt[] = [
+    {key:'incidenten', label:t('haccp_dash_incidenten'), waarde:openIncidenten, sub:t('haccp_dash_incidenten_sub'),
+     ok:!openIncidenten, kleur:'border-red-500', tab:'kritisch'},
     {key:'vrijgave', label:t('haccp_dash_wacht_vrijgave'), waarde:wachtVrijgave, sub:t('haccp_ccp1_titel'),
      ok:!wachtVrijgave, kleur:'border-orange-500', tab:'kritisch'},
     {key:'sessies', label:t('haccp_dash_open_sessies'), waarde:openSessies, sub:t('haccp_sessie_titel'),
@@ -446,10 +450,12 @@ const houdtestKort = (v: any): string => [
 ].filter(Boolean).join(' · ')
 
 function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontroles, verkoopVrijgaven,
-                      afwijkingen, traceOefeningen, breweryDetails,
+                      afwijkingen, traceOefeningen, breweryDetails, incidenten, gaNaar,
                       capa, setCapa, auditLog, setAuditLog, modal, setModal, edit, setEdit}: any) {
   const {useState, useMemo} = React
-  const [sub, setSub] = useState<'vrijgaven'|'sessies'|'afwijkingen'|'capa'>('vrijgaven')
+  // Staat er een incident open, dan begint het tabblad daar.
+  const [sub, setSub] = useState<'vrijgaven'|'sessies'|'afwijkingen'|'incidenten'|'capa'>(
+    (incidenten||[]).some((i:any)=>i?.status==='open') ? 'incidenten' : 'vrijgaven')
   const [fVan, setFVan] = useState('')
   const [fTot, setFTot] = useState('')
 
@@ -473,6 +479,13 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
     .filter((x:any)=>inPeriode(String(x.start||'').slice(0,10)))
     .slice().sort((a:any,b:any)=>String(b.start||'').localeCompare(String(a.start||''))),
     [sessies, fVan, fTot])
+
+  // Klachten en incidenten ("Er is iets mis", utils/incident.ts): open eerst.
+  const inc = useMemo(() => (incidenten||[])
+    .filter((i:any)=>i && (i.status==='open' || inPeriode(String(i.ontdekt_op||'').slice(0,10))))
+    .slice().sort((a:any,b:any)=>(a.status==='open'?0:1)-(b.status==='open'?0:1)
+      || String(b.ontdekt_op||'').localeCompare(String(a.ontdekt_op||''))),
+    [incidenten, fVan, fTot])
 
   const afw = useMemo(() => (afwijkingen||[])
     .filter((a:any)=>inPeriode(a.datum))
@@ -577,10 +590,10 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        {(['vrijgaven','sessies','afwijkingen','capa'] as const).map(k=>(
+        {(['vrijgaven','sessies','afwijkingen','incidenten','capa'] as const).map(k=>(
           <button key={k} onClick={()=>setSub(k)}
             className={`px-3 py-1 rounded text-xs font-medium ${sub===k?'tbtn text-white':'bg-gray-100 text-gray-600'}`}>
-            {t(k==='vrijgaven'?'haccp_tab_vrijgave':k==='sessies'?'haccp_tab_sessies':k==='afwijkingen'?'haccp_tab_afwijkingen':'haccp_capa')}
+            {t(k==='vrijgaven'?'haccp_tab_vrijgave':k==='sessies'?'haccp_tab_sessies':k==='afwijkingen'?'haccp_tab_afwijkingen':k==='incidenten'?'haccp_tab_incidenten':'haccp_capa')}
           </button>
         ))}
         {sub!=='capa' && <>
@@ -700,6 +713,41 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
                 <div className="text-xs text-gray-600 mt-0.5 italic">{a.onderbouwing}</div>
               </div>
             ))}
+          </div>)}
+
+      {sub==='incidenten' && (!inc.length
+        ? <p className="text-sm text-gray-500 italic">{t('haccp_incidenten_geen')}</p>
+        : <div className="space-y-1">
+            {inc.map((i:any)=>{
+              const stand = nvwaStand(i)
+              return (
+                <div key={i.id} className={`bg-white rounded-lg p-2.5 shadow-sm text-sm border-l-4 ${i.soort==='veiligheid'?'border-red-500':'border-gray-300'}`}>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="font-medium">
+                      {batchNaam(i.batch_id)}
+                      {(i.lotcodes||[]).length>0 && <span className="text-gray-500 font-mono font-normal ml-1.5 text-xs">{i.lotcodes.join(', ')}</span>}
+                      <span className={`font-normal ml-1.5 text-xs ${i.soort==='veiligheid'?'text-red-700':'text-gray-500'}`}>
+                        {i.soort==='veiligheid' ? t('incident_kort_veiligheid').replace('{gevaar}', t(`incident_gevaar_${i.gevaar||'anders'}`)) : t('incident_soort_kwaliteit')}
+                      </span>
+                    </span>
+                    <span className="text-xs text-gray-500">{tijd(i.ontdekt_op)} · {i.paraaf?.gebruiker||'—'}</span>
+                  </div>
+                  <div className="text-xs text-gray-700 mt-1 break-words">{i.omschrijving}</div>
+                  <div className="text-xs mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                    <span className={i.status==='open'?'text-orange-700 font-medium':'text-green-700'}>
+                      {t(i.status==='open'?'haccp_incident_open':'haccp_incident_afgesloten')}
+                    </span>
+                    {stand?.stand==='gemeld' && <span className={stand.optijd===false?'text-red-700':'text-gray-600'}>
+                      {t(stand.optijd===false?'haccp_incident_nvwa_te_laat':'haccp_incident_nvwa_gemeld').replace('{tijd}', tijd(i.nvwa_gemeld_op))}
+                    </span>}
+                    {stand && stand.stand!=='gemeld' && <span className="text-red-700 font-medium">{t('haccp_incident_nvwa_open')}</span>}
+                    {i.oorzaak && <span className="text-gray-600 italic break-words">{i.oorzaak}</span>}
+                    {gaNaar && <button type="button" onClick={()=>gaNaar({pagina:'batches', id:i.batch_id})}
+                      className="underline underline-offset-2 t-accent-text min-h-tap sm:min-h-0">{t('haccp_incident_naar_batch')}</button>}
+                  </div>
+                </div>
+              )
+            })}
           </div>)}
 
       {sub==='capa' && (

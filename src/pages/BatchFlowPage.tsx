@@ -67,7 +67,11 @@ import VrijgaveSectie from '../components/batch/VrijgaveSectie'
 import AfvulSessieSectie from '../components/batch/AfvulSessieSectie'
 import TankReinigingForm from '../components/TankReinigingForm'
 import BlokkadeKaart, { blokkadeSamenvatting } from '../components/haccp/BlokkadeKaart'
-import { magAfvullen, isLegacyBatch, actueleVrijgave } from '../utils/haccp'
+import { magAfvullen, isLegacyBatch, actueleVrijgave, maakParaaf } from '../utils/haccp'
+import { IncidentBlad, IncidentKaart, IncidentLijst } from '../components/batch/Incident'
+import { nieuwIncident, sluitIncident, blokkeerVoorIncident, deblokkeerIncident, type IncidentInvoer } from '../utils/incident'
+import { traceBatch } from '../utils/trace'
+import type { HaccpIncident } from '../types'
 import { afvulVlaggen, houdtestVoorBatch, teEtiketteren } from '../utils/houdtest'
 import { bouwBatchRapport } from '../utils/batchRapport'
 import { downloadBatchDossierPdf, printBatchDossier } from '../components/BatchRapportExport'
@@ -182,6 +186,10 @@ interface BatchFlowPageProps {
   verkoopVrijgaven?: any[], setVerkoopVrijgaven?: any,
   haccpAfwijkingen: any[], setHaccpAfwijkingen: any,
   haccpInst: any,
+  /** "Er is iets mis": klachten en incidenten per batch (`haccp_incidenten`). */
+  haccpIncidenten?: HaccpIncident[], setHaccpIncidenten?: any,
+  /** De klanten: voor de afnemers (met telefoon en mail) bij een incident. */
+  klanten?: any[],
   /** Is er een Claude-sleutel? Dan leest de AI de etiketfoto bij CCP 3 na. */
   heeftClaude?: boolean,
   // HACCP-schoonmaakschema: nodig om een reinigingsvinkje op de batch ook als
@@ -497,6 +505,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   haccpEtiketcontroles, setHaccpEtiketcontroles,
   verkoopVrijgaven = [], setVerkoopVrijgaven,
   haccpAfwijkingen, setHaccpAfwijkingen, haccpInst, heeftClaude = false,
+  haccpIncidenten = [], setHaccpIncidenten, klanten = [],
   schoonmaakTaken = [], schoonmaakLog = [], setSchoonmaakLog = () => {},
   capa, setCapa, whoami,
   breweryDetails, appName = '', factuurLogo, logo,
@@ -559,6 +568,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   const openReceptPicker = () => { kiesPickerRecept(null); setReceptPickerOpen(true) }
   // "Product kiezen" vanuit de ketenregel van een batch zonder product.
   const [productKiezenOpen, setProductKiezenOpen] = useState(false)
+  const [incidentBladOpen, setIncidentBladOpen] = useState(false)
   // Melding in de kop: waarom verwijderen niet kan, of dat het dossier mislukte
   // (in plaats van een alert()).
   const [kopMelding, setKopMelding] = useState<string | null>(null)
@@ -4511,6 +4521,58 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       : { id: 'bf-koppel', label: t('bf_koppel_actie'), onClick: () => setBfKoppelOpen(true) },
   ] : []
 
+  // ── "Er is iets mis" ────────────────────────────────────────────────────
+  // Vastleggen: kwaliteit = een afgehandelde klacht; veiligheid = in dezelfde
+  // handeling de voorraad van die lotcodes blokkeren en de NVWA-klok starten.
+  const legIncidentVast = (invoer: IncidentInvoer, extra: { oorzaak: string }) => {
+    if (!setHaccpIncidenten) return
+    const paraaf = maakParaaf(whoami)
+    let inc = nieuwIncident(newId(haccpIncidenten || []), invoer, paraaf)
+    if (inc.soort === 'kwaliteit') inc = sluitIncident(inc, { oorzaak: extra.oorzaak }, paraaf)
+    setHaccpIncidenten((prev: HaccpIncident[]) => [...(prev || []), inc])
+    if (inc.soort === 'veiligheid') setAv((prev: any[]) => blokkeerVoorIncident(prev || [], inc))
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Incident', entiteit_id: inc.id, actie: 'aangemaakt',
+      omschrijving: `${kopTitel.titel} ${inc.lotcodes.join(', ')}: ${inc.soort}${inc.gevaar ? ` (${inc.gevaar})` : ''} — ${inc.omschrijving}`,
+    })
+    setIncidentBladOpen(false)
+  }
+  const wijzigIncident = (nieuw: HaccpIncident) => {
+    if (!setHaccpIncidenten) return
+    setHaccpIncidenten((prev: HaccpIncident[]) => (prev || []).map(i => i.id === nieuw.id ? nieuw : i))
+    const wat = [nieuw.nvwa_gemeld_op && 'NVWA gemeld', nieuw.afnemers_gewaarschuwd_op && 'afnemers gewaarschuwd'].filter(Boolean).join(', ')
+    logAudit(auditLog, setAuditLog, { entiteit: 'Incident', entiteit_id: nieuw.id, actie: 'gewijzigd', omschrijving: `${kopTitel.titel}: ${wat}` })
+  }
+  const sluitIncidentAf = (inc: HaccpIncident, invoer: { oorzaak: string; maatregel: string; onterecht: boolean }) => {
+    if (!setHaccpIncidenten) return
+    const paraaf = maakParaaf(whoami)
+    const dicht = sluitIncident(inc, invoer, paraaf)
+    setHaccpIncidenten((prev: HaccpIncident[]) => (prev || []).map(i => i.id === inc.id ? dicht : i))
+    // Onterecht vermoeden: alleen wat dít incident blokkeerde komt weer vrij.
+    if (invoer.onterecht) setAv((prev: any[]) => deblokkeerIncident(prev || [], inc.id, paraaf.tijdstip))
+    logAudit(auditLog, setAuditLog, {
+      entiteit: 'Incident', entiteit_id: inc.id, actie: 'gewijzigd',
+      omschrijving: `${kopTitel.titel}: ${invoer.onterecht ? 'afgesloten, vermoeden onterecht' : 'afgesloten'} — ${dicht.oorzaak}`,
+    })
+  }
+  const incidentProduct = (producten || []).find((x: any) => x.id === selB.product_id)
+  const incidentKaarten = (haccpIncidenten || [])
+    .filter(i => i && i.batch_id === selB.id && i.status === 'open')
+    .map(inc => {
+      const trace = traceBatch(selB.id, inc.sessie_ids, {
+        batches: bat, sessies: afvulSessies, afvullingen: av, uitleveringen: uit, afboekingen,
+        klanten, bestellingPicks, bestellingen,
+      })
+      const tht = (afvulSessies || []).filter((x: any) => inc.sessie_ids.includes(x.id) && x.tht).map((x: any) => fmtD(x.tht))
+      return (
+        <IncidentKaart key={inc.id} inc={inc} trace={trace} tht={tht}
+          bier={incidentProduct?.naam || kopTitel.titel}
+          brouwerij={{ naam: breweryDetails?.naam, email: breweryDetails?.email }}
+          onWijzig={wijzigIncident} onSluit={invoer => sluitIncidentAf(inc, invoer)}
+          onNaarProduct={gaNaar && selB.product_id ? () => gaNaar({ pagina: 'producten', id: selB.product_id }) : undefined} />
+      )
+    })
+
   const kopActies: RowActie[] = [
     ...(dossierBeschikbaar && telefoon ? [{
       id: 'dossier', label: dossierBezig ? t('mail_generating_pdf') : t('batchdossier_knop'),
@@ -4521,6 +4583,8 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       onClick: () => printBatchDossier(dossierRapport(), ...dossierBriefhoofd()),
     }] : []),
     { id: 'gegevens', label: t('batch_kop_gegevens'), onClick: openGegevens },
+    // "Er is iets mis": een klacht of incident bij deze batch (utils/incident.ts).
+    ...(setHaccpIncidenten && magBatchSchrijven ? [{ id: 'incident', label: t('incident_actie'), onClick: () => setIncidentBladOpen(true) }] : []),
     ...bfActies,
     ...(selB.status === 'Gepland' ? [
       { id: 'recept', label: t('batch_kop_recept_opnieuw'), title: t('batch_sync_recept_title').replace('{recept}', kopTitel.receptNaam || ''), onClick: openReceptPicker },
@@ -4568,6 +4632,14 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           open={openFasen.length ? openFasen[0] : null} onToggle={toggleFase} onKies={i => setOpenFasen([i])} />
       </BatchKop>
 
+      {/* Een open veiligheidsincident gaat boven alles: de klok loopt. */}
+      {incidentKaarten}
+      {incidentBladOpen && (
+        <IncidentBlad batchId={selB.id} klanten={klanten}
+          sessies={(afvulSessies || []).filter((x: any) => x.batch_id === selB.id && x.status !== 'afgebroken')}
+          onSluit={() => setIncidentBladOpen(false)} onVastleggen={legIncidentVast} />
+      )}
+
       <BfMelding batch={selB} magWijzigen={magBatchSchrijven} bfAan={bfAan}
         toonVerschil={bfRichting.batch_metingen === 'lezen'} toonPushFout={bfRichting.batch_status === 'schrijven' || bfRichting.batch_metingen === 'schrijven'}
         onOvernemen={bfOvernemen} onHouden={bfHouden} onOntkoppelen={bfOntkoppel}
@@ -4611,6 +4683,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
           ctx={{producten, recepten, productArtikelen, afvullingen: av, afvulSessies, verpakkingen, tanks}}
           onWijzig={updateBatch} open={brouwlogOpen} onToggle={() => setBrouwlogOpen(o => !o)} />
       )}
+
+      {/* Eerdere klachten en incidenten van deze batch. */}
+      <IncidentLijst incidenten={(haccpIncidenten || []).filter(i => i && i.batch_id === selB.id && i.status === 'afgesloten')} />
 
       {/* Notities (gedeeld component met de batchpagina) */}
       <BatchNotitiesSection

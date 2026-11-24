@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.55] — 2026-11-24
+
+### "Er is iets mis": klachten en incidenten, met de 4-uursklok voor de NVWA
+
+- **Eén knop op de batch** (⋯ → *Er is iets mis*): wat er aan de hand is,
+  welke lotcode, wie het meldde en wanneer je het wist. Dan de keuze
+  **kwaliteit** (smaak, schuim, helderheid: bewaarfles, hoe je het met de
+  klant oploste, oorzaak — meteen afgehandeld) of **veiligheid** (druk, glas,
+  allergeen, chemisch, besmetting). Bij twijfel veiligheid: een sterk
+  vermoeden is genoeg.
+- **Veiligheid in één handeling:** de voorraad van die lotcodes is meteen
+  geblokkeerd (niet te verkopen, te picken of uit te slaan; op de
+  productpagina "geblokkeerd (incident)") en de klok start: binnen 4 uur de
+  NVWA melden. De klok staat bovenaan de batch, als chip in *Nu actief* op
+  elk scherm en rood in de aandachtspunten van Productie.
+- **De stappen uit het plan op één kaart:** afnemers per lotcode met telefoon
+  en e-mail (plus wat zonder naam verkocht is), het meldformulier en het
+  nummer van de NVWA met een kenmerkveld, een conceptmail aan de afnemers
+  (in je eigen mailprogramma, iedereen in Bcc — de app verstuurt niets
+  vanzelf), vernietigen via Afboeken bij het product, en oorzaak en maatregel.
+  Afsluiten kan pas met een oorzaak en de NVWA-melding. Bleek het vermoeden
+  onterecht, dan heft *Vermoeden onterecht* alleen de blokkade van dit
+  incident op.
+- **Register:** HACCP → Kritische punten → *Incidenten* (open eerst, met de
+  NVWA-tijd en of die op tijd was), een tegel op het HACCP-dashboard en de
+  afgehandelde klachten onder de batch. Nieuwe key `haccp_incidenten`, in de
+  backup.
+- De productpagina noemt nu waarom een lot geblokkeerd is: CCP 2, de
+  houdtest of een incident.
+
+---
+
 ## [1.13.54] — 2026-11-24
 
 ### De AI kijkt mee bij het etiket (CCP 3)

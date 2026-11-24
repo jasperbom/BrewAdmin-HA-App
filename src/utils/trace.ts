@@ -455,6 +455,20 @@ export const traceTerug = (zoekRuw: string, d: TraceData): TraceResultaat => {
   return bouwResultaat('terug', String(zoekRuw), batches, exact.length ? exact : null, lotRegels, d)
 }
 
+/** Eén batch, eventueel ingeperkt tot enkele afvulsessies: de afnemers en de
+ *  balans bij een incident ("Er is iets mis", utils/incident.ts) — dezelfde
+ *  opbouw als de traceeroefening, maar zonder zoekterm die ook andere batches
+ *  met een gelijkend nummer zou meenemen. */
+export const traceBatch = (batchId: number, sessieIds: readonly number[], d: TraceData): TraceResultaat => {
+  const batches = (d.batches || []).filter(b => Number(b.id) === Number(batchId))
+  if (!batches.length) return leegResultaat('terug', String(batchId))
+  const ids = new Set(sessieIds.map(Number))
+  const filter = ids.size
+    ? (d.sessies || []).filter(s => ids.has(Number(s.id)) && Number(s.batch_id) === Number(batchId))
+    : []
+  return bouwResultaat('terug', String(batchId), batches, filter.length ? filter : null, [], d)
+}
+
 export const traceZoek = (
   richting: TraceRichting,
   zoek: string,

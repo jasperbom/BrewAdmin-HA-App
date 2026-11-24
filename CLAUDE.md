@@ -292,6 +292,17 @@ BrewAdmin-HA-App/
 │   │   │                   # SG-daling > `houdtest_sg_marge` = nagisting, druk, smaak), `bouwVerkoopVrijgave`,
 │   │   │                   # `naVerkoopVrijgave` (vrijgegeven = quarantaine eraf, afgekeurd = geblokkeerd),
 │   │   │                   # `naEtiketControle`, `teEtiketteren`, `houdtestAanDeBeurt` (attentiepost)
+│   │   ├── incident.ts     # "Er is iets mis" (1.13.55): klacht of incident bij een batch, volgens de procedure
+│   │   │                   # "Traceerbaarheid, klachten en terugroepen". Kwaliteit = vastleggen en afhandelen;
+│   │   │                   # veiligheid = in één handeling de afvullingen van die lotcodes blokkeren
+│   │   │                   # (`blokkeerVoorIncident`: `geblokkeerd_reden: 'incident'` + `geblokkeerd_incident_id`;
+│   │   │                   # een andere reden blijft staan) en de klok starten: `nvwaStand` (binnen
+│   │   │                   # `NVWA_TERMIJN_UUR` = 4 uur na `ontdekt_op`). Afnemers via `traceBatch` (trace.ts),
+│   │   │                   # waarschuwingsmail (`waarschuwingMail`, `waarschuwingMailto`: afnemers in Bcc, opent in
+│   │   │                   # het eigen mailprogramma — nooit vanzelf), `incidentStappen`, `afsluitBlokkade` (oorzaak;
+│   │   │                   # veiligheid ook de NVWA-melding), `sluitIncident`; onterecht = `deblokkeerIncident`
+│   │   │                   # (alleen wat dít incident blokkeerde). `nvwaNogMelden` = de chip in "Nu actief".
+│   │   │                   # UI: components/batch/Incident.tsx (`IncidentBlad`, `IncidentKaart`, `IncidentLijst`)
 │   │   ├── kratkaart.ts    # De kratkaart: lotcode, bier, verpakking, aantal, afvuldag, THT, quarantaine tot
 │   │   │                   # en "etiket volgt" — zolang het bier in quarantaine staat of nog geen etiket heeft
 │   │   ├── agp.ts          # Verplaatsen/uitslaan uit de AGP (verplaatsing + accijns), uitslag op
@@ -918,6 +929,10 @@ factuur- en etiketscan (schema's binnen de grenzen van gestructureerde
 uitvoer, opschonen, toepassen zonder invoer van de gebruiker te overschrijven),
 het scangeheugen, de totaal- en dubbelecontrole, de foto-omzetting
 (`afbeelding.ts`) en de regel-zoeker in de PDF (`pdfZoek.ts`).
+"Er is iets mis" (`incident.test.ts`): de 4-uursklok (open, te laat, gemeld, op tijd),
+blokkeren en opheffen (een andere blokkade blijft staan), de waarschuwingsmail in vijf
+talen met de afnemers in Bcc, de stappen en wanneer het dicht mag, en `traceBatch`
+(alleen deze batch en lotcodes); de attentiepost in `attentie.test.ts`.
 De AI-controle van het bieretiket (`etiketCheck.test.ts`): schema zonder null en
 zonder wat er moet staan in de prompt, opschonen, lotcode met of zonder L/Lot,
 THT op dag of maand, alcohol in de wettelijke marge, allergenen met gluten via de
@@ -1696,6 +1711,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket, met een foto van het etiket in `bijlagen` (`_bijlage_in_gebruik` houdt hem vast). Nieuwe records bevriezen ook `abv_batch`, `abv_etiket_verwacht`, `abv_marge` (oude records kunnen `etiket_versie_gelezen`/`_verwacht` dragen; die worden niet meer getoond). `ai_check` (1.13.54) = wat de AI op de etiketfoto las en hoe dat uitviel (`{op, model, lezing, oordeel: {lotcode, tht, alcohol, allergenen}, toch_vastgelegd?, fout?}`, `utils/etiketCheck.ts`). Append-only |
 | `haccp_afwijkingen` | array | Expliciete afwijkingsregistraties: de enige manier om langs een harde CCP-blokkade te komen, altijd met onderbouwing + CAPA. Append-only |
 | `haccp_verkoopvrijgaven` | array | **Houdtest en vrijgave voor verkoop** (1.13.52) per batch: `{id, batch_id, datum, afgevuld_op, houdtest_dagen, sg_afvullen, sg_warm, sg_verschil, sg_marge, druk_ok, smaak_ok, oordeel: vrijgegeven\|afgekeurd, oordeel_voorgesteld, afwijking_id?, opmerking?, paraaf}`. De laatste beoordeling telt. Append-only, in de Excel-backup (`HACCPVerkoopVrijgaven`) |
+| `haccp_incidenten` | array | **"Er is iets mis"** (1.13.55, `utils/incident.ts`): klachten en incidenten per batch — `{id, batch_id, sessie_ids, lotcodes, soort: kwaliteit\|veiligheid, gevaar?, bron, melder?, klant_id?, omschrijving, ontdekt_op (start van de 4-uursklok), bewaarfles?, afhandeling?, geblokkeerd_op?, nvwa_gemeld_op?, nvwa_kenmerk?, afnemers_gewaarschuwd_op?, oorzaak?, maatregel?, onterecht?, status: open\|afgesloten, afgesloten_op?, paraaf, afgesloten_paraaf?}`. Kwaliteit is bij het vastleggen afgesloten; veiligheid blokkeert de afvullingen van die lotcodes (`geblokkeerd_reden: 'incident'`) en blijft open tot oorzaak + NVWA-melding. Bewust **niet** append-only (het loopt door tot het dicht is; de serveraudit legt elke wijziging vast), gedeelde key (productie mag schrijven). Attentiepost `incident` (rood zolang de NVWA niet gemeld is) en een chip in "Nu actief". In de Excel-backup (`HACCPIncidenten`) |
 | `haccp_trace_oefeningen` | array | **Traceeroefeningen** (hoofdstuk 11): periodieke mock recall met bevroren omvang (lotcodes, afnemers), massabalans, traceergaten, doorlooptijd en conclusie. Append-only — een tegenvallende oefening mag niet achteraf bijgesteld worden |
 | `haccp_instellingen` | object | Kritische grenzen uit het handboek: CCP 1 (`stabiel_min_uur` = 48, `stabiel_tolerantie_sg` = 0,001, `ff_marge_sg` = 0,002; oude `stabiel_dagen_*` worden genegeerd), `co2_max_volumes` (2,7; 0 = niet toetsen) en `ccp2_fles` (`lege_flessen`/`sluitcontrole`), `houdtest_dagen` (14; 0 = geen quarantaine), `houdtest_sg_marge` (0,002), `etiketteren` (`afvullen`/`na_vrijgave`), THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |
 | `inkoop_facturen` | array | Inkoopfacturen. `betaald_via_alt_id` = betaald vanaf een alt-rekening; `betaald_door_verrekening` = de factuur van een PSP staat op betaald omdat de uitbetalingen hem dekken (`kostenVerrekend` in `bank_koppelingen`); `vorige_stand` = de stand van vóór een afrekening via een alt-rekening (ongedaan maken zet hem terug) |

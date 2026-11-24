@@ -2126,7 +2126,7 @@ _KEY_TYPES = {
         'haccp_opleidingen',
         'haccp_vrijgaven', 'afvul_sessies', 'haccp_sluitcontroles',
         'haccp_etiketcontroles', 'haccp_afwijkingen', 'haccp_trace_oefeningen',
-        'haccp_verkoopvrijgaven',
+        'haccp_verkoopvrijgaven', 'haccp_incidenten',
         'locaties', 'verplaatsingen', 'btw_tarieven', 'tank_alarmen',
         'tank_setpoints',
         'ing_types', 'kosten_soorten', 'gn_codes',

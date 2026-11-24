@@ -211,6 +211,18 @@ class TestAppendOnly:
                 conn.execute("DELETE FROM records WHERE key='afvul_sessies'")
                 conn.execute("DELETE FROM versies WHERE key='afvul_sessies'")
 
+    def test_incidenten_lijst_muteerbaar_en_voor_productie(self, app):
+        """"Er is iets mis" (1.13.55): een incident loopt door tot het is
+        afgesloten (NVWA gemeld, afnemers gewaarschuwd, oorzaak), dus niet
+        append-only — de serveraudit legt elke wijziging vast. Wie brouwt moet
+        het kunnen vastleggen: geen beheer- of financiële key."""
+        assert srv._KEY_TYPES['haccp_incidenten'] == 'array'
+        assert 'haccp_incidenten' not in srv._APPEND_ONLY
+        assert 'haccp_incidenten' not in srv._BEHEER_KEYS
+        assert 'haccp_incidenten' not in srv._FINANCIELE_KEYS
+        assert srv._rol_mag_key('productie', 'haccp_incidenten')
+        assert not srv._rol_mag_key('alleen_lezen', 'haccp_incidenten')
+
 
 class TestSecretsMaskering:
     def test_mask_vervangt_gevoelige_velden_door_sentinel(self):

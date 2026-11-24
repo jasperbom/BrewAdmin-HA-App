@@ -28,6 +28,8 @@ import type { BatchesStand, NavDoel } from './route'
 import { batchTitel } from './productKeten'
 import { normaliseerStatus, verwachteAfvulDatum } from './volgendeStap'
 import { houdtestAanDeBeurt } from './houdtest'
+import { nvwaStand, openIncidenten } from './incident'
+import type { HaccpIncident } from '../types'
 
 export type WerkruimteId = 'productie' | 'verkoop' | 'administratie'
 
@@ -115,6 +117,10 @@ export interface AttentieBron {
       houdtest heeft (utils/houdtest.ts). Zonder valt de post `houdtest` weg. */
   afvulSessies?: any[]
   verkoopVrijgaven?: any[]
+  /** "Er is iets mis": open klachten en incidenten (utils/incident.ts). */
+  incidenten?: HaccpIncident[]
+  /** Het moment voor de NVWA-klok; standaard nu. */
+  nu?: Date
   batchTakenItems: any[]
   batchTakenGroepen: any[]
   schoonmaakTaken: any[]
@@ -324,6 +330,38 @@ const houdtestPost = (bron: AttentieBron, producten: any[]): AttentiePost => {
   }
 }
 
+// Een open incident (utils/incident.ts): per incident een regel die de batch
+// opent. Moet de NVWA nog gemeld worden, dan rood met de uiterste tijd — dat
+// is een wettelijke termijn van 4 uur.
+const hhmm = (iso: string): string => {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+const incidentPost = (bron: AttentieBron, producten: any[]): AttentiePost => {
+  const recepten = bron.etiket?.recepten || []
+  let nvwa = false
+  const details: AttentieDetail[] = openIncidenten(bron.incidenten).map(inc => {
+    const batch = (bron.batches || []).find((b: any) => b && b.id === inc.batch_id)
+    const nr = String(batch?.batch_nummer ?? '').replace(/^#/, '').trim()
+    const naam = batchTitel(batch, { producten, recepten }).label || (nr ? `#${nr}` : String(inc.batch_id))
+    const stand = nvwaStand(inc, bron.nu)
+    const melden = !!stand && stand.stand !== 'gemeld'
+    if (melden) nvwa = true
+    return {
+      sleutel: melden ? (stand?.stand === 'te_laat' ? 'attentie_incident_nvwa_te_laat' : 'attentie_incident_nvwa')
+        : 'attentie_incident_detail',
+      kortSleutel: 'attentie_incident_kort',
+      params: { batch: naam, tijd: stand ? hhmm(stand.uiterlijk) : '' },
+      doel: { pagina: 'batches', id: inc.batch_id },
+    }
+  })
+  return {
+    id: 'incident', sleutel: 'attentie_incident', pagina: 'batches', stand: 'lopend',
+    aantal: details.length, details, ...(nvwa ? { kleur: 'rood' as const } : {}),
+    ...(details.length === 1 ? { recordId: openIncidenten(bron.incidenten)[0].batch_id } : {}),
+  }
+}
+
 const batchTakenPost = (bron: AttentieBron, producten: any[]): AttentiePost => {
   const recepten = bron.etiket?.recepten || []
   const details: AttentieDetail[] = openstaandeBatchTaken(bron.batches, bron.batchTakenItems, bron.batchTakenGroepen)
@@ -418,7 +456,9 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
   }
   return {
     productie: nietLeeg([
-      // Eerst wat op de fles fout gaat: het etiket mist een allergeen of de
+      // Een incident gaat voor alles: binnen 4 uur de NVWA melden.
+      incidentPost(bron, producten),
+      // Dan wat op de fles fout gaat: het etiket mist een allergeen of de
       // alcohol ligt buiten de marge — vóór het afvullen op te lossen.
       etiketPost(etiket, 'batch', afvuldag),
       // De houdtest van een afgevulde batch: daarna pas te koop.

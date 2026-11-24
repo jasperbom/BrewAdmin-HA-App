@@ -372,6 +372,8 @@ export interface Afvulling {
   geblokkeerd?: boolean
   geblokkeerd_reden?: string
   geblokkeerd_controle_id?: number
+  /** Geblokkeerd door een incident ("Er is iets mis", 1.13.55). */
+  geblokkeerd_incident_id?: number
   deblokkeerd_op?: string
   // Quarantaine tot de vrijgave voor verkoop (houdtest) en een etiket dat er
   // na die vrijgave nog op moet: allebei niet verkoopbaar, wel fysiek aanwezig
@@ -2101,6 +2103,52 @@ export interface AfvulSessie {
 
 // Wanneer het etiket op de fles of het fust gaat (`haccp_instellingen.etiketteren`).
 export type Etiketteren = 'afvullen' | 'na_vrijgave'
+
+// "Er is iets mis" (1.13.55, utils/incident.ts): een klacht of incident bij
+// een batch. Kwaliteit (smaak, schuim, helderheid) = vastleggen en afhandelen;
+// veiligheid (druk, glas, allergeen, chemisch …) = blokkeren, afnemers zoeken,
+// binnen 4 uur de NVWA melden, afnemers waarschuwen, vernietigen, oorzaak.
+// Bewust niet append-only: een incident loopt door tot het is afgesloten (de
+// serveraudit legt elke wijziging vast).
+export type IncidentSoort = 'kwaliteit' | 'veiligheid'
+export type IncidentGevaar = 'druk' | 'glas' | 'allergeen' | 'chemisch' | 'microbiologisch' | 'anders'
+export type IncidentBron = 'klant' | 'eigen' | 'leverancier' | 'anders'
+export interface HaccpIncident {
+  id: number
+  batch_id: number
+  /** De afvulsessies (lotcodes) die het raakt; leeg = de hele batch. */
+  sessie_ids: number[]
+  /** Bevroren bij het vastleggen: de lotcodes zoals ze toen heetten. */
+  lotcodes: string[]
+  soort: IncidentSoort
+  gevaar?: IncidentGevaar
+  bron: IncidentBron
+  /** Wie het meldde (klant, collega, leverancier). */
+  melder?: string
+  klant_id?: number
+  omschrijving: string
+  /** Wanneer de brouwerij het wist (ISO) — hier begint de 4-uursklok. */
+  ontdekt_op: string
+  /** Wat de bewaarfles liet zien. */
+  bewaarfles?: string
+  /** Veiligheid: de voorraad van deze lotcodes is geblokkeerd (ISO). */
+  geblokkeerd_op?: string
+  /** Veiligheid: wanneer de NVWA gemeld is (ISO) en met welk kenmerk. */
+  nvwa_gemeld_op?: string
+  nvwa_kenmerk?: string
+  /** Veiligheid: wanneer de afnemers gewaarschuwd zijn (ISO). */
+  afnemers_gewaarschuwd_op?: string
+  /** Kwaliteit: hoe de klant gecompenseerd is. */
+  afhandeling?: string
+  oorzaak?: string
+  maatregel?: string
+  status: 'open' | 'afgesloten'
+  afgesloten_op?: string
+  /** Het vermoeden bleek onterecht: de blokkade is opgeheven. */
+  onterecht?: boolean
+  paraaf: Paraaf
+  afgesloten_paraaf?: Paraaf
+}
 
 // De vrijgave voor verkoop na de houdtest (1.13.52), één record per
 // beoordeling van een batch. Append-only, net als de andere CCP-registraties:

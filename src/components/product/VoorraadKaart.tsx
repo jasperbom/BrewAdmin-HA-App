@@ -163,7 +163,10 @@ const VoorraadKaart: React.FC<VoorraadKaartProps> = (p) => {
                 {lot.geblokkeerd && (lot.nietVrij === 'quarantaine' || lot.nietVrij === 'etiket'
                   ? <span className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-100 text-[11px] font-medium">
                       {t(lot.nietVrij === 'quarantaine' ? 'product_lot_quarantaine' : 'product_lot_etiket_volgt')}</span>
-                  : <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-100 text-[11px] font-medium">{t('product_lot_geblokkeerd')}</span>)}
+                  : <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-100 text-[11px] font-medium">
+                      {/* Waarom: CCP 2, een afgekeurde houdtest of een incident ("Er is iets mis"). */}
+                      {t(afv?.geblokkeerd_reden === 'incident' ? 'product_lot_geblokkeerd_incident'
+                        : afv?.geblokkeerd_reden === 'houdtest' ? 'product_lot_geblokkeerd_houdtest' : 'product_lot_geblokkeerd')}</span>)}
                 {rebrandVan && <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[11px] font-medium" title={afv?.rebrand_opmerking || ''}>↪ {t('lbl_rebrand_van').replace('{product}', rebrandVan)}</span>}
               </span>
             )}
