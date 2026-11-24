@@ -29,7 +29,9 @@ import { batchTitel } from './productKeten'
 import { normaliseerStatus, verwachteAfvulDatum } from './volgendeStap'
 import { houdtestAanDeBeurt } from './houdtest'
 import { nvwaStand, openIncidenten } from './incident'
-import type { HaccpIncident } from '../types'
+import { middelenMetAandacht } from './reinigingsmiddelen'
+import { fmtD } from './format'
+import type { HaccpIncident, ReinigingsMiddel } from '../types'
 
 export type WerkruimteId = 'productie' | 'verkoop' | 'administratie'
 
@@ -121,6 +123,8 @@ export interface AttentieBron {
   incidenten?: HaccpIncident[]
   /** Het moment voor de NVWA-klok; standaard nu. */
   nu?: Date
+  /** De reinigingsmiddelen: een desinfectiemiddel zonder geldige toelating. */
+  reinigingsmiddelen?: ReinigingsMiddel[]
   batchTakenItems: any[]
   batchTakenGroepen: any[]
   schoonmaakTaken: any[]
@@ -362,6 +366,24 @@ const incidentPost = (bron: AttentieBron, producten: any[]): AttentiePost => {
   }
 }
 
+// Een desinfectiemiddel zonder (geldige) Ctgb-toelating, of een toelating
+// die binnen CTGB_WAARSCHUW_DAGEN afloopt: per middel een regel, naar HACCP ›
+// Reiniging › Middelen. Zonder geldige toelating mag hij niet gebruikt worden
+// — dan rood.
+const middelPost = (bron: AttentieBron): AttentiePost => {
+  const lijst = middelenMetAandacht(bron.reinigingsmiddelen, bron.vandaagIso)
+  const details: AttentieDetail[] = lijst.map(({ middel, oordeel }) => ({
+    sleutel: `attentie_middel_${oordeel.stand}`, kortSleutel: 'attentie_middel_kort',
+    params: { naam: middel.naam, datum: fmtD(middel.ctgb_geldig_tot) },
+    doel: { pagina: 'haccp', tab: 'reiniging', filter: 'middelen' },
+  }))
+  return {
+    id: 'middel_ctgb', sleutel: 'attentie_middel_ctgb', pagina: 'haccp', tab: 'reiniging', filter: 'middelen',
+    aantal: details.length, details,
+    ...(lijst.some(x => x.oordeel.stand !== 'verloopt') ? { kleur: 'rood' as const } : {}),
+  }
+}
+
 const batchTakenPost = (bron: AttentieBron, producten: any[]): AttentiePost => {
   const recepten = bron.etiket?.recepten || []
   const details: AttentieDetail[] = openstaandeBatchTaken(bron.batches, bron.batchTakenItems, bron.batchTakenGroepen)
@@ -465,6 +487,8 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
       houdtestPost(bron, producten),
       // Batches › Lopend, alleen de batches met open taken; per batch een regel.
       batchTakenPost(bron, producten),
+      // Een desinfectiemiddel zonder geldige toelating (HACCP › Reiniging › Middelen).
+      middelPost(bron),
       {
         // HACCP → tabblad Reiniging (schoonmaakschema, achterstallig = rood).
         id: 'schoonmaak', sleutel: 'attentie_schoonmaak', pagina: 'haccp', tab: 'reiniging',

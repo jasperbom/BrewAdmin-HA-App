@@ -292,6 +292,17 @@ BrewAdmin-HA-App/
 │   │   │                   # SG-daling > `houdtest_sg_marge` = nagisting, druk, smaak), `bouwVerkoopVrijgave`,
 │   │   │                   # `naVerkoopVrijgave` (vrijgegeven = quarantaine eraf, afgekeurd = geblokkeerd),
 │   │   │                   # `naEtiketControle`, `teEtiketteren`, `houdtestAanDeBeurt` (attentiepost)
+│   │   ├── reinigingsmiddelen.ts # Reinigen en desinfecteren (1.13.56): de middelen van de brouwerij
+│   │   │                   # (`reinigingsmiddelen`; geen merken in de code), `ctgbOordeel` (alleen een
+│   │   │                   # desinfectiemiddel heeft een Ctgb-toelating nodig; ontbreekt/verlopen = niet te kiezen,
+│   │   │                   # `middelBruikbaar`; binnen `CTGB_WAARSCHUW_DAGEN` = aandachtspunt `middel_ctgb`),
+│   │   │                   # `doseringTekst`, `beoordeelConcentratie`, `beoordeelNaspoelPh` (pH = leidingwater ± 0,5),
+│   │   │                   # `retourOordeel` (langste aaneengesloten periode ≥ grens uit de HA-geschiedenis; een
+│   │   │                   # gat > 10 min breekt hem), en de stappen van een reiniging: `vorigeStappen` (de
+│   │   │                   # middelen van de vorige keer voor dezelfde tank/taak), `laatstePhLeiding`, `bouwStap`
+│   │   │                   # (bevroren op het record), `stapAfwijkingen`, `desinfectieBewijs`, `retourSensorVoorTank`.
+│   │   │                   # UI: components/haccp/MiddelenLijst.tsx, ReinigingStappen.tsx (in TankReinigingForm en het
+│   │   │                   # schoonmaaklogboek; zonder middelenlijst blijft het vrije veld "Middel")
 │   │   ├── incident.ts     # "Er is iets mis" (1.13.55): klacht of incident bij een batch, volgens de procedure
 │   │   │                   # "Traceerbaarheid, klachten en terugroepen". Kwaliteit = vastleggen en afhandelen;
 │   │   │                   # veiligheid = in één handeling de afvullingen van die lotcodes blokkeren
@@ -929,6 +940,10 @@ factuur- en etiketscan (schema's binnen de grenzen van gestructureerde
 uitvoer, opschonen, toepassen zonder invoer van de gebruiker te overschrijven),
 het scangeheugen, de totaal- en dubbelecontrole, de foto-omzetting
 (`afbeelding.ts`) en de regel-zoeker in de PDF (`pdfZoek.ts`).
+Reinigen (`reinigingsmiddelen.test.ts`): de Ctgb-stand en wat bruikbaar is, dosering,
+concentratie, pH van het naspoelwater, de retourtemperatuur uit de sensorgeschiedenis (gat
+breekt de periode), de stappen (vorige keer, pH van het leidingwater, oordelen, bewijs van
+desinfectie) en de retoursensor per tank; pytest `TestHaGeschiedenis` (venster, reeks, de route).
 "Er is iets mis" (`incident.test.ts`): de 4-uursklok (open, te laat, gemeld, op tijd),
 blokkeren en opheffen (een andere blokkade blijft staan), de waarschuwingsmail in vijf
 talen met de afnemers in Bcc, de stappen en wanneer het dicht mag, en `traceBatch`
@@ -1698,7 +1713,8 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `hygiene_items` | array | *(legacy)* Hygiëne-controleitems — gemigreerd naar `batch_taken_items` |
 | `hygiene_groups` | array | *(legacy)* Hygiëne-groepen — gemigreerd naar `batch_taken_groepen` |
 | `haccp_schoonmaak_taken` | array | Schoonmaakschema (object, frequentie, middel) |
-| `haccp_schoonmaak_log` | array | Uitgevoerde reiniging/desinfectie |
+| `haccp_schoonmaak_log` | array | Uitgevoerde reiniging/desinfectie. `stappen` (1.13.56, ook op `tank_reinigingslog`) = per middel `{middel_id, middel, soort, ctgb_nummer?, concentratie_pct?, concentratie_oordeel?, ph_naspoel?, ph_leiding?, naspoel_oordeel?, retour?: {bron: sensor\|handmatig, entity?, drempel, minuten, minuten_boven, max, van, tot, gehaald}}`, bevroren bij het vastleggen; `middel` blijft de namen als tekst |
+| `reinigingsmiddelen` | array | De reinigings- en desinfectiemiddelen van de brouwerij (1.13.56, `utils/reinigingsmiddelen.ts`): `{id, naam, soort: alkalisch\|zuur\|desinfectie\|thermisch\|overig, waarvoor?, ctgb_nummer?, ctgb_geldig_tot?, onverdund?, dosering_min_pct?, dosering_max_pct?, temp_min_c?, temp_max_c?, contacttijd_min?, naspoelen, gearchiveerd?}`. HACCP › Reiniging › Middelen. Gedeelde key (wie reinigt mag hem bijwerken); in de Excel-backup (`Reinigingsmiddelen`) |
 | `haccp_ccp_definities` | array | *(legacy)* Generieke CCP-definities — gemigreerd naar `batch_taken_items` (`type: 'meting'`) en sinds opschoning v4 uitgezet: de kritische beheerspunten zijn CCP 1/2/3 |
 | `haccp_ccp_metingen` | array | *(legacy)* Metingen op die definities, met limietcheck en automatische CAPA. Sinds het verwijderen van de oude Batches-pagina (1.12.42) nergens meer zichtbaar of registreerbaar; de data blijft in de database en de Excel-backup |
 | `haccp_capa` | array | Corrigerende en preventieve maatregelen |
@@ -1758,7 +1774,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `login_instellingen` | object | Styling van de loginpagina op de directe-toegangspoort: titel/ondertitel/knoptekst, accent-/achtergrondkleur (hex), achtergrondafbeelding (data-url), `logo_tonen`. Server rendert met strikte validatie (`_login_pagina`) — pre-auth, dus nooit ongefilterd |
 | `factuur_counter` | object | *(legacy)* Doorlopend factuurnummer per jaar — vervangen door `nummer_reeksen`, alleen nog als migratie-seed gelezen |
 | `nummer_reeksen` | object | Server-beheerde nummerreeksen (`factuur`/`creditnota` per jaar; `bestelling` = kort doorlopend `M-`-nummer voor handmatige orders, geen jaarreset), atomair uitgegeven via `POST /api/nextnr` — nooit client-side muteren |
-| `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`, en `bewaking` = drempels van de temperatuurbewaking; leeg veld = default uit `utils/tankbewaking.ts`; `ruimteklimaat` = de airco voor de tanks: `{enabled, entity, richting (koelen/verwarmen/beide), koelen_tot, verwarmen_tot, tanks, start_marge, start_min, herstel, stop_marge, stop_min}`, defaults in `utils/ruimteklimaat.ts`; `druk_sensors` = `[{id, tank, entity, eenheid: bar\|psi\|kpa}]`, de druk per tank voor het koolzuur op de afvuldag) |
+| `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`, en `bewaking` = drempels van de temperatuurbewaking; leeg veld = default uit `utils/tankbewaking.ts`; `ruimteklimaat` = de airco voor de tanks: `{enabled, entity, richting (koelen/verwarmen/beide), koelen_tot, verwarmen_tot, tanks, start_marge, start_min, herstel, stop_marge, stop_min}`, defaults in `utils/ruimteklimaat.ts`; `druk_sensors` = `[{id, tank, entity, eenheid: bar\|psi\|kpa}]`, de druk per tank voor het koolzuur op de afvuldag; `retour_sensors` = `[{id, tank, entity}]` (tank leeg = alle tanks), de retourtemperatuur bij reinigen met heet water — gelezen via `GET /api/homeassistant/_history/<entity>`) |
 | `notificatie_instellingen` | object | Meldingsinstellingen: HA `notify`-service + scherm-melding (herbruikbaar voor alle notificaties) |
 | `bank_koppelingen` | object | Koppeling banktransacties (sleutel `txKey`) aan facturen, BTW, accijns, SNd, kapitaal, aflossing en PSP-bundels — dé bron van wat er gekoppeld is; de vlaggen op `bank_transacties` volgen hieruit (zie hieronder) |
 | `app_logo` | string\|null | Base64 app-logo |
@@ -1908,6 +1924,7 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 | POST | `/api/login` | Alleen directe poort (8098): HA-login via Supervisor-auth → sessiecookie |
 | POST | `/api/logout` | Alleen directe poort: beëindig de sessie |
 | GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; gebruik `/api/health`)* |
+| GET | `/api/homeassistant/_history/<entity>?start=&end=` | Geschiedenis van één sensor (1.13.56, retoursensor bij reinigen): ISO-tijden met tijdzone, hooguit 24 uur (`_ha_history_venster`), alleen eindige getallen, hooguit 5000 punten (`_ha_history_punten`); `{punten: [{ts, waarde}]}`. Alleen lezen |
 | GET | `/api/brewfather/*` | Proxy to Brewfather API (fout = Brewfathers eigen melding + `Retry-After`) |
 | POST | `/api/brewfather/patch/*` | PATCH naar Brewfather, alleen de voorraad van één ingrediënt en de status + meetwaarden van één batch (`_bf_patch_toegestaan`); de rest 403 |
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API (GET via de prefix, PUT via `put/`) |

@@ -223,6 +223,15 @@ class TestAppendOnly:
         assert srv._rol_mag_key('productie', 'haccp_incidenten')
         assert not srv._rol_mag_key('alleen_lezen', 'haccp_incidenten')
 
+    def test_reinigingsmiddelen_lijst_voor_wie_brouwt(self, app):
+        """De middelen met hun Ctgb-toelating (1.13.56): een gewone lijst die
+        wie reinigt kan bijwerken (een nieuw middel, een verlengde
+        toelating) — geen beheer- of financiële key."""
+        assert srv._KEY_TYPES['reinigingsmiddelen'] == 'array'
+        assert 'reinigingsmiddelen' not in srv._APPEND_ONLY
+        assert srv._rol_mag_key('productie', 'reinigingsmiddelen')
+        assert not srv._rol_mag_key('alleen_lezen', 'reinigingsmiddelen')
+
 
 class TestSecretsMaskering:
     def test_mask_vervangt_gevoelige_velden_door_sentinel(self):
@@ -7117,3 +7126,61 @@ class TestMailAfbeeldingen:
     def test_afbeelding_zonder_html_blijft_geweigerd(self):
         payload = {**self._payload(['whatsapp-logo']), 'html': ''}
         assert srv._build_email(self.CREDS, payload) is None
+
+
+class TestHaGeschiedenis:
+    """De retoursensor bij reinigen (1.13.56): de geschiedenis van één sensor
+    over het tijdvak van een reiniging — alleen lezen, begrensd."""
+
+    def test_venster_moet_kloppen(self):
+        assert srv._ha_history_venster('2026-11-24T10:00:00+01:00', '2026-11-24T12:00:00+01:00') == (
+            '2026-11-24T09:00:00+00:00', '2026-11-24T11:00:00+00:00')
+        assert srv._ha_history_venster('2026-11-24T10:00:00Z', '2026-11-24T10:30:00Z') is not None
+        # Zonder tijdzone, omgekeerd, te lang of onzin: geweigerd.
+        assert srv._ha_history_venster('2026-11-24T10:00:00', '2026-11-24T12:00:00') is None
+        assert srv._ha_history_venster('2026-11-24T12:00:00Z', '2026-11-24T10:00:00Z') is None
+        assert srv._ha_history_venster('2026-11-24T10:00:00Z', '2026-11-25T10:00:01Z') is None
+        assert srv._ha_history_venster('gisteren', 'vandaag') is None
+
+    def test_reeks_alleen_eindige_getallen_op_tijd(self):
+        raw = [[
+            {'entity_id': 'sensor.retour', 'state': '83.1', 'last_changed': '2026-11-24T10:05:00+00:00'},
+            {'state': 'unavailable', 'last_changed': '2026-11-24T10:03:00+00:00'},
+            {'state': 'nan', 'last_changed': '2026-11-24T10:04:00+00:00'},
+            {'state': '79', 'last_changed': '2026-11-24T10:00:00+00:00'},
+            'kapot',
+        ]]
+        assert srv._ha_history_punten(raw) == [
+            {'ts': '2026-11-24T10:00:00+00:00', 'waarde': 79.0},
+            {'ts': '2026-11-24T10:05:00+00:00', 'waarde': 83.1},
+        ]
+        assert srv._ha_history_punten([]) == []
+        assert srv._ha_history_punten({'x': 1}) == []
+
+    def test_route_weigert_ongeldige_invoer_zonder_ha_te_vragen(self, app):
+        pad = '/api/homeassistant/_history/sensor.retour?start=gisteren&end=vandaag'
+        status, body, _ = req(app, 'GET', pad)
+        assert status == 400 and body['error'] == 'ongeldige_invoer'
+        status, _, _ = req(app, 'GET', '/api/homeassistant/_history/Sensor;rm?start=2026-11-24T10:00:00Z&end=2026-11-24T11:00:00Z')
+        assert status == 400
+
+    def test_route_vraagt_alleen_die_ene_sensor_over_dat_venster(self, app, monkeypatch):
+        echt = srv.urllib.request.urlopen
+        gevraagd = []
+
+        def nep(verzoek, *a, **k):
+            url = verzoek.full_url if hasattr(verzoek, 'full_url') else str(verzoek)
+            if url.startswith(srv.HA_SUPERVISOR_BASE):
+                gevraagd.append(url)
+                return _NepAntwoord(json.dumps([[{'state': '84', 'last_changed': '2026-11-24T10:10:00+00:00'}]]).encode())
+            return echt(verzoek, *a, **k)
+
+        monkeypatch.setenv('SUPERVISOR_TOKEN', 'test')
+        monkeypatch.setattr(srv.urllib.request, 'urlopen', nep)
+        status, body, _ = req(app, 'GET', '/api/homeassistant/_history/sensor.retour?start=2026-11-24T10:00:00%2B00:00&end=2026-11-24T11:00:00Z')
+        assert status == 200
+        assert body == {'punten': [{'ts': '2026-11-24T10:10:00+00:00', 'waarde': 84.0}]}
+        assert len(gevraagd) == 1
+        assert '/history/period/2026-11-24T10%3A00%3A00%2B00%3A00' in gevraagd[0]
+        assert 'filter_entity_id=sensor.retour' in gevraagd[0]
+        assert 'end_time=2026-11-24T11%3A00%3A00%2B00%3A00' in gevraagd[0]

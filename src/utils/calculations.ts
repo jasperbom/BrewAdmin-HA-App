@@ -1,4 +1,4 @@
-import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot, Batch, TankStatusMap, TankReinigingLog, TankReinigingStatus } from '../types'
+import { AccijnsInst, AccijnsTariefJaar, TankHistorieEntry, Locatie, Verplaatsing, Afvulling, Uitlevering, Afboeking, VerliesRegistratie, VerliesBron, Recept, Ingredient, Lot, Batch, TankStatusMap, TankReinigingLog, TankReinigingStatus, ReinigingStap } from '../types'
 import { convertEenheid, ZuurMiddel } from './constants'
 import { ymd, tod } from './format'
 import { verpakkingKostenPerStuk, vindVerpakking } from './verpakkingKosten'
@@ -1406,7 +1406,7 @@ export const markTankVuilBijVerwijderen = (
 export const registreerTankReiniging = (
   tankId: string | undefined | null,
   nieuweStatus: TankReinigingStatus,
-  gegevens: { datum: string, uitgevoerd_door: string, middel?: string, cip?: boolean, opmerking?: string },
+  gegevens: { datum: string, uitgevoerd_door: string, middel?: string, cip?: boolean, opmerking?: string, stappen?: ReinigingStap[] },
   statussen: TankStatusMap | undefined | null,
   log: TankReinigingLog[] | undefined | null,
 ): { statussen: TankStatusMap, log: TankReinigingLog[], changed: boolean } => {
@@ -1425,6 +1425,7 @@ export const registreerTankReiniging = (
     nieuwe_status: nieuweStatus,
     oorzaak: 'handmatig',
     ...(gegevens.middel ? { middel: gegevens.middel } : {}),
+    ...(gegevens.stappen && gegevens.stappen.length ? { stappen: gegevens.stappen } : {}),
     ...(gegevens.cip ? { cip: true } : {}),
     ...(gegevens.opmerking ? { opmerking: gegevens.opmerking } : {}),
   }

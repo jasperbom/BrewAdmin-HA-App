@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.56] — 2026-11-24
+
+### Reinigen: middelen met Ctgb-toelating, dosering, pH en de retoursensor
+
+- **Middelenlijst** (HACCP → Reiniging → *Middelen*): per middel de soort,
+  waarvoor, de dosering (van–tot %, temperatuur, contacttijd, of onverdund),
+  of er nagespoeld moet worden, en voor een desinfectiemiddel het
+  Ctgb-toelatingsnummer met de einddatum, met een link naar de Ctgb-databank.
+  Een toelating die binnen 90 dagen afloopt is oranje; een desinfectiemiddel
+  zonder nummer of met een verlopen toelating is rood, staat als aandachtspunt
+  op Productie en is bij een reiniging niet te kiezen. De lijst vul je zelf.
+- **Bij een reiniging kies je het middel en de dosering staat er al**: bij
+  de gisttank, een lege tank op de brouwzaal en in het schoonmaaklogboek. De
+  middelen van de vorige keer voor dezelfde tank of taak staan alvast klaar.
+  Per middel: de concentratie (binnen het voorschrift?), de pH van het
+  naspoelwater tegen die van het leidingwater (± 0,5; de pH van het
+  leidingwater onthoudt de app), en bij heet water hoe lang het retourwater
+  op temperatuur was.
+- **Retoursensor in Home Assistant** (Instellingen → Home Assistant →
+  *Retoursensoren*, per tank of één voor alle tanks): de app leest de
+  geschiedenis van de sensor en rekent uit hoe lang het retourwater
+  aaneengesloten op 82 °C of warmer was — het bewijs van temperatuur en tijd.
+  Zonder sensor vul je de hoogste temperatuur en de minuten zelf in.
+- Wijkt iets af (concentratie, naspoelwater, retour te kort), of zet je een
+  tank op *Ontsmet* zonder desinfectiemiddel of heet water, dan vraagt de knop
+  eerst om bevestiging. Alles gaat bevroren mee op de registratie.
+- Zonder middelenlijst werkt het vrije veld *Middel* zoals voorheen.
+
+---
+
 ## [1.13.55] — 2026-11-24
 
 ### "Er is iets mis": klachten en incidenten, met de 4-uursklok voor de NVWA

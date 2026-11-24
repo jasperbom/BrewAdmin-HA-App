@@ -1023,6 +1023,22 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
   const updateDrukSensor = (id: number, field: string, value: string) => {
     setHaInst((p: any) => ({...p, druk_sensors: (p?.druk_sensors||[]).map((s: any) => s.id === id ? {...s, [field]: value} : s)}))
   }
+  // Retoursensoren (heet water bij reinigen): per tank, of één voor alle
+  // tanks (de retour naar de heetwatertank). De reiniging leest de
+  // geschiedenis en rekent uit hoe lang het retourwater op temperatuur was.
+  const addRetourSensor = () => {
+    const lijst = Array.isArray(haInst?.retour_sensors) ? haInst.retour_sensors : []
+    const nextId = lijst.length ? Math.max(...lijst.map((s: any) => s.id)) + 1 : 1
+    setHaInst((p: any) => ({...p, retour_sensors: [...lijst, {id: nextId, tank: '', entity: ''}]}))
+    logAudit(auditLog, setAuditLog, {entiteit:'HA Sensor', entiteit_id:nextId, actie:'aangemaakt', omschrijving:'HA retoursensor toegevoegd'})
+  }
+  const removeRetourSensor = (id: number) => {
+    logAudit(auditLog, setAuditLog, {entiteit:'HA Sensor', entiteit_id:id, actie:'verwijderd', omschrijving:`HA retoursensor #${id} verwijderd`})
+    setHaInst((p: any) => ({...p, retour_sensors: (p?.retour_sensors||[]).filter((s: any) => s.id !== id)}))
+  }
+  const updateRetourSensor = (id: number, field: string, value: string) => {
+    setHaInst((p: any) => ({...p, retour_sensors: (p?.retour_sensors||[]).map((s: any) => s.id === id ? {...s, [field]: value} : s)}))
+  }
 
   // ── Climate / Light / Switch — gedeelde helpers ───────────────────────────
   // Discovered entity-cache per domein; wordt gevuld door "Entities ophalen".
@@ -2904,6 +2920,37 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
             ))}
           </div>
           <Btn v="secondary" s="sm" onClick={addDrukSensor}>{t('settings_ha_druk_toevoegen')}</Btn>
+        </div>
+
+        {/* ── Retoursensoren (heet water bij reinigen: ≥ 82 °C, 15 minuten) ── */}
+        <div className="mt-5 pt-4 border-t">
+          <h3 className="text-sm font-semibold text-gray-800 mb-1">{t('settings_ha_retour_titel')}</h3>
+          <p className="text-sm text-gray-500 mb-3">{t('settings_ha_retour_uitleg')}</p>
+          <div className="space-y-2 mb-3">
+            {(Array.isArray(haInst?.retour_sensors) ? haInst.retour_sensors : []).map((rs: any) => (
+              <div key={rs.id} className="border border-gray-200 rounded-lg p-3 bg-gray-50/50">
+                <div className="flex items-end gap-2 flex-wrap">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('lbl_tank')}</label>
+                    <select value={rs.tank || ''} onChange={e => updateRetourSensor(rs.id, 'tank', e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-40 t-input bg-white">
+                      <option value="">{t('settings_ha_retour_alle_tanks')}</option>
+                      {(tanks || []).map((tk: any) => (
+                        <option key={tk.id} value={tk.id}>{tk.naam ? `${tk.id} (${tk.naam})` : tk.id}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1 min-w-48">
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_entity_id')}</label>
+                    {renderEntityPicker('sensor', `retour:${rs.id}`, rs.entity,
+                      v => updateRetourSensor(rs.id, 'entity', v), 'sensor.cip_retour')}
+                  </div>
+                  <Btn v="danger" s="sm" onClick={() => removeRetourSensor(rs.id)}>×</Btn>
+                </div>
+              </div>
+            ))}
+          </div>
+          <Btn v="secondary" s="sm" onClick={addRetourSensor}>{t('settings_ha_retour_toevoegen')}</Btn>
         </div>
 
         <div className="mt-4 pt-4 border-t text-xs text-gray-400 space-y-1">

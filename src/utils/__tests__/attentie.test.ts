@@ -572,3 +572,24 @@ describe('attentiePosten — administratie = de rijen van het dashboard', () => 
     expect(doel('accijns')).toEqual({ pagina: 'aangiftes', tab: 'accijns' })
   })
 })
+
+describe('middel_ctgb — desinfectiemiddel zonder geldige toelating', () => {
+  it('per middel een regel naar HACCP › Reiniging › Middelen; rood zonder geldige toelating', () => {
+    const bron: any = { batches: [], producten: [], batchTakenItems: [], batchTakenGroepen: [], schoonmaakTaken: [], schoonmaakLog: [],
+      lots: [], vandaag: new Date('2029-05-01T12:00:00Z'), vandaagIso: '2029-05-01' }
+    bron.reinigingsmiddelen = [
+      { id: 1, naam: 'Zuur D', soort: 'desinfectie', ctgb_nummer: '12345 N', ctgb_geldig_tot: '2029-07-01', naspoelen: true },
+      { id: 2, naam: 'Loog A', soort: 'alkalisch', naspoelen: true },
+    ]
+    let post = attentiePosten(bron).productie.find(p => p.id === 'middel_ctgb')!
+    expect(post).toMatchObject({ aantal: 1, pagina: 'haccp', tab: 'reiniging', filter: 'middelen' })
+    expect(post.kleur).toBeUndefined()
+    expect(post.details?.[0]).toMatchObject({ sleutel: 'attentie_middel_verloopt', params: { naam: 'Zuur D', datum: '1-7-2029' } })
+    bron.vandaagIso = '2029-08-01'
+    post = attentiePosten(bron).productie.find(p => p.id === 'middel_ctgb')!
+    expect(post).toMatchObject({ kleur: 'rood' })
+    expect(post.details?.[0].sleutel).toBe('attentie_middel_verlopen')
+    bron.reinigingsmiddelen = [{ id: 2, naam: 'Loog A', soort: 'alkalisch', naspoelen: true }]
+    expect(attentiePosten(bron).productie.find(p => p.id === 'middel_ctgb')).toBeUndefined()
+  })
+})

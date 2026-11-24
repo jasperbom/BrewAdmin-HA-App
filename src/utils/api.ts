@@ -39,6 +39,17 @@ export const haGetState = async (entityId: string): Promise<{state: string, unit
   return r.json()
 }
 
+// De geschiedenis van één sensor over een tijdvak (hooguit 24 uur): de
+// retourtemperatuur bij reinigen (utils/reinigingsmiddelen.ts `retourOordeel`).
+export const haGetHistory = async (entityId: string, start: string, eind: string): Promise<Array<{ts: string, waarde: number}>> => {
+  const qs = `?start=${encodeURIComponent(start)}&end=${encodeURIComponent(eind)}`
+  const r = await _fetchWithRetry(`${_HA_PROXY}_history/${entityId}${qs}`, undefined, 1)
+  if (r.status === 429) throw _rateLimitError('HA', r)
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any).error || `HA ${r.status}`) }
+  const d: any = await r.json()
+  return Array.isArray(d?.punten) ? d.punten : []
+}
+
 // Vormgebruik per HA-entity in /_list. Attributen zijn gepruimd door de proxy
 // tot alleen de velden die de UI nodig heeft; ruwe attribute-bags komen hier
 // niet terug.

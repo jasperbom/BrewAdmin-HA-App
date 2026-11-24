@@ -35,6 +35,7 @@ import KomendeDagen, { KomendeLijst } from '../components/brouwzaal/KomendeDagen
 import type { KomendModel } from '../components/brouwzaal/KomendeDagen'
 import Inklapbaar from '../components/brouwzaal/Inklapbaar'
 import type { NieuweBatchVerzoek } from '../utils/nieuweBatch'
+import { retourSensorVoorTank } from '../utils/reinigingsmiddelen'
 
 interface ProductieDashboardProps {
   bat: any[]
@@ -76,6 +77,9 @@ interface ProductieDashboardProps {
   attentie?: AttentiePost[]
   /** De ingelogde gebruiker: voorgevuld bij een reiniging. */
   gebruiker?: string
+  /** De reinigingsmiddelen (utils/reinigingsmiddelen.ts) en de HA-instellingen (retoursensor). */
+  reinigingsmiddelen?: any[]
+  haInst?: any
   setPage: (id: string) => void
   /** Het blad "Wat brouw je?" (App.tsx → openNieuweBatch); een vrije tank geeft de tank mee. */
   onNieuweBatch?: (verzoek?: NieuweBatchVerzoek) => void
@@ -106,7 +110,7 @@ function ProductieDashboard({
   batchTakenItems = [], batchTakenGroepen = [],
   lots = [], ing = [], gistMetingen = [], setGistMetingen = () => {}, auditLog = [], setAuditLog = () => {},
   producten = [], recepten = [], bi = [], dryHops = [], haccpVrijgaven = [], verkoopVrijgaven = [], afvulSessies = [],
-  planningInst, log = [], attentie = [], gebruiker = '',
+  planningInst, log = [], attentie = [], gebruiker = '', reinigingsmiddelen = [], haInst,
   onNieuweBatch, gaNaar, metingSignaal = 0,
 }: ProductieDashboardProps) {
   const telefoon = useSmalScherm()
@@ -251,7 +255,8 @@ function ProductieDashboard({
   // Het blad "Wat brouw je?" opent hier, boven de brouwzaal; na Inplannen
   // opent de nieuwe batch. Een vrije tank geeft de tank mee.
   const nieuweBatch = (tankId?: string) => onNieuweBatch?.(tankId ? { tank: tankId } : {})
-  const reiniging = { tankStatussen, setTankStatussen, tankLog, setTankLog, auditLog, setAuditLog, standaardDoor: gebruiker.trim() }
+  const reiniging = { tankStatussen, setTankStatussen, tankLog, setTankLog, auditLog, setAuditLog, standaardDoor: gebruiker.trim(),
+    middelen: reinigingsmiddelen, retourEntity: (tankId: string) => retourSensorVoorTank(haInst, tankId) }
 
   // Telefoon: "Vrije tanks" en "Komende 14 dagen" beginnen ingeklapt.
   const [vrijOpen, setVrijOpen] = useState(false)

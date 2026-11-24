@@ -778,13 +778,44 @@ export interface TankStatusMap {
   [tankId: string]: TankStatusEntry
 }
 
+// Eén middel in een reiniging (1.13.56, utils/reinigingsmiddelen.ts): wat
+// er gebruikt is en hoe het uitviel, bevroren op het moment van vastleggen
+// (een middel dat later wijzigt of uit de lijst gaat verandert de registratie
+// niet).
+export interface ReinigingStap {
+  middel_id?: number
+  middel: string
+  soort: ReinigingsMiddel['soort']
+  ctgb_nummer?: string
+  concentratie_pct?: number
+  concentratie_oordeel?: 'binnen' | 'te_laag' | 'te_hoog' | 'onbekend'
+  ph_naspoel?: number
+  ph_leiding?: number
+  naspoel_oordeel?: 'ok' | 'te_hoog' | 'te_laag' | 'onbekend'
+  /** Thermisch: hoe lang het retourwater op temperatuur was. */
+  retour?: {
+    bron: 'sensor' | 'handmatig'
+    entity?: string
+    drempel: number
+    minuten: number
+    minuten_boven: number
+    max?: number | null
+    van?: string | null
+    tot?: string | null
+    gehaald: boolean
+  }
+}
+
 export interface TankReinigingLog {
   id: number
   tank_id: string
   datum: string
   uitgevoerd_door: string
   nieuwe_status: TankReinigingStatus
+  /** De gebruikte middelen als tekst (ook bij `stappen`: de namen achter elkaar). */
   middel?: string
+  /** De middelen met concentratie, pH van het naspoelwater en retourtemperatuur (1.13.56). */
+  stappen?: ReinigingStap[]
   opmerking?: string
   cip?: boolean
   // 'batch_checklist' = automatisch vastgelegd door een vinkje op de batch
@@ -1543,6 +1574,13 @@ export interface HaSensor {
   entity: string
 }
 
+export interface HaRetourSensor {
+  id: number
+  /** Tank-id; leeg = geldt voor elke tank zonder eigen retoursensor. */
+  tank: string
+  entity: string
+}
+
 export interface HaDrukSensor {
   id: number
   tank: string
@@ -1600,6 +1638,9 @@ export interface HaInst {
   // lijst, los van `sensors` (temperatuur): wat de server als temperatuur
   // leest, blijft temperatuur.
   druk_sensors?: HaDrukSensor[]
+  // Retoursensoren voor heet water bij reinigen (1.13.56): `tank` leeg = alle
+  // tanks (één sensor in de retour naar de heetwatertank).
+  retour_sensors?: HaRetourSensor[]
   // ── Temperatuurbewaking ──────────────────────────────────────────────────
   // Drempelwaarden voor het beoordelen van de automatische metingen; de
   // rekenregels staan in src/utils/tankbewaking.ts (server.py spiegelt ze).
@@ -1842,6 +1883,8 @@ export interface SchoonmaakLog {
   opmerking?: string
   middel?: string
   cip?: boolean
+  /** De middelen met concentratie, pH van het naspoelwater en retourtemperatuur (1.13.56). */
+  stappen?: ReinigingStap[]
 }
 
 export type CCPCategorie = 'koken' | 'koelen' | 'vergisting' | 'verpakken' | 'opslag' | 'overig'
@@ -2103,6 +2146,30 @@ export interface AfvulSessie {
 
 // Wanneer het etiket op de fles of het fust gaat (`haccp_instellingen.etiketteren`).
 export type Etiketteren = 'afvullen' | 'na_vrijgave'
+
+// Een reinigings- of desinfectiemiddel van de brouwerij (1.13.56,
+// utils/reinigingsmiddelen.ts). Een desinfectiemiddel heeft een
+// Ctgb-toelating (productsoort 4) met een einddatum; heet water is
+// `thermisch` en heeft er geen nodig.
+export interface ReinigingsMiddel {
+  id: number
+  naam: string
+  soort: 'alkalisch' | 'zuur' | 'desinfectie' | 'thermisch' | 'overig'
+  /** Waarvoor (vrije tekst uit het plan: "tanks, vuller, onderdelen"). */
+  waarvoor?: string
+  ctgb_nummer?: string
+  /** JJJJ-MM-DD. */
+  ctgb_geldig_tot?: string
+  onverdund?: boolean
+  dosering_min_pct?: number
+  dosering_max_pct?: number
+  temp_min_c?: number
+  temp_max_c?: number
+  contacttijd_min?: number
+  /** Moet er na dit middel nagespoeld worden (tot pH = leidingwater)? */
+  naspoelen: boolean
+  gearchiveerd?: boolean
+}
 
 // "Er is iets mis" (1.13.55, utils/incident.ts): een klacht of incident bij
 // een batch. Kwaliteit (smaak, schuim, helderheid) = vastleggen en afhandelen;

@@ -71,6 +71,7 @@ import { magAfvullen, isLegacyBatch, actueleVrijgave, maakParaaf } from '../util
 import { IncidentBlad, IncidentKaart, IncidentLijst } from '../components/batch/Incident'
 import { nieuwIncident, sluitIncident, blokkeerVoorIncident, deblokkeerIncident, type IncidentInvoer } from '../utils/incident'
 import { traceBatch } from '../utils/trace'
+import { retourSensorVoorTank } from '../utils/reinigingsmiddelen'
 import type { HaccpIncident } from '../types'
 import { afvulVlaggen, houdtestVoorBatch, teEtiketteren } from '../utils/houdtest'
 import { bouwBatchRapport } from '../utils/batchRapport'
@@ -192,6 +193,8 @@ interface BatchFlowPageProps {
   klanten?: any[],
   /** Is er een Claude-sleutel? Dan leest de AI de etiketfoto bij CCP 3 na. */
   heeftClaude?: boolean,
+  /** De reinigingsmiddelen (utils/reinigingsmiddelen.ts) voor de gisttank. */
+  reinigingsmiddelen?: any[],
   // HACCP-schoonmaakschema: nodig om een reinigingsvinkje op de batch ook als
   // uitvoering op de bijbehorende schoonmaaktaak te loggen.
   schoonmaakTaken?: any[], schoonmaakLog?: any[], setSchoonmaakLog?: any,
@@ -505,7 +508,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   haccpEtiketcontroles, setHaccpEtiketcontroles,
   verkoopVrijgaven = [], setVerkoopVrijgaven,
   haccpAfwijkingen, setHaccpAfwijkingen, haccpInst, heeftClaude = false,
-  haccpIncidenten = [], setHaccpIncidenten, klanten = [],
+  haccpIncidenten = [], setHaccpIncidenten, klanten = [], reinigingsmiddelen = [],
   schoonmaakTaken = [], schoonmaakLog = [], setSchoonmaakLog = () => {},
   capa, setCapa, whoami,
   breweryDetails, appName = '', factuurLogo, logo,
@@ -4162,6 +4165,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                     tankLog={tankLog} setTankLog={setTankLog}
                     auditLog={auditLog} setAuditLog={setAuditLog}
                     standaardDoor={(whoami?.gebruiker || '').trim()}
+                    middelen={reinigingsmiddelen} retourEntity={retourSensorVoorTank(haInst, selB.tank)}
                     onOpgeslagen={(status) => addLog({type: 'hygiene', batch_id: selB.id,
                       referentie: `${t(TANK_REINIGING_LABEL_KEY[status] || '') || status} — ${gistTank?.naam || selB.tank}`})} />
                 )}

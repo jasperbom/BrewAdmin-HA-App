@@ -2126,7 +2126,7 @@ _KEY_TYPES = {
         'haccp_opleidingen',
         'haccp_vrijgaven', 'afvul_sessies', 'haccp_sluitcontroles',
         'haccp_etiketcontroles', 'haccp_afwijkingen', 'haccp_trace_oefeningen',
-        'haccp_verkoopvrijgaven', 'haccp_incidenten',
+        'haccp_verkoopvrijgaven', 'haccp_incidenten', 'reinigingsmiddelen',
         'locaties', 'verplaatsingen', 'btw_tarieven', 'tank_alarmen',
         'tank_setpoints',
         'ing_types', 'kosten_soorten', 'gn_codes',
@@ -3413,6 +3413,50 @@ def _eindig_of_none(waarde) -> float | None:
     except (TypeError, ValueError):
         return None
     return val if math.isfinite(val) else None
+
+
+# ── Geschiedenis van één sensor (retourtemperatuur bij reinigen) ────────────
+# De app leest hiermee de retoursensor uit over het tijdvak van een reiniging
+# (≥ 82 °C retour, 15 minuten): het bewijs van temperatuur en tijd. Alleen
+# lezen, één entiteit, hooguit 24 uur, hooguit HA_HISTORY_MAX_PUNTEN punten.
+HA_HISTORY_MAX_UUR = 24
+HA_HISTORY_MAX_PUNTEN = 5000
+_HA_ENTITY_RE = re.compile(r'^[a-z][a-z0-9_]*\.[a-z0-9][a-z0-9_-]*$')
+
+
+def _ha_history_venster(start: str, eind: str):
+    """Controleer het tijdvak: twee ISO-tijdstippen met tijdzone, eind na
+    start, hooguit HA_HISTORY_MAX_UUR uur. Geeft (start, eind) als ISO in UTC
+    of None bij ongeldige invoer."""
+    try:
+        s = datetime.datetime.fromisoformat(str(start).replace('Z', '+00:00'))
+        e = datetime.datetime.fromisoformat(str(eind).replace('Z', '+00:00'))
+    except (TypeError, ValueError):
+        return None
+    if s.tzinfo is None or e.tzinfo is None or e <= s:
+        return None
+    if e - s > datetime.timedelta(hours=HA_HISTORY_MAX_UUR):
+        return None
+    utc = datetime.timezone.utc
+    return (s.astimezone(utc).isoformat(), e.astimezone(utc).isoformat())
+
+
+def _ha_history_punten(raw) -> list:
+    """De reeks uit HA's /history/period (een lijst per entiteit, met
+    `minimal_response` alleen `state` + `last_changed`) als
+    [{ts, waarde}]: alleen eindige getallen, op tijd gesorteerd, begrensd."""
+    reeks = raw[0] if isinstance(raw, list) and raw and isinstance(raw[0], list) else []
+    uit = []
+    for st in reeks:
+        if not isinstance(st, dict):
+            continue
+        waarde = _eindig_of_none(st.get('state'))
+        ts = st.get('last_changed') or st.get('last_updated')
+        if waarde is None or not isinstance(ts, str):
+            continue
+        uit.append({'ts': ts, 'waarde': waarde})
+    uit.sort(key=lambda p: p['ts'])
+    return uit[-HA_HISTORY_MAX_PUNTEN:]
 
 
 def _ha_fetch_state(entity_id: str) -> float | None:
@@ -8542,6 +8586,21 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._ha_notify_endpoint()
             return
 
+        # Geschiedenis van één sensor over een tijdvak (retoursensor).
+        if tail.startswith('_history/'):
+            if self.command != 'GET':
+                self._json(405, {'error': 'method not allowed'})
+                return
+            entity_id = tail[len('_history/'):]
+            # do_GET geeft het pad zonder query door: lees hem uit self.path.
+            params = urllib.parse.parse_qs(qs or (self.path.split('?', 1)[1] if '?' in self.path else ''))
+            venster = _ha_history_venster((params.get('start') or [''])[0], (params.get('end') or [''])[0])
+            if not _HA_ENTITY_RE.match(entity_id) or venster is None:
+                self._json(400, {'error': 'ongeldige_invoer'})
+                return
+            self._ha_history(entity_id, venster)
+            return
+
         # Anders: enkele entity-state ophalen.
         entity_id = tail
         if not re.match(r'^[a-z][a-z0-9_]*\.[a-z0-9][a-z0-9_-]*$', entity_id):
@@ -8566,6 +8625,26 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 msg = f'HA API returned {e.code}'
             self._json(e.code, {'error': msg})
+        except Exception:
+            self._json(502, {'error': 'could not reach Home Assistant API'})
+
+    def _ha_history(self, entity_id: str, venster):
+        """GET op HA /history/period voor één entiteit, alleen lezen."""
+        token = os.environ.get('SUPERVISOR_TOKEN', '')
+        if not token:
+            self._json(503, {'error': 'SUPERVISOR_TOKEN not available — app must run as HA addon'})
+            return
+        start, eind = venster
+        url = (f'{HA_SUPERVISOR_BASE}/history/period/{urllib.parse.quote(start)}'
+               f'?filter_entity_id={urllib.parse.quote(entity_id)}'
+               f'&end_time={urllib.parse.quote(eind)}&minimal_response&no_attributes')
+        try:
+            req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                raw = json.loads(r.read())
+            self._json(200, {'punten': _ha_history_punten(raw)})
+        except urllib.error.HTTPError as e:
+            self._json(e.code, {'error': f'HA API returned {e.code}'})
         except Exception:
             self._json(502, {'error': 'could not reach Home Assistant API'})
 
