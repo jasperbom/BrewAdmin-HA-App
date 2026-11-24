@@ -2193,6 +2193,35 @@ export type EtiketAanleiding = 'start' | 'rolwissel'
 
 // CCP 3 — etiketcontrole. Het etiket is het laatste en enige moment waarop een
 // consument met een allergie gewaarschuwd wordt.
+// AI-controle van de etiketfoto bij CCP 3 (1.13.54, utils/etiketCheck.ts):
+// wat Claude op de foto las en hoe dat tegen de sessie, de batch en de
+// receptuur uitviel. De vinkjes blijven handwerk.
+export type EtiketAiOordeel = 'klopt' | 'wijkt_af' | 'niet_gezien' | 'onbekend'
+export interface EtiketAiCheck {
+  /** Wanneer de foto gelezen is (ISO). */
+  op: string
+  model?: string
+  lezing?: {
+    leesbaar: boolean
+    benaming: string
+    inhoud: string
+    lotcode: string
+    tht: string
+    tht_tekst: string
+    alleen_maand: boolean
+    alcohol: number | null
+    allergenen_zichtbaar: boolean
+    allergenen: Allergeen[]
+    allergenen_tekst: string
+    opmerking: string
+  }
+  oordeel?: Record<'lotcode' | 'tht' | 'alcohol' | 'allergenen', EtiketAiOordeel>
+  /** Vastgelegd terwijl de AI een verschil zag. */
+  toch_vastgelegd?: boolean
+  /** De foto kon niet gelezen worden (i18n-sleutel van de fout). */
+  fout?: string
+}
+
 export interface EtiketControle {
   id: number
   sessie_id: number
@@ -2224,6 +2253,8 @@ export interface EtiketControle {
   capa_id?: number
   opmerking?: string
   bijlagen?: HaccpBijlage[]
+  /** De AI-controle van de etiketfoto (vanaf 1.13.54). */
+  ai_check?: EtiketAiCheck
   paraaf: Paraaf
 }
 

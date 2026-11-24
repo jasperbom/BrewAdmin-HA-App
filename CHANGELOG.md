@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.54] — 2026-11-24
+
+### De AI kijkt mee bij het etiket (CCP 3)
+
+- **Foto van het etiket → de AI leest mee.** Met een Claude-sleutel maak je bij
+  CCP 3 eerst een foto van het gedrukte etiket. De AI leest lotcode, THT,
+  alcohol en allergenen, en naast elk vinkje staat wat hij las: groen als het
+  klopt met de afvulsessie, de batch en de receptuur, rood als het afwijkt,
+  grijs als het niet op de foto staat. De vinkjes zet je nog steeds zelf.
+- **Een verschil vraagt om bevestiging.** Ziet de AI iets anders (de rol van
+  de vorige batch, een allergeen dat ontbreekt, alcohol buiten de marge), dan
+  vraagt de knop *Etiketcontrole vastleggen* eerst "Toch vastleggen?". Zonder
+  foto blijft de knop uit zolang er een sleutel is.
+- **Bewaard als bewijs.** Wat de AI las, met welk model en hoe het uitviel, gaat
+  mee op de etiketcontrole en staat in het batchdossier ("AI: klopt", "AI:
+  wijkt af (lotcode), toch vastgelegd").
+- De AI krijgt niet te horen wat er op het etiket zou moeten staan: hij leest,
+  de app vergelijkt. Ook achteraf registreren leest een etiketfoto na.
+
+---
+
 ## [1.13.53] — 2026-11-24
 
 ### Geen etiketversie meer

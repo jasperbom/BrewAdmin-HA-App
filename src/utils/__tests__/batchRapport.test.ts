@@ -514,7 +514,7 @@ describe('bouwBatchRapport — CCP 3 met de getallen erbij', () => {
       moment: '2026-06-20T09:05:00Z', lotcode: 'L2614-B1', product: 'James Blond',
       abvBatch: 5.5, abvEtiket: 5.4, abvMarge: 0.5,
       allergenenBatch: ['gluten', 'gerst'], allergenenEtiket: ['gluten', 'gerst'],
-      goedgekeurd: true, afwijking: false, snapshot: true,
+      goedgekeurd: true, afwijking: false, snapshot: true, ai: null,
       paraaf: {gebruiker: 'jasper', tijdstip: '2026-06-20T09:05:00Z'},
     }])
   })
@@ -523,6 +523,14 @@ describe('bouwBatchRapport — CCP 3 met de getallen erbij', () => {
     const r = bouwBatchRapport(invoer({etiketcontroles: [controle({etiket_versie: 'v1', afwijking_id: 4, resultaat: 'afgekeurd'})]}))
     expect(r.etiketcontroles[0]).toMatchObject({abvBatch: null,
       snapshot: false, goedgekeurd: false, afwijking: true})
+  })
+
+  it('de AI-controle van de etiketfoto: samenvatting, ook als er toch is vastgelegd', () => {
+    const r = bouwBatchRapport(invoer({etiketcontroles: [controle({ai_check: {
+      op: '2026-06-20T09:04:00Z', model: 'claude-opus-5-5', toch_vastgelegd: true,
+      oordeel: {lotcode: 'wijkt_af', tht: 'klopt', alcohol: 'klopt', allergenen: 'niet_gezien'},
+    }})]}))
+    expect(r.etiketcontroles[0].ai).toEqual({stand: 'wijkt_af', afwijkend: ['lotcode'], tochVastgelegd: true})
   })
 
   it('alleen controles van deze batch', () => {

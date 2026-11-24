@@ -232,8 +232,15 @@ const ccp3Blok = (rijen: RapportEtiketControle[]): string => {
       <td>${esc(c.product || LEEG)}</td>
       <td class="nw">${c.snapshot ? `${esc(abv(c.abvBatch))} / ${esc(abv(c.abvEtiket))}${c.abvMarge != null ? `<span class="bron">±${esc(fmtGetal(c.abvMarge, 1, taal))} % vol</span>` : ''}` : LEEG}</td>
       <td>${esc(allergenen(c.allergenenBatch))}<span class="bron">${esc(t('batchdossier_etiket_kort'))}: ${esc(allergenen(c.allergenenEtiket))}</span></td>
-      <td>${c.goedgekeurd ? `<span class="ok">${esc(t('haccp_ccp2_goedgekeurd'))}</span>` : `<span class="nok">${esc(t('haccp_ccp2_afgekeurd'))}</span>`}${c.afwijking ? `<span class="bron">${esc(t('haccp_afw_kort'))}</span>` : ''}</td>
+      <td>${c.goedgekeurd ? `<span class="ok">${esc(t('haccp_ccp2_goedgekeurd'))}</span>` : `<span class="nok">${esc(t('haccp_ccp2_afgekeurd'))}</span>`}${c.afwijking ? `<span class="bron">${esc(t('haccp_afw_kort'))}</span>` : ''}${c.ai ? `<span class="bron">${esc(aiTekst(c.ai))}</span>` : ''}</td>
     </tr>`))
+}
+
+// De AI-controle van de etiketfoto in één regel: "AI: klopt", "AI: wijkt af (lotcode)".
+const aiTekst = (ai: NonNullable<RapportEtiketControle['ai']>): string => {
+  if (ai.stand !== 'wijkt_af') return t(`batchdossier_ai_${ai.stand}`)
+  const punten = ai.afwijkend.map(p => t(`haccp_ccp3_ai_punt_${p}`, p)).join(', ')
+  return t(ai.tochVastgelegd ? 'batchdossier_ai_wijkt_af_toch' : 'batchdossier_ai_wijkt_af').replace('{punten}', punten)
 }
 
 const tijdlijnBlok = (r: BatchRapport): string => {

@@ -5,7 +5,7 @@ import { fmtD, fmtSg, tod } from '../../utils/format'
 import { carbVolumes, drukNaarBar } from '../../utils/calculations'
 import { uploadBijlage, uploadFoutSleutel, type Bijlage } from '../../utils/bijlage'
 import {
-  naarJpeg, alsBestand, naamMetExtensie, ARCHIEF_MAX_PX, AfbeeldingFout, afbeeldingFoutSleutel,
+  naarJpeg, alsBestand, naamMetExtensie, ARCHIEF_MAX_PX, SCAN_MAX_PX, AfbeeldingFout, afbeeldingFoutSleutel,
 } from '../../utils/afbeelding'
 import { logAudit } from '../../utils/audit'
 import {
@@ -18,6 +18,10 @@ import Sel from '../ui/Sel'
 import BlokkadeKaart, { blokkadeSamenvatting, blokkadeTekst } from '../haccp/BlokkadeKaart'
 import AfwijkingModal from '../haccp/AfwijkingModal'
 import { useEtiketBijwerken } from './EtiketBijwerken'
+import {
+  useEtiketAi, etiketAiCheck, etiketAiRecord, etiketAiReden, AiPunt, AiAllergenen, AiStatus, type EtiketAi,
+} from './EtiketAiCheck'
+import type { EtiketCheck, EtiketVerwachting } from '../../utils/etiketCheck'
 import {
   maakParaaf, haccpInst, risicoVoorBatch, omkeerproefVerplicht,
   kroonkurkVerplicht,
@@ -132,6 +136,8 @@ interface Props {
    *  live tanktemperaturen. */
   haInst?: any
   haTankTemps?: Record<string, number>
+  /** Is er een Claude-sleutel? Dan leest de AI de etiketfoto bij CCP 3 na. */
+  heeftClaude?: boolean
   /** De metingen: SG bij het afvullen en de tanktemperatuur als er geen
    *  sensor is. */
   gistMetingen?: any[]
@@ -415,10 +421,13 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     </label>
   )
 
-  // Etiketfoto (CCP 3): verkleind tot een archieffoto en geüpload.
+  // Etiketfoto (CCP 3): verkleind tot een archieffoto en geüpload. Met een
+  // Claude-sleutel leest de AI hem daarna na (scanformaat, scherper).
   const [fotoBezig, setFotoBezig] = React.useState(false)
   const [fotoFout, setFotoFout] = React.useState('')
-  const kiesEtiketFoto = async (file: File | null | undefined, zet: (b: Bijlage) => void) => {
+  const ecAi = useEtiketAi(!!p.heeftClaude)
+  const naAi = useEtiketAi(!!p.heeftClaude)
+  const kiesEtiketFoto = async (file: File | null | undefined, zet: (b: Bijlage) => void, ai?: EtiketAi) => {
     if (!file) return
     setFotoBezig(true)
     setFotoFout('')
@@ -427,6 +436,10 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       const u = await uploadBijlage(alsBestand(jpg.blob, naamMetExtensie(file.name, 'jpg')), 'etiket')
       if (!u.ok || !u.bijlage) { setFotoFout(t(uploadFoutSleutel(u.status)).replace('{naam}', u.naam)); return }
       zet(u.bijlage)
+      if (ai?.aan) {
+        const scan = await naarJpeg(file, SCAN_MAX_PX)
+        void ai.lees(scan.base64)
+      }
     } catch (err) {
       setFotoFout(err instanceof AfbeeldingFout ? t(afbeeldingFoutSleutel(err.code))
         : t('err_upload_mislukt').replace('{naam}', file.name))
@@ -434,25 +447,28 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       setFotoBezig(false)
     }
   }
-  const fotoVeld = (foto: Bijlage | null, zet: (b: Bijlage | null) => void) => (
-    <div className="text-sm">
+  const fotoVeld = (foto: Bijlage | null, zet: (b: Bijlage | null) => void, ai?: EtiketAi, check?: EtiketCheck | null) => (
+    <div className="text-sm space-y-1">
       <Label>{t('haccp_etiket_foto')}</Label>
       {foto ? (
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-gray-700 break-words min-w-0">✓ {foto.naam}</span>
-          <button type="button" onClick={() => zet(null)}
+          <button type="button" onClick={() => { zet(null); ai?.wis() }}
             className="min-h-tap sm:min-h-0 text-xs text-gray-500 underline underline-offset-2">{t('btn_delete')}</button>
         </div>
       ) : (
         <label className="inline-flex items-center gap-2 min-h-tap sm:min-h-0 px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
           <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={fotoBezig}
-            onChange={ev => { const f = ev.target.files?.[0]; ev.target.value = ''; void kiesEtiketFoto(f, zet) }} />
+            onChange={ev => { const f = ev.target.files?.[0]; ev.target.value = ''; void kiesEtiketFoto(f, zet, ai) }} />
           {fotoBezig ? t('haccp_etiket_foto_bezig') : t('haccp_etiket_foto_maken')}
         </label>
       )}
       {fotoFout && <div className="text-xs text-red-600 mt-0.5">{fotoFout}</div>}
+      {ai && <AiStatus ai={ai} check={check ?? null} heeftFoto={!!foto} />}
     </div>
   )
+  // Welk punt van de AI bij welk vinkje hoort.
+  const AI_PUNT = {lotcode_ok: 'lotcode', tht_ok: 'tht', alcohol_ok: 'alcohol'} as const
   const fotoBijlagen = (foto: Bijlage | null): HaccpBijlage[] | undefined =>
     foto ? [{naam: foto.naam, bestand: foto.bestand, rol: 'etiket', geupload_op: new Date().toISOString()}] : undefined
 
@@ -718,6 +734,13 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     </button>
   ) : null
 
+  // Waar de AI de etiketfoto tegen legt: de sessie, de batch, de receptuur.
+  const ecVerwacht = (doel: AfvulSessie | null): EtiketVerwachting => ({
+    lotcode: doel?.lotcode, tht: doel?.tht,
+    abv: typeof p.abvBatch === 'number' ? p.abvBatch : (gekozenProduct?.abv ?? null),
+    allergenen: receptAllergenen,
+  })
+
   const slaEtiketOp = (doel: AfvulSessie | null, afwijkingId?: number) => {
     if (!doel || etiketOnvolledig) return
     const paraaf = maakParaaf(p.whoami)
@@ -741,6 +764,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       afwijking_id: afwijkingId,
       opmerking: ec.opmerking.trim() || undefined,
       bijlagen: fotoBijlagen(ec.foto),
+      ai_check: ec.foto ? etiketAiRecord(ecAi, ecVerwacht(doel)) : undefined,
       paraaf,
     }
     p.setEtiketcontroles((prev: EtiketControle[]) => [...(prev || []), record])
@@ -755,6 +779,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     })
     setEc(e => ({...e, aanleiding: 'rolwissel', lotcode_ok: false, tht_ok: false,
                  alcohol_ok: false, opmerking: '', foto: null}))
+    ecAi.wis()
   }
 
   // Wisselen van sessie betekent wisselen van afvuller-opstelling: de controle-
@@ -768,6 +793,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
            rolinstelling: '', opmerking: ''})
     setEc(e => ({...e, aanleiding: 'start', lotcode_ok: false,
                  tht_ok: false, alcohol_ok: false, opmerking: '', foto: null}))
+    ecAi.wis()
     setFi({bekeken: false, afgekeurd: ''})
     setKlap({open: false, vernietigd: '', gereinigd: false})
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -777,6 +803,8 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     if (!etiketDoel) return
     setEc(e => ({...e, aanleiding: 'start', lotcode_ok: false,
                  tht_ok: false, alcohol_ok: false, opmerking: '', foto: null}))
+    ecAi.wis()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [etiketDoel?.id])
 
   // ── Sessie afsluiten ─────────────────────────────────────────────────────
@@ -968,6 +996,13 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
     && (!houdtestFlessenNieuw || na.houdtest_flessen)
     && (!naMetEtiket || (na.lotcode_ok && na.tht_ok && na.alcohol_ok))
   const naToegestaan = naBlok.toegestaan && naCompleet && (!naMetEtiket || naEtiketBlok.toegestaan)
+  // De AI leest een etiketfoto ook achteraf na; de foto zelf blijft hier vrijwillig.
+  const naVerwacht: EtiketVerwachting = {
+    lotcode: p.batch ? nieuweLotcode(p.sessies || [], p.batch).lotcode : '', tht: naTht.tht,
+    abv: typeof p.abvBatch === 'number' ? p.abvBatch : (naProduct?.abv ?? null),
+    allergenen: receptAllergenen,
+  }
+  const naAiCheck = naMetEtiket && na.etiket_foto ? etiketAiCheck(naAi, naVerwacht) : null
   // Het koolzuur apart: boven de grens kan het alleen met een afwijking.
   const naCo2Blok = {toegestaan: naExtra.co2Redenen.length === 0, redenen: naExtra.co2Redenen}
 
@@ -1093,6 +1128,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       resultaat: 'goedgekeurd',
       opmerking: na.opmerking.trim() || undefined,
       bijlagen: fotoBijlagen(na.etiket_foto),
+      ai_check: na.etiket_foto ? etiketAiRecord(naAi, {...naVerwacht, lotcode: code}) : undefined,
       paraaf,
     }])
 
@@ -1104,6 +1140,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       omschrijving: `${p.batch?.naam || ''}: ${code} — ${t('haccp_achteraf_titel')}`,
     })
     setNa({...leegNa, datum: na.datum, product_id: na.product_id})
+    naAi.wis()
   }
 
   const achterafFormulier = (
@@ -1261,6 +1298,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
         {!naMetEtiket && (
           <div className="pt-2 border-t border-gray-200 text-xs text-gray-500">{t('haccp_etiket_na_vrijgave_kort')}</div>
         )}
+        {naMetEtiket && fotoVeld(na.etiket_foto, b => setNa(n => ({...n, etiket_foto: b})), naAi, naAiCheck)}
         {naMetEtiket && ([['lotcode_ok', 'haccp_ccp3_lotcode_ok'],
            ['tht_ok', 'haccp_ccp3_tht_ok'],
            ['alcohol_ok', 'haccp_ccp3_alcohol_ok']] as const).map(([veld, key]) => (
@@ -1271,13 +1309,14 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
             {veld === 'alcohol_ok' && naProduct && (
               <span className="text-xs text-gray-500">{abvRegel(naProduct)}</span>
             )}
+            <AiPunt punt={naAiCheck?.[AI_PUNT[veld]]} />
           </label>
         ))}
+        {naAiCheck && <div className="text-xs"><AiAllergenen check={naAiCheck} /></div>}
         <div className="grid sm:grid-cols-2 gap-2 pt-1">
           <Inp label={t('lbl_opmerking')} value={na.opmerking}
             onChange={v => setNa({...na, opmerking: v})} />
         </div>
-        {naMetEtiket && fotoVeld(na.etiket_foto, b => setNa(n => ({...n, etiket_foto: b})))}
       </div>
 
       {/* Allergenen blijven blokkeren: dat is de reden dat CCP 3 bestaat. */}
@@ -1330,15 +1369,21 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
       )}
 
       <div className="flex justify-end">
-        {naControle && !naControle.fout && naControle.waarschuwingen.length > 0 && naToegestaan && naCo2Blok.toegestaan
-          ? <BevestigKnop v="primary" s="sm" vraag={t('afvul_toch_vastleggen')} disabled={bezig}
-              onBevestig={() => legAchterafVast(true)}>
-              {t('haccp_achteraf_vastleggen')}
-            </BevestigKnop>
-          : <Btn s="sm" disabled={!naToegestaan || !naCo2Blok.toegestaan || bezig || !!naControle?.fout}
-              onClick={() => legAchterafVast()}>
-              {t('haccp_achteraf_vastleggen')}
-            </Btn>}
+        {(() => {
+          const naAiBezig = naMetEtiket && !!na.etiket_foto && naAi.stand.status === 'bezig'
+          const waarschuwing = !!naControle && !naControle.fout && naControle.waarschuwingen.length > 0
+          const aiVerschil = !!naAiCheck?.wijktAf
+          return (waarschuwing || aiVerschil) && naToegestaan && naCo2Blok.toegestaan && !naControle?.fout && !naAiBezig
+            ? <BevestigKnop v="primary" s="sm" vraag={t(aiVerschil ? 'haccp_ccp3_ai_toch' : 'afvul_toch_vastleggen')} disabled={bezig}
+                onBevestig={() => legAchterafVast(true)}>
+                {t('haccp_achteraf_vastleggen')}
+              </BevestigKnop>
+            : <Btn s="sm" disabled={!naToegestaan || !naCo2Blok.toegestaan || bezig || !!naControle?.fout || naAiBezig}
+                reden={naAiBezig && naToegestaan ? t('haccp_ccp3_ai_bezig') : undefined}
+                onClick={() => legAchterafVast()}>
+                {t('haccp_achteraf_vastleggen')}
+              </Btn>
+        })()}
       </div>
     </div>
   )
@@ -1633,7 +1678,11 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
   )
 
   // ── CCP 3 — etiketcontrole ───────────────────────────────────────────────
-  const ccp3Inhoud = (doel: AfvulSessie | null) => (
+  const ccp3Inhoud = (doel: AfvulSessie | null) => {
+    const aiCheck = etiketAiCheck(ecAi, ecVerwacht(doel))
+    const aiReden = etiketAiReden(ecAi, !!ec.foto)
+    const knopUit = etiketOnvolledig || !etiketBlok.toegestaan
+    return (
     <>
         <div className="grid sm:grid-cols-2 gap-2">
           {/* Sel zet zelf al een lege keuze bovenaan — geen tweede '—' erbij.
@@ -1687,11 +1736,15 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           {/* De blokkade oplossen waar hij optreedt: het etiket bijwerken in
               de dialoog. Zonder dit blijft "nog niet vastgelegd" een
               doodlopende weg midden in de afvulsessie. */}
+          {/* Wat de AI op de foto las, naast de vergelijking met het vastgelegde etiket. */}
+          {!!ec.product_id && <AiAllergenen check={aiCheck} />}
           {!!ec.product_id && gekozenProduct && etiketDienst && (
             <div className="pt-1">{etiketBijwerkenKnop(gekozenProduct)}</div>
           )}
         </div>
 
+        {/* Eerst de foto: de AI leest mee en zet bij elk vinkje wat hij las. */}
+        {fotoVeld(ec.foto, b => setEc(e => ({...e, foto: b})), ecAi, aiCheck)}
         <div className="space-y-1">
           {([['lotcode_ok', 'haccp_ccp3_lotcode_ok'],
              ['tht_ok', 'haccp_ccp3_tht_ok'],
@@ -1704,10 +1757,10 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
               {veld === 'alcohol_ok' && gekozenProduct && (
                 <span className="text-xs text-gray-500">{abvRegel(gekozenProduct)}</span>
               )}
+              <AiPunt punt={aiCheck?.[AI_PUNT[veld]]} />
             </label>
           ))}
         </div>
-        {fotoVeld(ec.foto, b => setEc(e => ({...e, foto: b})))}
         <Inp label={t('lbl_opmerking')} value={ec.opmerking}
           onChange={v => setEc({...ec, opmerking: v})} />
 
@@ -1719,10 +1772,15 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
               {t('haccp_afw_titel')}
             </button>
           )}
-          <Btn s="sm" disabled={etiketOnvolledig || !etiketBlok.toegestaan}
-            onClick={() => slaEtiketOp(doel)}>
-            {t('haccp_ccp3_vastleggen')}
-          </Btn>
+          {/* Ziet de AI een verschil, dan bevestig je in de knop dat het toch klopt. */}
+          {!knopUit && !aiReden && aiCheck?.wijktAf
+            ? <BevestigKnop v="primary" s="sm" vraag={t('haccp_ccp3_ai_toch')} onBevestig={() => slaEtiketOp(doel)}>
+                {t('haccp_ccp3_vastleggen')}
+              </BevestigKnop>
+            : <Btn s="sm" disabled={knopUit || !!aiReden} reden={!knopUit ? aiReden || undefined : undefined}
+                onClick={() => slaEtiketOp(doel)}>
+                {t('haccp_ccp3_vastleggen')}
+              </Btn>}
         </div>
 
         {etiketVan(doel).length > 0 ? (
@@ -1744,7 +1802,8 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           <div className="text-xs text-gray-400 italic">{t('haccp_ccp3_geen')}</div>
         )}
     </>
-  )
+    )
+  }
 
   // ── Etiketteren na de vrijgave ───────────────────────────────────────────
   // CCP 3 per lotcode die nog op zijn etiket wacht — pas na de houdtest.

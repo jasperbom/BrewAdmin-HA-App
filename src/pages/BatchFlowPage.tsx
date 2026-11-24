@@ -182,6 +182,8 @@ interface BatchFlowPageProps {
   verkoopVrijgaven?: any[], setVerkoopVrijgaven?: any,
   haccpAfwijkingen: any[], setHaccpAfwijkingen: any,
   haccpInst: any,
+  /** Is er een Claude-sleutel? Dan leest de AI de etiketfoto bij CCP 3 na. */
+  heeftClaude?: boolean,
   // HACCP-schoonmaakschema: nodig om een reinigingsvinkje op de batch ook als
   // uitvoering op de bijbehorende schoonmaaktaak te loggen.
   schoonmaakTaken?: any[], schoonmaakLog?: any[], setSchoonmaakLog?: any,
@@ -494,7 +496,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   haccpSluitcontroles, setHaccpSluitcontroles,
   haccpEtiketcontroles, setHaccpEtiketcontroles,
   verkoopVrijgaven = [], setVerkoopVrijgaven,
-  haccpAfwijkingen, setHaccpAfwijkingen, haccpInst,
+  haccpAfwijkingen, setHaccpAfwijkingen, haccpInst, heeftClaude = false,
   schoonmaakTaken = [], schoonmaakLog = [], setSchoonmaakLog = () => {},
   capa, setCapa, whoami,
   breweryDetails, appName = '', factuurLogo, logo,
@@ -4336,7 +4338,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             onAchterafAfvullen={boekAfvulling}
             refreshSessies={refreshAfvulSessies}
             haInst={haInst} haTankTemps={haTankTemps} gistMetingen={gistMetingen}
-            onderdelen={onderdelen}
+            onderdelen={onderdelen} heeftClaude={heeftClaude}
             registratie={renderAfvulForm()}
             registratieZonderSessie={isLegacyBatch(selB.id, av || [])}
             lijst={renderAfvulLijst()}

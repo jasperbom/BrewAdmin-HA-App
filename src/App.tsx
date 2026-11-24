@@ -2828,6 +2828,8 @@ function App() {
     haccpAfwijkingen,
     setHaccpAfwijkingen,
     haccpInst,
+    // CCP 3: met een Claude-sleutel leest de AI de etiketfoto na.
+    heeftClaude: !!claudeCreds?.apiKey && claudeCreds?.enabled !== false,
     schoonmaakTaken: haccpSchoonmaakTaken,
     schoonmaakLog: haccpSchoonmaakLog,
     setSchoonmaakLog: setHaccpSchoonmaakLog,

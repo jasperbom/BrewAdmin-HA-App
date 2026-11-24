@@ -655,6 +655,13 @@ BrewAdmin-HA-App/
 │   │   ├── etiketScan.ts   # Etiketfoto's (meer foto's per regel, één verzoek) → lotnummer(s), THT, eigenschappen;
 │   │   │                   # `pasEtiketToe` (invoer van de gebruiker blijft staan), `lotsVoorRegel` (hoeveelheid
 │   │   │                   # verdelen over de lots), `etiketVoorLot` (bestaand lot), `productKlopt`
+│   │   ├── etiketCheck.ts  # CCP 3: de foto van het gedrukte etiket laten nalezen (1.13.54). Claude léést alleen
+│   │   │                   # (lotcode, THT, alcohol, allergenen; krijgt níét te horen wat er moet staan), de app
+│   │   │                   # vergelijkt (`beoordeelEtiketLezing`: lotcode zonder L/Lot, THT op de dag of de maand,
+│   │   │                   # alcohol binnen `abvMarge` van de batch, allergenen tegen de receptuur — gluten gedekt
+│   │   │                   # door de graansoort; niet op de foto = `niet_gezien`, nooit ✕). `aiCheckRecord` →
+│   │   │                   # `EtiketControle.ai_check`, `aiCheckSamenvatting` voor het dossier. UI:
+│   │   │                   # `components/batch/EtiketAiCheck.tsx` (`useEtiketAi`, `AiPunt`, `AiStatus`)
 │   │   ├── scanGeheugen.ts # Het scangeheugen (`scan_correcties`): per leverancier + artikelnummer of omschrijving
 │   │   │                   # hoe een regel geboekt is; geleerd bij elk opslaan (`koppelingenUitRegels`)
 │   │   ├── allergeenOpzoeken.ts # Allergenen van ingrediënten opzoeken: eerst vaste brouwkennis
@@ -911,6 +918,10 @@ factuur- en etiketscan (schema's binnen de grenzen van gestructureerde
 uitvoer, opschonen, toepassen zonder invoer van de gebruiker te overschrijven),
 het scangeheugen, de totaal- en dubbelecontrole, de foto-omzetting
 (`afbeelding.ts`) en de regel-zoeker in de PDF (`pdfZoek.ts`).
+De AI-controle van het bieretiket (`etiketCheck.test.ts`): schema zonder null en
+zonder wat er moet staan in de prompt, opschonen, lotcode met of zonder L/Lot,
+THT op dag of maand, alcohol in de wettelijke marge, allergenen met gluten via de
+graansoort, niet op de foto ≠ fout, en het record op de etiketcontrole.
 Het opzoeken van allergenen (`allergeenOpzoeken.test.ts`): de vaste regels (mout,
 graansoorten in vijf talen, glutenvrij graan, melkzuur/nootmuskaat/kokos,
 plantaardige melk, suiker, wat onzeker blijft), de gluten-conventie, het schema
@@ -1496,6 +1507,13 @@ website hoort (zie `docs/OPZET-PRODUCTIE-VERKOOP.md` hoofdstuk 5). Regels:
   `webshopBevatRegel`) gaat als laatste zin achter `_cf_ingredienten` en gaat er
   bij een pull weer af. Nooit automatisch pushen; nooit prijs of voorraad in de
   etiketstap.
+- **AI-controle van het gedrukte etiket (CCP 3, 1.13.54).** Met een
+  Claude-sleutel is de foto bij CCP 3 eerst aan de beurt en de knop blijft uit
+  tot hij er is en gelezen is; ziet de AI een verschil, dan vraagt de knop om
+  bevestiging en het record krijgt `toch_vastgelegd`. Een mislukte lezing houdt
+  niets tegen (de fout gaat mee op het record). Achteraf registreren: foto
+  vrijwillig, wel nagelezen. De vinkjes worden nooit vanuit de AI gezet —
+  CCP 3 blijft een controle van een mens; de AI is het tweede paar ogen.
 
 ---
 
@@ -1675,7 +1693,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `haccp_vrijgaven` | array | **CCP 1** — vrijgave vóór koelen per batch (sinds 1.13.50 aan het eind van Vergisten, `renderCcp1` in BatchFlowPage; nog open in Conditioneren = bovenaan die fase, `volgendeStap` geeft dan eerst `vrijgave`; afvullen blijft geblokkeerd zonder). Vanaf 1.13.49 `methode: 'ff_paar'`: forceertest (`ff_dichtheid_ff`) tegen de laatste tankmeting, en de twee bevroren tankmetingen (`tank_sg_1`/`_op`, `tank_sg_2`/`_op`, `stabiel_uren`, `stabiel_verschil`) met de grenzen van dat moment; alleen `vrijgegeven` wordt nog vastgelegd (`oordeel_voorgesteld` = wat de regel zei, rood alleen met een afwijking). Oudere records (risicoklasse, dagen stabiel, drukproef, smaakoordeel) blijven geldig en leesbaar. Server-side append-only; correctie via een nieuwe registratie met `vervangt_id`. Zonder vrijgegeven registratie kan er niet afgevuld worden |
 | `afvul_sessies` | array | Afvulsessie met lotcode `L<batchnr>` (bijv. `L2431`; een tweede afvulmoment van dezelfde batch `L2431-B2`; sessies van vóór 1.13.49 heten `L2431-B1` en veranderen nooit) en berekende THT; anker voor CCP 2 en CCP 3. `ccp2` = de soort CCP 2 (`lege_flessen`/`sluitcontrole`/`geen`, bevroren bij het starten; ontbreekt = sluitcontrole). De afvuldag (1.13.51): `co2_druk_bar`/`co2_temp_c`/`co2_volumes`/`co2_max`/`co2_bron` (`sensor`/`handmatig`) + `co2_afwijking_id` boven de grens, `sg_afvullen`, `flessenlot`/`kroonkurkenlot`, `klapflessen: {aantal, vernietigd, gereinigd}`. Quarantaine (1.13.52): `houdtest_dagen`, `houdtest_flessen` (twee warm, twee koel; één sessie per batch) en `etiketteren` (`na_vrijgave` = de sessie sluit zonder CCP 3). Bewust **niet** append-only: een sessie wordt afgesloten |
 | `haccp_sluitcontroles` | array | **CCP 2** — sluitcontroles per sessie (visueel + omkeerproef), of bij flessen één inspectie van de lege flessen (`methode: 'lege_flessen'`, `afgekeurd_aantal`). Append-only. Bij afkeur worden de afvullingen sinds de laatste goedkeuring geblokkeerd |
-| `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket, met een foto van het etiket in `bijlagen` (`_bijlage_in_gebruik` houdt hem vast). Nieuwe records bevriezen ook `abv_batch`, `abv_etiket_verwacht`, `abv_marge` (oude records kunnen `etiket_versie_gelezen`/`_verwacht` dragen; die worden niet meer getoond). Append-only |
+| `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket, met een foto van het etiket in `bijlagen` (`_bijlage_in_gebruik` houdt hem vast). Nieuwe records bevriezen ook `abv_batch`, `abv_etiket_verwacht`, `abv_marge` (oude records kunnen `etiket_versie_gelezen`/`_verwacht` dragen; die worden niet meer getoond). `ai_check` (1.13.54) = wat de AI op de etiketfoto las en hoe dat uitviel (`{op, model, lezing, oordeel: {lotcode, tht, alcohol, allergenen}, toch_vastgelegd?, fout?}`, `utils/etiketCheck.ts`). Append-only |
 | `haccp_afwijkingen` | array | Expliciete afwijkingsregistraties: de enige manier om langs een harde CCP-blokkade te komen, altijd met onderbouwing + CAPA. Append-only |
 | `haccp_verkoopvrijgaven` | array | **Houdtest en vrijgave voor verkoop** (1.13.52) per batch: `{id, batch_id, datum, afgevuld_op, houdtest_dagen, sg_afvullen, sg_warm, sg_verschil, sg_marge, druk_ok, smaak_ok, oordeel: vrijgegeven\|afgekeurd, oordeel_voorgesteld, afwijking_id?, opmerking?, paraaf}`. De laatste beoordeling telt. Append-only, in de Excel-backup (`HACCPVerkoopVrijgaven`) |
 | `haccp_trace_oefeningen` | array | **Traceeroefeningen** (hoofdstuk 11): periodieke mock recall met bevroren omvang (lotcodes, afnemers), massabalans, traceergaten, doorlooptijd en conclusie. Append-only — een tegenvallende oefening mag niet achteraf bijgesteld worden |
@@ -2259,6 +2277,8 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 ### Claude AI (Anthropic)
 
 - Used for: de inkoopfactuur (PDF of foto's), foto's van het etiket op een zak (lotnummer, THT, eigenschappen),
+  de foto van het gedrukte bieretiket bij CCP 3 (`utils/etiketCheck.ts`: lotcode, THT, alcohol en allergenen
+  lezen; de app vergelijkt, de vinkjes blijven handwerk),
   het waterrapport (Gereedschap → Waterprofiel), het uitbetalingsverslag van een PSP als de tekstlaag van de
   PDF niets oplevert (Bank: scan, foto's, onbekende opmaak — `utils/pspVerslagScan.ts`) en de allergenen van
   ingrediënten die de vaste regels niet zeker weten (`utils/allergeenOpzoeken.ts`: alleen naam, type, fabrikant en

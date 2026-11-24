@@ -34,6 +34,7 @@ import { metingWaarde } from './metingen'
 import { etiketWaarden, productEtiketWaarden, sorteerAllergenen } from './etiket'
 import type { EtiketCtx, EtiketWaarden, ProductEtiketCtx, ProductEtiketWaarden } from './etiket'
 import { productenVoorEtiketKaart } from './etiketKaart'
+import { aiCheckSamenvatting } from './etiketCheck'
 
 // ── Wanneer is een batch "afgerond"? ────────────────────────────────────────
 // Bij `Afgevuld` zit het bier in de verpakking: vanaf dat moment ligt alles
@@ -273,6 +274,8 @@ export interface RapportEtiketControle {
   afwijking: boolean
   /** Het record draagt de snapshotvelden (vanaf v1.12.90). */
   snapshot: boolean
+  /** De AI-controle van de etiketfoto (vanaf 1.13.54); null = niet gedaan. */
+  ai: { stand: 'klopt' | 'wijkt_af' | 'deels' | 'fout'; afwijkend: string[]; tochVastgelegd: boolean } | null
   paraaf: RapportParaaf
 }
 
@@ -615,6 +618,10 @@ const etiketControleRegels = (
       goedgekeurd: c.resultaat === 'goedgekeurd',
       afwijking: c.afwijking_id != null,
       snapshot,
+      ai: (() => {
+        const s = aiCheckSamenvatting(c.ai_check)
+        return s ? {...s, tochVastgelegd: c.ai_check?.toch_vastgelegd === true} : null
+      })(),
       paraaf: paraafVan(c.paraaf),
     }
   }).sort((a, b) => a.moment.localeCompare(b.moment))
