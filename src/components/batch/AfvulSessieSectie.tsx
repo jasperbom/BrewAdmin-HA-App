@@ -1337,7 +1337,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
           </div>
           {naEtiketBlok.redenen.filter(r => r.code !== 'etiket_onbekend').map((r, i) => (
             <div key={i} className="text-red-700 font-medium">
-              ✗ {etiketRedenTekst(r, naVergelijking)}
+              ✕ {etiketRedenTekst(r, naVergelijking)}
             </div>
           ))}
           {/* Ook hier: het etiket bijwerken kan meteen, in de dialoog. */}
@@ -1725,7 +1725,7 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
                   dezelfde zin twee keer onder elkaar leest als twee fouten. */}
               {etiketBlok.redenen.filter(r => r.code !== 'etiket_onbekend').map((r, i) => (
                 <div key={i} className="text-red-700 font-medium">
-                  ✗ {etiketRedenTekst(r, vergelijking)}
+                  ✕ {etiketRedenTekst(r, vergelijking)}
                 </div>
               ))}
               {vergelijking.etiketOnbekend && (

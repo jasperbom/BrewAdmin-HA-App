@@ -1490,7 +1490,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       {/* Branding */}
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_logo_title')}</h2>
-        <p className="text-sm text-gray-500 mb-4">{t('settings_logo_desc')}</p>
+
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-600 mb-1">{t('settings_app_name_label')}</label>
           <input type="text" value={appName} onChange={(e: any)=>setAppName(e.target.value)}

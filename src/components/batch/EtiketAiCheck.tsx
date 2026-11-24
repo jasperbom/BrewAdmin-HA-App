@@ -119,12 +119,12 @@ export const AiAllergenen: React.FC<{ check: EtiketCheck | null }> = ({ check })
     <>
       {a.mist.length > 0 && (
         <div className="text-red-700 font-medium">
-          ✗ {t('haccp_ccp3_ai_allergenen_mist').replace('{allergenen}', allergeenNamen(a.mist, t).join(', '))}
+          ✕ {t('haccp_ccp3_ai_allergenen_mist').replace('{allergenen}', allergeenNamen(a.mist, t).join(', '))}
         </div>
       )}
       {a.teveel.length > 0 && (
         <div className="text-red-700 font-medium">
-          ✗ {t('haccp_ccp3_ai_allergenen_teveel').replace('{allergenen}', allergeenNamen(a.teveel, t).join(', '))}
+          ✕ {t('haccp_ccp3_ai_allergenen_teveel').replace('{allergenen}', allergeenNamen(a.teveel, t).join(', '))}
         </div>
       )}
     </>

@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.57] — 2026-11-24
+
+### Opruimen: wat de app er gegenereerd liet uitzien
+
+- HACCP heeft een gewone paginatitel zoals Brouwzaal en Producten, in plaats
+  van een gekleurde balk "NVWA/HACCP Compliance"; het eerste tabblad heet
+  *Overzicht* (zoals bij Verkoop en Administratie).
+- De tegel *Geblokkeerde verpakkingen* zegt "niet te verkopen" in plaats van
+  "Sluitcontrole (CCP 2)": een blokkade kan ook van de houdtest of een
+  incident komen.
+- De tankkaarten op de Brouwzaal tonen geen lege °C- en pH-vakjes met een
+  streepje meer; wat niet gemeten is, staat er niet.
+- Vrijgave (CCP 1) en de houdtest: geen gekleurde zijrand meer naast de
+  gekleurde pil die hetzelfde zegt.
+- Instellingen: geen zin meer onder *Logo* die de titel herhaalt (en niet
+  klopte: het logo staat niet in de browser maar in de app); Nederlandse
+  titels in plaats van "Cold-crash preset", "Planning-defaults" en
+  "Hop-opslag defaults"; "Dashboard" heet overal Brouwzaal.
+- Twee teksten die nog "u" zeiden, zeggen "je"; ✗ is overal ✕.
+- Zes teksten die nergens meer gebruikt werden zijn weg.
+
+---
+
 ## [1.13.56] — 2026-11-24
 
 ### Reinigen: middelen met Ctgb-toelating, dosering, pH en de retoursensor

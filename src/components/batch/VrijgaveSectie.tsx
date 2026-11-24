@@ -159,7 +159,7 @@ const VrijgaveSectie: React.FC<Props> = ({
   if (bestaand && vrij && !herbeoordelen) {
     const nieuw = bestaand.methode === 'ff_paar'
     return (
-      <div className="rounded-lg border-l-4 border-green-500 p-3 bg-white shadow-sm">
+      <div className="rounded-lg border border-gray-200 p-3 bg-white">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">

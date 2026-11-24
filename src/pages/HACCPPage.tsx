@@ -58,7 +58,7 @@ function HACCPPage(props: any) {
 
   return (
     <div>
-      <div className="mb-4"><SectionHeader solid rounded="full" title={<span className="font-bold text-lg">{t('haccp_dash_title')}</span>} /></div>
+      <h2 className="text-2xl font-bold text-gray-900 mb-4">{t('haccp_dash_title')}</h2>
       <div className="flex flex-wrap gap-1 mb-4">
         {tabs.map(tb=>(
           <button key={tb.id} onClick={()=>wissel(tb.id)}
@@ -124,7 +124,7 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
      ok:!wachtVrijgave, kleur:'border-orange-500', tab:'kritisch'},
     {key:'sessies', label:t('haccp_dash_open_sessies'), waarde:openSessies, sub:t('haccp_sessie_titel'),
      ok:!openSessies, kleur:'border-blue-500', tab:'kritisch'},
-    {key:'geblokkeerd', label:t('haccp_dash_geblokkeerd'), waarde:geblokkeerd, sub:t('haccp_ccp2_titel'),
+    {key:'geblokkeerd', label:t('haccp_dash_geblokkeerd'), waarde:geblokkeerd, sub:t('haccp_dash_geblokkeerd_sub'),
      ok:!geblokkeerd, kleur:'border-red-500', tab:'kritisch'},
     {key:'afwijkingen', label:t('haccp_dash_afwijkingen'), waarde:afwMaand, sub:t('haccp_dash_deze_maand'),
      ok:!afwMaand, kleur:'border-orange-500', tab:'kritisch'},

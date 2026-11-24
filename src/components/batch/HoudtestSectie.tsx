@@ -84,7 +84,7 @@ const HoudtestSectie: React.FC<Props> = (p) => {
   if (v && stand.stand !== 'quarantaine') {
     const vrij = v.oordeel === 'vrijgegeven'
     return (
-      <div className={`rounded-lg border-l-4 p-3 bg-white shadow-sm ${vrij ? 'border-green-500' : 'border-red-500'}`}>
+      <div className="rounded-lg border border-gray-200 p-3 bg-white">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${vrij ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
             {t(vrij ? 'haccp_houdtest_vrijgegeven' : 'haccp_houdtest_afgekeurd')}
