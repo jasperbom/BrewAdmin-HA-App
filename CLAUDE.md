@@ -83,8 +83,10 @@ BrewAdmin-HA-App/
 │   │                               # batch op de pakbon staan en de pickmodal al ingevuld is; pas
 │   │                               # bewaren als het printvenster openging
 │   │   ├── batch/                  # De batchpagina in delen: BatchKop + KetenRegel (Recept › Product ›
-│   │   │                           # Tank), KernKaart (de cijfers + grafiek bovenaan Vergisten en
-│   │   │                           # Conditioneren, utils/batchKerncijfers.ts), EtiketKaart (etiket &
+│   │   │                           # Tank), KernKaart (bovenaan Vergisten en Conditioneren: per grootheid
+│   │   │                           # een tegel — SG, temperatuur, druk, pH — met meting en doel, en die tegel
+│   │   │                           # is de knop van zijn lijn in de grafiek ernaast; utils/batchKerncijfers.ts
+│   │   │                           # + utils/grafiekLijnen.ts), EtiketKaart (etiket &
 │   │   │                           # website; modi batch/product/recept; op de batch `inklapbaar`: één regel),
 │   │   │                           # EtiketBijwerken (de énige schrijfweg voor het etiket, overal te openen
 │   │   │                           # met `useEtiketBijwerken()?.open({productId, batchId?})`; bovenaan
@@ -249,9 +251,10 @@ BrewAdmin-HA-App/
 │   │   │                   # in App.tsx: de druksensoren elke minuut, in bar), alcohol tot nu (Balling);
 │   │   │                   # een cijfer zonder meting komt niet mee. Verlies, Tank verplaatsen en
 │   │   │                   # Afgekeurd bier staan op de batchpagina alleen als er iets is, anders onder ⋯
-│   │   ├── grafiekLijnen.ts # De lijnen in de vergistingsgrafiek en de knoppen erboven (SG, OG en FG,
-│   │   │                   # temperatuur + setpoint, druk + setpoint, pH): alleen een lijn met gegevens krijgt
-│   │   │                   # een knop; setpoint = wat de server bij de automatische meting van de koeling las,
+│   │   ├── grafiekLijnen.ts # De lijnen in de vergistingsgrafiek per grootheid, elk met zijn doel (SG met OG
+│   │   │                   # en FG, temperatuur + setpoint, druk + doeldruk, pH); de tegels van KernKaart zijn de
+│   │   │                   # knoppen, alleen een grootheid met gegevens is aan/uit te zetten; doorgetrokken =
+│   │   │                   # gemeten, gestippeld = doel; setpoint = wat de server bij de automatische meting van de koeling las,
 │   │   │                   # anders het doel van nu (schema/cold crash) vanaf zijn startmoment — nooit een gok
 │   │   │                   # over het verleden; doeldruk = de carbonatiesessies; uitgezet = localStorage
 │   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
@@ -1000,7 +1003,7 @@ beslissingen + attentie (`beslissingen.test.ts`, `attentie.test.ts`:
 werkruimte-badge = aantal dashboardrijen = som van de menubadges, één rij per
 BTW-periode en per accijnsmaand).
 De lijnen van de vergistingsgrafiek (`grafiekLijnen.test.ts`: setpoint uit de metingen of het doel
-van nu, doeldruk per carbonatiesessie, alleen lijnen met gegevens, de bewaarde keuze); in pytest
+van nu, doeldruk per carbonatiesessie, per grootheid meting of doel, de trap van nu, de bewaarde keuze); in pytest
 `TestAutoMetingenUitdunnen`: druk (psi → bar) en een vers setpoint op de automatische meting, een tank met
 alleen een druksensor, geen oud setpoint.
 De kerncijfers van de batch (`batchKerncijfers.test.ts`: de laatste meting, vergist begrensd,

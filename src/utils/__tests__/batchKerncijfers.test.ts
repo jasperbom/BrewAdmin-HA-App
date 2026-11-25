@@ -80,17 +80,31 @@ describe('batchKerncijfers', () => {
     expect(k.temp).toBeNull()
   })
 
-  it('de druk uit de druksensor, ook als enige cijfer', () => {
-    const k = batchKerncijfers({ og: null, sg: null, fgDoel: null, sensorTemp: null, metingTemp: null, doelTemp: null, druk: 1.2 })
-    expect(k.druk).toBe(1.2)
+  it('de druk uit de druksensor, ook als enige cijfer, met de doeldruk', () => {
+    const k = batchKerncijfers({ og: null, sg: null, fgDoel: null, sensorTemp: null, metingTemp: null, doelTemp: null, druk: 1.2, drukDoel: 1.1 })
+    expect(k.druk).toEqual({ waarde: 1.2, bron: 'sensor', doel: 1.1 })
     expect(k.leeg).toBe(false)
+  })
+
+  it('zonder live sensor de laatste drukmeting', () => {
+    const k = batchKerncijfers({ og: null, sg: null, fgDoel: null, sensorTemp: null, metingTemp: null, doelTemp: null,
+      metingDruk: { waarde: 0.92, datum: '2026-11-24', tijd: '12:00' } })
+    expect(k.druk).toEqual({ waarde: 0.92, bron: 'meting', doel: null })
   })
 
   it('geen druksensor = geen druk; net onder nul = 0; kapot = niets', () => {
     const basis = { og: null, sg: null, fgDoel: null, sensorTemp: null, metingTemp: null, doelTemp: null }
     expect(batchKerncijfers(basis).druk).toBeNull()
-    expect(batchKerncijfers({ ...basis, druk: -0.05 }).druk).toBe(0)
+    expect(batchKerncijfers({ ...basis, druk: -0.05 }).druk?.waarde).toBe(0)
     expect(batchKerncijfers({ ...basis, druk: -3 }).druk).toBeNull()
     expect(batchKerncijfers({ ...basis, druk: NaN }).druk).toBeNull()
+  })
+
+  it('pH uit de laatste meting; onzin telt niet', () => {
+    const basis = { og: null, sg: null, fgDoel: null, sensorTemp: null, metingTemp: null, doelTemp: null }
+    const ph = { waarde: 4.4, datum: '2026-11-24', tijd: '12:36' }
+    expect(batchKerncijfers({ ...basis, ph }).ph).toEqual(ph)
+    expect(batchKerncijfers({ ...basis, ph }).leeg).toBe(false)
+    expect(batchKerncijfers({ ...basis, ph: { ...ph, waarde: 44 } }).ph).toBeNull()
   })
 })

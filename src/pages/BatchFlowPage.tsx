@@ -62,7 +62,7 @@ import VernietigingSection from '../components/batch/VernietigingSection'
 import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
 import KernKaart from '../components/batch/KernKaart'
 import { batchKerncijfers, laatsteMetingMet } from '../utils/batchKerncijfers'
-import { setpointTrappen, drukSetpointTrappen } from '../utils/grafiekLijnen'
+import { setpointTrappen, drukSetpointTrappen, beschikbareLijnen, type GrafiekLijn } from '../utils/grafiekLijnen'
 import { schemaDoel } from '../utils/tankbewaking'
 import MetingLog from '../components/batch/MetingLog'
 import BrouwdagWizard from '../components/batch/BrouwdagWizard'
@@ -3035,8 +3035,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
-  // Bovenaan Vergisten en Conditioneren: de cijfers die tellen en de grafiek
-  // (utils/batchKerncijfers.ts). Wat er niet gemeten is, staat er niet.
+  // Bovenaan Vergisten en Conditioneren: per grootheid de meting met zijn doel
+  // (utils/batchKerncijfers.ts), en die tegels zijn ook de knoppen van de
+  // lijnen in de grafiek (utils/grafiekLijnen.ts).
   const renderKern = (faseStatus: string) => {
     const sensorRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
     const drukRaw = selB.tank != null ? haTankDruk?.[selB.tank] : undefined
@@ -3047,13 +3048,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const laatsteSp = laatsteMetingMet(mijnMetingen, 'setpoint')
     const spNu = laatsteSp && laatsteTemp && laatsteSp.datum === laatsteTemp.datum && laatsteSp.tijd === laatsteTemp.tijd
       ? laatsteSp.waarde : null
+    // De doeldruk van nu: een lopende carbonatiesessie.
+    const carbNu = (carbSessies || []).find((c: any) => c && c.batch_id === selB.id && c.status === 'actief')
+    const metDruk = (haInst?.druk_sensors || [])
+      .some((d: any) => d?.entity && selB.tank != null && String(d.tank) === String(selB.tank))
     const cijfers = batchKerncijfers({
       og, fgDoel, doelTemp: spNu ?? doelTemp,
       sg: laatsteMetingMet(mijnMetingen, 'sg'),
       sensorTemp: typeof sensorRaw === 'number' ? sensorRaw : null,
-      // Live van de druksensor, anders de laatste automatische meting.
-      druk: typeof drukRaw === 'number' ? drukRaw : laatsteMetingMet(mijnMetingen, 'druk')?.waarde ?? null,
       metingTemp: laatsteTemp,
+      // Live van de druksensor, anders de laatste automatische meting.
+      druk: typeof drukRaw === 'number' ? drukRaw : null,
+      metingDruk: laatsteMetingMet(mijnMetingen, 'druk'),
+      drukDoel: carbNu ? Number(carbNu.doel_druk_bar) : null,
+      ph: laatsteMetingMet(mijnMetingen, 'ph'),
     })
     // De lijnen naast SG en temperatuur: OG en (verwachte) FG, het setpoint
     // van de koeling (of het doel van nu), en de doeldruk van het carboneren.
@@ -3063,13 +3071,18 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const startMs = Math.min(vergistStartTs ?? Infinity, tsLijst.length ? Math.min(...tsLijst) : eindMs)
     const huidig = schemaDoel(selB)
     const fgGemeten = Number(selB.FG) > 0
+    const setpoint = setpointTrappen(mijnMetingen, { doel: huidig.doel, sindsMs: huidig.doelSindsMs }, { startMs, eindMs })
+    const drukSetpoint = drukSetpointTrappen(carbSessies, selB.id, eindMs)
+    const beschikbaar = beschikbareLijnen({ metingen: mijnMetingen, og, fg: fgDoel, setpoint, drukSetpoint })
     const grafiek = mijnMetingen.length >= 2
-      ? <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs}
+      ? (uit: GrafiekLijn[]) => (
+        <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs} uit={uit}
           og={og} fg={fgDoel != null ? { waarde: fgDoel, verwacht: !fgGemeten } : null}
-          setpoint={setpointTrappen(mijnMetingen, { doel: huidig.doel, sindsMs: huidig.doelSindsMs }, { startMs, eindMs })}
-          drukSetpoint={drukSetpointTrappen(carbSessies, selB.id, eindMs)} />
+          setpoint={setpoint} drukSetpoint={drukSetpoint} />
+      )
       : null
-    return <KernKaart cijfers={cijfers} og={og} grafiek={grafiek} zonderAbv={faseStatus === 'Conditioneren'} />
+    return <KernKaart cijfers={cijfers} fg={fgDoel} grafiek={grafiek} beschikbaar={beschikbaar}
+      metDruk={metDruk} zonderAbv={faseStatus === 'Conditioneren'} />
   }
 
   // Compacte verliesregistratie (bron 'afgekeurd' loopt via de Batches-pagina

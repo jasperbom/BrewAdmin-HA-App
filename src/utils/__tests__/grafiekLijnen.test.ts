@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  setpointTrappen, drukSetpointTrappen, beschikbareLijnen, leesUitgezet, wisselLijn, asBereik, GRAFIEK_LIJNEN,
+  setpointTrappen, drukSetpointTrappen, beschikbareLijnen, leesUitgezet, wisselLijn, asBereik, trapOp,
+  GRAFIEK_LIJNEN, GRAFIEK_KLEUR,
 } from '../grafiekLijnen'
 
 const ts = (iso: string) => new Date(iso).getTime()
@@ -61,36 +62,48 @@ describe('drukSetpointTrappen', () => {
 })
 
 describe('beschikbareLijnen', () => {
-  it('alleen lijnen met gegevens, in vaste volgorde', () => {
+  it('per grootheid: meting of doel telt, in vaste volgorde', () => {
     const l = beschikbareLijnen({
-      metingen: [{ sg: 1.05, temp: 19 }, { temp: 19.5, druk: 0.9 }, { ph: '' }],
-      og: 1.052, fg: null, setpoint: [], drukSetpoint: [{ van: 1, tot: 2, waarde: 0.7 }],
+      metingen: [{ sg: 1.05 }, { ph: '' }],
+      og: 1.052, fg: null, setpoint: [{ van: 1, tot: 2, waarde: 20 }], drukSetpoint: [{ van: 1, tot: 2, waarde: 0.7 }],
     })
-    expect(l).toEqual(['sg', 'og_fg', 'temp', 'druk', 'druk_setpoint'])
+    expect(l).toEqual(['sg', 'temp', 'druk'])
   })
 
-  it('zonder OG en FG geen OG/FG-lijn', () => {
-    expect(beschikbareLijnen({ metingen: [{ sg: 1.01 }], og: 0, fg: null })).toEqual(['sg'])
+  it('alleen OG en FG is genoeg voor SG; pH alleen met een meting', () => {
+    expect(beschikbareLijnen({ metingen: [], og: 1.05, fg: 1.01 })).toEqual(['sg'])
+    expect(beschikbareLijnen({ metingen: [{ ph: 4.4 }] })).toEqual(['ph'])
+    expect(beschikbareLijnen({ metingen: [] })).toEqual([])
+  })
+})
+
+describe('trapOp', () => {
+  const t = [{ van: 10, tot: 20, waarde: 0.7 }, { van: 30, tot: 40, waarde: 1.1 }]
+  it('de trap die op dat moment geldt, anders null', () => {
+    expect(trapOp(t, 35)?.waarde).toBe(1.1)
+    expect(trapOp(t, 25)).toBeNull()
+    expect(trapOp(null, 1)).toBeNull()
   })
 })
 
 describe('keuze', () => {
-  it('leest alleen bekende lijnen; kapot = niets uit', () => {
-    expect(leesUitgezet('["ph","onzin","druk"]')).toEqual(['ph', 'druk'])
+  it('leest alleen bekende lijnen; kapot of oud = niets uit', () => {
+    expect(leesUitgezet('["ph","onzin","druk","og_fg"]')).toEqual(['ph', 'druk'])
     expect(leesUitgezet('{kapot')).toEqual([])
     expect(leesUitgezet(null)).toEqual([])
     expect(leesUitgezet(['temp'])).toEqual(['temp'])
   })
 
   it('aan en uit; de laatste zichtbare lijn blijft aan', () => {
-    const beschikbaar = ['sg', 'temp'] as const
-    expect(wisselLijn([], 'temp', [...beschikbaar])).toEqual(['temp'])
-    expect(wisselLijn(['temp'], 'sg', [...beschikbaar])).toEqual(['temp'])
-    expect(wisselLijn(['temp'], 'temp', [...beschikbaar])).toEqual([])
+    const beschikbaar: ('sg' | 'temp')[] = ['sg', 'temp']
+    expect(wisselLijn([], 'temp', beschikbaar)).toEqual(['temp'])
+    expect(wisselLijn(['temp'], 'sg', beschikbaar)).toEqual(['temp'])
+    expect(wisselLijn(['temp'], 'temp', beschikbaar)).toEqual([])
   })
 
-  it('kent alle zeven lijnen', () => {
-    expect(GRAFIEK_LIJNEN).toEqual(['sg', 'og_fg', 'temp', 'setpoint', 'druk', 'druk_setpoint', 'ph'])
+  it('vier grootheden, elk met een eigen kleur', () => {
+    expect(GRAFIEK_LIJNEN).toEqual(['sg', 'temp', 'druk', 'ph'])
+    expect(new Set(Object.values(GRAFIEK_KLEUR)).size).toBe(4)
   })
 })
 

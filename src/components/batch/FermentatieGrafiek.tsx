@@ -2,10 +2,7 @@ import React from 'react'
 import { t } from '../../i18n'
 import { useBreedte } from '../ui/useBreedte'
 import { metingWaarde, metingWaarden, kiesHoverMeting } from '../../utils/metingen'
-import {
-  beschikbareLijnen, leesUitgezet, wisselLijn, asBereik, GRAFIEK_LIJN_LABEL,
-  type GrafiekLijn, type Trap,
-} from '../../utils/grafiekLijnen'
+import { asBereik, GRAFIEK_KLEUR, type GrafiekLijn, type Trap } from '../../utils/grafiekLijnen'
 
 // ── Monotone cubic interpolation ──────────────────────────────────────────
 // Guarantees the curve never overshoots between data points (Fritsch-Carlson)
@@ -57,10 +54,10 @@ const catmullRomPath = (pts: [number,number][]): string => {
 // grafiek ook die "aanloop" — zodat je ziet hoe lang de vergisting al loopt
 // voor de eerste meting.
 //
-// Welke lijnen je ziet kies je met de knoppen boven de grafiek (SG, OG en FG,
-// temperatuur en zijn setpoint, druk en zijn setpoint, pH). Alleen een lijn
-// met gegevens krijgt een knop (utils/grafiekLijnen.ts); wat je uitzet
-// onthoudt deze browser.
+// Welke lijnen je ziet kies je met de kerncijfers erboven (KernKaart): per
+// grootheid de meting met zijn doel — SG met OG en FG, temperatuur met het
+// setpoint, druk met de doeldruk, pH (utils/grafiekLijnen.ts). De grafiek
+// tekent wat niet in `uit` staat.
 
 interface Props {
   metingen: any[]
@@ -73,30 +70,26 @@ interface Props {
   setpoint?: Trap[]
   /** De doeldruk van de carbonatiesessies (`drukSetpointTrappen`). */
   drukSetpoint?: Trap[]
+  /** De grootheden die uit staan (de keuze in de kerncijfers). */
+  uit?: GrafiekLijn[]
 }
 
-const KLEUR: Record<GrafiekLijn, string> = {
-  sg: '#d97706', og_fg: '#b45309', temp: '#ef4444', setpoint: '#ef4444',
-  druk: '#7c3aed', druk_setpoint: '#7c3aed', ph: '#3b82f6',
+// Wat er getekend wordt, en bij welke grootheid het hoort: het doel gaat aan
+// en uit met de meting.
+type Teken = 'sg' | 'og_fg' | 'temp' | 'setpoint' | 'druk' | 'druk_setpoint' | 'ph'
+const GROEP: Record<Teken, GrafiekLijn> = {
+  sg: 'sg', og_fg: 'sg', temp: 'temp', setpoint: 'temp', druk: 'druk', druk_setpoint: 'druk', ph: 'ph',
 }
-const STIPPEL: Partial<Record<GrafiekLijn, string>> = {
-  og_fg: '2 3', setpoint: '6 3', druk_setpoint: '6 3', ph: '5 3',
+const KLEUR: Record<Teken, string> = {
+  sg: GRAFIEK_KLEUR.sg, og_fg: '#b45309', temp: GRAFIEK_KLEUR.temp, setpoint: GRAFIEK_KLEUR.temp,
+  druk: GRAFIEK_KLEUR.druk, druk_setpoint: GRAFIEK_KLEUR.druk, ph: GRAFIEK_KLEUR.ph,
 }
-const OPSLAG = 'brewadmin_grafiek_uit'
-
-const leesOpslag = (): GrafiekLijn[] => {
-  try { return leesUitgezet(localStorage.getItem(OPSLAG)) } catch { return [] }
+// Doorgetrokken = gemeten, gestippeld = het doel.
+const STIPPEL: Partial<Record<Teken, string>> = {
+  og_fg: '2 3', setpoint: '6 3', druk_setpoint: '6 3',
 }
 
-/** Een staaltje van de lijn (kleur en stippel) in de knop. */
-const Staal: React.FC<{ lijn: GrafiekLijn; aan: boolean }> = ({ lijn, aan }) => (
-  <svg width="16" height="8" viewBox="0 0 16 8" aria-hidden="true">
-    <line x1="1" y1="4" x2="15" y2="4" stroke={aan ? KLEUR[lijn] : '#a8a29e'} strokeWidth="2.5"
-      strokeDasharray={STIPPEL[lijn] ? '3 2' : undefined} strokeLinecap={STIPPEL[lijn] ? 'butt' : 'round'} />
-  </svg>
-)
-
-const FermentatieGrafiek: React.FC<Props> = ({ metingen, startTs, og, fg, setpoint = [], drukSetpoint = [] }) => {
+const FermentatieGrafiek: React.FC<Props> = ({ metingen, startTs, og, fg, setpoint = [], drukSetpoint = [], uit = [] }) => {
   const svgRef = React.useRef<SVGSVGElement>(null)
   const [zoom, setZoom] = React.useState<[number,number]>([0,1])
   const zoomRef = React.useRef<[number,number]>([0,1])
@@ -106,20 +99,11 @@ const FermentatieGrafiek: React.FC<Props> = ({ metingen, startTs, og, fg, setpoi
   // zelf geen heeft (zie kiesHoverMeting): met een auto-temperatuurmeting per
   // 10 minuten zou het SG anders vrijwel nooit in de tooltip verschijnen.
   const [tooltip, setTooltip] = React.useState<{x:number, m:any, sgM:any}|null>(null)
-  const [uit, setUit] = React.useState<GrafiekLijn[]>(leesOpslag)
   // De grafiek tekent op de breedte die hij krijgt (tot 760): op een telefoon
   // blijven de letters dan leesbaar in plaats van tot een paar pixels te krimpen.
   const [vlakRef, vlakBreedte] = useBreedte<HTMLDivElement>()
 
-  const beschikbaar = React.useMemo(() => beschikbareLijnen({
-    metingen, og, fg: fg?.waarde ?? null, setpoint, drukSetpoint,
-  }), [metingen, og, fg, setpoint, drukSetpoint])
-  const zie = (l: GrafiekLijn) => beschikbaar.includes(l) && !uit.includes(l)
-  const wissel = (l: GrafiekLijn) => setUit(prev => {
-    const volgende = wisselLijn(prev, l, beschikbaar)
-    try { localStorage.setItem(OPSLAG, JSON.stringify(volgende)) } catch { /* alleen gemak */ }
-    return volgende
-  })
+  const zie = (l: Teken) => !uit.includes(GROEP[l])
 
   const sorted = React.useMemo(() => [...metingen].sort((a,b) =>
     ((a.datum||'')+'T'+(a.tijd||'00:00')).localeCompare((b.datum||'')+'T'+(b.tijd||'00:00'))
@@ -336,35 +320,14 @@ const FermentatieGrafiek: React.FC<Props> = ({ metingen, startTs, og, fg, setpoi
       : `${(phMin + frac*phRange).toFixed(1)}`
   const asKleur = { temp: KLEUR.temp, druk: KLEUR.druk, ph: KLEUR.ph }
 
-  const toonKnoppen = beschikbaar.length > 1
-
   return (
     <div className="select-none" ref={vlakRef}>
-      {(toonKnoppen || isZoomed) && (
-        <div className="flex items-center gap-1.5 px-1 pb-2 min-w-0">
-          {toonKnoppen && (
-            // Telefoon: één rij die zijwaarts schuift (zoals de paginachips); bureau: hij breekt af.
-            <div role="group" aria-label={t('grafiek_lijnen')}
-              className="flex gap-1.5 overflow-x-auto sm:overflow-visible sm:flex-wrap min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
-              {beschikbaar.map(l => {
-                const aan = !uit.includes(l)
-                return (
-                  <button key={l} type="button" aria-pressed={aan} onClick={() => wissel(l)}
-                    className={`flex-none whitespace-nowrap inline-flex items-center gap-1.5 min-h-tap sm:min-h-[30px] px-2.5 rounded-full border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)] ${
-                      aan ? 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50' : 'border-gray-200 bg-gray-50 text-gray-500 hover:text-gray-700'}`}>
-                    <Staal lijn={l} aan={aan} />
-                    {t(GRAFIEK_LIJN_LABEL[l])}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-          {isZoomed && (
-            <button type="button" onClick={() => setZoom([0,1])}
-              className="ml-auto flex-none whitespace-nowrap text-xs bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 px-2 min-h-tap sm:min-h-[30px] rounded-full transition-colors">
-              {t('btn_zoom_reset')}
-            </button>
-          )}
+      {isZoomed && (
+        <div className="flex justify-end px-1 pb-1">
+          <button type="button" onClick={() => setZoom([0,1])}
+            className="text-xs bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 px-2.5 min-h-tap sm:min-h-[30px] rounded-full transition-colors">
+            {t('btn_zoom_reset')}
+          </button>
         </div>
       )}
       <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`}
@@ -449,7 +412,7 @@ const FermentatieGrafiek: React.FC<Props> = ({ metingen, startTs, og, fg, setpoi
           const rows: {t:string, c:string}[] = [{t:`${m.datum}${m.tijd?' '+m.tijd:''}`, c:'#6b7280'}]
           if (vSg!=null && zie('sg'))     rows.push({t:`SG: ${vSg.toFixed(3)}`, c:KLEUR.sg})
           if (vTemp!=null && zie('temp')) rows.push({t:`${vTemp.toFixed(1)}°C`, c:KLEUR.temp})
-          if (vSp!=null && zie('setpoint')) rows.push({t:`${t('grafiek_lijn_setpoint')}: ${vSp.toFixed(1)}°C`, c:KLEUR.setpoint})
+          if (vSp!=null && zie('setpoint')) rows.push({t:t('kern_doel').replace('{waarde}', `${vSp.toFixed(1)}°C`), c:KLEUR.setpoint})
           if (vDruk!=null && zie('druk')) rows.push({t:`${vDruk.toFixed(2)} bar`, c:KLEUR.druk})
           if (vPh!=null && zie('ph'))     rows.push({t:`pH: ${vPh.toFixed(1)}`, c:KLEUR.ph})
           if (m.opmerking) rows.push({t:m.opmerking,             c:'#374151'})

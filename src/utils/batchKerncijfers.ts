@@ -55,6 +55,12 @@ export interface KerncijfersInvoer {
   doelTemp: number | null
   /** De live druk in de tank (bar) uit de druksensor; ontbreekt = geen sensor. */
   druk?: number | null
+  /** De laatste druk uit een (automatische) meting: terugval zonder live sensor. */
+  metingDruk?: MetingMoment | null
+  /** De doeldruk van nu (een lopende carbonatiesessie). */
+  drukDoel?: number | null
+  /** De laatste pH-meting. */
+  ph?: MetingMoment | null
 }
 
 export interface Kerncijfers {
@@ -62,8 +68,10 @@ export interface Kerncijfers {
   /** Vergist, 0–100 %; null zonder OG, doel of meting. */
   vergist: number | null
   temp: { waarde: number; bron: 'sensor' | 'meting'; doel: number | null } | null
-  /** Druk in de tank (bar), alleen met een druksensor. */
-  druk: number | null
+  /** Druk in de tank (bar): de sensor, anders de laatste meting; met de doeldruk. */
+  druk: { waarde: number; bron: 'sensor' | 'meting'; doel: number | null } | null
+  /** De laatste pH-meting. */
+  ph: MetingMoment | null
   /** Alcohol tot nu (% vol, Balling OG → laatste SG); null zonder OG of SG. */
   abv: number | null
   /** Staat er minstens één cijfer in? Anders hoort de kaart weg. */
@@ -89,9 +97,21 @@ export const batchKerncijfers = (inv: KerncijfersInvoer): Kerncijfers => {
     : inv.metingTemp ? { waarde: inv.metingTemp.waarde, bron: 'meting' as const, doel } : null
   const balling = og != null && sg ? abvBalling(og, sg.waarde) : null
   const abv = balling ? balling.abv : null
-  const d = eindig(inv.druk)
   // Een overdruksensor die net onder nul zakt (afwijking van de sensor) is
   // een lege tank zonder druk: 0. Ver onder nul = een kapotte waarde.
-  const druk = d != null && d >= -0.2 ? Math.max(0, d) : null
-  return { sg, vergist, temp, druk, abv, leeg: !sg && vergist == null && !temp && druk == null && abv == null }
+  const bar = (v: unknown): number | null => {
+    const d = eindig(v)
+    return d != null && d >= -0.2 ? Math.max(0, d) : null
+  }
+  const drukDoel = bar(inv.drukDoel)
+  const drukSensor = bar(inv.druk)
+  const drukMeting = inv.metingDruk ? bar(inv.metingDruk.waarde) : null
+  const druk = drukSensor != null ? { waarde: drukSensor, bron: 'sensor' as const, doel: drukDoel }
+    : drukMeting != null ? { waarde: drukMeting, bron: 'meting' as const, doel: drukDoel } : null
+  const phW = inv.ph ? eindig(inv.ph.waarde) : null
+  const ph = inv.ph && phW != null && phW > 0 && phW < 14 ? inv.ph : null
+  return {
+    sg, vergist, temp, druk, ph, abv,
+    leeg: !sg && vergist == null && !temp && !druk && !ph && abv == null,
+  }
 }

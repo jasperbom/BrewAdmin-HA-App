@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.61] — 2026-11-25
+
+### Kerncijfers en grafiek in één
+
+- De kerncijfers bovenaan Vergisten en Conditioneren zijn nu ook de knoppen van
+  de grafiek: één tegel per grootheid — SG, temperatuur, druk en pH — met de
+  meting groot en het doel eronder. Tik op een tegel en zijn lijn gaat aan of
+  uit, met het doel erbij (SG met OG en FG, temperatuur met het setpoint, druk
+  met de doeldruk). Een uitgezette tegel is grijs met een gestippelde rand; wat
+  je uitzet onthoudt de browser. De losse knoppen boven de grafiek zijn weg.
+- pH heeft een eigen tegel en lijn. SG, temperatuur en pH staan er altijd (zonder
+  meting: "nog niet gemeten"); druk alleen met een druksensor of drukmeting.
+- Bij de SG staan ook hoeveel er vergist is en het alcoholpercentage tot nu;
+  bij de druk de doeldruk van een lopende carbonatiesessie.
+- In de grafiek is doorgetrokken altijd gemeten en gestippeld altijd het doel;
+  de pH-lijn is daarom niet meer gestippeld.
+
+---
+
 ## [1.13.60] — 2026-11-25
 
 ### De grafiek: kies wat je ziet

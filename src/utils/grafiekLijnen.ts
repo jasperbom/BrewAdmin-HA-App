@@ -1,30 +1,32 @@
 import { metingWaarde } from './metingen'
 import { metingTs } from './tankbewaking'
 
-// De lijnen in de vergistingsgrafiek en welke je ziet. Elke lijn komt uit wat
-// er echt is vastgelegd — een lijn zonder gegevens krijgt geen knop:
-//   sg            — SG uit de metingen
-//   og_fg         — OG en (verwachte) FG als vaste lijnen op de SG-as
-//   temp          — temperatuur uit de metingen (sensor of met de hand)
-//   setpoint      — het setpoint van de koeling zoals de server het bij elke
-//                   automatische meting vastlegt; zonder zulke rijen het doel
-//                   van nu (schema of cold crash) vanaf het moment dat het geldt
-//   druk          — druk in de tank (bar) uit de automatische metingen
-//   druk_setpoint — de doeldruk van een carbonatiesessie, zolang die liep
-//   ph            — pH uit de metingen
+// De lijnen in de vergistingsgrafiek en welke je ziet. Eén keuze per grootheid,
+// met zijn doel erbij — de kerncijfers bovenaan de batch zijn de knoppen:
+//   sg   — SG uit de metingen, met OG en (verwachte) FG als vaste lijnen
+//   temp — temperatuur uit de metingen (sensor of met de hand), met het
+//          setpoint: wat de server bij elke automatische meting van de koeling
+//          las, anders het doel van nu (schema of cold crash) vanaf het moment
+//          dat het geldt
+//   druk — druk in de tank (bar) uit de automatische metingen, met de doeldruk
+//          van een carbonatiesessie zolang die liep
+//   ph   — pH uit de metingen
+// Een grootheid zonder gegevens kun je niet aan- of uitzetten.
 
-export type GrafiekLijn = 'sg' | 'og_fg' | 'temp' | 'setpoint' | 'druk' | 'druk_setpoint' | 'ph'
+export type GrafiekLijn = 'sg' | 'temp' | 'druk' | 'ph'
 
-export const GRAFIEK_LIJNEN: readonly GrafiekLijn[] = ['sg', 'og_fg', 'temp', 'setpoint', 'druk', 'druk_setpoint', 'ph']
+export const GRAFIEK_LIJNEN: readonly GrafiekLijn[] = ['sg', 'temp', 'druk', 'ph']
 
 export const GRAFIEK_LIJN_LABEL: Record<GrafiekLijn, string> = {
   sg: 'grafiek_lijn_sg',
-  og_fg: 'grafiek_lijn_og_fg',
   temp: 'grafiek_lijn_temp',
-  setpoint: 'grafiek_lijn_setpoint',
   druk: 'grafiek_lijn_druk',
-  druk_setpoint: 'grafiek_lijn_druk_setpoint',
   ph: 'grafiek_lijn_ph',
+}
+
+/** De kleur van elke lijn — dezelfde in de grafiek en in de knop erboven. */
+export const GRAFIEK_KLEUR: Record<GrafiekLijn, string> = {
+  sg: '#d97706', temp: '#ef4444', druk: '#7c3aed', ph: '#2563eb',
 }
 
 /** Een vaste waarde over een periode (een trap in de lijn). */
@@ -120,18 +122,22 @@ export interface LijnGegevens {
 const heeftVeld = (metingen: unknown[] | null | undefined, veld: string): boolean =>
   (metingen || []).some(m => !!m && typeof m === 'object' && metingWaarde((m as Record<string, unknown>)[veld]) != null)
 
-/** De lijnen waarvoor er iets te tekenen is, in de vaste volgorde. */
+/** De grootheden waarvoor er iets te tekenen is (meting of doel), in de vaste volgorde. */
 export const beschikbareLijnen = (g: LijnGegevens): GrafiekLijn[] => {
   const heeft: Record<GrafiekLijn, boolean> = {
-    sg: heeftVeld(g.metingen, 'sg'),
-    og_fg: (eindig(g.og) ?? 0) > 1 || (eindig(g.fg) ?? 0) > 0.9,
-    temp: heeftVeld(g.metingen, 'temp'),
-    setpoint: (g.setpoint || []).length > 0,
-    druk: heeftVeld(g.metingen, 'druk'),
-    druk_setpoint: (g.drukSetpoint || []).length > 0,
+    sg: heeftVeld(g.metingen, 'sg') || (eindig(g.og) ?? 0) > 1 || (eindig(g.fg) ?? 0) > 0.9,
+    temp: heeftVeld(g.metingen, 'temp') || (g.setpoint || []).length > 0,
+    druk: heeftVeld(g.metingen, 'druk') || (g.drukSetpoint || []).length > 0,
     ph: heeftVeld(g.metingen, 'ph'),
   }
   return GRAFIEK_LIJNEN.filter(l => heeft[l])
+}
+
+/** De trap die op `ms` geldt (het doel van nu), of null. */
+export const trapOp = (trappen: Trap[] | null | undefined, ms: number): Trap | null => {
+  let gevonden: Trap | null = null
+  for (const tr of trappen || []) if (tr.van <= ms && ms <= tr.tot) gevonden = tr
+  return gevonden
 }
 
 /** De bewaarde keuze: welke lijnen iemand heeft uitgezet. Onleesbaar = niets uit. */
