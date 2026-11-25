@@ -6104,19 +6104,35 @@ def _vergisting_stap_tick() -> None:
         _log('verg-stap', f"notify {service}: {'ok' if ok else 'mislukt'}", level=logging.ERROR)
 
 
+def _druk_naar_bar(waarde, eenheid) -> float | None:
+    """Druk van een sensor in bar, ook als hij psi of kPa meldt. Spiegel van
+    drukNaarBar() in calculations.ts."""
+    n = _eindig_of_none(waarde)
+    if n is None:
+        return None
+    e = str(eenheid or 'bar').lower()
+    bar = n / 14.5038 if e == 'psi' else n / 100 if e == 'kpa' else n
+    return round(bar, 3)
+
+
 def _auto_metingen_tick() -> None:
     """Eén ronde automatische metingen: check HA-instellingen, lees batches,
-    haal temperatuur op voor elke actieve batch met sensor, en sla metingen op."""
+    haal temperatuur en druk op voor elke actieve batch met een sensor, en sla
+    metingen op. Het werkelijke setpoint van de koeling (`tank_setpoints`,
+    vers) gaat mee als `setpoint`, zodat de grafiek temperatuur tegen doel kan
+    tonen; de druk als `druk` (bar)."""
     with _data_lock:
         ha_inst = _read_json('ha_instellingen', {})
     if not ha_inst.get('enabled'):
         return
-    sensors = ha_inst.get('sensors', [])
-    if not sensors:
+    sensors = [s for s in (ha_inst.get('sensors') or []) if isinstance(s, dict)]
+    druk_sensors = [s for s in (ha_inst.get('druk_sensors') or []) if isinstance(s, dict)]
+    if not sensors and not druk_sensors:
         return
 
     with _data_lock:
         batches = _read_json('batches', [])
+        setpoint_rijen = _read_json('tank_setpoints', []) or []
     active = [b for b in batches
               if b.get('tank') and b.get('status') in ('Vergisten', 'Conditioneren')]
     if not active:
@@ -6130,21 +6146,32 @@ def _auto_metingen_tick() -> None:
     # weergave en de backup, `ts` voor de rekenkant (_meting_epoch/metingTs).
     ts = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
 
+    klok_nu = time.time()
     for batch in active:
-        sensor = next((s for s in sensors if s.get('tank') == batch.get('tank')), None)
-        if not sensor or not sensor.get('entity'):
+        tank = batch.get('tank')
+        sensor = next((s for s in sensors if s.get('tank') == tank and s.get('entity')), None)
+        druk_sensor = next((s for s in druk_sensors
+                            if str(s.get('tank')) == str(tank) and s.get('entity')), None)
+        val = _ha_fetch_state(sensor['entity']) if sensor else None
+        druk = (_druk_naar_bar(_ha_fetch_state(druk_sensor['entity']), druk_sensor.get('eenheid'))
+                if druk_sensor else None)
+        if val is None and druk is None:
             continue
-        val = _ha_fetch_state(sensor['entity'])
-        if val is None:
-            continue
-        new_entries.append({
+        entry = {
             'batch_id': batch['id'],
             'datum': datum,
             'tijd': tijd,
             'ts': ts,
-            'temp': val,
             'auto': True,
-        })
+        }
+        if val is not None:
+            entry['temp'] = val
+            sp = _setpoint_voor_tank(setpoint_rijen, tank, klok_nu)
+            if sp is not None:
+                entry['setpoint'] = sp[0]
+        if druk is not None:
+            entry['druk'] = druk
+        new_entries.append(entry)
 
     if not new_entries:
         return

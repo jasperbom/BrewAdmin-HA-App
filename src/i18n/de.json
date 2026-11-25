@@ -6433,5 +6433,16 @@
   "flow_klaar_n_van_m": "{n} von {m} erledigt",
   "batch_kop_verlies": "Verlust erfassen",
   "batch_kop_afgekeurd": "Abgelehntes Bier vernichten",
-  "kern_druk": "Tankdruck"
+  "kern_druk": "Tankdruck",
+  "grafiek_lijnen": "Linien im Diagramm",
+  "grafiek_lijn_sg": "SG",
+  "grafiek_lijn_og_fg": "OG und FG",
+  "grafiek_lijn_temp": "Temperatur",
+  "grafiek_lijn_setpoint": "Soll-Temperatur",
+  "grafiek_lijn_druk": "Druck",
+  "grafiek_lijn_druk_setpoint": "Soll-Druck",
+  "grafiek_lijn_ph": "pH",
+  "grafiek_og": "OG",
+  "grafiek_fg": "FG",
+  "grafiek_fg_verwacht": "FG erwartet"
 }

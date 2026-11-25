@@ -6433,5 +6433,16 @@
   "flow_klaar_n_van_m": "{n} de {m} hechos",
   "batch_kop_verlies": "Registrar pérdida",
   "batch_kop_afgekeurd": "Destruir cerveza rechazada",
-  "kern_druk": "presión del tanque"
+  "kern_druk": "presión del tanque",
+  "grafiek_lijnen": "Líneas del gráfico",
+  "grafiek_lijn_sg": "SG",
+  "grafiek_lijn_og_fg": "OG y FG",
+  "grafiek_lijn_temp": "Temperatura",
+  "grafiek_lijn_setpoint": "Consigna temp.",
+  "grafiek_lijn_druk": "Presión",
+  "grafiek_lijn_druk_setpoint": "Consigna presión",
+  "grafiek_lijn_ph": "pH",
+  "grafiek_og": "OG",
+  "grafiek_fg": "FG",
+  "grafiek_fg_verwacht": "FG prevista"
 }

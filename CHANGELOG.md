@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.60] — 2026-11-25
+
+### De grafiek: kies wat je ziet
+
+- Boven de vergistingsgrafiek staat per lijn een knop: SG, OG en FG,
+  temperatuur, setpoint van de temperatuur, druk, setpoint van de druk (en
+  pH als die gemeten is). Alleen een lijn met gegevens krijgt een knop; wat
+  je uitzet onthoudt de browser. De legenda in de grafiek is weg: de knoppen
+  zijn de legenda.
+- OG en FG staan als vaste lijnen op de SG-as; is de FG nog niet gemeten, dan
+  heet hij "FG verwacht".
+- Het setpoint van de temperatuur is wat de koeling werkelijk had: de server
+  legt het voortaan bij elke automatische meting vast. Zonder koppeling met de
+  koeling staat het doel van nu (schema of cold crash) vanaf het moment dat het
+  geldt; over het verleden wordt niets gegokt.
+- De druk in de tank legt de server voortaan ook bij elke automatische meting
+  vast, met een eigen as rechts (bar). Het setpoint van de druk is de doeldruk
+  van een carbonatiesessie, zolang die liep.
+- De temperatuur in de kerncijfers zegt nu ook het doel als de koeling het
+  setpoint gaf; de druk valt zonder live sensor terug op de laatste meting.
+- Op een telefoon staan de knoppen in één rij die zijwaarts schuift, en de
+  grafiek tekent op de breedte van het scherm, zodat de letters leesbaar
+  blijven.
+
+---
+
 ## [1.13.59] — 2026-11-25
 
 ### Druk in de tank op de batchpagina

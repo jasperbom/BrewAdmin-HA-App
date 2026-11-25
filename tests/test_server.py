@@ -4052,7 +4052,7 @@ class TestAutoMetingenUitdunnen:
     def _clean():
         conn = srv._db()
         with conn:
-            for key in ('batches', 'gist_metingen'):
+            for key in ('batches', 'gist_metingen', 'tank_setpoints'):
                 conn.execute('DELETE FROM records WHERE key=?', (key,))
                 conn.execute('DELETE FROM versies WHERE key=?', (key,))
             conn.execute("DELETE FROM kv WHERE key='ha_instellingen'")
@@ -4093,6 +4093,69 @@ class TestAutoMetingenUitdunnen:
             assert len(srv._read_json('gist_metingen', [])) == len(metingen) + 12 + 1
         finally:
             self._clean()
+
+    def test_druk_en_setpoint_gaan_mee(self, app, monkeypatch):
+        """De druksensor (psi → bar) en het verse setpoint van de koeling
+        staan op dezelfde automatische meting als de temperatuur."""
+        nu_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        srv._write_json('ha_instellingen', {
+            'enabled': True,
+            'sensors': [{'id': 1, 'tank': 'T1', 'entity': 'sensor.t1'}],
+            'druk_sensors': [{'id': 1, 'tank': 'T1', 'entity': 'sensor.druk_t1', 'eenheid': 'psi'}]})
+        srv._write_json('batches', [{'id': 7, 'tank': 'T1', 'status': 'Conditioneren'}])
+        srv._write_json('tank_setpoints', [
+            {'tank': 'T1', 'entity': 'climate.t1', 'setpoint': 2.0, 'sinds': None, 'gezien': nu_iso}])
+        srv._write_json('gist_metingen', [])
+        waarden = {'sensor.t1': 2.4, 'sensor.druk_t1': 17.4}
+        monkeypatch.setattr(srv, '_ha_fetch_state', lambda e: waarden.get(e))
+        try:
+            srv._auto_metingen_tick()
+            [m] = srv._read_json('gist_metingen', [])
+            assert m['temp'] == 2.4 and m['setpoint'] == 2.0
+            assert m['druk'] == pytest.approx(1.2, abs=0.001)
+            assert m['auto'] is True
+        finally:
+            self._clean()
+
+    def test_alleen_druksensor(self, app, monkeypatch):
+        """Een tank met alleen een druksensor krijgt toch een meting, zonder
+        temperatuur en dus zonder setpoint; de bewaking leest alleen temp."""
+        srv._write_json('ha_instellingen', {
+            'enabled': True, 'sensors': [],
+            'druk_sensors': [{'id': 1, 'tank': 'T1', 'entity': 'sensor.druk_t1', 'eenheid': 'bar'}]})
+        srv._write_json('batches', [{'id': 7, 'tank': 'T1', 'status': 'Vergisten'}])
+        srv._write_json('gist_metingen', [])
+        monkeypatch.setattr(srv, '_ha_fetch_state', lambda e: 0.85)
+        try:
+            srv._auto_metingen_tick()
+            [m] = srv._read_json('gist_metingen', [])
+            assert m['druk'] == 0.85 and 'temp' not in m and 'setpoint' not in m
+            assert srv._temp_punten_per_batch([m], 0) == {}
+        finally:
+            self._clean()
+
+    def test_oud_setpoint_gaat_niet_mee(self, app, monkeypatch):
+        oud = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=3)).isoformat()
+        srv._write_json('ha_instellingen', {
+            'enabled': True, 'sensors': [{'id': 1, 'tank': 'T1', 'entity': 'sensor.t1'}]})
+        srv._write_json('batches', [{'id': 7, 'tank': 'T1', 'status': 'Vergisten'}])
+        srv._write_json('tank_setpoints', [
+            {'tank': 'T1', 'entity': 'climate.t1', 'setpoint': 20.0, 'sinds': None, 'gezien': oud}])
+        srv._write_json('gist_metingen', [])
+        monkeypatch.setattr(srv, '_ha_fetch_state', lambda e: 19.6)
+        try:
+            srv._auto_metingen_tick()
+            [m] = srv._read_json('gist_metingen', [])
+            assert m['temp'] == 19.6 and 'setpoint' not in m and 'druk' not in m
+        finally:
+            self._clean()
+
+    def test_druk_naar_bar(self):
+        assert srv._druk_naar_bar(14.5038, 'psi') == 1.0
+        assert srv._druk_naar_bar(120, 'kPa') == 1.2
+        assert srv._druk_naar_bar('0.9', None) == 0.9
+        assert srv._druk_naar_bar(float('nan'), 'bar') is None
+        assert srv._druk_naar_bar('', 'bar') is None
 
     def test_onleesbare_sensor_schrijft_niets(self, app, monkeypatch):
         srv._write_json('ha_instellingen', {

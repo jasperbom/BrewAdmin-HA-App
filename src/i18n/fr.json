@@ -6433,5 +6433,16 @@
   "flow_klaar_n_van_m": "{n} sur {m} faits",
   "batch_kop_verlies": "Enregistrer une perte",
   "batch_kop_afgekeurd": "Détruire la bière refusée",
-  "kern_druk": "pression de la cuve"
+  "kern_druk": "pression de la cuve",
+  "grafiek_lijnen": "Courbes du graphique",
+  "grafiek_lijn_sg": "SG",
+  "grafiek_lijn_og_fg": "OG et FG",
+  "grafiek_lijn_temp": "Température",
+  "grafiek_lijn_setpoint": "Consigne temp.",
+  "grafiek_lijn_druk": "Pression",
+  "grafiek_lijn_druk_setpoint": "Consigne pression",
+  "grafiek_lijn_ph": "pH",
+  "grafiek_og": "OG",
+  "grafiek_fg": "FG",
+  "grafiek_fg_verwacht": "FG prévue"
 }

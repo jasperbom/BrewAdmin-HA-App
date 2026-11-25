@@ -6433,5 +6433,16 @@
   "flow_klaar_n_van_m": "{n} of {m} done",
   "batch_kop_verlies": "Record loss",
   "batch_kop_afgekeurd": "Destroy rejected beer",
-  "kern_druk": "tank pressure"
+  "kern_druk": "tank pressure",
+  "grafiek_lijnen": "Lines in the chart",
+  "grafiek_lijn_sg": "SG",
+  "grafiek_lijn_og_fg": "OG and FG",
+  "grafiek_lijn_temp": "Temperature",
+  "grafiek_lijn_setpoint": "Temp. setpoint",
+  "grafiek_lijn_druk": "Pressure",
+  "grafiek_lijn_druk_setpoint": "Pressure setpoint",
+  "grafiek_lijn_ph": "pH",
+  "grafiek_og": "OG",
+  "grafiek_fg": "FG",
+  "grafiek_fg_verwacht": "Expected FG"
 }

@@ -249,6 +249,11 @@ BrewAdmin-HA-App/
 │   │   │                   # in App.tsx: de druksensoren elke minuut, in bar), alcohol tot nu (Balling);
 │   │   │                   # een cijfer zonder meting komt niet mee. Verlies, Tank verplaatsen en
 │   │   │                   # Afgekeurd bier staan op de batchpagina alleen als er iets is, anders onder ⋯
+│   │   ├── grafiekLijnen.ts # De lijnen in de vergistingsgrafiek en de knoppen erboven (SG, OG en FG,
+│   │   │                   # temperatuur + setpoint, druk + setpoint, pH): alleen een lijn met gegevens krijgt
+│   │   │                   # een knop; setpoint = wat de server bij de automatische meting van de koeling las,
+│   │   │                   # anders het doel van nu (schema/cold crash) vanaf zijn startmoment — nooit een gok
+│   │   │                   # over het verleden; doeldruk = de carbonatiesessies; uitgezet = localStorage
 │   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
 │   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
 │   │   ├── kostensoortHerindeling.ts # De kostensoort van inkoopregels achteraf anders ("Overig" →
@@ -994,6 +999,10 @@ van het ⋯-menu (`menuPositie.test.ts`) en
 beslissingen + attentie (`beslissingen.test.ts`, `attentie.test.ts`:
 werkruimte-badge = aantal dashboardrijen = som van de menubadges, één rij per
 BTW-periode en per accijnsmaand).
+De lijnen van de vergistingsgrafiek (`grafiekLijnen.test.ts`: setpoint uit de metingen of het doel
+van nu, doeldruk per carbonatiesessie, alleen lijnen met gegevens, de bewaarde keuze); in pytest
+`TestAutoMetingenUitdunnen`: druk (psi → bar) en een vers setpoint op de automatische meting, een tank met
+alleen een druksensor, geen oud setpoint.
 De kerncijfers van de batch (`batchKerncijfers.test.ts`: de laatste meting, vergist begrensd,
 alcohol tot nu, sensor of meting, niets gemeten = geen kaart) en de afvulchecklist zonder wat de app
 zelf vastlegt (`taken.test.ts`, `deactiveerZelfVastgelegd`: uitzetten, niet verwijderen; eigen tekst
@@ -1749,7 +1758,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `bestelling_picks` | array | Pickregels per bestelling |
 | `afboekingen` | array | Biervoorraadbewegingen (vermis, vernietiging, overig). `bron_locatie_id` = waar het bier lág — bepaalt van welke locatie het afgaat én of er accijns verschuldigd wordt. Ontbreekt op records van vóór v1.12.52; die gelden als AGP |
 | `klanten` | array | Klanten |
-| `gist_metingen` | array | Gistingsmetingen per batch. Automatische metingen (`auto: true`, server-tick `_auto_metingen_tick`) dragen naast de lokale `datum`/`tijd` een absoluut `ts` (ISO met offset) — dat gaat in de bewaking voor (`_meting_epoch`/`metingTs`), anders geeft de wintertijdwissel een vals "sensor stil". De server dunt automatische metingen ouder dan 48 u eens per dag uit tot één per batch per uur (`_dun_auto_metingen`); handmatige rijen blijven altijd staan |
+| `gist_metingen` | array | Gistingsmetingen per batch. Automatische metingen (`auto: true`, server-tick `_auto_metingen_tick`) dragen `temp`, sinds 1.13.60 ook `druk` (bar, uit `ha_instellingen.druk_sensors`) en `setpoint` (het verse setpoint van de koeling uit `tank_setpoints`; alleen naast een temperatuur), en naast de lokale `datum`/`tijd` een absoluut `ts` (ISO met offset) — dat gaat in de bewaking voor (`_meting_epoch`/`metingTs`), anders geeft de wintertijdwissel een vals "sensor stil". De server dunt automatische metingen ouder dan 48 u eens per dag uit tot één per batch per uur (`_dun_auto_metingen`); handmatige rijen blijven altijd staan |
 | `ruimteklimaat_status` | object | Of de app de airco voor de tanks aanzette, alleen door de server geschreven (`_ruimteklimaat_tick`): `{laatste_check, entity, naam, eigen, richting, sinds, setpoint, gezien_setpoint, doel_setpoint, pauze_tot, stand, reden, airco_stand, ruimte, tank, laatste_actie, fout}`. `eigen` = de app zette hem aan en hij staat nog zo; alleen dan zet de app hem ook weer uit (ook na het kiezen van een andere airco). Beheer-only, de app leest hem met een gewone GET. Niet in de Excel-backup, niet terug te zetten (regenereert) |
 | `tank_setpoints` | array | Werkelijk setpoint per tank, gelezen van de gekoppelde climate-entity door de server-tick `_lees_tank_setpoints`: `{tank, entity, setpoint, sinds, gezien}`. `sinds` = moment van de laatste setpoint-wissel (leeg bij de eerste waarneming — een herstart mag geen instelvenster starten), `gezien` = laatste geslaagde uitlezing (ouder dan 2 uur = terugval op het schema). Alleen de server schrijft hier; bewust **niet** in de Excel-backup (regenereert vanzelf) |
 | `wc_import_status` | object | Stand van de automatische WooCommerce-import. Server (`_wc_orders_tick`, interval = `woocommerce_creds.importInterval`): `nieuw` = webshoporders die nog niet als bestelling bestaan, `gemeld_ids` = waarvoor al een HA-melding ging, `laatste_check`/`laatste_fout`. Tabbladen: `bezig_tot`/`door` = import-lease, `laatste_import*`. Bewust **niet** beheer-only (elke schrijvende rol importeert) en niet in de backup (regenereert). De import zelf blijft in de app (`utils/wcOrderImport.ts`) |

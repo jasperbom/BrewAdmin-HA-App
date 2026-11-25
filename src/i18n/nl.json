@@ -6433,5 +6433,16 @@
   "flow_klaar_n_van_m": "{n} van {m} gedaan",
   "batch_kop_verlies": "Verlies registreren",
   "batch_kop_afgekeurd": "Afgekeurd bier vernietigen",
-  "kern_druk": "druk in de tank"
+  "kern_druk": "druk in de tank",
+  "grafiek_lijnen": "Lijnen in de grafiek",
+  "grafiek_lijn_sg": "SG",
+  "grafiek_lijn_og_fg": "OG en FG",
+  "grafiek_lijn_temp": "Temperatuur",
+  "grafiek_lijn_setpoint": "Setpoint temp.",
+  "grafiek_lijn_druk": "Druk",
+  "grafiek_lijn_druk_setpoint": "Setpoint druk",
+  "grafiek_lijn_ph": "pH",
+  "grafiek_og": "OG",
+  "grafiek_fg": "FG",
+  "grafiek_fg_verwacht": "FG verwacht"
 }

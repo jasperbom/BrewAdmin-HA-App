@@ -62,6 +62,8 @@ import VernietigingSection from '../components/batch/VernietigingSection'
 import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
 import KernKaart from '../components/batch/KernKaart'
 import { batchKerncijfers, laatsteMetingMet } from '../utils/batchKerncijfers'
+import { setpointTrappen, drukSetpointTrappen } from '../utils/grafiekLijnen'
+import { schemaDoel } from '../utils/tankbewaking'
 import MetingLog from '../components/batch/MetingLog'
 import BrouwdagWizard from '../components/batch/BrouwdagWizard'
 import DryHopSection from '../components/batch/DryHopSection'
@@ -3039,15 +3041,34 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const sensorRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
     const drukRaw = selB.tank != null ? haTankDruk?.[selB.tank] : undefined
     const og = Number(selB.OG) > 0 ? Number(selB.OG) : null
+    // Het doel: het setpoint dat de server bij de laatste temperatuurmeting
+    // van de koeling las (het werkelijke), anders het schema of de cold crash.
+    const laatsteTemp = laatsteMetingMet(mijnMetingen, 'temp')
+    const laatsteSp = laatsteMetingMet(mijnMetingen, 'setpoint')
+    const spNu = laatsteSp && laatsteTemp && laatsteSp.datum === laatsteTemp.datum && laatsteSp.tijd === laatsteTemp.tijd
+      ? laatsteSp.waarde : null
     const cijfers = batchKerncijfers({
-      og, fgDoel, doelTemp,
+      og, fgDoel, doelTemp: spNu ?? doelTemp,
       sg: laatsteMetingMet(mijnMetingen, 'sg'),
       sensorTemp: typeof sensorRaw === 'number' ? sensorRaw : null,
-      druk: typeof drukRaw === 'number' ? drukRaw : null,
-      metingTemp: laatsteMetingMet(mijnMetingen, 'temp'),
+      // Live van de druksensor, anders de laatste automatische meting.
+      druk: typeof drukRaw === 'number' ? drukRaw : laatsteMetingMet(mijnMetingen, 'druk')?.waarde ?? null,
+      metingTemp: laatsteTemp,
     })
+    // De lijnen naast SG en temperatuur: OG en (verwachte) FG, het setpoint
+    // van de koeling (of het doel van nu), en de doeldruk van het carboneren.
+    const tsLijst = mijnMetingen.map((m: any) => new Date(`${m.datum}T${m.tijd || '00:00'}`).getTime())
+      .filter((x: number) => Number.isFinite(x))
+    const eindMs = tsLijst.length ? Math.max(...tsLijst) : Date.now()
+    const startMs = Math.min(vergistStartTs ?? Infinity, tsLijst.length ? Math.min(...tsLijst) : eindMs)
+    const huidig = schemaDoel(selB)
+    const fgGemeten = Number(selB.FG) > 0
     const grafiek = mijnMetingen.length >= 2
-      ? <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs} /> : null
+      ? <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs}
+          og={og} fg={fgDoel != null ? { waarde: fgDoel, verwacht: !fgGemeten } : null}
+          setpoint={setpointTrappen(mijnMetingen, { doel: huidig.doel, sindsMs: huidig.doelSindsMs }, { startMs, eindMs })}
+          drukSetpoint={drukSetpointTrappen(carbSessies, selB.id, eindMs)} />
+      : null
     return <KernKaart cijfers={cijfers} og={og} grafiek={grafiek} zonderAbv={faseStatus === 'Conditioneren'} />
   }
 
