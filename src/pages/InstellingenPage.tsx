@@ -1688,7 +1688,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <option value="lege_flessen">{t('haccp_inst_ccp2_lege_flessen')}</option>
               <option value="sluitcontrole">{t('haccp_inst_ccp2_sluitcontrole')}</option>
             </select>
-            <p className="mt-1 text-xs text-gray-400">{t('haccp_inst_co2_uitleg')}</p>
+            <p className="mt-1 text-xs text-gray-500">{t('haccp_inst_co2_uitleg')}</p>
           </div>
           {/* Wanneer het etiket erop gaat: bij het afvullen (CCP 3 in de sessie)
               of pas na de vrijgave voor verkoop — dan gooi je bij een
@@ -1705,7 +1705,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
               <option value="afvullen">{t('haccp_inst_etiketteren_afvullen')}</option>
               <option value="na_vrijgave">{t('haccp_inst_etiketteren_na_vrijgave')}</option>
             </select>
-            <p className="mt-1 text-xs text-gray-400">{t('haccp_inst_houdtest_uitleg')}</p>
+            <p className="mt-1 text-xs text-gray-500">{t('haccp_inst_houdtest_uitleg')}</p>
           </div>
         </div>
         {/* Per ingrediënttype een default; per ingrediënt kan het overschreven

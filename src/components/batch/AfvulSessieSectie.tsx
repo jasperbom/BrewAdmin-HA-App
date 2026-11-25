@@ -225,9 +225,9 @@ const Regel: React.FC<{
           is aan de beurt …") loopt door op een tweede regel in plaats van over
           de titel heen te schuiven op een telefoon. */}
       {detail != null && detail !== '' && (
-        <span className="text-xs text-gray-400 text-right max-w-[50%] min-w-0 break-words">{detail}</span>
+        <span className="text-xs text-gray-600 text-right max-w-[50%] min-w-0 break-words">{detail}</span>
       )}
-      <span className={`text-gray-300 text-xs flex-shrink-0 transition-transform ${
+      <span aria-hidden="true" className={`text-gray-500 text-xs flex-shrink-0 transition-transform ${
         open ? 'rotate-90' : ''}`}>▶</span>
     </button>
     {open && <div className="px-3 pb-3 pt-1 border-t border-gray-100 space-y-2">{children}</div>}
@@ -1248,9 +1248,9 @@ const AfvulSessieSectie: React.FC<Props> = (p) => {
                   <input type="time" value={tijd}
                     onChange={e => setNa({...na, tussen: na.tussen.map((x, j) => j === i ? e.target.value : x)})}
                     className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white t-input shadow-sm" />
-                  <button type="button" title={t('btn_delete')}
+                  <button type="button" title={t('btn_delete')} aria-label={t('btn_delete')}
                     onClick={() => setNa({...na, tussen: na.tussen.filter((_, j) => j !== i)})}
-                    className="px-1.5 py-1 text-gray-400 hover:text-red-500">✕</button>
+                    className="min-h-tap min-w-tap sm:min-h-0 sm:min-w-0 px-1.5 py-1 text-gray-500 hover:text-red-700">✕</button>
                 </span>
               ))}
               <button type="button"

@@ -115,36 +115,37 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
   // (handboek hoofdstuk 11) — daarom staat de vervaldatum op het dashboard.
   const traceStatus = oefeningStatus(traceOefeningen||[], haccpInst, today)
 
-  type Punt = {key:string, label:string, waarde:string|number, sub?:string, ok:boolean, kleur:string, tab:Tab}
+  // `waarde` null = nog nooit gedaan: dan staat de toelichting groot, geen streepje.
+  type Punt = {key:string, label:string, waarde:string|number|null, sub?:string, ok:boolean, kleur:string, tab:Tab}
   const openIncidenten = (incidenten||[]).filter((i:any)=>i?.status==='open').length
   const punten: Punt[] = [
     {key:'incidenten', label:t('haccp_dash_incidenten'), waarde:openIncidenten, sub:t('haccp_dash_incidenten_sub'),
-     ok:!openIncidenten, kleur:'border-red-500', tab:'kritisch'},
+     ok:!openIncidenten, kleur:'bg-red-500', tab:'kritisch'},
     {key:'vrijgave', label:t('haccp_dash_wacht_vrijgave'), waarde:wachtVrijgave, sub:t('haccp_ccp1_titel'),
-     ok:!wachtVrijgave, kleur:'border-orange-500', tab:'kritisch'},
+     ok:!wachtVrijgave, kleur:'bg-orange-500', tab:'kritisch'},
     {key:'sessies', label:t('haccp_dash_open_sessies'), waarde:openSessies, sub:t('haccp_sessie_titel'),
-     ok:!openSessies, kleur:'border-blue-500', tab:'kritisch'},
+     ok:!openSessies, kleur:'bg-blue-500', tab:'kritisch'},
     {key:'geblokkeerd', label:t('haccp_dash_geblokkeerd'), waarde:geblokkeerd, sub:t('haccp_dash_geblokkeerd_sub'),
-     ok:!geblokkeerd, kleur:'border-red-500', tab:'kritisch'},
+     ok:!geblokkeerd, kleur:'bg-red-500', tab:'kritisch'},
     {key:'afwijkingen', label:t('haccp_dash_afwijkingen'), waarde:afwMaand, sub:t('haccp_dash_deze_maand'),
-     ok:!afwMaand, kleur:'border-orange-500', tab:'kritisch'},
+     ok:!afwMaand, kleur:'bg-orange-500', tab:'kritisch'},
     {key:'schoonmaak', label:t('haccp_dash_schoonmaak'), waarde:achterstallig, sub:t('haccp_dash_achterstallig'),
-     ok:!achterstallig, kleur:'border-red-500', tab:'reiniging'},
+     ok:!achterstallig, kleur:'bg-red-500', tab:'reiniging'},
     {key:'capa', label:t('haccp_dash_open_capa'), waarde:openCapa,
-     ok:!openCapa, kleur:'border-orange-500', tab:'kritisch'},
+     ok:!openCapa, kleur:'bg-orange-500', tab:'kritisch'},
     {key:'allergenen', label:t('haccp_dash_allergenen'), waarde:allergenenOpen, sub:t('haccp_dash_niet_beoordeeld'),
-     ok:!allergenenOpen, kleur:'border-orange-500', tab:'allergenen'},
-    {key:'water', label:t('haccp_dash_water'), waarde:lastWater?fmtD(lastWater.datum):'-',
+     ok:!allergenenOpen, kleur:'bg-orange-500', tab:'allergenen'},
+    {key:'water', label:t('haccp_dash_water'), waarde:lastWater?fmtD(lastWater.datum):null,
      sub:lastWater?t('haccp_dash_laatste_test'):t('haccp_dash_geen_tests'),
-     ok:!waterOud, kleur:'border-orange-500', tab:'registers'},
-    {key:'ongedierte', label:t('haccp_dash_ongedierte'), waarde:lastOngd?fmtD(lastOngd.datum):'-',
+     ok:!waterOud, kleur:'bg-orange-500', tab:'registers'},
+    {key:'ongedierte', label:t('haccp_dash_ongedierte'), waarde:lastOngd?fmtD(lastOngd.datum):null,
      sub:lastOngd?t('haccp_dash_laatste_controle'):t('haccp_dash_geen_controles'),
-     ok:!ongdOud, kleur:'border-orange-500', tab:'registers'},
-    {key:'trace', label:t('haccp_dash_trace'), waarde:traceStatus.laatste?fmtD(traceStatus.laatste.datum):'-',
+     ok:!ongdOud, kleur:'bg-orange-500', tab:'registers'},
+    {key:'trace', label:t('haccp_dash_trace'), waarde:traceStatus.laatste?fmtD(traceStatus.laatste.datum):null,
      sub:traceStatus.verlopen?t('haccp_trace_oefening_verlopen'):t('haccp_trace_oefening_volgende').split('{d}').join(fmtD(traceStatus.volgende_voor||'')),
-     ok:!traceStatus.verlopen, kleur:'border-orange-500', tab:'traceerbaarheid'},
+     ok:!traceStatus.verlopen, kleur:'bg-orange-500', tab:'traceerbaarheid'},
     {key:'opleidingen', label:t('haccp_dash_opleidingen'), waarde:verlopen, sub:t('haccp_dash_verlopen'),
-     ok:!verlopen, kleur:'border-red-500', tab:'registers'},
+     ok:!verlopen, kleur:'bg-red-500', tab:'registers'},
   ]
 
   const aandacht = punten.filter(p=>!p.ok)
@@ -153,8 +154,8 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
   return (
     <div className="space-y-4">
       {!aandacht.length && (
-        <div className="rounded-xl border-l-4 border-green-500 bg-white shadow-sm p-4">
-          <div className="text-sm font-semibold text-gray-800">{t('haccp_dash_alles_in_orde')}</div>
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="text-sm font-semibold text-gray-800"><span className="text-green-700 mr-1.5" aria-hidden="true">✓</span>{t('haccp_dash_alles_in_orde')}</div>
           <div className="text-xs text-gray-500 mt-0.5">{t('haccp_dash_alles_in_orde_sub')}</div>
         </div>
       )}
@@ -162,12 +163,21 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
       {!!aandacht.length && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {aandacht.map(p=>(
-            <div key={p.key} onClick={()=>setTab(p.tab)}
-              className={`rounded-xl border-l-4 p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition-shadow ${p.kleur}`}>
-              <div className="text-xs font-semibold text-gray-500 mb-1">{p.label}</div>
-              <div className="text-2xl font-bold text-gray-800">{p.waarde}</div>
-              {p.sub && <div className="text-xs text-gray-500 mt-1">{p.sub}</div>}
-            </div>
+            <button key={p.key} type="button" onClick={()=>setTab(p.tab)}
+              className="rounded-xl border border-gray-200 p-4 bg-white text-left hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+              <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 mb-1">
+                <span aria-hidden="true" className={`w-2 h-2 rounded-full flex-none ${p.kleur}`} />
+                {p.label}
+              </div>
+              {p.waarde != null ? (
+                <>
+                  <div className="text-2xl font-bold text-gray-900 cijfer">{p.waarde}</div>
+                  {p.sub && <div className="text-xs text-gray-600 mt-1">{p.sub}</div>}
+                </>
+              ) : (
+                <div className="text-base font-semibold text-gray-900 mt-1">{p.sub}</div>
+              )}
+            </button>
           ))}
         </div>
       )}
@@ -180,7 +190,7 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
               <button key={p.key} onClick={()=>setTab(p.tab)}
                 className="bg-white border border-green-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 hover:shadow-sm transition-shadow">
                 <span className="text-green-600 mr-1">✓</span>{p.label}
-                <span className="text-gray-400 ml-1.5">{p.waarde}</span>
+                {p.waarde != null && <span className="text-gray-500 ml-1.5">{p.waarde}</span>}
               </button>
             ))}
           </div>
@@ -591,8 +601,8 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
     <div>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {(['vrijgaven','sessies','afwijkingen','incidenten','capa'] as const).map(k=>(
-          <button key={k} onClick={()=>setSub(k)}
-            className={`px-3 py-1 rounded text-xs font-medium ${sub===k?'tbtn text-white':'bg-gray-100 text-gray-600'}`}>
+          <button key={k} type="button" onClick={()=>setSub(k)} aria-pressed={sub===k}
+            className={`min-h-tap sm:min-h-0 px-3 py-1 rounded text-xs font-medium ${sub===k?'tbtn':'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
             {t(k==='vrijgaven'?'haccp_tab_vrijgave':k==='sessies'?'haccp_tab_sessies':k==='afwijkingen'?'haccp_tab_afwijkingen':k==='incidenten'?'haccp_tab_incidenten':'haccp_capa')}
           </button>
         ))}
@@ -609,7 +619,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
         ? <p className="text-sm text-gray-500 italic">{t('haccp_ccp1_geen')}</p>
         : <div className="space-y-1">
             {vrij.map((v:any)=>(
-              <div key={v.id} className={`bg-white rounded-lg p-2.5 shadow-sm text-sm border-l-4 ${v.oordeel==='vrijgegeven'?'border-green-500':'border-red-500'}`}>
+              <div key={v.id} className="bg-white rounded-lg p-2.5 text-sm border border-gray-200">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{batchNaam(v.batch_id)}</span>
@@ -633,7 +643,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
         <div className="space-y-1 pt-2">
           <div className="text-sm font-semibold text-gray-800">{t('haccp_houdtest_titel')}</div>
           {houdtesten.map((v:any)=>(
-            <div key={v.id} className={`bg-white rounded-lg p-2.5 shadow-sm text-sm border-l-4 ${v.oordeel==='vrijgegeven'?'border-green-500':'border-red-500'}`}>
+            <div key={v.id} className="bg-white rounded-lg p-2.5 text-sm border border-gray-200">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium">{batchNaam(v.batch_id)}</span>
@@ -662,8 +672,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
               const afgekeurd = sc.filter((c:any)=>c.resultaat==='afgekeurd').length
               const geblokkeerd = (av||[]).filter((a:any)=>a.sessie_id===x.id && a.geblokkeerd).length
               return (
-                <div key={x.id} className="bg-white rounded-lg p-2.5 shadow-sm text-sm border-l-4"
-                  style={{borderColor:'var(--t-accent)'}}>
+                <div key={x.id} className="bg-white rounded-lg p-2.5 text-sm border border-gray-200">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono font-semibold">{x.lotcode}</span>
@@ -672,7 +681,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
                         {t(`haccp_sessie_${x.status}`)}
                       </span>
                     </div>
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-gray-500">
                       {/* Zonder THT maar onder de alcoholgrens: geen bewering
                           dat er geen THT nodig is (die sessie mist er één). */}
                       {x.tht ? `${t('haccp_sessie_tht')} ${fmtD(x.tht)}`
@@ -701,13 +710,13 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
         ? <p className="text-sm text-gray-500 italic">{t('haccp_rap_geen')}</p>
         : <div className="space-y-1">
             {afw.map((a:any)=>(
-              <div key={a.id} className="bg-white rounded-lg p-2.5 shadow-sm text-sm border-l-4 border-orange-500">
+              <div key={a.id} className="bg-white rounded-lg p-2.5 text-sm border border-gray-200">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="font-medium">
                     {a.batch_id ? batchNaam(a.batch_id) : t('lbl_onbekend')}
-                    <span className="text-gray-400 font-normal ml-1.5 text-xs">{bronLabel(a.bron)}</span>
+                    <span className="text-gray-500 font-normal ml-1.5 text-xs">{bronLabel(a.bron)}</span>
                   </span>
-                  <span className="text-xs text-gray-400">{fmtD(a.datum)} · {a.paraaf?.gebruiker||'—'}</span>
+                  <span className="text-xs text-gray-500">{fmtD(a.datum)} · {a.paraaf?.gebruiker||'—'}</span>
                 </div>
                 <div className="text-xs text-red-700 mt-1">{a.blokkade_omschrijving}</div>
                 <div className="text-xs text-gray-600 mt-0.5 italic">{a.onderbouwing}</div>
@@ -721,7 +730,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
             {inc.map((i:any)=>{
               const stand = nvwaStand(i)
               return (
-                <div key={i.id} className={`bg-white rounded-lg p-2.5 shadow-sm text-sm border-l-4 ${i.soort==='veiligheid'?'border-red-500':'border-gray-300'}`}>
+                <div key={i.id} className="bg-white rounded-lg p-2.5 text-sm border border-gray-200">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <span className="font-medium">
                       {batchNaam(i.batch_id)}
@@ -785,7 +794,7 @@ function CAPALijst({capa, setCapa, auditLog, setAuditLog, modal, setModal, edit,
     <div>
       <div className="flex items-center gap-2 mb-3">
         <Btn s="sm" onClick={()=>{setEdit({omschrijving:'',oorzaak:'',actie:'',verantwoordelijke:'',status:'open',datum:tod()});setModal('capa')}}>{t('haccp_capa_nieuw')}</Btn>
-        <select value={fStatus} onChange={e=>setFStatus(e.target.value)} className="t-input text-xs px-2 py-1 rounded border">
+        <select value={fStatus} onChange={e=>setFStatus(e.target.value)} aria-label={t('haccp_capa_status')} className="t-input text-xs px-2 py-1 rounded border">
           <option value="">{t('haccp_capa_status')}</option>
           <option value="open">{t('haccp_capa_status_open')}</option>
           <option value="in_behandeling">{t('haccp_capa_status_in_behandeling')}</option>
@@ -795,7 +804,7 @@ function CAPALijst({capa, setCapa, auditLog, setAuditLog, modal, setModal, edit,
       {!filtered.length && <p className="text-sm text-gray-500 italic">{t('haccp_capa_geen')}</p>}
       <div className="space-y-2">
         {filtered.map((c:any)=>(
-          <div key={c.id} className="bg-white rounded-lg p-3 shadow-sm border-l-4" style={{borderColor:c.status==='afgerond'?'#22c55e':c.status==='in_behandeling'?'#f97316':'#ef4444'}}>
+          <div key={c.id} className="bg-white rounded-lg p-3 border border-gray-200">
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <span className="font-medium text-sm">{c.omschrijving}</span>
@@ -807,7 +816,7 @@ function CAPALijst({capa, setCapa, auditLog, setAuditLog, modal, setModal, edit,
               </div>
             </div>
             {c.actie && <div className="text-xs text-gray-600 mt-1">{c.actie}</div>}
-            {c.verantwoordelijke && <div className="text-xs text-gray-400">{c.verantwoordelijke}</div>}
+            {c.verantwoordelijke && <div className="text-xs text-gray-500">{c.verantwoordelijke}</div>}
           </div>
         ))}
       </div>

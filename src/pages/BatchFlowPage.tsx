@@ -313,8 +313,8 @@ const FlowStap: React.FC<{
         {done ? '✓' : optional ? '·' : '○'}
       </span>
       <span className="text-sm font-semibold text-gray-700 flex-1 min-w-0">{title}</span>
-      {detail != null && detail !== '' && <span className="text-xs text-gray-400 flex-shrink-0">{detail}</span>}
-      <span className={`text-gray-300 text-xs flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+      {detail != null && detail !== '' && <span className="text-xs text-gray-600 flex-shrink-0">{detail}</span>}
+      <span aria-hidden="true" className={`text-gray-500 text-xs flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
     </button>
     {open && <div className="px-3 pb-3 pt-1 border-t border-gray-100 space-y-3">{children}</div>}
   </div>
@@ -3220,7 +3220,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               <div>
                 <div className="text-xs font-semibold text-gray-500">{t('carb_pressure_label')}</div>
                 <div className="font-medium" style={{color: 'var(--t-accent-text, var(--t-accent))'}}>
-                  {Number(actief.doel_druk_bar).toFixed(2)} bar <span className="text-xs opacity-75">({barToPsi(actief.doel_druk_bar).toFixed(1)} PSI)</span>
+                  {Number(actief.doel_druk_bar).toFixed(2)} bar <span className="text-xs">({barToPsi(actief.doel_druk_bar).toFixed(1)} PSI)</span>
                 </div>
               </div>
               <div className="col-span-2 sm:col-span-4">
@@ -3321,7 +3321,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                     {outOfRange && <span className="ml-1">⚠</span>}
                   </div>
                 ) : (
-                  <div className="mt-1 text-xs text-gray-400">
+                  <div className="mt-1 text-xs text-gray-500">
                     {t('carb_style_range_unknown')
                       .replace('{min}', styleRange.min.toFixed(1))
                       .replace('{max}', styleRange.max.toFixed(1))}
@@ -3377,7 +3377,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-gray-500">{t('carb_calculated_pressure')}</span>
                 <span className="font-medium" style={{color: 'var(--t-accent-text, var(--t-accent))'}}>
-                  {previewDruk.toFixed(2)} bar <span className="text-xs opacity-75">({barToPsi(previewDruk).toFixed(1)} PSI)</span>
+                  {previewDruk.toFixed(2)} bar <span className="text-xs">({barToPsi(previewDruk).toFixed(1)} PSI)</span>
                 </span>
               </div>
               {batchLiter > 0 && (
@@ -4277,14 +4277,14 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                       <Icon n="snowflake" /> {reached ? t('dashboard_coldcrash_reached') : t('dashboard_coldcrash_active')}
                     </span>
                     <span className="text-gray-500">→ {ccTarget}°C @ {ccRamp}°C/{t('lbl_uur')}</span>
-                    <span className="text-gray-400">· {t('lbl_gestart')}: {fmtD(selB.cold_crash_datum)}</span>
+                    <span className="text-gray-600">· {t('lbl_gestart')}: {fmtD(selB.cold_crash_datum)}</span>
                     <BevestigKnop v="secondary" s="sm" vraag={t('dashboard_coldcrash_stop_confirm')} onBevestig={stopColdCrash}>{t('dashboard_coldcrash_stop_btn')}</BevestigKnop>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 flex-wrap">
                     <BevestigKnop v="primary" s="sm" vraag={coldCrashVraag()} onBevestig={() => { void startColdCrash() }}><Icon n="snowflake" /> {t('dashboard_coldcrash_btn')}</BevestigKnop>
                     {coldcrashInst?.enabled && (
-                      <span className="text-xs text-gray-400">→ {coldcrashInst.target_temp}°C @ {coldcrashInst.ramp_per_uur}°C/{t('lbl_uur')}</span>
+                      <span className="text-xs text-gray-600">→ {coldcrashInst.target_temp}°C @ {coldcrashInst.ramp_per_uur}°C/{t('lbl_uur')}</span>
                     )}
                   </div>
                 )

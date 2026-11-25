@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.62] — 2026-11-25
+
+### Nalopen: leesbaar, aanklikbaar, één stijl
+
+- Kleine grijze tekst die op wit niet te lezen was (2,5:1) is een tint
+  donkerder (minstens 4,5:1): de detailwaarde rechts in elke stap van de
+  batchpagina en de afvulchecklist, de hints bij carbonatie en cold crash, de
+  uitleg bij koolzuur en houdtest in de instellingen, en de PSI naast de druk.
+- HACCP-overzicht: de tegels zijn echte knoppen (ook met het toetsenbord te
+  openen), met een stip voor de urgentie in plaats van een gekleurde zijrand.
+  Is er nog nooit getest of gecontroleerd, dan staat er "Geen tests" in plaats
+  van een streepje.
+- HACCP-lijsten (vrijgaven, houdtesten, afvulsessies, afwijkingen,
+  incidenten, CAPA): geen gekleurde zijrand meer naast de pil die de stand al
+  noemt. De subtabbladen zijn op de telefoon groot genoeg om te tikken en het
+  statusfilter bij CAPA heeft een label voor een schermlezer.
+- Kerncijfers: geen "sensor" meer naast temperatuur en druk, zodat
+  "Temperatuur" op een telefoon niet meer wordt afgekapt.
+- Het kruisje om een tussentijdse sluitcontrole weg te halen is op de telefoon
+  groot genoeg en heeft een naam voor een schermlezer.
+
+Gecontroleerd met axe (WCAG 2 A/AA) op de Brouwzaal, drie batchpagina's en
+alle HACCP-tabbladen, op 375, 768, 1024 en 1440 px breed: geen bevindingen en
+nergens zijwaarts scrollen.
+
+---
+
 ## [1.13.61] — 2026-11-25
 
 ### Kerncijfers en grafiek in één

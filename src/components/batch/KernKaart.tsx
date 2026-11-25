@@ -48,7 +48,7 @@ const Staal: React.FC<{ lijn: GrafiekLijn; aan: boolean }> = ({ lijn, aan }) => 
 interface TegelData {
   lijn: GrafiekLijn
   waarde: string | null
-  /** Rechts in de kop: wanneer gemeten, of "sensor". */
+  /** Rechts in de kop: wanneer gemeten (niet bij een live sensorwaarde). */
   wanneer?: string
   doel?: string
   /** Losse stukjes onder het doel; elk breekt als geheel af. */
@@ -85,12 +85,10 @@ const KernKaart: React.FC<Props> = ({ cijfers, fg = null, zonderAbv = false, met
     },
     {
       lijn: 'temp', waarde: temp ? graden(temp.waarde) : null,
-      wanneer: temp ? (temp.bron === 'sensor' ? t('kern_sensor') : '') : '',
       doel: temp?.doel != null ? doel(graden(temp.doel)) : undefined,
     },
     ...(metDruk || druk ? [{
       lijn: 'druk' as const, waarde: druk ? bar(druk.waarde) : null,
-      wanneer: druk ? (druk.bron === 'sensor' ? t('kern_sensor') : '') : '',
       doel: druk?.doel != null ? doel(bar(druk.doel)) : undefined,
     }] : []),
     { lijn: 'ph', waarde: ph ? fmtGetal(ph.waarde, 2, taal) : null, wanneer: moment(ph) },

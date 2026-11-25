@@ -6436,7 +6436,6 @@
   "kern_doel": "target {waarde}",
   "kern_vergist_n": "{n}% fermented",
   "kern_alcohol_n": "{n}% alcohol",
-  "kern_sensor": "sensor",
   "kern_niet_gemeten": "not measured yet",
   "grafiek_toon": "Show in the chart",
   "grafiek_verberg": "Hide in the chart"

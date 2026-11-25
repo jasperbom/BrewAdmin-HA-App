@@ -64,7 +64,7 @@ const Regel: React.FC<{
 }> = ({label, ok, children, actie}) => (
   <div className="flex items-start gap-2 py-2 border-b border-gray-100 last:border-0">
     <span aria-hidden="true" className={`w-5 shrink-0 text-center font-semibold ${
-      ok === true ? 'text-green-600' : ok === false ? 'text-red-600' : 'text-gray-400'}`}>
+      ok === true ? 'text-green-700' : ok === false ? 'text-red-700' : 'text-gray-500'}`}>
       {ok === true ? '✓' : ok === false ? '✕' : '·'}
     </span>
     <div className="flex-1 min-w-0">
