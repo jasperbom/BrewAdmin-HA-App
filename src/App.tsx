@@ -9,7 +9,7 @@ import { detailTitel } from './utils/detailTitel'
 import { afgeleideThemaKleuren } from './utils/kleurContrast'
 import { useStore, bfGetBatches, bfPatchBatch, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet, wcPut, newId, ruimteklimaatStatus } from './utils/api'
 import { wcVoorraadLijst, gewijzigdeVoorraad, pushWcVoorraad, metGepushteVoorraad, volgendeVoorraadPoging, WC_VOORRAAD_WACHT_MS } from './utils/wcVoorraad'
-import { openBestellingReserveringen } from './utils/calculations'
+import { openBestellingReserveringen, drukNaarBar } from './utils/calculations'
 import { beschikbaarVoorAfvulling as beschikbaarNaPicks } from './utils/beschikbaarheid'
 import { merchGereserveerd } from './utils/merch'
 import { maakAppIcoon } from './utils/icoon'
@@ -1417,10 +1417,12 @@ function App() {
 
   // Live tank temps for dashboard: refresh every 60s, all sensors regardless of batch status
   const [haTankTemps, setHaTankTemps] = React.useState<Record<string, number>>({})
+  // De druk per tank (bar) uit de druksensoren (`ha_instellingen.druk_sensors`),
+  // in hetzelfde ritme: bij spunden en carboneren telt hij net zo als de temperatuur.
+  const [haTankDruk, setHaTankDruk] = React.useState<Record<string, number>>({})
   const haFetchTankTemps = React.useCallback(async () => {
     if (!haInst?.enabled) return
     const sensors: any[] = haInst?.sensors || []
-    if (!sensors.length) return
     const updates: Record<string, number> = {}
     for (const sensor of sensors) {
       if (!sensor?.entity || !sensor?.tank) continue
@@ -1431,6 +1433,17 @@ function App() {
       } catch {}
     }
     if (Object.keys(updates).length) setHaTankTemps(prev => ({ ...prev, ...updates }))
+    const drukSensors: any[] = Array.isArray(haInst?.druk_sensors) ? haInst.druk_sensors : []
+    const druk: Record<string, number> = {}
+    for (const sensor of drukSensors) {
+      if (!sensor?.entity || !sensor?.tank) continue
+      try {
+        const d = await haGetState(sensor.entity)
+        const bar = drukNaarBar(d?.state, sensor.eenheid)
+        if (bar != null) druk[sensor.tank] = bar
+      } catch {}
+    }
+    if (Object.keys(druk).length) setHaTankDruk(prev => ({ ...prev, ...druk }))
   }, [haInst])
 
   // Migratie: uitslagen → uitleveringen + accijns veldrenames (stap 1-2,
@@ -2852,6 +2865,7 @@ function App() {
     planningInst,
     haInst,
     haTankTemps,
+    haTankDruk,
     tanks,
     tankStatussen,
     setTankStatussen,

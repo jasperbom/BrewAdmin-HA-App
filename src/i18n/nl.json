@@ -6432,5 +6432,6 @@
   "kern_abv": "alcohol tot nu",
   "flow_klaar_n_van_m": "{n} van {m} gedaan",
   "batch_kop_verlies": "Verlies registreren",
-  "batch_kop_afgekeurd": "Afgekeurd bier vernietigen"
+  "batch_kop_afgekeurd": "Afgekeurd bier vernietigen",
+  "kern_druk": "druk in de tank"
 }

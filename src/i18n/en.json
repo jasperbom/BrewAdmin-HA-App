@@ -6432,5 +6432,6 @@
   "kern_abv": "alcohol so far",
   "flow_klaar_n_van_m": "{n} of {m} done",
   "batch_kop_verlies": "Record loss",
-  "batch_kop_afgekeurd": "Destroy rejected beer"
+  "batch_kop_afgekeurd": "Destroy rejected beer",
+  "kern_druk": "tank pressure"
 }

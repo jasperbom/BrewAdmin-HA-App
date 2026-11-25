@@ -6432,5 +6432,6 @@
   "kern_abv": "alcool jusqu'ici",
   "flow_klaar_n_van_m": "{n} sur {m} faits",
   "batch_kop_verlies": "Enregistrer une perte",
-  "batch_kop_afgekeurd": "Détruire la bière refusée"
+  "batch_kop_afgekeurd": "Détruire la bière refusée",
+  "kern_druk": "pression de la cuve"
 }

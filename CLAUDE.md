@@ -245,7 +245,8 @@ BrewAdmin-HA-App/
 │   │   ├── brouwzaal.ts    # De brouwzaal: tankrijen, andere batches, komende 14 dagen
 │   │   ├── batchActieBalk.ts # De stap van de fase in de ActieBalk van de batch (telefoon)
 │   │   ├── batchKerncijfers.ts # De kerncijfers bovenaan de batch: laatste SG, vergist %, temperatuur
-│   │   │                   # (sensor, anders de laatste meting) tegen het doel, alcohol tot nu (Balling);
+│   │   │                   # (sensor, anders de laatste meting) tegen het doel, druk in de tank (`haTankDruk`
+│   │   │                   # in App.tsx: de druksensoren elke minuut, in bar), alcohol tot nu (Balling);
 │   │   │                   # een cijfer zonder meting komt niet mee. Verlies, Tank verplaatsen en
 │   │   │                   # Afgekeurd bier staan op de batchpagina alleen als er iets is, anders onder ⋯
 │   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal

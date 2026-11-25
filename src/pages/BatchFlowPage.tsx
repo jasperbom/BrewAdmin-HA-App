@@ -174,6 +174,8 @@ interface BatchFlowPageProps {
   coldcrashInst: any,
   planningInst: any,
   haInst: any, haTankTemps: Record<string, number>,
+  /** Druk per tank (bar) uit de druksensoren in Home Assistant. */
+  haTankDruk?: Record<string, number>,
   tanks: any[], tankStatussen: any, setTankStatussen: any,
   tankLog: any[], setTankLog: any,
   log: any[], setLog: any,
@@ -502,7 +504,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   verliesRegistraties, setVerliesRegistraties, dryHops, setDryHops,
   brouwdagStappen, setBrouwdagStappen, waterAddities, setWaterAddities,
   koelLogs, setKoelLogs, batchNotities, setBatchNotities,
-  batchTakenItems, batchTakenGroepen, brouwprocesInst, coldcrashInst, planningInst, haInst, haTankTemps,
+  batchTakenItems, batchTakenGroepen, brouwprocesInst, coldcrashInst, planningInst, haInst, haTankTemps, haTankDruk,
   tanks, tankStatussen, setTankStatussen, tankLog, setTankLog,
   log, setLog, auditLog, setAuditLog,
   haccpVrijgaven, setHaccpVrijgaven, afvulSessies, setAfvulSessies, refreshAfvulSessies,
@@ -3035,11 +3037,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // (utils/batchKerncijfers.ts). Wat er niet gemeten is, staat er niet.
   const renderKern = (faseStatus: string) => {
     const sensorRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
+    const drukRaw = selB.tank != null ? haTankDruk?.[selB.tank] : undefined
     const og = Number(selB.OG) > 0 ? Number(selB.OG) : null
     const cijfers = batchKerncijfers({
       og, fgDoel, doelTemp,
       sg: laatsteMetingMet(mijnMetingen, 'sg'),
       sensorTemp: typeof sensorRaw === 'number' ? sensorRaw : null,
+      druk: typeof drukRaw === 'number' ? drukRaw : null,
       metingTemp: laatsteMetingMet(mijnMetingen, 'temp'),
     })
     const grafiek = mijnMetingen.length >= 2

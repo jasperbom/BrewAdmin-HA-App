@@ -5,7 +5,7 @@ import { fmtGetal } from '../../utils/etiket'
 import type { Kerncijfers } from '../../utils/batchKerncijfers'
 
 // Bovenaan Vergisten en Conditioneren: de cijfers die tellen (SG, vergist,
-// temperatuur, alcohol tot nu) en daaronder de grafiek. Een cijfer zonder
+// temperatuur, druk, alcohol tot nu) en daaronder de grafiek. Een cijfer zonder
 // meting staat er niet; zonder één cijfer en zonder grafiek geen kaart.
 // Wat er staat rekent utils/batchKerncijfers.ts uit.
 
@@ -28,9 +28,9 @@ const Cijfer: React.FC<{ waarde: string; label: string }> = ({ waarde, label }) 
 
 const KernKaart: React.FC<Props> = ({ cijfers, og, grafiek, zonderAbv = false }) => {
   const taal = getLang()
-  const { sg, vergist, temp } = cijfers
+  const { sg, vergist, temp, druk } = cijfers
   const abv = zonderAbv ? null : cijfers.abv
-  const leeg = !sg && vergist == null && !temp && abv == null
+  const leeg = !sg && vergist == null && !temp && druk == null && abv == null
   if (leeg && !grafiek) return null
   // Op een breed scherm de cijfers links en de grafiek ernaast: zo blijft de
   // grafiek leesbaar en niet een halve pagina hoog.
@@ -41,7 +41,7 @@ const KernKaart: React.FC<Props> = ({ cijfers, og, grafiek, zonderAbv = false })
     <section aria-label={t('kern_titel')}
       className={`rounded-xl border border-gray-200 bg-white ${naast ? 'lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-center' : ''}`}>
       {!leeg && (
-        <dl className={`grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3 p-4 ${naast ? 'lg:grid-cols-2 lg:gap-y-5' : ''}`}>
+        <dl className={`grid grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-x-4 gap-y-3 p-4 ${naast ? 'lg:grid-cols-2 lg:gap-y-5' : ''}`}>
           {sg && <Cijfer waarde={fmtSg(sg.waarde)} label={wanneer ? t('kern_sg_op').replace('{wanneer}', wanneer) : t('kern_sg')} />}
           {vergist != null && (
             <Cijfer waarde={`${Math.round(vergist)} %`}
@@ -54,6 +54,7 @@ const KernKaart: React.FC<Props> = ({ cijfers, og, grafiek, zonderAbv = false })
                 temp.doel != null ? t('kern_temp_doel').replace('{doel}', graden(temp.doel)) : '',
               ].filter(Boolean).join(' · ')} />
           )}
+          {druk != null && <Cijfer waarde={`${fmtGetal(druk, 2, taal)} bar`} label={t('kern_druk')} />}
           {abv != null && <Cijfer waarde={`${fmtGetal(abv, 1, taal)} %`} label={t('kern_abv')} />}
         </dl>
       )}

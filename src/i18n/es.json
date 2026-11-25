@@ -6432,5 +6432,6 @@
   "kern_abv": "alcohol hasta ahora",
   "flow_klaar_n_van_m": "{n} de {m} hechos",
   "batch_kop_verlies": "Registrar pérdida",
-  "batch_kop_afgekeurd": "Destruir cerveza rechazada"
+  "batch_kop_afgekeurd": "Destruir cerveza rechazada",
+  "kern_druk": "presión del tanque"
 }

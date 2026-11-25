@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.59] — 2026-11-25
+
+### Druk in de tank op de batchpagina
+
+- Met een druksensor bij de tank (Instellingen → Home Assistant →
+  druksensoren) staat de druk in de tank bij de kerncijfers van Vergisten en
+  Conditioneren, naast de temperatuur: wat je bij spunden en carboneren in de
+  gaten houdt. Een sensor in psi of kPa wordt omgerekend naar bar. Zonder
+  druksensor staat er niets.
+- De app leest de druksensoren elke minuut, samen met de temperatuursensoren
+  (tot nu toe alleen op de afvuldag).
+
+---
+
 ## [1.13.58] — 2026-11-25
 
 ### Batchpagina: eerst het werk

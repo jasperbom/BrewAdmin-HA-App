@@ -79,4 +79,18 @@ describe('batchKerncijfers', () => {
     const k = batchKerncijfers({ og: null, sg: null, fgDoel: null, sensorTemp: NaN, metingTemp: null, doelTemp: null })
     expect(k.temp).toBeNull()
   })
+
+  it('de druk uit de druksensor, ook als enige cijfer', () => {
+    const k = batchKerncijfers({ og: null, sg: null, fgDoel: null, sensorTemp: null, metingTemp: null, doelTemp: null, druk: 1.2 })
+    expect(k.druk).toBe(1.2)
+    expect(k.leeg).toBe(false)
+  })
+
+  it('geen druksensor = geen druk; net onder nul = 0; kapot = niets', () => {
+    const basis = { og: null, sg: null, fgDoel: null, sensorTemp: null, metingTemp: null, doelTemp: null }
+    expect(batchKerncijfers(basis).druk).toBeNull()
+    expect(batchKerncijfers({ ...basis, druk: -0.05 }).druk).toBe(0)
+    expect(batchKerncijfers({ ...basis, druk: -3 }).druk).toBeNull()
+    expect(batchKerncijfers({ ...basis, druk: NaN }).druk).toBeNull()
+  })
 })

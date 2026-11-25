@@ -3,9 +3,10 @@ import { metingWaarde } from './metingen'
 
 // De kerncijfers bovenaan de batchpagina tijdens Vergisten en Conditioneren:
 // de laatste SG, hoe ver de vergisting is (OG → FG), de temperatuur van de
-// tank tegen het doel, en het alcoholpercentage tot nu (Balling, OG → laatste
-// SG). Alleen wat er echt is: een cijfer zonder meting komt niet mee, zodat de
-// kaart geen lege vakjes toont.
+// tank tegen het doel, de druk in de tank (spunden, carboneren) en het
+// alcoholpercentage tot nu (Balling, OG → laatste SG). Alleen wat er echt
+// is: een cijfer zonder meting komt niet mee, zodat de kaart geen lege
+// vakjes toont.
 
 export interface MetingMoment {
   waarde: number
@@ -52,6 +53,8 @@ export interface KerncijfersInvoer {
   metingTemp: MetingMoment | null
   /** Het doel van dit moment: cold crash of de stap van het schema. */
   doelTemp: number | null
+  /** De live druk in de tank (bar) uit de druksensor; ontbreekt = geen sensor. */
+  druk?: number | null
 }
 
 export interface Kerncijfers {
@@ -59,6 +62,8 @@ export interface Kerncijfers {
   /** Vergist, 0–100 %; null zonder OG, doel of meting. */
   vergist: number | null
   temp: { waarde: number; bron: 'sensor' | 'meting'; doel: number | null } | null
+  /** Druk in de tank (bar), alleen met een druksensor. */
+  druk: number | null
   /** Alcohol tot nu (% vol, Balling OG → laatste SG); null zonder OG of SG. */
   abv: number | null
   /** Staat er minstens één cijfer in? Anders hoort de kaart weg. */
@@ -84,5 +89,9 @@ export const batchKerncijfers = (inv: KerncijfersInvoer): Kerncijfers => {
     : inv.metingTemp ? { waarde: inv.metingTemp.waarde, bron: 'meting' as const, doel } : null
   const balling = og != null && sg ? abvBalling(og, sg.waarde) : null
   const abv = balling ? balling.abv : null
-  return { sg, vergist, temp, abv, leeg: !sg && vergist == null && !temp && abv == null }
+  const d = eindig(inv.druk)
+  // Een overdruksensor die net onder nul zakt (afwijking van de sensor) is
+  // een lege tank zonder druk: 0. Ver onder nul = een kapotte waarde.
+  const druk = d != null && d >= -0.2 ? Math.max(0, d) : null
+  return { sg, vergist, temp, druk, abv, leeg: !sg && vergist == null && !temp && druk == null && abv == null }
 }
