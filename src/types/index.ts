@@ -128,10 +128,16 @@ export interface Batch {
   botteldag_checks?: Record<number, boolean>   // @deprecated: gemigreerd naar taken_checks
   taken_checks?: Record<number, boolean>       // Unified batch-takensysteem (check-type items)
   allergeen_notities?: string
-  // HACCP: handmatige correctie op de automatisch afgeleide risicoklasse van
-  // CCP 1. Altijd met motivatie — de afleiding uit de ingrediënten is leidend.
+  // HACCP: handmatige correctie op de automatisch afgeleide risicoklasse.
+  // Altijd met motivatie — de afleiding uit de ingrediënten is leidend. CCP 1
+  // gebruikt de klasse niet meer (sinds 1.13.49 één regel voor elk bier).
   risico_override?: RisicoKlasse
   risico_override_reden?: string
+  // CCP 1: eind-SG van de forceertest (het monster dat op de brouwdag warm is
+  // weggezet) en wanneer die is afgelezen ('JJJJ-MM-DDTUU:MM'). Leeg = nog
+  // niet gemeten. Eigen velden: Brewfather-sync en recept raken ze niet aan.
+  ff_sg?: number | ''
+  ff_op?: string
   // Id van het recept waarvan deze batch is aangemaakt. Wordt gezet bij het
   // klikken op "Brouwen" in de Recepten-pagina en blijft staan zodat een
   // geplande batch later via "Sync recept" opnieuw kan worden bijgewerkt.
@@ -366,7 +372,14 @@ export interface Afvulling {
   geblokkeerd?: boolean
   geblokkeerd_reden?: string
   geblokkeerd_controle_id?: number
+  /** Geblokkeerd door een incident ("Er is iets mis", 1.13.55). */
+  geblokkeerd_incident_id?: number
   deblokkeerd_op?: string
+  // Quarantaine tot de vrijgave voor verkoop (houdtest) en een etiket dat er
+  // na die vrijgave nog op moet: allebei niet verkoopbaar, wel fysiek aanwezig
+  // (utils/houdtest.ts zet en wist ze).
+  in_quarantaine?: boolean
+  etiket_volgt?: boolean
 }
 
 export interface VoorraadLog {
@@ -434,7 +447,10 @@ export interface Product {
   // etiketcontrole moet die twee onderscheiden.
   allergenen?: Allergeen[]
   etiket_artikel?: string
+  // Legacy: de etiketversie bestaat sinds 1.13.53 niet meer (CCP 3 toetst de
+  // inhoud van het etiket). Oude waarden blijven staan, niets leest ze nog.
   etiket_versie?: string
+  // Wanneer het etiket voor het laatst is vastgelegd (`legEtiketVast`).
   etiket_bijgewerkt?: string
   // ── Bierinformatie ────────────────────────────────────────────────────
   // Gewone eigenschappen van het bier (zie `utils/bierinfo.ts`), naast de
@@ -762,13 +778,44 @@ export interface TankStatusMap {
   [tankId: string]: TankStatusEntry
 }
 
+// Eén middel in een reiniging (1.13.56, utils/reinigingsmiddelen.ts): wat
+// er gebruikt is en hoe het uitviel, bevroren op het moment van vastleggen
+// (een middel dat later wijzigt of uit de lijst gaat verandert de registratie
+// niet).
+export interface ReinigingStap {
+  middel_id?: number
+  middel: string
+  soort: ReinigingsMiddel['soort']
+  ctgb_nummer?: string
+  concentratie_pct?: number
+  concentratie_oordeel?: 'binnen' | 'te_laag' | 'te_hoog' | 'onbekend'
+  ph_naspoel?: number
+  ph_leiding?: number
+  naspoel_oordeel?: 'ok' | 'te_hoog' | 'te_laag' | 'onbekend'
+  /** Thermisch: hoe lang het retourwater op temperatuur was. */
+  retour?: {
+    bron: 'sensor' | 'handmatig'
+    entity?: string
+    drempel: number
+    minuten: number
+    minuten_boven: number
+    max?: number | null
+    van?: string | null
+    tot?: string | null
+    gehaald: boolean
+  }
+}
+
 export interface TankReinigingLog {
   id: number
   tank_id: string
   datum: string
   uitgevoerd_door: string
   nieuwe_status: TankReinigingStatus
+  /** De gebruikte middelen als tekst (ook bij `stappen`: de namen achter elkaar). */
   middel?: string
+  /** De middelen met concentratie, pH van het naspoelwater en retourtemperatuur (1.13.56). */
+  stappen?: ReinigingStap[]
   opmerking?: string
   cip?: boolean
   // 'batch_checklist' = automatisch vastgelegd door een vinkje op de batch
@@ -1527,6 +1574,20 @@ export interface HaSensor {
   entity: string
 }
 
+export interface HaRetourSensor {
+  id: number
+  /** Tank-id; leeg = geldt voor elke tank zonder eigen retoursensor. */
+  tank: string
+  entity: string
+}
+
+export interface HaDrukSensor {
+  id: number
+  tank: string
+  entity: string
+  eenheid?: 'bar' | 'psi' | 'kpa'   // leeg = bar
+}
+
 // Klimaatapparaat (thermostaat, koelcel, HVAC). Kan optioneel aan een tank
 // gekoppeld worden zodat we het setpoint automatisch op het vergistings­profiel
 // kunnen afstemmen. Laatst bekende waarden worden gecached voor dashboard.
@@ -1572,6 +1633,14 @@ export interface HaInst {
   co2_enabled?: boolean
   co2_entity?: string           // entity_id (sensor.*) van de weegschaal
   co2_unit?: 'kg' | 'g'         // eenheid die de sensor rapporteert
+  // ── Druk per tank ─────────────────────────────────────────────────────────
+  // Overdruk in de tank, voor het koolzuur bij het afvullen (CCP 1). Een eigen
+  // lijst, los van `sensors` (temperatuur): wat de server als temperatuur
+  // leest, blijft temperatuur.
+  druk_sensors?: HaDrukSensor[]
+  // Retoursensoren voor heet water bij reinigen (1.13.56): `tank` leeg = alle
+  // tanks (één sensor in de retour naar de heetwatertank).
+  retour_sensors?: HaRetourSensor[]
   // ── Temperatuurbewaking ──────────────────────────────────────────────────
   // Drempelwaarden voor het beoordelen van de automatische metingen; de
   // rekenregels staan in src/utils/tankbewaking.ts (server.py spiegelt ze).
@@ -1814,6 +1883,8 @@ export interface SchoonmaakLog {
   opmerking?: string
   middel?: string
   cip?: boolean
+  /** De middelen met concentratie, pH van het naspoelwater en retourtemperatuur (1.13.56). */
+  stappen?: ReinigingStap[]
 }
 
 export type CCPCategorie = 'koken' | 'koelen' | 'vergisting' | 'verpakken' | 'opslag' | 'overig'
@@ -1954,27 +2025,43 @@ export interface HaccpVrijgave {
   id: number
   batch_id: number
   datum: string
-  // Automatisch afgeleid en als snapshot bevroren, zodat een latere wijziging
-  // aan een ingrediënt de historische registratie niet verandert.
-  risico_klasse: RisicoKlasse
+  // Hoe beoordeeld. 'ff_paar' (vanaf 1.13.49, `beoordeelCcp1`): forceertest +
+  // twee tankmetingen met minstens `stabiel_min_uur` ertussen. Leeg = de oude
+  // regel met risicoklasse, dagen stabiel, drukproef en smaakoordeel; die
+  // records blijven geldig en leesbaar.
+  methode?: 'ff_paar'
+  // Oude regel (snapshot): risicoklasse en dagen stabiel.
+  risico_klasse?: RisicoKlasse
   risico_redenen?: string[]
-  vereiste_dagen_stabiel: number
-  dagen_stabiel: number
+  vereiste_dagen_stabiel?: number
+  dagen_stabiel?: number
   stabiel_ok: boolean
-  // Forced fermentation test: standaardmethode om de werkelijke eindvergisting
-  // te bepalen. Verplicht uitgevoerd.
+  // De twee tankmetingen waarop de stabiliteit beoordeeld is, bevroren
+  // ('JJJJ-MM-DDTUU:MM', lokale tijd zoals in de metingenlijst).
+  tank_sg_1?: number
+  tank_sg_1_op?: string
+  tank_sg_2?: number
+  tank_sg_2_op?: string
+  stabiel_uren?: number
+  stabiel_verschil?: number
+  stabiel_min_uur?: number
+  stabiel_tolerantie?: number
+  // Forceertest (forced fermentation): hoe ver het bier kán uitgisten.
+  // `ff_dichtheid_tank` = de laatste tankmeting, `ff_verschil` = tank − test
+  // (oude records: het absolute verschil).
   ff_uitgevoerd: boolean
   ff_dichtheid_tank?: number
   ff_dichtheid_ff?: number
   ff_verschil?: number
   ff_marge?: number
   ff_ok?: boolean
-  // Alleen bij verhoogd risico: 30 °C-monster op drukopbouw beoordeeld.
+  // Oude regel: 30 °C-monster op drukopbouw (alleen bij verhoogd risico).
   druk30_uitgevoerd?: boolean
   druk30_waarneming?: string
   druk30_ok?: boolean
-  sensorisch: string
-  sensorisch_ok: boolean
+  // Oude regel: smaakoordeel bij de vrijgave (nu bij de warm-houdtest).
+  sensorisch?: string
+  sensorisch_ok?: boolean
   oordeel: VrijgaveOordeel
   // Wat het systeem voorstelde op grond van de criteria. Wijkt `oordeel`
   // hiervan af, dan hoort er een afwijkingsregistratie bij.
@@ -2024,7 +2111,145 @@ export interface AfvulSessie {
   // en de controlemomenten zijn dan opgegeven tijden, geen kloktijden.
   achteraf?: boolean
   opmerking?: string
+  // Welke CCP 2 bij deze sessie hoort, bevroren bij het aanmaken
+  // (`ccp2Voor` in utils/haccp.ts). Leeg = van vóór 1.13.51: sluitcontrole.
+  ccp2?: Ccp2Soort
+  // CCP 1, grens (c): het koolzuur bij het afvullen (flessen). Uit de druk
+  // van de tank (overdruk, bar) en de temperatuur, bevroren bij het aanmaken.
+  co2_druk_bar?: number
+  co2_temp_c?: number
+  co2_volumes?: number
+  co2_max?: number
+  co2_bron?: 'sensor' | 'handmatig'
+  // Boven de grens toch afgevuld: alleen met een afwijking.
+  co2_afwijking_id?: number
+  // SG bij het afvullen — de warm-houdtest vergelijkt daarmee.
+  sg_afvullen?: number
+  // Lot van de flessen en de kroonkurken (traceerbaarheid; de volgende sessie
+  // van dezelfde verpakking stelt ze voor).
+  flessenlot?: string
+  kroonkurkenlot?: string
+  // Klapflessen tijdens het vullen of afdoppen (vaste procedure, geen CCP).
+  klapflessen?: {aantal: number; vernietigd: number; gereinigd: boolean}
+  // Quarantaine (1.13.52), bevroren bij het aanmaken: zoveel dagen na het
+  // afvullen beoordeel je de warm bewaarde flessen (houdtest); tot de vrijgave
+  // voor verkoop is het bier niet te koop. 0 of leeg = geen quarantaine.
+  houdtest_dagen?: number
+  // Houdtestflessen apart gezet bij deze sessie: twee warm voor de test, twee
+  // koel voor klachten (bij alleen fusten vier flessen uit dezelfde tank). Eén
+  // sessie per batch is genoeg.
+  houdtest_flessen?: boolean
+  // Wanneer het etiket erop gaat, bevroren bij het aanmaken: bij het afvullen
+  // (CCP 3 in de sessie) of na de vrijgave voor verkoop. Leeg = bij het afvullen.
+  etiketteren?: Etiketteren
 }
+
+// Wanneer het etiket op de fles of het fust gaat (`haccp_instellingen.etiketteren`).
+export type Etiketteren = 'afvullen' | 'na_vrijgave'
+
+// Een reinigings- of desinfectiemiddel van de brouwerij (1.13.56,
+// utils/reinigingsmiddelen.ts). Een desinfectiemiddel heeft een
+// Ctgb-toelating (productsoort 4) met een einddatum; heet water is
+// `thermisch` en heeft er geen nodig.
+export interface ReinigingsMiddel {
+  id: number
+  naam: string
+  soort: 'alkalisch' | 'zuur' | 'desinfectie' | 'thermisch' | 'overig'
+  /** Waarvoor (vrije tekst uit het plan: "tanks, vuller, onderdelen"). */
+  waarvoor?: string
+  ctgb_nummer?: string
+  /** JJJJ-MM-DD. */
+  ctgb_geldig_tot?: string
+  onverdund?: boolean
+  dosering_min_pct?: number
+  dosering_max_pct?: number
+  temp_min_c?: number
+  temp_max_c?: number
+  contacttijd_min?: number
+  /** Moet er na dit middel nagespoeld worden (tot pH = leidingwater)? */
+  naspoelen: boolean
+  gearchiveerd?: boolean
+}
+
+// "Er is iets mis" (1.13.55, utils/incident.ts): een klacht of incident bij
+// een batch. Kwaliteit (smaak, schuim, helderheid) = vastleggen en afhandelen;
+// veiligheid (druk, glas, allergeen, chemisch …) = blokkeren, afnemers zoeken,
+// binnen 4 uur de NVWA melden, afnemers waarschuwen, vernietigen, oorzaak.
+// Bewust niet append-only: een incident loopt door tot het is afgesloten (de
+// serveraudit legt elke wijziging vast).
+export type IncidentSoort = 'kwaliteit' | 'veiligheid'
+export type IncidentGevaar = 'druk' | 'glas' | 'allergeen' | 'chemisch' | 'microbiologisch' | 'anders'
+export type IncidentBron = 'klant' | 'eigen' | 'leverancier' | 'anders'
+export interface HaccpIncident {
+  id: number
+  batch_id: number
+  /** De afvulsessies (lotcodes) die het raakt; leeg = de hele batch. */
+  sessie_ids: number[]
+  /** Bevroren bij het vastleggen: de lotcodes zoals ze toen heetten. */
+  lotcodes: string[]
+  soort: IncidentSoort
+  gevaar?: IncidentGevaar
+  bron: IncidentBron
+  /** Wie het meldde (klant, collega, leverancier). */
+  melder?: string
+  klant_id?: number
+  omschrijving: string
+  /** Wanneer de brouwerij het wist (ISO) — hier begint de 4-uursklok. */
+  ontdekt_op: string
+  /** Wat de bewaarfles liet zien. */
+  bewaarfles?: string
+  /** Veiligheid: de voorraad van deze lotcodes is geblokkeerd (ISO). */
+  geblokkeerd_op?: string
+  /** Veiligheid: wanneer de NVWA gemeld is (ISO) en met welk kenmerk. */
+  nvwa_gemeld_op?: string
+  nvwa_kenmerk?: string
+  /** Veiligheid: wanneer de afnemers gewaarschuwd zijn (ISO). */
+  afnemers_gewaarschuwd_op?: string
+  /** Kwaliteit: hoe de klant gecompenseerd is. */
+  afhandeling?: string
+  oorzaak?: string
+  maatregel?: string
+  status: 'open' | 'afgesloten'
+  afgesloten_op?: string
+  /** Het vermoeden bleek onterecht: de blokkade is opgeheven. */
+  onterecht?: boolean
+  paraaf: Paraaf
+  afgesloten_paraaf?: Paraaf
+}
+
+// De vrijgave voor verkoop na de houdtest (1.13.52), één record per
+// beoordeling van een batch. Append-only, net als de andere CCP-registraties:
+// een correctie is een nieuw record.
+export interface VerkoopVrijgave {
+  id: number
+  batch_id: number
+  // Dag van de beoordeling (YYYY-MM-DD).
+  datum: string
+  // De eerste afvuldag van de batch en de houdtest van dat moment.
+  afgevuld_op: string
+  houdtest_dagen: number
+  // SG bij het afvullen en van een warm bewaarde fles: zakt hij meer dan de
+  // marge, dan gist het bier na in de fles.
+  sg_afvullen?: number
+  sg_warm?: number
+  sg_verschil?: number
+  sg_marge: number
+  // Bij het openen geen overdruk of gushing; geur en smaak in orde.
+  druk_ok: boolean
+  smaak_ok: boolean
+  oordeel: 'vrijgegeven' | 'afgekeurd'
+  // Wat de regels zeiden: 'groen' = alles in orde, 'rood' = nagisting of te
+  // vroeg (vrijgeven alleen met een afwijking), 'onvolledig' = niet alles
+  // beoordeeld (alleen bij afkeuren).
+  oordeel_voorgesteld: 'groen' | 'rood' | 'onvolledig'
+  afwijking_id?: number
+  opmerking?: string
+  paraaf: Paraaf
+}
+
+// CCP 2 per verpakking: lege flessen inspecteren (fles), de sluiting
+// controleren (blik, of fles als de brouwerij dat zo kiest), of geen CCP 2 (fust).
+export type Ccp2Soort = 'lege_flessen' | 'sluitcontrole' | 'geen'
 
 export type SluitAanleiding = 'start' | 'halfuur' | 'na_verstelling' | 'einde'
 export type ControleResultaat = 'goedgekeurd' | 'afgekeurd'
@@ -2048,6 +2273,11 @@ export interface SluitControle {
   id: number
   sessie_id: number
   batch_id: number
+  // 'lege_flessen' = CCP 2 als inspectie van de lege flessen (één per
+  // sessie): elke fles tegen het licht, `afgekeurd_aantal` eruit. Leeg = een
+  // sluitcontrole zoals hieronder.
+  methode?: 'lege_flessen'
+  afgekeurd_aantal?: number
   aanleiding: SluitAanleiding
   visueel_ok: boolean
   // Verplicht bij blik; null/undefined bij fles en fust.
@@ -2078,12 +2308,42 @@ export type EtiketAanleiding = 'start' | 'rolwissel'
 
 // CCP 3 — etiketcontrole. Het etiket is het laatste en enige moment waarop een
 // consument met een allergie gewaarschuwd wordt.
+// AI-controle van de etiketfoto bij CCP 3 (1.13.54, utils/etiketCheck.ts):
+// wat Claude op de foto las en hoe dat tegen de sessie, de batch en de
+// receptuur uitviel. De vinkjes blijven handwerk.
+export type EtiketAiOordeel = 'klopt' | 'wijkt_af' | 'niet_gezien' | 'onbekend'
+export interface EtiketAiCheck {
+  /** Wanneer de foto gelezen is (ISO). */
+  op: string
+  model?: string
+  lezing?: {
+    leesbaar: boolean
+    benaming: string
+    inhoud: string
+    lotcode: string
+    tht: string
+    tht_tekst: string
+    alleen_maand: boolean
+    alcohol: number | null
+    allergenen_zichtbaar: boolean
+    allergenen: Allergeen[]
+    allergenen_tekst: string
+    opmerking: string
+  }
+  oordeel?: Record<'lotcode' | 'tht' | 'alcohol' | 'allergenen', EtiketAiOordeel>
+  /** Vastgelegd terwijl de AI een verschil zag. */
+  toch_vastgelegd?: boolean
+  /** De foto kon niet gelezen worden (i18n-sleutel van de fout). */
+  fout?: string
+}
+
 export interface EtiketControle {
   id: number
   sessie_id: number
   batch_id: number
   product_id: number
   etiket_artikel?: string
+  // Legacy (vóór 1.13.53): de etiketversie van het product.
   etiket_versie?: string
   aanleiding: EtiketAanleiding
   // Wanneer de controle is uitgevoerd; leeg = op het moment van vastleggen.
@@ -2097,8 +2357,7 @@ export interface EtiketControle {
   tht_ok: boolean
   alcohol_ok: boolean
   // Snapshots bij de controle (vanaf v1.12.90; oudere records hebben ze niet).
-  // De afvuller vult de versie op de rol in die hij in zijn hand heeft; de
-  // verwachte versie is die van het product op dat moment.
+  // Legacy (v1.12.90–1.13.52): de versie op de rol en de verwachte versie.
   etiket_versie_gelezen?: string
   etiket_versie_verwacht?: string
   abv_batch?: number
@@ -2109,13 +2368,15 @@ export interface EtiketControle {
   capa_id?: number
   opmerking?: string
   bijlagen?: HaccpBijlage[]
+  /** De AI-controle van de etiketfoto (vanaf 1.13.54). */
+  ai_check?: EtiketAiCheck
   paraaf: Paraaf
 }
 
 // Waar in de workflow een blokkade is omzeild.
 export type AfwijkingBron =
   | 'ccp1_vrijgave' | 'ccp2_sluitcontrole' | 'ccp3_etiket'
-  | 'sessie_start' | 'sessie_afsluiten' | 'fase_afvullen'
+  | 'sessie_start' | 'sessie_afsluiten' | 'fase_afvullen' | 'houdtest'
 
 // Expliciete afwijkingsregistratie: de enige manier om langs een harde
 // blokkade te komen. Het moet mogelijk zijn — er kan een goede reden zijn —
@@ -2179,11 +2440,27 @@ export interface TraceOefening {
 // Marges en beleid achter de CCP-beoordelingen. Beheer-only: dit zijn de
 // kritische grenzen uit het handboek, geen dagelijkse werkinstellingen.
 export interface HaccpInst {
-  stabiel_dagen_standaard: number
-  stabiel_dagen_verhoogd: number
-  // Meetnauwkeurigheid waarbinnen twee dichtheden als gelijk gelden (SG).
+  // CCP 1: twee tankmetingen met minstens zoveel uur ertussen…
+  stabiel_min_uur: number
+  // …mogen hooguit zoveel verschillen (SG).
   stabiel_tolerantie_sg: number
+  // Hoeveel de tank hooguit boven de forceertest mag staan (SG).
   ff_marge_sg: number
+  // CCP 1, grens (c): hooguit zoveel volumes CO2 bij het afvullen in flessen
+  // (wat de fles aankan). 0 = niet toetsen.
+  co2_max_volumes: number
+  // CCP 2 bij flessen: de lege flessen inspecteren (standaard) of de sluiting
+  // elk halfuur controleren. Blik houdt altijd de sluitcontrole, fust heeft
+  // geen CCP 2.
+  ccp2_fles: 'lege_flessen' | 'sluitcontrole'
+  // Quarantaine: na zoveel dagen de houdtest en de vrijgave voor verkoop.
+  // 0 = geen quarantaine.
+  houdtest_dagen: number
+  // Hoeveel de SG van een warme fles hooguit onder die bij het afvullen mag
+  // liggen.
+  houdtest_sg_marge: number
+  // Wanneer het etiket erop gaat.
+  etiketteren: Etiketteren
   tht_maanden_standaard: number
   tht_maanden_gepasteuriseerd: number
   tht_maanden_ongekookt: number

@@ -20,14 +20,15 @@
 // Puur: geen React, geen opslag, geen vertaalfunctie — alleen i18n-sleutels.
 // `nu`/`vandaag` komen via de context binnen zodat alles testbaar is.
 
-import type { AfvulSessie, DryHop, HaccpVrijgave, Ingredient, Lot, Recept } from '../types'
+import type { AfvulSessie, Afvulling, DryHop, HaccpVrijgave, Ingredient, Lot, Recept, VerkoopVrijgave } from '../types'
 import { aggregateBatchNeeds, compareNeedsToStock, fgStabiel, sumVergistingDagen } from './calculations'
 import { magAfvullen, isLegacyBatch } from './haccp'
 import { openSessiesVoorBatch } from './afvulsessie'
 import { openstaandeBatchTaken } from './taken'
 import { batchStapGereed, huidigeStapIdx, verpakProjectie, vergistStartMs, DAG_MS } from './vergisting'
 import type { VergistBatch } from './vergisting'
-import { ymd } from './format'
+import { ymd, fmtDagMaand } from './format'
+import { houdtestVoorBatch, teEtiketteren } from './houdtest'
 
 // ── Vormen ──────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,8 @@ export type StapSoort =
   | 'vrijgave'            // Conditioneren: CCP 1 nog niet vrijgegeven
   | 'afvullen'            // Conditioneren klaar, of Afgevuld zonder afvulling
   | 'sessie_afsluiten'    // Afgevuld: een sessie staat nog open
+  | 'houdtest'            // Afgevuld: in quarantaine tot de houdtest (utils/houdtest.ts)
+  | 'etiketteren'         // Afgevuld: vrijgegeven, het etiket moet er nog op
   | 'afronden'            // Afgevuld: alles afgevuld
 
 export interface StapDoel {
@@ -118,8 +121,11 @@ export interface VolgendeStapCtx {
   dryHops?: DryHop[] | null
   vrijgaven?: HaccpVrijgave[] | null
   afvulSessies?: AfvulSessie[] | null
-  /** Alle afvullingen (alleen `batch_id`/`sessie_id` tellen). */
-  afvullingen?: Array<{ batch_id: number; sessie_id?: number }> | null
+  /** Alle afvullingen (`batch_id`/`sessie_id`, en voor het etiketteren
+   *  `etiket_volgt`/`hoeveelheid`). */
+  afvullingen?: Array<{ batch_id: number; sessie_id?: number } & Partial<Afvulling>> | null
+  /** De beoordelingen van de houdtest (`haccp_verkoopvrijgaven`). */
+  verkoopVrijgaven?: VerkoopVrijgave[] | null
   /** Het etiketoordeel van deze batch; leeg = onbekend (geen voorrang). */
   etiketKleur?: EtiketKleur | null
   /**
@@ -257,6 +263,10 @@ const stap = (
   ...extra,
 })
 
+/** CCP 1 is vrijgegeven (of de batch is van vóór de afvulsessies). */
+const ccp1Vrijgegeven = (batchId: number, ctx: VolgendeStapCtx): boolean =>
+  magAfvullen(batchId, ctx.vrijgaven || []).toegestaan || isLegacyBatch(batchId, ctx.afvullingen || [])
+
 /**
  * De ene volgende stap voor een batch. Elke fase levert precies één stap:
  *
@@ -338,19 +348,28 @@ export const volgendeStap = (batch: BatchInvoer, ctx: VolgendeStapCtx = {}): Vol
       .map(m => ({ sg: m.sg ?? undefined, datum: m.datum, tijd: m.tijd ?? undefined }))
     const schemaKlaar = gereed || (!profiel.length && fgStabiel(metingen))
     if (schemaKlaar && getal(batch.FG) > 0) {
+      // CCP 1 hoort vóór het koelen: na crashen en gist dumpen valt er niets
+      // meer bij te sturen.
+      if (!ccp1Vrijgegeven(batch.id, ctx)) {
+        return af(stap('vrijgave', true, { doel: { fase: 'Vergisten', sectie: 'vrijgave' } }))
+      }
       return af(stap('naar_conditioneren', true, { doel: { fase: 'Conditioneren' }, overgang: 'Conditioneren' }))
     }
     return af(stap('meting', false, { doel: { fase: 'Vergisten', sectie: 'metingen' } }))
   }
 
   if (status === 'Conditioneren') {
-    const vrijgave = magAfvullen(batch.id, ctx.vrijgaven || [])
-    const vrijgegeven = vrijgave.toegestaan || isLegacyBatch(batch.id, ctx.afvullingen || [])
+    const vrijgegeven = ccp1Vrijgegeven(batch.id, ctx)
     const abvVast = !!batch.abv_definitief
     const totAfvullen = dagenTussen(vandaag, verwachteAfvulDatum(batch, ctx.conditionerenDagen))
     const afvullenNadert = (totAfvullen != null && totAfvullen <= ETIKET_URGENT_DAGEN) || (abvVast && vrijgegeven)
     if (ctx.etiketKleur === 'rood' && afvullenNadert) {
       return af(stap('etiket_bijwerken', true, { doel: { fase: 'Conditioneren', sectie: 'etiket' }, urgent: true }))
+    }
+    // Al in Conditioneren zonder CCP 1 (van vóór 1.13.50, of zonder de stap
+    // naar Conditioneren te volgen): eerst vrijgeven, dan pas koelen.
+    if (!vrijgegeven) {
+      return af(stap('vrijgave', true, { doel: { fase: 'Conditioneren', sectie: 'vrijgave' } }))
     }
     if (!abvVast) {
       const abv = ctx.abvWaarde != null && getal(ctx.abvWaarde) > 0 ? getal(ctx.abvWaarde) : getal(batch.ABV)
@@ -361,9 +380,6 @@ export const volgendeStap = (batch: BatchInvoer, ctx: VolgendeStapCtx = {}): Vol
         }))
       }
       return af(stap('meting', false, { doel: { fase: 'Conditioneren', sectie: 'meting' } }))
-    }
-    if (!vrijgegeven) {
-      return af(stap('vrijgave', true, { doel: { fase: 'Conditioneren', sectie: 'vrijgave' } }))
     }
     return af(stap('afvullen', true, { doel: { fase: 'Afgevuld', sectie: 'sessie' }, overgang: 'Afgevuld' }))
   }
@@ -384,6 +400,26 @@ export const volgendeStap = (batch: BatchInvoer, ctx: VolgendeStapCtx = {}): Vol
       }
       return af(stap('afvullen', true, { doel: { fase: 'Afgevuld', sectie: 'sessie' } }))
     }
+    // Quarantaine: tot de houdtest is er niets te verkopen, en de stap is de
+    // dag van de houdtest (urgent zodra die er is).
+    const houdtest = houdtestVoorBatch(batch.id, ctx.afvulSessies, ctx.verkoopVrijgaven)
+    if (houdtest && houdtest.stand === 'quarantaine') {
+      const nog = dagenTussen(vandaag, houdtest.klaar_op)
+      return af(stap('houdtest', true, {
+        labelParams: { datum: fmtDagMaand(houdtest.klaar_op) },
+        ...(nog != null && nog > 0 ? { detailSleutel: 'stap_detail_houdtest_nog', detailParams: { n: nog } } : {}),
+        doel: { fase: 'Afgevuld', sectie: 'houdtest' },
+        urgent: nog != null && nog <= 0,
+      }))
+    }
+    // Vrijgegeven, maar het etiket moet er nog op (etiketteren na de vrijgave).
+    const etiket = houdtest?.stand === 'afgekeurd' ? [] : teEtiketteren(batch.id, ctx.afvulSessies, ctx.afvullingen)
+    if (etiket.length) {
+      return af(stap('etiketteren', true, {
+        labelParams: { lotcode: etiket.map(x => x.sessie.lotcode).join(', '), n: etiket.length },
+        doel: { fase: 'Afgevuld', sectie: 'etiketteren' },
+      }))
+    }
     return af(stap('afronden', true, { doel: { fase: 'Gesloten' }, overgang: 'Gesloten' }))
   }
 
@@ -394,5 +430,5 @@ export const volgendeStap = (batch: BatchInvoer, ctx: VolgendeStapCtx = {}): Vol
 export const VOLGENDE_STAP_SOORTEN: readonly StapSoort[] = [
   'ingredienten', 'brouwdag_starten', 'voorbereiden', 'openen', 'brouwdag', 'naar_vergisten',
   'dryhop', 'volgende_stap', 'naar_conditioneren', 'meting', 'etiket_bijwerken', 'abv_vastzetten',
-  'vrijgave', 'afvullen', 'sessie_afsluiten', 'afronden',
+  'vrijgave', 'afvullen', 'sessie_afsluiten', 'houdtest', 'etiketteren', 'afronden',
 ]

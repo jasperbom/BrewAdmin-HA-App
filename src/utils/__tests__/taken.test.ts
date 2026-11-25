@@ -3,6 +3,7 @@ import {
   faseUitInhoud, schoonTakenOp, DUBBELE_BROUWDAG_CHECK_KEYS,
   telOpenstaandeBatchTaken, telBatchesMetOpenTaken, openstaandeBatchTaken, isSchoonmaakTaakAchterstallig, telAchterstalligeSchoonmaakTaken,
   deactiveerStandaardMetingen, STANDAARD_METING_LABELS,
+  deactiveerZelfVastgelegd, ZELF_VASTGELEGDE_TAKEN,
 } from '../taken'
 
 // Nagebouwd migratie-scenario: installatie met twee eigen hygiëne-groepen,
@@ -261,5 +262,52 @@ describe('deactiveerStandaardMetingen', () => {
   it('overleeft lege en rommelige invoer', () => {
     expect(deactiveerStandaardMetingen([]).gewijzigd).toBe(false)
     expect(deactiveerStandaardMetingen([null as any]).items).toEqual([null])
+  })
+})
+
+describe('deactiveerZelfVastgelegd', () => {
+  const afvuldag = [
+    { id: 201, type: 'check', labelKey: 'botteldag_check_1_reiniging', actief: true },
+    { id: 203, type: 'check', labelKey: 'botteldag_check_3_fg_meting', actief: true },
+    { id: 206, type: 'check', labelKey: 'botteldag_check_6_sluiting', actief: true },
+    { id: 207, type: 'check', labelKey: 'botteldag_check_7_etiketten', actief: true },
+    { id: 208, type: 'check', labelKey: 'botteldag_check_8_tht_gecontroleerd', actief: true },
+    { id: 209, type: 'check', labelKey: 'botteldag_check_9_opslag', actief: true },
+  ]
+
+  it('zet uit wat de app zelf vastlegt, de rest blijft', () => {
+    const res = deactiveerZelfVastgelegd(afvuldag)
+    expect(res.gewijzigd).toBe(true)
+    const aan = res.items.filter((i: any) => i.actief !== false).map((i: any) => i.id)
+    expect(aan).toEqual([201, 206])
+    expect(ZELF_VASTGELEGDE_TAKEN).toHaveLength(4)
+  })
+
+  it('de sluiting blijft: met de lege-fleseninspectie als CCP 2 legt niets anders hem vast', () => {
+    expect(ZELF_VASTGELEGDE_TAKEN).not.toContain('botteldag_check_6_sluiting')
+  })
+
+  it('een eigen tekst op de regel blijft staan', () => {
+    const res = deactiveerZelfVastgelegd([
+      { id: 7, type: 'check', labelKey: 'botteldag_check_7_etiketten', label: 'Etiketten tellen', actief: true },
+    ])
+    expect(res.gewijzigd).toBe(false)
+    expect(res.items[0].actief).toBe(true)
+  })
+
+  it('verwijdert niets en raakt metingen en al uitgezette regels niet', () => {
+    const items = [
+      { id: 1, type: 'meting', labelKey: 'botteldag_check_3_fg_meting', actief: true },
+      { id: 2, type: 'check', labelKey: 'botteldag_check_9_opslag', actief: false },
+    ]
+    const res = deactiveerZelfVastgelegd(items)
+    expect(res.gewijzigd).toBe(false)
+    expect(res.items).toEqual(items)
+    expect(deactiveerZelfVastgelegd(afvuldag).items).toHaveLength(afvuldag.length)
+  })
+
+  it('overleeft lege en rommelige invoer', () => {
+    expect(deactiveerZelfVastgelegd([]).gewijzigd).toBe(false)
+    expect(deactiveerZelfVastgelegd([null as any]).items).toEqual([null])
   })
 })

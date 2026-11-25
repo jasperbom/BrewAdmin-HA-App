@@ -12,7 +12,7 @@ import type {
   AfvulSessie, Batch, HaccpInst, HaccpVrijgave, SluitControle, ThtKlasse,
 } from '../types'
 import type { BlokkadeReden, BlokkadeResultaat, EtiketDekking, RisicoResultaat } from './haccp'
-import { etiketDektProduct, haccpInst, isLegacyBatch, magAfvullen } from './haccp'
+import { etiketDektProduct, haccpInst, isLegacyBatch, magAfvullen, sessieCcp2 } from './haccp'
 
 const blokkade = (redenen: BlokkadeReden[]): BlokkadeResultaat =>
   ({toegestaan: redenen.length === 0, redenen})
@@ -26,8 +26,12 @@ export const volgendSessieNr = (sessies: AfvulSessie[], batchId: number): number
   return eigen.reduce((max, s) => Math.max(max, Number(s.sessie_nr) || 0), 0) + 1
 }
 
-/** Partij-aanduiding conform Richtlijn 2011/91/EU: de letter L, gevolgd door
- *  het batchnummer en de afvulsessie — bijvoorbeeld `L2431-B1`. Zonder
+/** Partij-aanduiding conform Richtlijn 2011/91/EU: de letter L en het
+ *  batchnummer — bijvoorbeeld `L2431`. Wordt dezelfde batch op een tweede
+ *  moment afgevuld, dan krijgt dat moment zijn eigen code: `L2431-B2`, `-B3`
+ *  enzovoort. Zo blijft de gewone code kort, en kan een terugroepactie zich
+ *  toch tot één afvulmoment beperken. Sessies van vóór 1.13.49 heten
+ *  `L2431-B1`; die codes staan op de verpakking en veranderen nooit. Zonder
  *  batchnummer valt de code terug op het interne batch-id, zodat er altijd een
  *  code is. */
 export const lotcodeVoorSessie = (
@@ -36,7 +40,7 @@ export const lotcodeVoorSessie = (
 ): string => {
   const ruw = String(batch?.batch_nummer || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
   const kern = ruw || String(batch?.id ?? '')
-  return `L${kern}-B${sessieNr}`
+  return sessieNr > 1 ? `L${kern}-B${sessieNr}` : `L${kern}`
 }
 
 export const lotcodeIsUniek = (code: string, sessies: AfvulSessie[]): boolean =>
@@ -54,9 +58,15 @@ export const nieuweLotcode = (
   batch: Pick<Batch, 'id' | 'batch_nummer'>,
 ): {sessie_nr: number; lotcode: string} => {
   const lijst = sessies || []
+  // Draagt een andere batch per ongeluk hetzelfde batchnummer en heeft die al
+  // `L2431-B…`, dan is `L2431` ook niet vrij: een terugroepactie op L2431 zou
+  // anders twee bieren raken.
+  const bezet = (code: string, nr: number): boolean => !lotcodeIsUniek(code, lijst)
+    || (nr === 1 && lijst.some(s => s.batch_id !== batch.id
+      && String(s.lotcode || '').toUpperCase().startsWith(`${code}-B`)))
   let nr = volgendSessieNr(lijst, batch.id)
   let code = lotcodeVoorSessie(batch, nr)
-  while (!lotcodeIsUniek(code, lijst)) {
+  while (bezet(code, nr)) {
     nr += 1
     code = lotcodeVoorSessie(batch, nr)
   }
@@ -291,13 +301,18 @@ export const magAfvullingRegistreren = (
   }
   const eigen = (controles || []).filter(c => c.sessie_id === sessie.id)
   const redenen: BlokkadeReden[] = []
-  if (!eigen.some(c => c.aanleiding === 'start' && c.resultaat === 'goedgekeurd')) {
-    redenen.push({code: 'geen_startcontrole', i18nKey: 'haccp_blok_geen_startcontrole'})
-  }
-  const laatste = eigen.slice().sort((a, b) =>
-    String(a.paraaf?.tijdstip || '').localeCompare(String(b.paraaf?.tijdstip || '')))
-  if (laatste.length && laatste[laatste.length - 1].resultaat === 'afgekeurd') {
-    redenen.push({code: 'open_afkeur', i18nKey: 'haccp_blok_open_afkeur_afvullen'})
+  // Alleen de sluitcontrole vraagt een controle vóór de eerste verpakking. De
+  // lege-flesseninspectie gebeurt fles voor fles tijdens het vullen; die leg je
+  // vast vóór het afsluiten (`magSessieAfsluiten`).
+  if (sessieCcp2(sessie) === 'sluitcontrole') {
+    if (!eigen.some(c => c.aanleiding === 'start' && c.resultaat === 'goedgekeurd')) {
+      redenen.push({code: 'geen_startcontrole', i18nKey: 'haccp_blok_geen_startcontrole'})
+    }
+    const laatste = eigen.slice().sort((a, b) =>
+      String(a.paraaf?.tijdstip || '').localeCompare(String(b.paraaf?.tijdstip || '')))
+    if (laatste.length && laatste[laatste.length - 1].resultaat === 'afgekeurd') {
+      redenen.push({code: 'open_afkeur', i18nKey: 'haccp_blok_open_afkeur_afvullen'})
+    }
   }
   if (etiketcontroles && productId != null && productId !== ''
       && !etiketDektProduct(etiketcontroles, sessie.id, productId)) {
@@ -362,6 +377,27 @@ export const controleDekking = (
   const verwacht = verwachteControleMomenten(startTijd, eindTijd, intervalMin).length
   const vastgelegd = Math.max(0, Number(aantalVastgelegd) || 0)
   return {verwacht, vastgelegd, tekort: Math.max(0, verwacht - vastgelegd)}
+}
+
+// ── Lots van de verpakking ──────────────────────────────────────────────────
+
+/** De lots van de vorige afvulling als voorstel: het flessenlot van de laatste
+ *  sessie met dezelfde verpakking (33 en 75 cl komen uit andere leveringen), het
+ *  kroonkurkenlot van de laatste sessie die er een had (dezelfde zak gaat over
+ *  formaten heen). Leeg als er niets is — nooit een gok. */
+export const vorigeLots = (
+  sessies: ReadonlyArray<Pick<AfvulSessie, 'verpakking_id' | 'start' | 'flessenlot' | 'kroonkurkenlot'>> | null | undefined,
+  verpakkingId: number | string | null | undefined,
+): {flessenlot: string; kroonkurkenlot: string} => {
+  const nieuwsteEerst = (sessies || []).filter(Boolean).slice()
+    .sort((a, b) => String(b.start || '').localeCompare(String(a.start || '')))
+  const fles = verpakkingId == null || verpakkingId === '' ? undefined
+    : nieuwsteEerst.find(s => Number(s.verpakking_id) === Number(verpakkingId) && String(s.flessenlot || '').trim())
+  const kurk = nieuwsteEerst.find(s => String(s.kroonkurkenlot || '').trim())
+  return {
+    flessenlot: String(fles?.flessenlot || '').trim(),
+    kroonkurkenlot: String(kurk?.kroonkurkenlot || '').trim(),
+  }
 }
 
 /** Batches die geselecteerd mogen worden voor een nieuwe afvulsessie. */

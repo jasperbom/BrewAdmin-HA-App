@@ -144,8 +144,9 @@ export const TankKaart: React.FC<TankKaartProps> = ({ m, vandaag, onOpen, onStap
             <>
               <div className="grid grid-cols-3 gap-2 mt-3">
                 <Metriek label={t('flow_meting_sg')} waarde={info.sg ? fmtSg(info.sg.waarde, '') : ''} />
-                <Metriek label="°C" waarde={info.temp ? getal(info.temp.waarde, 1) : ''} cls={info.temp?.bron === 'sensor' ? 'text-blue-700' : ''} />
-                <Metriek label="pH" waarde={info.ph ? getal(info.ph.waarde, 2) : ''} />
+                {/* Wat er niet gemeten is, staat er niet: geen vakje met een streepje. */}
+                {info.temp && <Metriek label="°C" waarde={getal(info.temp.waarde, 1)} cls={info.temp.bron === 'sensor' ? 'text-blue-700' : ''} />}
+                {info.ph && <Metriek label="pH" waarde={getal(info.ph.waarde, 2)} />}
               </div>
               <div className="text-xs text-gray-500 mt-0.5">
                 {gemetenTekst(info.gemeten, vandaag)}

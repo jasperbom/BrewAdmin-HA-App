@@ -48,11 +48,9 @@ const voorraadTekst = (vv: VoorraadVerpakking[]): string => {
   return agp.length ? `${tekst} · ${t('recept_voorraad_agp').replace('{lijst}', agp.join(', '))}` : tekst
 }
 
-/** "etiket v3 · 6,2 % vol · Bevat: gerst" — wat het gedrukte etiket van het product vastlegt. */
+/** "6,2 % vol · Bevat: gerst" — wat het gedrukte etiket van het product vastlegt. */
 const etiketTekst = (p: any): string => {
   const delen: string[] = []
-  const versie = String(p?.etiket_versie ?? '').trim()
-  if (versie) delen.push(t('recept_etiket_versie').replace('{versie}', versie))
   const abv = fmtAbv(p?.abv, getLang())
   if (abv) delen.push(abv)
   if (Array.isArray(p?.allergenen)) {
@@ -67,7 +65,6 @@ const etiketTekst = (p: any): string => {
 const meldingTekst = (m: ReceptEtiketMelding, product: any): string =>
   t(m.sleutel)
     .replace('{product}', String(product?.naam ?? ''))
-    .replace('{versie}', String(product?.etiket_versie ?? '').trim())
     .replace('{allergenen}', allergeenNamen(m.allergenen, t).join(', '))
     .replace('{ingredienten}', m.ingredienten.join(', '))
 
@@ -110,7 +107,7 @@ const ReceptVerbindingen: React.FC<ReceptVerbindingenProps> = (p) => {
     const pw = productEtiketWaarden(product, { batches: p.batches, recepten: p.recepten, ingredienten: p.ingredienten, lots: p.lots })
     const v = vergelijkEtiket(verwacht, pw)
     const s = etiketStatus(v)
-    return { product, melding: receptEtiketMelding(v, s, !!String(product?.etiket_versie ?? '').trim()), ontbreekt: v.allergenen.ontbreekt }
+    return { product, melding: receptEtiketMelding(v, s), ontbreekt: v.allergenen.ontbreekt }
   }).filter(x => x.melding.sleutel !== 'recept_etiket_onvolledig' && x.melding.sleutel !== 'recept_etiket_onvolledig_geen'),
   [producten, verwacht, p.batches, p.recepten, p.ingredienten, p.lots])
   // Rood alleen wat de zin noemt: "mist tarwe" — gluten staat er (net als op

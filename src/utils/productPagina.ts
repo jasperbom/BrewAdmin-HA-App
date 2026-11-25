@@ -98,7 +98,7 @@ export const productEtiketOordeel = (
 }
 
 /**
- * Regel 2 van de kop: wat het gedrukte etiket vastlegt — "Etiket v3:" en
+ * Regel 2 van de kop: wat het gedrukte etiket vastlegt — "Etiket:" en
  * "6,2 % vol · Bevat: gerst". Zonder alcohol en allergenen: "nog niet
  * vastgelegd".
  */
@@ -107,8 +107,7 @@ export const etiketKopRegel = (
   t: Vertaal,
   taal?: string | null,
 ): { label: string; waarde: string } => {
-  const versie = tekst(product?.etiket_versie)
-  const label = versie ? vulIn(t('product_kop_etiket_versie'), { versie }) : t('product_kop_etiket')
+  const label = t('product_kop_etiket')
   const delen: string[] = []
   const abv = fmtAbv(product?.abv, taal)
   if (abv) delen.push(abv)

@@ -31,6 +31,9 @@ interface LegeTankProps {
     auditLog: any[]
     setAuditLog: (u: any) => void
     standaardDoor?: string
+    /** De reinigingsmiddelen en de retoursensor per tank (heet water). */
+    middelen?: any[]
+    retourEntity?: (tankId: string) => string | undefined
   }
   onOpenBatch: (id: number) => void
   /** Het blad "Wat brouw je?" met deze tank ingevuld; zonder: geen knop. */
@@ -100,7 +103,8 @@ const LegeTank: React.FC<LegeTankProps> = ({ m, reiniging, onOpenBatch, onInplan
       tankStatussen={reiniging.tankStatussen} setTankStatussen={reiniging.setTankStatussen}
       tankLog={reiniging.tankLog} setTankLog={reiniging.setTankLog}
       auditLog={reiniging.auditLog} setAuditLog={reiniging.setAuditLog}
-      standaardDoor={reiniging.standaardDoor} />
+      standaardDoor={reiniging.standaardDoor}
+      middelen={reiniging.middelen} retourEntity={reiniging.retourEntity?.(tank.id)} />
   ) : null
 
   return (

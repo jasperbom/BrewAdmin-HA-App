@@ -19,8 +19,10 @@ import { useAllergenenOpzoeken } from '../AllergenenOpzoeken'
 // (bitterheid, kleur, energie, ingrediënten), elk getal met zijn bron, naast
 // wat het etiket (het product) nu vastlegt, met het oordeel.
 //
-// Witte kaart met een accentlijn links — nooit een gevulde kop: de themabalk
-// is voor het onderwerp van de pagina. De inhoud komt uit
+// Witte kaart met een dunne rand — nooit een gevulde kop of een gekleurde
+// zijrand: de themabalk is voor het onderwerp van de pagina. Op de batch is
+// hij `inklapbaar`: één regel met de stand en de knop, de tabel pas als je hem
+// openklapt. De inhoud komt uit
 // utils/etiketKaart.ts (`etiketKaartModel`); hier wordt niets uitgerekend.
 //
 // Breed (bureau) een tabel Waarde · Deze batch · Nu vastgelegd · Oordeel;
@@ -59,6 +61,8 @@ export interface EtiketKaartProps {
   bijwerkenInMenu?: boolean
   /** Standaard volgt de weergave de kaartbreedte. */
   weergave?: 'auto' | 'tabel' | 'tegels'
+  /** Eén regel (titel, stand, knop); de rest na openklappen. */
+  inklapbaar?: boolean
   cls?: string
 }
 
@@ -295,8 +299,10 @@ const kopieer = async (tekst: string): Promise<boolean> => {
 
 const EtiketKaart: React.FC<EtiketKaartProps> = ({
   modus, batch, product, recept, data, website, alleenLezen = false,
-  onEtiketBijwerken, onNaarWebshop, onArtikelMaken, onAbvLab, bijwerkenInMenu = false, weergave = 'auto', cls = '',
+  onEtiketBijwerken, onNaarWebshop, onArtikelMaken, onAbvLab, bijwerkenInMenu = false, weergave = 'auto',
+  inklapbaar = false, cls = '',
 }) => {
+  const [uitgeklapt, setUitgeklapt] = React.useState(false)
   const taal = getLang()
   const opzoeken = useAllergenenOpzoeken()
   const model: EtiketKaartModel = React.useMemo(
@@ -313,15 +319,14 @@ const EtiketKaart: React.FC<EtiketKaartProps> = ({
     return () => clearTimeout(id)
   }, [melding])
 
-  const rand = {borderLeftColor: 'var(--t-accent-edge, var(--t-accent))'}
-  const kaartCls = `bg-white rounded-xl shadow-card border-l-4 overflow-hidden ${cls}`
+  const kaartCls = `bg-white rounded-xl border border-gray-200 overflow-hidden ${cls}`
 
   if (model.leeg) {
     // Niets om tegen te toetsen, maar het etiket vastleggen kan altijd (de
     // productpagina): dan staat de knop hier.
     const leegBijwerken = bijwerkenInMenu && !alleenLezen && onEtiketBijwerken && modus === 'product' && product
     return (
-      <section ref={ref} className={kaartCls} style={rand} aria-label={model.titel}>
+      <section ref={ref} className={kaartCls} aria-label={model.titel}>
         <div className="px-4 py-3">
           <h3 className="text-base font-semibold text-gray-900">{model.titel}</h3>
           <p className="text-sm text-gray-500 mt-1">{t('etiket_kaart_leeg')}</p>
@@ -369,10 +374,34 @@ const EtiketKaart: React.FC<EtiketKaartProps> = ({
   const websiteChip = eerste?.website_stand
   const vergeleken = meer ? '' : eerste?.vergelekenMet || ''
 
+  // Ingeklapt: één regel met de stand en de ene knop; openklappen toont de rest.
+  if (inklapbaar && !uitgeklapt) {
+    return (
+      <section ref={ref} className={kaartCls} aria-label={model.titel}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
+          <button type="button" onClick={() => setUitgeklapt(true)} aria-expanded={false}
+            className="flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-left min-h-tap sm:min-h-[36px] rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+            <span aria-hidden="true" className="text-gray-500 text-xs">▶</span>
+            <span className="text-[15px] font-semibold text-gray-900">{model.titel}</span>
+            {status && <StatusChip tekst={status.tekst} kleur={status.kleur} />}
+            {websiteChip?.achter && <StatusChip tekst={websiteChip.tekst} kleur="oranje" />}
+          </button>
+          {primair && <Btn v="secondary" s="sm" onClick={primair.doe}>{primair.label}</Btn>}
+        </div>
+      </section>
+    )
+  }
+
   return (
-    <section ref={ref} className={kaartCls} style={rand} aria-label={model.titel}>
+    <section ref={ref} className={kaartCls} aria-label={model.titel}>
       <header className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 ${tegels ? 'px-3 pt-3 pb-2' : 'px-4 py-3 border-b border-gray-100'}`}>
-        <h3 className="text-base font-semibold text-gray-900">{model.titel}</h3>
+        {inklapbaar ? (
+          <button type="button" onClick={() => setUitgeklapt(false)} aria-expanded={true}
+            className="inline-flex items-center gap-2 text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+            <span aria-hidden="true" className="inline-block text-gray-500 text-xs rotate-90">▶</span>
+            <h3 className="text-[15px] font-semibold text-gray-900">{model.titel}</h3>
+          </button>
+        ) : <h3 className="text-base font-semibold text-gray-900">{model.titel}</h3>}
         {status && <StatusChip tekst={status.tekst} kleur={status.kleur} />}
         {websiteChip && (websiteChip.achter
           ? <StatusChip tekst={websiteChip.tekst} kleur="oranje" />

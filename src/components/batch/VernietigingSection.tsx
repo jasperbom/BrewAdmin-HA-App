@@ -44,8 +44,10 @@ const VernietigingSection: React.FC<{
   setVerliesRegistraties: (updater: any) => void,
   auditLog: any[],
   setAuditLog: (updater: any) => void,
-}> = ({ batch, verliesRegistraties, setVerliesRegistraties, auditLog, setAuditLog }) => {
-  const [open, setOpen] = useState(false)
+  /** Meteen open: de sectie is net via het ⋯-menu van de batch geopend. */
+  openBijStart?: boolean,
+}> = ({ batch, verliesRegistraties, setVerliesRegistraties, auditLog, setAuditLog, openBijStart = false }) => {
+  const [open, setOpen] = useState(openBijStart)
 
   // Formulierstate voor het aanmaken van een afgekeurd-verlies (stap 1).
   const emptyVerlies = { datum: tod(), bron: 'afgekeurd' as const, liter: '', notitie: '', verklaring_ingediend_op: tod(), bijlagen: [] as Bijlage[] }

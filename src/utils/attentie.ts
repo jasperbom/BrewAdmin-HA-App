@@ -27,6 +27,11 @@ import type { EtiketCtx } from './etiket'
 import type { BatchesStand, NavDoel } from './route'
 import { batchTitel } from './productKeten'
 import { normaliseerStatus, verwachteAfvulDatum } from './volgendeStap'
+import { houdtestAanDeBeurt } from './houdtest'
+import { nvwaStand, openIncidenten } from './incident'
+import { middelenMetAandacht } from './reinigingsmiddelen'
+import { fmtD } from './format'
+import type { HaccpIncident, ReinigingsMiddel } from '../types'
 
 export type WerkruimteId = 'productie' | 'verkoop' | 'administratie'
 
@@ -110,6 +115,16 @@ export interface AttentiePost extends Omit<AttentieDoel, 'id'> {
 
 export interface AttentieBron {
   batches: any[]
+  /** Afvulsessies en de beoordelingen van de houdtest: welke batch zijn
+      houdtest heeft (utils/houdtest.ts). Zonder valt de post `houdtest` weg. */
+  afvulSessies?: any[]
+  verkoopVrijgaven?: any[]
+  /** "Er is iets mis": open klachten en incidenten (utils/incident.ts). */
+  incidenten?: HaccpIncident[]
+  /** Het moment voor de NVWA-klok; standaard nu. */
+  nu?: Date
+  /** De reinigingsmiddelen: een desinfectiemiddel zonder geldige toelating. */
+  reinigingsmiddelen?: ReinigingsMiddel[]
   batchTakenItems: any[]
   batchTakenGroepen: any[]
   schoonmaakTaken: any[]
@@ -298,6 +313,77 @@ const etiketPost = (
 // batch opent bij de takenkaart van die fase. De post zelf landt op Batches ›
 // Lopend, gefilterd op de batches met open taken. Telt batches, geen vinkjes
 // (dezelfde selectie als telBatchesMetOpenTaken in utils/taken.ts).
+// De houdtest is aan de beurt: de dag is er en er is nog geen beoordeling.
+// Per batch een regel; die opent de batch in de fase Afvullen.
+const houdtestPost = (bron: AttentieBron, producten: any[]): AttentiePost => {
+  const recepten = bron.etiket?.recepten || []
+  const ids = bron.afvulSessies
+    ? houdtestAanDeBeurt(bron.batches, bron.afvulSessies, bron.verkoopVrijgaven, bron.vandaagIso) : []
+  const details: AttentieDetail[] = ids.map(id => {
+    const batch = (bron.batches || []).find((b: any) => b && b.id === id)
+    const nr = String(batch?.batch_nummer ?? '').replace(/^#/, '').trim()
+    return {
+      sleutel: 'attentie_houdtest_detail', kortSleutel: 'attentie_houdtest_kort',
+      params: { batch: batchTitel(batch, { producten, recepten }).label || (nr ? `#${nr}` : String(id)) },
+      doel: { pagina: 'batches', id, tab: 'Afgevuld' },
+    }
+  })
+  return {
+    id: 'houdtest', sleutel: 'attentie_houdtest', pagina: 'batches', stand: 'lopend',
+    aantal: details.length, details, ...(details.length === 1 ? { recordId: ids[0] } : {}),
+  }
+}
+
+// Een open incident (utils/incident.ts): per incident een regel die de batch
+// opent. Moet de NVWA nog gemeld worden, dan rood met de uiterste tijd — dat
+// is een wettelijke termijn van 4 uur.
+const hhmm = (iso: string): string => {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+const incidentPost = (bron: AttentieBron, producten: any[]): AttentiePost => {
+  const recepten = bron.etiket?.recepten || []
+  let nvwa = false
+  const details: AttentieDetail[] = openIncidenten(bron.incidenten).map(inc => {
+    const batch = (bron.batches || []).find((b: any) => b && b.id === inc.batch_id)
+    const nr = String(batch?.batch_nummer ?? '').replace(/^#/, '').trim()
+    const naam = batchTitel(batch, { producten, recepten }).label || (nr ? `#${nr}` : String(inc.batch_id))
+    const stand = nvwaStand(inc, bron.nu)
+    const melden = !!stand && stand.stand !== 'gemeld'
+    if (melden) nvwa = true
+    return {
+      sleutel: melden ? (stand?.stand === 'te_laat' ? 'attentie_incident_nvwa_te_laat' : 'attentie_incident_nvwa')
+        : 'attentie_incident_detail',
+      kortSleutel: 'attentie_incident_kort',
+      params: { batch: naam, tijd: stand ? hhmm(stand.uiterlijk) : '' },
+      doel: { pagina: 'batches', id: inc.batch_id },
+    }
+  })
+  return {
+    id: 'incident', sleutel: 'attentie_incident', pagina: 'batches', stand: 'lopend',
+    aantal: details.length, details, ...(nvwa ? { kleur: 'rood' as const } : {}),
+    ...(details.length === 1 ? { recordId: openIncidenten(bron.incidenten)[0].batch_id } : {}),
+  }
+}
+
+// Een desinfectiemiddel zonder (geldige) Ctgb-toelating, of een toelating
+// die binnen CTGB_WAARSCHUW_DAGEN afloopt: per middel een regel, naar HACCP ›
+// Reiniging › Middelen. Zonder geldige toelating mag hij niet gebruikt worden
+// — dan rood.
+const middelPost = (bron: AttentieBron): AttentiePost => {
+  const lijst = middelenMetAandacht(bron.reinigingsmiddelen, bron.vandaagIso)
+  const details: AttentieDetail[] = lijst.map(({ middel, oordeel }) => ({
+    sleutel: `attentie_middel_${oordeel.stand}`, kortSleutel: 'attentie_middel_kort',
+    params: { naam: middel.naam, datum: fmtD(middel.ctgb_geldig_tot) },
+    doel: { pagina: 'haccp', tab: 'reiniging', filter: 'middelen' },
+  }))
+  return {
+    id: 'middel_ctgb', sleutel: 'attentie_middel_ctgb', pagina: 'haccp', tab: 'reiniging', filter: 'middelen',
+    aantal: details.length, details,
+    ...(lijst.some(x => x.oordeel.stand !== 'verloopt') ? { kleur: 'rood' as const } : {}),
+  }
+}
+
 const batchTakenPost = (bron: AttentieBron, producten: any[]): AttentiePost => {
   const recepten = bron.etiket?.recepten || []
   const details: AttentieDetail[] = openstaandeBatchTaken(bron.batches, bron.batchTakenItems, bron.batchTakenGroepen)
@@ -392,11 +478,17 @@ export function attentiePosten(bron: AttentieBron): Record<WerkruimteId, Attenti
   }
   return {
     productie: nietLeeg([
-      // Eerst wat op de fles fout gaat: het etiket mist een allergeen of de
+      // Een incident gaat voor alles: binnen 4 uur de NVWA melden.
+      incidentPost(bron, producten),
+      // Dan wat op de fles fout gaat: het etiket mist een allergeen of de
       // alcohol ligt buiten de marge — vóór het afvullen op te lossen.
       etiketPost(etiket, 'batch', afvuldag),
+      // De houdtest van een afgevulde batch: daarna pas te koop.
+      houdtestPost(bron, producten),
       // Batches › Lopend, alleen de batches met open taken; per batch een regel.
       batchTakenPost(bron, producten),
+      // Een desinfectiemiddel zonder geldige toelating (HACCP › Reiniging › Middelen).
+      middelPost(bron),
       {
         // HACCP → tabblad Reiniging (schoonmaakschema, achterstallig = rood).
         id: 'schoonmaak', sleutel: 'attentie_schoonmaak', pagina: 'haccp', tab: 'reiniging',

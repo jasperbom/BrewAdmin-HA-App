@@ -4,6 +4,344 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.62] — 2026-11-25
+
+### Nalopen: leesbaar, aanklikbaar, één stijl
+
+- Kleine grijze tekst die op wit niet te lezen was (2,5:1) is een tint
+  donkerder (minstens 4,5:1): de detailwaarde rechts in elke stap van de
+  batchpagina en de afvulchecklist, de hints bij carbonatie en cold crash, de
+  uitleg bij koolzuur en houdtest in de instellingen, en de PSI naast de druk.
+- HACCP-overzicht: de tegels zijn echte knoppen (ook met het toetsenbord te
+  openen), met een stip voor de urgentie in plaats van een gekleurde zijrand.
+  Is er nog nooit getest of gecontroleerd, dan staat er "Geen tests" in plaats
+  van een streepje.
+- HACCP-lijsten (vrijgaven, houdtesten, afvulsessies, afwijkingen,
+  incidenten, CAPA): geen gekleurde zijrand meer naast de pil die de stand al
+  noemt. De subtabbladen zijn op de telefoon groot genoeg om te tikken en het
+  statusfilter bij CAPA heeft een label voor een schermlezer.
+- Kerncijfers: geen "sensor" meer naast temperatuur en druk, zodat
+  "Temperatuur" op een telefoon niet meer wordt afgekapt.
+- Het kruisje om een tussentijdse sluitcontrole weg te halen is op de telefoon
+  groot genoeg en heeft een naam voor een schermlezer.
+
+Gecontroleerd met axe (WCAG 2 A/AA) op de Brouwzaal, drie batchpagina's en
+alle HACCP-tabbladen, op 375, 768, 1024 en 1440 px breed: geen bevindingen en
+nergens zijwaarts scrollen.
+
+---
+
+## [1.13.61] — 2026-11-25
+
+### Kerncijfers en grafiek in één
+
+- De kerncijfers bovenaan Vergisten en Conditioneren zijn nu ook de knoppen van
+  de grafiek: één tegel per grootheid — SG, temperatuur, druk en pH — met de
+  meting groot en het doel eronder. Tik op een tegel en zijn lijn gaat aan of
+  uit, met het doel erbij (SG met OG en FG, temperatuur met het setpoint, druk
+  met de doeldruk). Een uitgezette tegel is grijs met een gestippelde rand; wat
+  je uitzet onthoudt de browser. De losse knoppen boven de grafiek zijn weg.
+- pH heeft een eigen tegel en lijn. SG, temperatuur en pH staan er altijd (zonder
+  meting: "nog niet gemeten"); druk alleen met een druksensor of drukmeting.
+- Bij de SG staan ook hoeveel er vergist is en het alcoholpercentage tot nu;
+  bij de druk de doeldruk van een lopende carbonatiesessie.
+- In de grafiek is doorgetrokken altijd gemeten en gestippeld altijd het doel;
+  de pH-lijn is daarom niet meer gestippeld.
+
+---
+
+## [1.13.60] — 2026-11-25
+
+### De grafiek: kies wat je ziet
+
+- Boven de vergistingsgrafiek staat per lijn een knop: SG, OG en FG,
+  temperatuur, setpoint van de temperatuur, druk, setpoint van de druk (en
+  pH als die gemeten is). Alleen een lijn met gegevens krijgt een knop; wat
+  je uitzet onthoudt de browser. De legenda in de grafiek is weg: de knoppen
+  zijn de legenda.
+- OG en FG staan als vaste lijnen op de SG-as; is de FG nog niet gemeten, dan
+  heet hij "FG verwacht".
+- Het setpoint van de temperatuur is wat de koeling werkelijk had: de server
+  legt het voortaan bij elke automatische meting vast. Zonder koppeling met de
+  koeling staat het doel van nu (schema of cold crash) vanaf het moment dat het
+  geldt; over het verleden wordt niets gegokt.
+- De druk in de tank legt de server voortaan ook bij elke automatische meting
+  vast, met een eigen as rechts (bar). Het setpoint van de druk is de doeldruk
+  van een carbonatiesessie, zolang die liep.
+- De temperatuur in de kerncijfers zegt nu ook het doel als de koeling het
+  setpoint gaf; de druk valt zonder live sensor terug op de laatste meting.
+- Op een telefoon staan de knoppen in één rij die zijwaarts schuift, en de
+  grafiek tekent op de breedte van het scherm, zodat de letters leesbaar
+  blijven.
+
+---
+
+## [1.13.59] — 2026-11-25
+
+### Druk in de tank op de batchpagina
+
+- Met een druksensor bij de tank (Instellingen → Home Assistant →
+  druksensoren) staat de druk in de tank bij de kerncijfers van Vergisten en
+  Conditioneren, naast de temperatuur: wat je bij spunden en carboneren in de
+  gaten houdt. Een sensor in psi of kPa wordt omgerekend naar bar. Zonder
+  druksensor staat er niets.
+- De app leest de druksensoren elke minuut, samen met de temperatuursensoren
+  (tot nu toe alleen op de afvuldag).
+
+---
+
+## [1.13.58] — 2026-11-25
+
+### Batchpagina: eerst het werk
+
+- Vergisten en Conditioneren beginnen met één kaart met de cijfers die tellen:
+  de laatste SG, hoe ver de vergisting is, de temperatuur van de tank tegen het
+  doel en het alcoholpercentage tot nu, met de grafiek ernaast. Wat niet
+  gemeten is, staat er niet. In Conditioneren geen tweede alcoholgetal naast
+  de regel *Alcohol voor accijns en THT*.
+- De stappen van een fase staan in één lijst, in de volgorde waarin je ze
+  doet, in plaats van in twee kolommen. De zin onder de fasenaam die de kop
+  herhaalde is weg; de kop zegt "2 van 4 gedaan".
+- Zelden nodig, dus niet meer altijd in beeld: *Verlies registreren*, *Tank
+  verplaatsen* en *Afgekeurd bier vernietigen* staan onder ⋯ in de kop van de
+  batch. Is er al iets geregistreerd, dan staan ze er gewoon.
+- De etiketkaart op de batch is één regel met de stand en de knop; de tabel
+  zie je na openklappen. Geen gekleurde zijrand meer.
+- De afvulchecklist vraagt niet meer om wat de app zelf vastlegt: FG + ABV
+  (de ABV zet je vast vóór het afvullen), etiketten (CCP 3), THT (de sessie)
+  en de opslag (de afvulling met locatie). Die vier regels gaan uit, niet weg:
+  in Instellingen → Batchtaken zijn ze weer aan te zetten. Een regel met een
+  eigen tekst blijft staan. De sluiting blijft: met de inspectie van de lege
+  flessen als CCP 2 legt niets anders die vast.
+- Het label "Vergisten" in de grafiek staat niet meer over de legenda.
+
+---
+
+## [1.13.57] — 2026-11-24
+
+### Opruimen: wat de app er gegenereerd liet uitzien
+
+- HACCP heeft een gewone paginatitel zoals Brouwzaal en Producten, in plaats
+  van een gekleurde balk "NVWA/HACCP Compliance"; het eerste tabblad heet
+  *Overzicht* (zoals bij Verkoop en Administratie).
+- De tegel *Geblokkeerde verpakkingen* zegt "niet te verkopen" in plaats van
+  "Sluitcontrole (CCP 2)": een blokkade kan ook van de houdtest of een
+  incident komen.
+- De tankkaarten op de Brouwzaal tonen geen lege °C- en pH-vakjes met een
+  streepje meer; wat niet gemeten is, staat er niet.
+- Vrijgave (CCP 1) en de houdtest: geen gekleurde zijrand meer naast de
+  gekleurde pil die hetzelfde zegt.
+- Instellingen: geen zin meer onder *Logo* die de titel herhaalt (en niet
+  klopte: het logo staat niet in de browser maar in de app); Nederlandse
+  titels in plaats van "Cold-crash preset", "Planning-defaults" en
+  "Hop-opslag defaults"; "Dashboard" heet overal Brouwzaal.
+- Twee teksten die nog "u" zeiden, zeggen "je"; ✗ is overal ✕.
+- Zes teksten die nergens meer gebruikt werden zijn weg.
+
+---
+
+## [1.13.56] — 2026-11-24
+
+### Reinigen: middelen met Ctgb-toelating, dosering, pH en de retoursensor
+
+- **Middelenlijst** (HACCP → Reiniging → *Middelen*): per middel de soort,
+  waarvoor, de dosering (van–tot %, temperatuur, contacttijd, of onverdund),
+  of er nagespoeld moet worden, en voor een desinfectiemiddel het
+  Ctgb-toelatingsnummer met de einddatum, met een link naar de Ctgb-databank.
+  Een toelating die binnen 90 dagen afloopt is oranje; een desinfectiemiddel
+  zonder nummer of met een verlopen toelating is rood, staat als aandachtspunt
+  op Productie en is bij een reiniging niet te kiezen. De lijst vul je zelf.
+- **Bij een reiniging kies je het middel en de dosering staat er al**: bij
+  de gisttank, een lege tank op de brouwzaal en in het schoonmaaklogboek. De
+  middelen van de vorige keer voor dezelfde tank of taak staan alvast klaar.
+  Per middel: de concentratie (binnen het voorschrift?), de pH van het
+  naspoelwater tegen die van het leidingwater (± 0,5; de pH van het
+  leidingwater onthoudt de app), en bij heet water hoe lang het retourwater
+  op temperatuur was.
+- **Retoursensor in Home Assistant** (Instellingen → Home Assistant →
+  *Retoursensoren*, per tank of één voor alle tanks): de app leest de
+  geschiedenis van de sensor en rekent uit hoe lang het retourwater
+  aaneengesloten op 82 °C of warmer was — het bewijs van temperatuur en tijd.
+  Zonder sensor vul je de hoogste temperatuur en de minuten zelf in.
+- Wijkt iets af (concentratie, naspoelwater, retour te kort), of zet je een
+  tank op *Ontsmet* zonder desinfectiemiddel of heet water, dan vraagt de knop
+  eerst om bevestiging. Alles gaat bevroren mee op de registratie.
+- Zonder middelenlijst werkt het vrije veld *Middel* zoals voorheen.
+
+---
+
+## [1.13.55] — 2026-11-24
+
+### "Er is iets mis": klachten en incidenten, met de 4-uursklok voor de NVWA
+
+- **Eén knop op de batch** (⋯ → *Er is iets mis*): wat er aan de hand is,
+  welke lotcode, wie het meldde en wanneer je het wist. Dan de keuze
+  **kwaliteit** (smaak, schuim, helderheid: bewaarfles, hoe je het met de
+  klant oploste, oorzaak — meteen afgehandeld) of **veiligheid** (druk, glas,
+  allergeen, chemisch, besmetting). Bij twijfel veiligheid: een sterk
+  vermoeden is genoeg.
+- **Veiligheid in één handeling:** de voorraad van die lotcodes is meteen
+  geblokkeerd (niet te verkopen, te picken of uit te slaan; op de
+  productpagina "geblokkeerd (incident)") en de klok start: binnen 4 uur de
+  NVWA melden. De klok staat bovenaan de batch, als chip in *Nu actief* op
+  elk scherm en rood in de aandachtspunten van Productie.
+- **De stappen uit het plan op één kaart:** afnemers per lotcode met telefoon
+  en e-mail (plus wat zonder naam verkocht is), het meldformulier en het
+  nummer van de NVWA met een kenmerkveld, een conceptmail aan de afnemers
+  (in je eigen mailprogramma, iedereen in Bcc — de app verstuurt niets
+  vanzelf), vernietigen via Afboeken bij het product, en oorzaak en maatregel.
+  Afsluiten kan pas met een oorzaak en de NVWA-melding. Bleek het vermoeden
+  onterecht, dan heft *Vermoeden onterecht* alleen de blokkade van dit
+  incident op.
+- **Register:** HACCP → Kritische punten → *Incidenten* (open eerst, met de
+  NVWA-tijd en of die op tijd was), een tegel op het HACCP-dashboard en de
+  afgehandelde klachten onder de batch. Nieuwe key `haccp_incidenten`, in de
+  backup.
+- De productpagina noemt nu waarom een lot geblokkeerd is: CCP 2, de
+  houdtest of een incident.
+
+---
+
+## [1.13.54] — 2026-11-24
+
+### De AI kijkt mee bij het etiket (CCP 3)
+
+- **Foto van het etiket → de AI leest mee.** Met een Claude-sleutel maak je bij
+  CCP 3 eerst een foto van het gedrukte etiket. De AI leest lotcode, THT,
+  alcohol en allergenen, en naast elk vinkje staat wat hij las: groen als het
+  klopt met de afvulsessie, de batch en de receptuur, rood als het afwijkt,
+  grijs als het niet op de foto staat. De vinkjes zet je nog steeds zelf.
+- **Een verschil vraagt om bevestiging.** Ziet de AI iets anders (de rol van
+  de vorige batch, een allergeen dat ontbreekt, alcohol buiten de marge), dan
+  vraagt de knop *Etiketcontrole vastleggen* eerst "Toch vastleggen?". Zonder
+  foto blijft de knop uit zolang er een sleutel is.
+- **Bewaard als bewijs.** Wat de AI las, met welk model en hoe het uitviel, gaat
+  mee op de etiketcontrole en staat in het batchdossier ("AI: klopt", "AI:
+  wijkt af (lotcode), toch vastgelegd").
+- De AI krijgt niet te horen wat er op het etiket zou moeten staan: hij leest,
+  de app vergelijkt. Ook achteraf registreren leest een etiketfoto na.
+
+---
+
+## [1.13.53] — 2026-11-24
+
+### Geen etiketversie meer
+
+- **De etiketversie is weg.** Het etiket wordt per batch opnieuw gedrukt; of
+  het klopt, toetst CCP 3 aan wat erop staat (allergenen, alcohol, lotcode,
+  THT). Bij CCP 3 vul je geen "versie op de rol" meer in en blokkeert een
+  andere versie niets meer.
+- **Etiket bijwerken** zonder versieblok en zonder het vinkje "Ik heb het
+  gedrukte etiket voor me": je legt de allergenen en getallen vast en de app
+  onthoudt de datum. Een andere ABV of andere allergenen kunnen meteen.
+- Overal waar "Etiket v3" stond, staat nu "Etiket" of de datum waarop het
+  etiket is vastgelegd: etiketkaart, productkop, recept, *Wat brouw je?*,
+  HACCP-allergenenmatrix (kolom *Etiket vastgelegd*) en het batchdossier
+  (zonder kolom *Versie op de rol*).
+- Oude etiketversies blijven in de data staan, maar de app leest ze niet meer.
+
+---
+
+## [1.13.52] — 2026-11-24
+
+### Quarantaine, houdtest en etiketteren na de vrijgave
+
+- **Quarantaine na het afvullen.** Een nieuwe afvulsessie onthoudt de
+  houdtest (Instellingen → Brouwerij → Kritische grenzen, *Houdtest na*,
+  standaard 14 dagen, 0 = geen quarantaine). Tot de vrijgave voor verkoop is
+  het bier niet te koop, niet te picken en niet uit te slaan; de voorraad
+  toont "in quarantaine". Fles en fust samen hebben genoeg aan de twee warme
+  flessen; alleen fust = vier flessen uit dezelfde tank (vinkje bij het
+  afvullen, één sessie per batch).
+- **Houdtest en vrijgave voor verkoop** als regel in de fase Afvullen: op de
+  dag zelf de SG van een warme fles (hooguit 0,002 gezakt t.o.v. de SG bij
+  afvullen, instelbaar), geen overdruk of gushing, geur en smaak. Vrijgeven,
+  afkeuren (het bier blijft geblokkeerd tot het vernietigd is), of bij
+  nagisting alleen met een afwijking. Nieuwe key `haccp_verkoopvrijgaven`
+  (append-only, in de backup), in het batchdossier en het HACCP-overzicht.
+- **Etiketteren na de vrijgave** (instelling *Etiketteren*): de sessie sluit
+  zonder CCP 3, en na de houdtest staat *Etiketteren (CCP 3)* per lotcode
+  klaar. Pas met het etiket erop is het bier te koop ("wacht op etiket").
+  Bij een afgekeurde houdtest gooi je geen etiketten weg.
+- **Kratkaart**: vier kaarten op een A4 met lotcode, bier, verpakking,
+  afvuldag, THT en zolang het zo is "Quarantaine — niet verkopen vóór …" en
+  "Etiket volgt".
+- De volgende stap zegt *Houdtest 8-12* (urgent op de dag zelf) en daarna
+  *Etiketteren L2611*; Productie meldt een houdtest die aan de beurt is.
+  Naar Gereed kan pas als de houdtest beoordeeld en alles geëtiketteerd is.
+
+## [1.13.51] — 2026-11-24
+
+### De afvuldag als één checklist
+
+- **CCP 2 per verpakking.** Bij flessen bekijk je de lege flessen één keer
+  per afvulsessie tegen het licht en noteer je hoeveel er zijn afgekeurd;
+  de sluitcontrole met omkeerproef elk half uur vervalt voor flessen (in te
+  stellen: Instellingen → Brouwerij → Kritische grenzen, *CCP 2 bij
+  flessen*). Blik houdt de sluitcontrole, een fust heeft geen CCP 2. Oude
+  sessies blijven sluitcontrolesessies; de halfuurmelding van de server
+  zwijgt bij de nieuwe soorten.
+- **Koolzuur bij het afvullen** (alleen flessen): druk in de tank en de
+  temperatuur van het bier geven de volumes CO₂, getoetst aan de grens
+  (standaard 2,7, 0 = niet toetsen). Een druksensor in Home Assistant per
+  tank (Instellingen → Home Assistant → *Druksensoren*, bar/psi/kPa) en de
+  tanktemperatuur vullen het vanzelf in. Boven de grens niet afvullen, of
+  met een afwijking.
+- **SG bij afvullen** uit de laatste tankmeting, **flessen- en
+  kroonkurkenlot** voorgesteld uit de vorige sessie met dezelfde fles.
+- **Klapfles:** "+ Klapfles" op een lopende sessie (flessen eromheen
+  vernietigd, glas opgeruimd); in het achteraf-formulier als aantal.
+- **Foto van het etiket** bij CCP 3, als bewijs bij de controle (de foto
+  blijft vast zolang de controle ernaar wijst).
+- Het batchdossier en het HACCP-overzicht tonen per sessie de soort CCP 2,
+  het koolzuur, de SG, de lots en de klapflessen.
+
+## [1.13.50] — 2026-11-24
+
+### CCP 1 vóór het koelen
+
+- CCP 1 heet nu *Vrijgave vóór koelen* en staat aan het eind van Vergisten,
+  direct na de FG-meting: eerst vrijgeven, dan pas koelen, gist dumpen en
+  carboneren. Na het koelen valt er niets meer bij te sturen. De oude regel
+  "SG stabiel (3 metingen / 48 uur)" in Vergisten is weg; CCP 1 beoordeelt het.
+- De volgende stap (tankkaart, Batches, ActieBalk): in Vergisten eerst
+  *Vrijgave CCP 1*, dan *Naar conditioneren*. Staat een batch al in
+  Conditioneren zonder vrijgave, dan staat de kaart daar bovenaan en komt hij
+  vóór het vastzetten van de ABV.
+- De Cold-crash-knop zegt erbij als CCP 1 nog openstaat (geen blokkade).
+- Is het paar niet stabiel, dan zegt de kaart vanaf wanneer je opnieuw kunt
+  meten.
+- Afvullen blijft geblokkeerd zonder vrijgave, zoals altijd.
+
+## [1.13.49] — 2026-11-24
+
+### CCP 1 in één regel, en de lotcode zonder -B1
+
+Het werk wordt lichter: de vrijgave voor afvullen vraagt minder en vult zich
+zelf in.
+
+- **Eén regel voor elk bier** (Hygiënecode, EBC): de tank staat hooguit 0,002
+  boven de forceertest, en twee tankmetingen met minstens 48 uur ertussen
+  verschillen hooguit 0,001. Geen risicoklassen (3 of 7 dagen stabiel), geen
+  drukproef op 30 °C en geen smaakoordeel meer bij deze stap — dat laatste
+  hoort bij de warm-houdtest na het afvullen. De drie grenzen staan in
+  Instellingen › App › HACCP.
+- **De kaart vult zich zelf:** de tankmetingen komen uit de metingen van de
+  batch (alleen handmatige: een drijvende sensor is rond de einddichtheid te
+  onnauwkeurig). Je legt de forceertest één keer vast op de kaart, een nieuwe
+  tankmeting kan er ook direct. Ontbreekt de tweede meting, dan zegt de kaart
+  vanaf wanneer hij kan. Klopt alles, dan is het één knop: *Vrijgeven voor
+  afvullen*. Klopt iets niet, dan alleen met een afwijking (onderbouwing en
+  maatregel), zoals altijd.
+- **Toevoeging na de kook** (fruit, puree, hout): de kaart herinnert eraan na de
+  toevoeging een nieuwe forceertest weg te zetten.
+- **Lotcode:** `L` + batchnummer (`L2431`). Pas als dezelfde batch op een
+  tweede moment wordt afgevuld komt er `-B2` achter. Bestaande codes
+  (`L2431-B1`) staan op de verpakking en blijven zoals ze zijn.
+- Oude vrijgaven blijven geldig en leesbaar in het batchdossier en het
+  HACCP-overzicht; een batch met een oude afkeuring krijgt meteen de nieuwe
+  kaart.
+
 ## [1.13.48] — 2026-11-11
 
 ### Installatieprofiel per tank, recepten schalen en het water op de brouwdag

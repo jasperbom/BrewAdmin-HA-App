@@ -225,7 +225,7 @@ export const leverChip = (l: BestellingLevering, t: Vertaal, vandaag: string): C
 
 /** De verpakkingen die een regel toont: met voorraad, geblokkeerd of besteld. */
 export const getoondeVerpakkingen = (r: Pick<VerkoopOverzichtRegel, 'voorraad'>): VoorraadVerpakking[] =>
-  r.voorraad.filter(g => g.vrij + g.agp + g.geblokkeerd > 0 || g.besteld > 0)
+  r.voorraad.filter(g => g.vrij + g.agp + g.geblokkeerd + (g.quarantaine || 0) + (g.etiketVolgt || 0) > 0 || g.besteld > 0)
 
 /**
  * De naam van een verpakking op een chip: kort het type ("Fles") als het
@@ -259,6 +259,8 @@ export const voorraadChips = (r: Pick<VerkoopOverzichtRegel, 'voorraad' | 'dekki
     const delen: string[] = []
     if (g.vrij > 0 || g.agp === 0) delen.push(vulIn(t('verkoop_vrij'), { n: g.vrij }))
     if (g.agp > 0) delen.push(vulIn(t('verkoop_agp'), { n: g.agp }))
+    if (g.quarantaine > 0) delen.push(vulIn(t('verkoop_quarantaine'), { n: g.quarantaine }))
+    if (g.etiketVolgt > 0) delen.push(vulIn(t('verkoop_etiket_volgt'), { n: g.etiketVolgt }))
     if (g.geblokkeerd > 0) delen.push(vulIn(t('verkoop_geblokkeerd'), { n: g.geblokkeerd }))
     // Nul weken = alles is al besteld: dan zegt de chip "tekort" of "niets
     // vrij" naast de naam het al, en "< 1 wk" zou alleen herhalen.

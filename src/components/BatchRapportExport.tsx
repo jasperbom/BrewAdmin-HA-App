@@ -19,12 +19,13 @@ import { DOC_CSS, esc, breweryBlock, openPrint } from './PakbonExport'
 import { metHuisstijl } from '../utils/huisstijl'
 import { htmlNaarPdfDownload } from '../utils/pdf'
 import { rapportBestandsnaam } from '../utils/batchRapport'
+import { fmtCo2, fmtCo2Grens } from '../utils/haccp'
 import { etiketKaartBlokken } from '../utils/etiketKaart'
 import type { KaartCel, KaartProductBlok, KaartRegel } from '../utils/etiketKaart'
 import { fmtAbv, fmtGetal } from '../utils/etiket'
 import type {
   BatchRapport, RapportAfvulling, RapportEtiketControle, RapportIngredient, RapportMeting,
-  RapportParaaf, RapportSessie, RapportVrijgave,
+  RapportParaaf, RapportSessie, RapportVrijgave, RapportVerkoopVrijgave,
 } from '../utils/batchRapport'
 
 // Extra opmaak bovenop de gedeelde documentstijl. Bewust karig: het dossier
@@ -95,6 +96,10 @@ const fmtEuro = fmtEuroDoc
 const fmtDate = fmtDatumDoc
 
 const LEEG = '—'
+
+// 'JJJJ-MM-DDTUU:MM' (lokale tijd van een meting) → '24-11-2026 09:00'.
+const fmtTijd = (op: string): string =>
+  op ? `${fmtDate(op.slice(0, 10))} ${op.slice(11, 16)}`.trim() : LEEG
 
 /** Datum met tijd uit een ISO-timestamp; leeg blijft leeg. */
 const fmtMoment = (iso: string): string => {
@@ -210,7 +215,7 @@ const etiketBlok = (blokken: KaartProductBlok[]): string => blokken.map(b => `
   <div class="etiket-sub">${esc(t('etiket_kaart_website'))} <span class="muted">${esc(t('etiket_kaart_website_sub'))}</span></div>
   ${etiketTabel(t('etiket_kolom_waarde'), b.website)}`).join('')
 
-// CCP 3 — elke etiketcontrole met de versie op de rol en de getallen erbij.
+// CCP 3 — elke etiketcontrole met de getallen erbij.
 const ccp3Blok = (rijen: RapportEtiketControle[]): string => {
   const taal = getLang()
   const abv = (n: number | null) => (n == null ? LEEG : fmtGetal(Math.round(n * 10) / 10, 1, taal))
@@ -218,18 +223,24 @@ const ccp3Blok = (rijen: RapportEtiketControle[]): string => {
   return tabel(
     [
       {label: esc(t('lbl_date'))}, {label: esc(t('haccp_sessie_lotcode'))}, {label: esc(t('lbl_pakbon_bier'))},
-      {label: esc(t('batchdossier_kol_versie'))}, {label: esc(t('batchdossier_kol_abv'))},
+      {label: esc(t('batchdossier_kol_abv'))},
       {label: esc(t('batchdossier_kol_allergenen'))}, {label: esc(t('batchdossier_kol_resultaat'))},
     ],
     rijen.map(c => `<tr class="blok">
       <td class="nw">${fmtMoment(c.moment)}</td>
       <td class="nw">${esc(c.lotcode || LEEG)}</td>
       <td>${esc(c.product || LEEG)}</td>
-      <td>${esc(c.versieGelezen || LEEG)}${c.versieVerwacht ? `<span class="bron">${esc(t('batchdossier_verwacht').replace('{waarde}', c.versieVerwacht))}</span>` : ''}</td>
       <td class="nw">${c.snapshot ? `${esc(abv(c.abvBatch))} / ${esc(abv(c.abvEtiket))}${c.abvMarge != null ? `<span class="bron">±${esc(fmtGetal(c.abvMarge, 1, taal))} % vol</span>` : ''}` : LEEG}</td>
       <td>${esc(allergenen(c.allergenenBatch))}<span class="bron">${esc(t('batchdossier_etiket_kort'))}: ${esc(allergenen(c.allergenenEtiket))}</span></td>
-      <td>${c.goedgekeurd ? `<span class="ok">${esc(t('haccp_ccp2_goedgekeurd'))}</span>` : `<span class="nok">${esc(t('haccp_ccp2_afgekeurd'))}</span>`}${c.afwijking ? `<span class="bron">${esc(t('haccp_afw_kort'))}</span>` : ''}</td>
+      <td>${c.goedgekeurd ? `<span class="ok">${esc(t('haccp_ccp2_goedgekeurd'))}</span>` : `<span class="nok">${esc(t('haccp_ccp2_afgekeurd'))}</span>`}${c.afwijking ? `<span class="bron">${esc(t('haccp_afw_kort'))}</span>` : ''}${c.ai ? `<span class="bron">${esc(aiTekst(c.ai))}</span>` : ''}</td>
     </tr>`))
+}
+
+// De AI-controle van de etiketfoto in één regel: "AI: klopt", "AI: wijkt af (lotcode)".
+const aiTekst = (ai: NonNullable<RapportEtiketControle['ai']>): string => {
+  if (ai.stand !== 'wijkt_af') return t(`batchdossier_ai_${ai.stand}`)
+  const punten = ai.afwijkend.map(p => t(`haccp_ccp3_ai_punt_${p}`, p)).join(', ')
+  return t(ai.tochVastgelegd ? 'batchdossier_ai_wijkt_af_toch' : 'batchdossier_ai_wijkt_af').replace('{punten}', punten)
 }
 
 const tijdlijnBlok = (r: BatchRapport): string => {
@@ -288,12 +299,34 @@ const vrijgaveBlok = (rijen: RapportVrijgave[]): string => rijen.map(v => `<div 
       <span class="muted">${esc(fmtDate(v.datum))}</span>
     </div>
     <div class="kv">
-      <div><span>${esc(t('haccp_ccp1_producttype'))}:</span> ${esc(t(v.risicoKey))}</div>
-      <div><span>${esc(t('haccp_ccp1_stabiel'))}:</span> ${esc(String(v.dagenStabiel))}/${esc(String(v.vereisteDagen))} ${esc(t('haccp_ccp1_dagen'))} ${jaNee(v.stabielOk)}</div>
-      ${v.ffVerschil != null ? `<div><span>${esc(t('haccp_ccp1_ff'))}:</span> ${getalOfLeeg(v.ffVerschil)} ${v.ffOk == null ? '' : jaNee(v.ffOk)}</div>` : ''}
+      ${v.methode === 'ff_paar' ? `
+      <div><span>${esc(t('haccp_ccp1_ff'))}:</span> ${fmtSg(v.ffSg, LEEG)} · ${esc(t('haccp_ccp1_tank'))} ${fmtSg(v.tankSg, LEEG)} ${v.ffOk == null ? '' : jaNee(v.ffOk)}</div>
+      <div><span>${esc(t('haccp_ccp1_stabiel'))}:</span> ${v.tankSg1 == null ? LEEG : `${fmtSg(v.tankSg1, LEEG)} (${esc(fmtTijd(v.tankSg1Op))}) → ${fmtSg(v.tankSg2, LEEG)} (${esc(fmtTijd(v.tankSg2Op))}) · ${esc(t('haccp_ccp1_na_uur').replace('{n}', String(v.stabielUren ?? '')))}`} ${jaNee(v.stabielOk)}</div>`
+      : `
+      <div><span>${esc(t('haccp_ccp1_producttype'))}:</span> ${esc(t(v.risicoKey || 'haccp_risico_standaard'))}</div>
+      <div><span>${esc(t('haccp_ccp1_stabiel'))}:</span> ${esc(String(v.dagenStabiel ?? ''))}/${esc(String(v.vereisteDagen ?? ''))} ${esc(t('haccp_ccp1_dagen'))} ${jaNee(v.stabielOk)}</div>
+      ${v.ffVerschil != null ? `<div><span>${esc(t('haccp_ccp1_ff'))}:</span> ${getalOfLeeg(v.ffVerschil)} ${v.ffOk == null ? '' : jaNee(v.ffOk)}</div>` : ''}`}
+      ${v.afwijking ? `<div><span>${esc(t('haccp_afw_kort'))}</span></div>` : ''}
       <div><span>${esc(t('haccp_ccp1_paraaf'))}:</span> ${esc(paraafTekst(v.paraaf))}</div>
     </div>
     ${v.sensorisch ? `<div class="kv" style="margin-top:1.5mm"><div><span>${esc(t('haccp_ccp1_sensorisch'))}:</span> ${esc(v.sensorisch)} ${jaNee(v.sensorischOk)}</div></div>` : ''}
+    ${v.opmerking ? `<div class="remarks">${esc(v.opmerking)}</div>` : ''}
+  </div>`).join('')
+
+// De houdtest: wanneer afgevuld, na hoeveel dagen beoordeeld, de SG van de
+// warme fles tegen die bij het afvullen, overdruk, geur en smaak.
+const verkoopVrijgaveBlok = (rijen: RapportVerkoopVrijgave[]): string => rijen.map(v => `<div class="kaart blok${v.vrijgegeven ? '' : ' afw'}">
+    <div class="kaart-kop">
+      <span>${esc(t(v.oordeelKey))}${v.afwijking ? ` · <span class="nok">${esc(t('haccp_afw_kort'))}</span>` : ''}</span>
+      <span>${esc(fmtDate(v.datum))}</span>
+    </div>
+    <div class="kv">
+      <div><span>${esc(t('batchdossier_houdtest_afgevuld'))}:</span> ${esc(fmtDate(v.afgevuldOp))} · ${esc(t('batchdossier_houdtest_dagen').replace('{n}', String(v.dagen)))}</div>
+      <div><span>${esc(t('haccp_houdtest_sg_warm'))}:</span> ${v.sgWarm != null ? esc(fmtSg(v.sgWarm)) : LEEG}${v.sgAfvullen != null ? ` · ${esc(t('haccp_sg_afvullen'))} ${esc(fmtSg(v.sgAfvullen))}` : ''}${v.sgVerschil != null ? ` ${jaNee(v.sgVerschil <= v.sgMarge + 1e-9)}` : ''}</div>
+      <div><span>${esc(t('haccp_houdtest_druk_ok'))}</span> ${jaNee(v.drukOk)}</div>
+      <div><span>${esc(t('haccp_houdtest_smaak_ok'))}</span> ${jaNee(v.smaakOk)}</div>
+      <div><span>${esc(t('haccp_ccp1_paraaf'))}:</span> ${esc(paraafTekst(v.paraaf))}</div>
+    </div>
     ${v.opmerking ? `<div class="remarks">${esc(v.opmerking)}</div>` : ''}
   </div>`).join('')
 
@@ -303,19 +336,48 @@ const sessieBlok = (rijen: RapportSessie[]): string => {
     : esc(t('batchdossier_controles_telling')
         .replace('{goed}', String(c.goedgekeurd))
         .replace('{af}', String(c.afgekeurd)))
+  // CCP 2 per soort: de inspectie van de lege flessen is één registratie met
+  // het aantal afgekeurde flessen; een fust heeft geen CCP 2.
+  const ccp2 = (s: RapportSessie): string => {
+    if (s.ccp2 === 'geen') return `<span class="muted">${esc(t('haccp_ccp2_nvt'))}</span>`
+    if (s.ccp2 === 'lege_flessen') {
+      return s.flessenAfgekeurd == null
+        ? `<span class="muted">${LEEG}</span>`
+        : `${jaNee(true)} ${esc(t('batchdossier_flessen_afgekeurd').replace('{n}', String(s.flessenAfgekeurd)))}`
+    }
+    return telling(s.sluitcontroles)
+  }
+  // Wat er bij het afvullen is vastgelegd, onder de verpakking: koolzuur,
+  // SG, de lots van flessen en kroonkurken en de klapflessen.
+  const details = (s: RapportSessie): string => {
+    const delen: string[] = []
+    if (s.co2Volumes != null) {
+      const te = s.co2Max != null && s.co2Volumes > s.co2Max
+      delen.push(`<span class="${te ? 'nok' : ''}">${esc(t('haccp_co2_kort').replace('{volumes}', fmtCo2(s.co2Volumes, getLang())))}`
+        + `${s.co2Max != null ? ` (${esc(t('batchdossier_co2_max').replace('{max}', fmtCo2Grens(s.co2Max, getLang())))})` : ''}</span>`
+        + `${s.co2Afwijking ? ` ${esc(t('haccp_afw_kort'))}` : ''}`)
+    }
+    if (s.sgAfvullen != null) delen.push(`${esc(t('haccp_sg_afvullen'))} ${esc(fmtSg(s.sgAfvullen))}`)
+    if (s.flessenlot) delen.push(`${esc(t('haccp_flessenlot'))} ${esc(s.flessenlot)}`)
+    if (s.kroonkurkenlot) delen.push(`${esc(t('haccp_kroonkurkenlot'))} ${esc(s.kroonkurkenlot)}`)
+    if (s.klapflessen) delen.push(esc(t('haccp_klapflessen_stand')
+      .replace('{aantal}', String(s.klapflessen.aantal))
+      .replace('{vernietigd}', String(s.klapflessen.vernietigd))))
+    return delen.length ? `<span class="bron">${delen.join(' · ')}</span>` : ''
+  }
   return tabel(
     [
       {label: t('haccp_sessie_lotcode')}, {label: t('lbl_pakbon_verpakking')},
       {label: t('lbl_date')}, {label: t('lbl_tht')}, {label: t('lbl_status')},
-      {label: t('haccp_ccp2_titel')}, {label: t('haccp_ccp3_titel')},
+      {label: t('batchdossier_ccp2')}, {label: t('haccp_ccp3_titel')},
     ],
     rijen.map(s => `<tr class="blok">
       <td class="nw"><strong>${esc(s.lotcode || LEEG)}</strong></td>
-      <td>${esc(s.verpakking || LEEG)}</td>
+      <td>${esc(s.verpakking || LEEG)}${details(s)}</td>
       <td class="nw">${fmtPeriode(s.start, s.eind)}</td>
       <td class="nw">${s.tht ? esc(fmtDate(s.tht)) : LEEG}</td>
       <td>${esc(t(s.statusKey, s.statusKey))}</td>
-      <td>${telling(s.sluitcontroles)}</td>
+      <td>${ccp2(s)}</td>
       <td>${telling(s.etiketcontroles)}</td>
     </tr>`))
 }
@@ -418,6 +480,7 @@ function bouwDossierBody(
     ${sectie(esc(t('batchdossier_sec_metingen')), metingenBlok(rapport.metingen))}
     ${sectie(esc(t('haccp_ccp1_titel')), vrijgaveBlok(rapport.vrijgaven))}
     ${sectie(esc(t('batchdossier_sec_sessies')), sessieBlok(rapport.sessies))}
+    ${sectie(esc(t('haccp_houdtest_titel')), verkoopVrijgaveBlok(rapport.verkoopvrijgaven || []))}
     ${sectie(esc(t('batchdossier_sec_ccp3')), ccp3Blok(rapport.etiketcontroles))}
     ${sectie(esc(t('batchdossier_sec_afvullingen')), afvullingenBlok(rapport.afvullingen))}
     ${sectie(esc(t('batchdossier_sec_verlies')), tabel(

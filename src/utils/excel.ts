@@ -222,6 +222,9 @@ export const bouwBackupWerkboek = (data: any): XLSX.WorkBook => {
     addSheet('HACCPEtiketcontroles', data.haccp_etiketcontroles)
     addSheet('HACCPAfwijkingen',     data.haccp_afwijkingen)
     addSheet('HACCPTraceOefening',   data.haccp_trace_oefeningen)
+    addSheet('HACCPVerkoopVrijgaven', data.haccp_verkoopvrijgaven)
+    addSheet('HACCPIncidenten',      data.haccp_incidenten)
+    addSheet('Reinigingsmiddelen',   data.reinigingsmiddelen)
     addSheet('Locaties',             data.locaties)
     addSheet('Verplaatsingen',       data.verplaatsingen)
 
@@ -424,6 +427,9 @@ export const parseBackupWerkboek = (wb: XLSX.WorkBook): any => {
         haccp_etiketcontroles:        parse('HACCPEtiketcontroles'),
         haccp_afwijkingen:            parse('HACCPAfwijkingen'),
         haccp_trace_oefeningen:       parse('HACCPTraceOefening'),
+        haccp_verkoopvrijgaven:       parse('HACCPVerkoopVrijgaven'),
+        haccp_incidenten:             parse('HACCPIncidenten'),
+        reinigingsmiddelen:           parse('Reinigingsmiddelen'),
         locaties:                     parse('Locaties'),
         verplaatsingen:               parse('Verplaatsingen'),
 
@@ -490,7 +496,7 @@ export const excelImport = (file: File, cb: (data: any) => void, onError?: (msg?
 export const APPEND_ONLY_KEYS = [
   'journaal',
   'haccp_vrijgaven', 'haccp_sluitcontroles', 'haccp_etiketcontroles',
-  'haccp_afwijkingen', 'haccp_trace_oefeningen',
+  'haccp_afwijkingen', 'haccp_trace_oefeningen', 'haccp_verkoopvrijgaven',
 ] as const
 
 // Union op id: alle huidige regels ongewijzigd, plus de regels uit de backup

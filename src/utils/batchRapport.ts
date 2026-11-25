@@ -21,8 +21,9 @@
 import type {
   Afvulling, AfvulSessie, Allergeen, Batch, BatchIngredient, BatchNotitie, EtiketControle,
   GistMeting, HaccpAfwijking, HaccpInst, HaccpVrijgave, Ingredient, Lot, Paraaf, Product,
-  SluitControle, VerliesRegistratie, Verpakking,
+  SluitControle, VerliesRegistratie, Verpakking, Ccp2Soort, VerkoopVrijgave,
 } from '../types'
+import { sessieCcp2 } from './haccp'
 import { BUILTIN_ING_TYPES, FASE_LABEL_KEYS } from './constants'
 import { bouwBatchTijdlijn, type BatchTijdlijn, type StatusLogRegel } from './vergisting'
 import { lotLabel } from './trace'
@@ -33,6 +34,7 @@ import { metingWaarde } from './metingen'
 import { etiketWaarden, productEtiketWaarden, sorteerAllergenen } from './etiket'
 import type { EtiketCtx, EtiketWaarden, ProductEtiketCtx, ProductEtiketWaarden } from './etiket'
 import { productenVoorEtiketKaart } from './etiketKaart'
+import { aiCheckSamenvatting } from './etiketCheck'
 
 // ── Wanneer is een batch "afgerond"? ────────────────────────────────────────
 // Bij `Afgevuld` zit het bier in de verpakking: vanaf dat moment ligt alles
@@ -158,6 +160,23 @@ export interface RapportSessie {
   tht: string
   sluitcontroles: RapportControleTelling
   etiketcontroles: RapportControleTelling
+  /** CCP 2 van deze sessie (vanaf 1.13.51): lege flessen bekeken,
+   *  sluitcontrole met omkeerproef, of geen (fust). Oud = sluitcontrole. */
+  ccp2: Ccp2Soort
+  /** Lege flessen: hoeveel er zijn afgekeurd (som van de inspecties);
+   *  null = er is (nog) geen inspectie. */
+  flessenAfgekeurd: number | null
+  /** Koolzuur bij het afvullen (CCP 1, grens c), alleen bij flessen. */
+  co2Volumes: number | null
+  co2Max: number | null
+  /** 'sensor' of 'handmatig'; leeg bij een sessie zonder koolzuurmeting. */
+  co2Bron: string
+  /** Boven de grens afgevuld met een afwijking. */
+  co2Afwijking: boolean
+  sgAfvullen: number | null
+  flessenlot: string
+  kroonkurkenlot: string
+  klapflessen: {aantal: number, vernietigd: number} | null
 }
 
 /** CCP 1 — de vrijgave voor afvullen. Het belangrijkste formulier van het
@@ -166,15 +185,50 @@ export interface RapportVrijgave {
   datum: string
   /** i18n-sleutel: `haccp_ccp1_vrijgegeven` of `haccp_ccp1_niet_vrijgegeven`. */
   oordeelKey: string
-  /** i18n-sleutel `haccp_risico_<klasse>`. */
-  risicoKey: string
-  dagenStabiel: number
-  vereisteDagen: number
+  /** 'ff_paar' = forceertest + twee tankmetingen (vanaf 1.13.49); 'dagen' =
+   *  de oude regel met risicoklasse en dagen stabiel. */
+  methode: 'ff_paar' | 'dagen'
+  /** Oude regel: i18n-sleutel `haccp_risico_<klasse>`, de dagen stabiel. */
+  risicoKey: string | null
+  dagenStabiel: number | null
+  vereisteDagen: number | null
   stabielOk: boolean
+  /** Nieuwe regel: de twee tankmetingen ('JJJJ-MM-DDTUU:MM') en hun verschil. */
+  tankSg1: number | null
+  tankSg1Op: string
+  tankSg2: number | null
+  tankSg2Op: string
+  stabielUren: number | null
+  stabielVerschil: number | null
+  /** Forceertest en de tankmeting ertegenover. */
+  ffSg: number | null
+  tankSg: number | null
   ffVerschil: number | null
   ffOk: boolean | null
+  /** Oude regel: het smaakoordeel bij de vrijgave. */
   sensorisch: string
   sensorischOk: boolean
+  /** Met een afwijking doorgezet. */
+  afwijking: boolean
+  opmerking: string
+  paraaf: RapportParaaf
+}
+
+/** De houdtest en de vrijgave voor verkoop (utils/houdtest.ts). */
+export interface RapportVerkoopVrijgave {
+  datum: string
+  /** i18n-sleutel: `haccp_houdtest_vrijgegeven` of `haccp_houdtest_afgekeurd`. */
+  oordeelKey: string
+  vrijgegeven: boolean
+  afgevuldOp: string
+  dagen: number
+  sgAfvullen: number | null
+  sgWarm: number | null
+  sgVerschil: number | null
+  sgMarge: number
+  drukOk: boolean
+  smaakOk: boolean
+  afwijking: boolean
   opmerking: string
   paraaf: RapportParaaf
 }
@@ -205,14 +259,11 @@ export interface RapportEtiket {
 }
 
 /** Eén etiketcontrole (CCP 3) met de getallen die erbij bevroren zijn. Oude
- *  records (van vóór de snapshots) hebben alleen de versie en de allergenen. */
+ *  records (van vóór de snapshots) hebben alleen de allergenen. */
 export interface RapportEtiketControle {
   moment: string
   lotcode: string
   product: string
-  /** De versie op de rol; bij een oud record de vastgelegde `etiket_versie`. */
-  versieGelezen: string
-  versieVerwacht: string
   abvBatch: number | null
   abvEtiket: number | null
   abvMarge: number | null
@@ -223,6 +274,8 @@ export interface RapportEtiketControle {
   afwijking: boolean
   /** Het record draagt de snapshotvelden (vanaf v1.12.90). */
   snapshot: boolean
+  /** De AI-controle van de etiketfoto (vanaf 1.13.54); null = niet gedaan. */
+  ai: { stand: 'klopt' | 'wijkt_af' | 'deels' | 'fout'; afwijkend: string[]; tochVastgelegd: boolean } | null
   paraaf: RapportParaaf
 }
 
@@ -271,6 +324,8 @@ export interface BatchRapport {
   verliezen: RapportVerlies[]
   sessies: RapportSessie[]
   vrijgaven: RapportVrijgave[]
+  /** Houdtest en vrijgave voor verkoop, op tijdsvolgorde. */
+  verkoopvrijgaven: RapportVerkoopVrijgave[]
   afwijkingen: RapportAfwijking[]
   notities: RapportNotitie[]
   financieel: RapportFinancieel
@@ -297,6 +352,7 @@ export interface BatchRapportInvoer {
   sluitcontroles?: SluitControle[] | null
   etiketcontroles?: EtiketControle[] | null
   vrijgaven?: HaccpVrijgave[] | null
+  verkoopvrijgaven?: VerkoopVrijgave[] | null
   afwijkingen?: HaccpAfwijking[] | null
   notities?: BatchNotitie[] | null
   verpakkingen?: Verpakking[] | null
@@ -423,32 +479,84 @@ const sessieRegels = (
   sluitcontroles: SluitControle[],
   etiketcontroles: EtiketControle[]
 ): RapportSessie[] =>
-  sessies.map(s => ({
-    lotcode: tekst(s.lotcode),
-    verpakking: tekst(s.verpakking_naam) || tekst(s.verpakking_type),
-    start: tekst(s.start),
-    eind: tekst(s.eind),
-    statusKey: `haccp_sessie_${tekst(s.status) || 'open'}`,
-    tht: tekst(s.tht),
-    sluitcontroles: telControles(sluitcontroles.filter(c => zelfdeId(c.sessie_id, s.id))),
-    etiketcontroles: telControles(etiketcontroles.filter(c => zelfdeId(c.sessie_id, s.id))),
-  }))
+  sessies.map(s => {
+    const eigen = sluitcontroles.filter(c => zelfdeId(c.sessie_id, s.id))
+    const inspecties = eigen.filter(c => c.methode === 'lege_flessen')
+    const klap = s.klapflessen
+    return {
+      lotcode: tekst(s.lotcode),
+      verpakking: tekst(s.verpakking_naam) || tekst(s.verpakking_type),
+      start: tekst(s.start),
+      eind: tekst(s.eind),
+      statusKey: `haccp_sessie_${tekst(s.status) || 'open'}`,
+      tht: tekst(s.tht),
+      sluitcontroles: telControles(eigen),
+      etiketcontroles: telControles(etiketcontroles.filter(c => zelfdeId(c.sessie_id, s.id))),
+      ccp2: sessieCcp2(s),
+      flessenAfgekeurd: inspecties.length
+        ? inspecties.reduce((n, c) => n + getal(c.afgekeurd_aantal), 0)
+        : null,
+      co2Volumes: getalOfNull(s.co2_volumes),
+      co2Max: getalOfNull(s.co2_max),
+      co2Bron: tekst(s.co2_bron),
+      co2Afwijking: s.co2_afwijking_id != null,
+      sgAfvullen: getalOfNull(s.sg_afvullen),
+      flessenlot: tekst(s.flessenlot),
+      kroonkurkenlot: tekst(s.kroonkurkenlot),
+      klapflessen: klap && getal(klap.aantal) > 0
+        ? {aantal: getal(klap.aantal), vernietigd: getal(klap.vernietigd)}
+        : null,
+    }
+  })
 
-const vrijgaveRegels = (vrijgaven: HaccpVrijgave[]): RapportVrijgave[] =>
-  vrijgaven.map(v => ({
+const getalOfNull = (v: unknown): number | null => (v == null || v === '' ? null : getal(v))
+
+const verkoopVrijgaveRegels = (lijst: VerkoopVrijgave[]): RapportVerkoopVrijgave[] =>
+  lijst.map(v => ({
     datum: tekst(v.datum),
-    oordeelKey: v.oordeel === 'vrijgegeven' ? 'haccp_ccp1_vrijgegeven' : 'haccp_ccp1_niet_vrijgegeven',
-    risicoKey: `haccp_risico_${tekst(v.risico_klasse) || 'standaard'}`,
-    dagenStabiel: getal(v.dagen_stabiel),
-    vereisteDagen: getal(v.vereiste_dagen_stabiel),
-    stabielOk: v.stabiel_ok === true,
-    ffVerschil: v.ff_verschil != null ? getal(v.ff_verschil) : null,
-    ffOk: v.ff_ok == null ? null : v.ff_ok === true,
-    sensorisch: tekst(v.sensorisch),
-    sensorischOk: v.sensorisch_ok === true,
+    oordeelKey: v.oordeel === 'vrijgegeven' ? 'haccp_houdtest_vrijgegeven' : 'haccp_houdtest_afgekeurd',
+    vrijgegeven: v.oordeel === 'vrijgegeven',
+    afgevuldOp: tekst(v.afgevuld_op),
+    dagen: getal(v.houdtest_dagen),
+    sgAfvullen: getalOfNull(v.sg_afvullen),
+    sgWarm: getalOfNull(v.sg_warm),
+    sgVerschil: getalOfNull(v.sg_verschil),
+    sgMarge: getal(v.sg_marge),
+    drukOk: v.druk_ok === true,
+    smaakOk: v.smaak_ok === true,
+    afwijking: v.afwijking_id != null,
     opmerking: tekst(v.opmerking),
     paraaf: paraafVan(v.paraaf),
   }))
+
+const vrijgaveRegels = (vrijgaven: HaccpVrijgave[]): RapportVrijgave[] =>
+  vrijgaven.map(v => {
+    const nieuw = v.methode === 'ff_paar'
+    return {
+      datum: tekst(v.datum),
+      oordeelKey: v.oordeel === 'vrijgegeven' ? 'haccp_ccp1_vrijgegeven' : 'haccp_ccp1_niet_vrijgegeven',
+      methode: nieuw ? 'ff_paar' : 'dagen',
+      risicoKey: nieuw ? null : `haccp_risico_${tekst(v.risico_klasse) || 'standaard'}`,
+      dagenStabiel: nieuw ? null : getal(v.dagen_stabiel),
+      vereisteDagen: nieuw ? null : getal(v.vereiste_dagen_stabiel),
+      stabielOk: v.stabiel_ok === true,
+      tankSg1: getalOfNull(v.tank_sg_1),
+      tankSg1Op: tekst(v.tank_sg_1_op),
+      tankSg2: getalOfNull(v.tank_sg_2),
+      tankSg2Op: tekst(v.tank_sg_2_op),
+      stabielUren: getalOfNull(v.stabiel_uren),
+      stabielVerschil: getalOfNull(v.stabiel_verschil),
+      ffSg: getalOfNull(v.ff_dichtheid_ff),
+      tankSg: getalOfNull(v.ff_dichtheid_tank),
+      ffVerschil: getalOfNull(v.ff_verschil),
+      ffOk: v.ff_ok == null ? null : v.ff_ok === true,
+      sensorisch: tekst(v.sensorisch),
+      sensorischOk: v.sensorisch_ok === true,
+      afwijking: v.afwijking_id != null,
+      opmerking: tekst(v.opmerking),
+      paraaf: paraafVan(v.paraaf),
+    }
+  })
 
 const afwijkingRegels = (afwijkingen: HaccpAfwijking[]): RapportAfwijking[] =>
   afwijkingen.map(a => ({
@@ -496,15 +604,12 @@ const etiketControleRegels = (
   controles.map(c => {
     const sessie = sessies.find(x => zelfdeId(x.id, c.sessie_id))
     const prod = producten.find(x => zelfdeId(x.id, c.product_id))
-    const snapshot = c.etiket_versie_gelezen !== undefined || c.etiket_versie_verwacht !== undefined
-      || c.abv_batch !== undefined || c.abv_etiket_verwacht !== undefined
+    const snapshot = c.abv_batch !== undefined || c.abv_etiket_verwacht !== undefined
     const getalOfNull = (v: unknown): number | null => (v === undefined || v === null || v === '' ? null : getal(v))
     return {
       moment: tekst(c.uitgevoerd_op) || tekst(c.paraaf?.tijdstip),
       lotcode: tekst(sessie?.lotcode),
       product: tekst(prod?.naam),
-      versieGelezen: tekst(c.etiket_versie_gelezen ?? c.etiket_versie),
-      versieVerwacht: tekst(c.etiket_versie_verwacht),
       abvBatch: getalOfNull(c.abv_batch),
       abvEtiket: getalOfNull(c.abv_etiket_verwacht),
       abvMarge: getalOfNull(c.abv_marge),
@@ -513,6 +618,10 @@ const etiketControleRegels = (
       goedgekeurd: c.resultaat === 'goedgekeurd',
       afwijking: c.afwijking_id != null,
       snapshot,
+      ai: (() => {
+        const s = aiCheckSamenvatting(c.ai_check)
+        return s ? {...s, tochVastgelegd: c.ai_check?.toch_vastgelegd === true} : null
+      })(),
       paraaf: paraafVan(c.paraaf),
     }
   }).sort((a, b) => a.moment.localeCompare(b.moment))
@@ -636,6 +745,7 @@ export function bouwBatchRapport(inv: BatchRapportInvoer): BatchRapport {
     verliezen: verliesRegels(verliezen),
     sessies: sessieRegels(sessies, vanBatch(inv.sluitcontroles), vanBatch(inv.etiketcontroles)),
     vrijgaven: vrijgaveRegels(vrijgaven),
+    verkoopvrijgaven: verkoopVrijgaveRegels(opDatum(vanBatch(inv.verkoopvrijgaven))),
     afwijkingen: afwijkingRegels(afwijkingen),
     notities: notities.map(n => ({ts: tekst(n.ts), tekst: tekst(n.tekst)})),
     financieel: financieel(batch, regels, afvullingen, inv, kern),

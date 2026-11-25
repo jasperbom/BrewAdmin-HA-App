@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  maakParaaf, toevoegingVoorRegel, risicoVoorBatch, vereisteStabiliteitsdagen,
-  dagenStabiel, ffVerschil, ffBinnenMarge, beoordeelVrijgave, actueleVrijgave,
+  maakParaaf, toevoegingVoorRegel, risicoVoorBatch,
+  ffVerschil, tankSgMetingen, stabielPaar, beoordeelCcp1, bouwVrijgave, actueleVrijgave,
   magAfvullen, isLegacyBatch, omkeerproefVerplicht, beoordeelSluitcontrole,
   kroonkurkVerplicht,
   afvullingenSindsLaatsteGoedkeuring, magSessieAfsluiten, sluitcontroleHerinnering,
@@ -89,7 +89,6 @@ describe('risicoclassificatie', () => {
     const rij = regel(1, 3, {ingredient_id: null, ingredient_naam: 'verse aardbei'})
     const r = risicoVoorBatch({id: 1}, [regel(1, 1), rij], ingredienten)
     expect(r.klasse).toBe('verhoogd')
-    expect(vereisteStabiliteitsdagen(r.klasse)).toBe(7)
   })
 
   it('gebruikt de default van het ingredienttype als het ingredient niets zegt', () => {
@@ -110,65 +109,13 @@ describe('risicoclassificatie', () => {
     expect(r.klasse).toBe('verhoogd')
     expect(r.handmatig).toBe(true)
   })
-
-  it('vertaalt de klasse naar 3 of 7 vereiste dagen', () => {
-    expect(vereisteStabiliteitsdagen('standaard')).toBe(3)
-    expect(vereisteStabiliteitsdagen('verhoogd')).toBe(7)
-  })
 })
 
-describe('dagenStabiel', () => {
-  it('telt de dagen tussen de eerste en laatste meting van de stabiele reeks', () => {
-    const m = [
-      {sg: 1.020, datum: '2026-07-01'},
-      {sg: 1.011, datum: '2026-07-05'},
-      {sg: 1.010, datum: '2026-07-06'},
-      {sg: 1.010, datum: '2026-07-09'},
-    ]
-    expect(dagenStabiel(m)).toBe(4)
-  })
-
-  it('geeft 0 bij minder dan twee bruikbare metingen', () => {
-    expect(dagenStabiel([])).toBe(0)
-    expect(dagenStabiel([{sg: 1.010, datum: '2026-07-09'}])).toBe(0)
-    expect(dagenStabiel([{sg: 0, datum: '2026-07-09'}, {sg: 1.01, datum: '2026-07-10'}])).toBe(0)
-  })
-
-  it('reset zodra de dichtheid buiten de meetnauwkeurigheid daalt', () => {
-    // Een daling na dagen stilstand is precies het signaal dat er nog iets
-    // vergist; de teller mag dan niet doortellen.
-    const m = [
-      {sg: 1.014, datum: '2026-07-01'},
-      {sg: 1.014, datum: '2026-07-04'},
-      {sg: 1.010, datum: '2026-07-08'},
-    ]
-    expect(dagenStabiel(m)).toBe(0)
-  })
-
-  it('werkt ongeacht de volgorde van de invoer', () => {
-    const m = [
-      {sg: 1.010, datum: '2026-07-09'},
-      {sg: 1.010, datum: '2026-07-06'},
-      {sg: 1.020, datum: '2026-07-01'},
-    ]
-    expect(dagenStabiel(m)).toBe(3)
-  })
-
-  it('rekent met het tijdstip als dat er is', () => {
-    const m = [
-      {sg: 1.010, datum: '2026-07-06', tijd: '18:00'},
-      {sg: 1.010, datum: '2026-07-09', tijd: '09:00'},
-    ]
-    expect(dagenStabiel(m)).toBe(2)
-  })
-})
-
-describe('forced fermentation', () => {
-  it('rekent het verschil absoluut en toetst aan de marge', () => {
+describe('forceertest', () => {
+  it('rekent hoeveel de tank boven de test staat, met teken', () => {
     expect(ffVerschil(1.012, 1.010)).toBeCloseTo(0.002, 6)
-    expect(ffVerschil(1.010, 1.012)).toBeCloseTo(0.002, 6)
-    expect(ffBinnenMarge(0.002, 0.002)).toBe(true)
-    expect(ffBinnenMarge(0.003, 0.002)).toBe(false)
+    // Onder de test is geen probleem: dan is het negatief.
+    expect(ffVerschil(1.010, 1.012)).toBeCloseTo(-0.002, 6)
   })
 
   it('rondt af zodat er geen drijvende-komma-ruis in het bewijsstuk komt', () => {
@@ -178,75 +125,151 @@ describe('forced fermentation', () => {
   })
 })
 
-describe('beoordeelVrijgave (CCP 1)', () => {
-  const compleet = {
-    risico_klasse: 'standaard' as const,
-    dagen_stabiel: 3,
-    ff_uitgevoerd: true,
-    ff_dichtheid_tank: 1.012,
-    ff_dichtheid_ff: 1.011,
-    sensorisch: 'Schoon, geen afwijkende geur',
-  }
+describe('tankmetingen en het stabiele paar', () => {
+  it('neemt alleen handmatige metingen, oud naar nieuw', () => {
+    const m = tankSgMetingen([
+      {sg: 1.011, datum: '2026-07-06', tijd: '09:00'},
+      {sg: 1.010, datum: '2026-07-05', tijd: '09:00'},
+      {sg: 1.004, datum: '2026-07-06', tijd: '10:00', auto: true},
+      {sg: 0, datum: '2026-07-06'},
+      {sg: '', datum: '2026-07-06'} as any,
+      {sg: 1.010},
+    ])
+    expect(m.map(x => x.sg)).toEqual([1.010, 1.011])
+    expect(m[0].op).toBe('2026-07-05T09:00')
+  })
 
-  it('geeft vrij als aan alle criteria is voldaan', () => {
-    const b = beoordeelVrijgave(compleet)
+  it('kiest de laatste meting en de laatste die minstens 48 uur eerder lag', () => {
+    const m = tankSgMetingen([
+      {sg: 1.014, datum: '2026-07-01', tijd: '09:00'},
+      {sg: 1.012, datum: '2026-07-03', tijd: '09:00'},
+      {sg: 1.012, datum: '2026-07-04', tijd: '09:00'},
+      {sg: 1.011, datum: '2026-07-05', tijd: '10:00'},
+    ])
+    const p = stabielPaar(m, 48)
+    expect(p?.eerste.op).toBe('2026-07-03T09:00')
+    expect(p?.laatste.op).toBe('2026-07-05T10:00')
+    expect(p?.uren).toBe(49)
+    expect(p?.verschil).toBe(0.001)
+  })
+
+  it('geeft geen paar zolang de metingen te dicht op elkaar zitten', () => {
+    const m = tankSgMetingen([
+      {sg: 1.012, datum: '2026-07-03', tijd: '09:00'},
+      {sg: 1.012, datum: '2026-07-05', tijd: '08:59'},
+    ])
+    expect(stabielPaar(m, 48)).toBeNull()
+    expect(stabielPaar(tankSgMetingen([{sg: 1.012, datum: '2026-07-03'}]), 48)).toBeNull()
+  })
+})
+
+describe('beoordeelCcp1 (CCP 1)', () => {
+  const metingen = [
+    {sg: 1.050, datum: '2026-07-01', tijd: '12:00'},
+    {sg: 1.012, datum: '2026-07-10', tijd: '09:00'},
+    {sg: 1.011, datum: '2026-07-12', tijd: '09:00'},
+  ]
+
+  it('geeft vrij met een forceertest en twee stabiele metingen 48 uur uit elkaar', () => {
+    const b = beoordeelCcp1({ff_sg: 1.010, metingen})
     expect(b.oordeel).toBe('vrijgegeven')
     expect(b.redenen).toEqual([])
-    expect(b.onvolledig).toEqual([])
+    expect(b.tank?.sg).toBe(1.011)
+    expect(b.ff_verschil).toBe(0.001)
+    expect(b.paar?.uren).toBe(48)
   })
 
-  it('blokkeert onder de vereiste stabiliteitsperiode', () => {
-    const b = beoordeelVrijgave({...compleet, dagen_stabiel: 2})
-    expect(b.oordeel).toBe('niet_vrijgegeven')
-    expect(codes(b)).toContain('niet_stabiel')
-    expect(b.redenen[0].params).toEqual({dagen: 2, vereist: 3})
+  it('accepteert precies de grenzen: 0,002 boven de test en 0,001 verschil', () => {
+    const b = beoordeelCcp1({ff_sg: 1.009, metingen})
+    expect(b.ff_verschil).toBe(0.002)
+    expect(b.ff_ok).toBe(true)
+    expect(b.stabiel_ok).toBe(true)
   })
 
-  it('eist 7 dagen bij verhoogd risico', () => {
-    const b = beoordeelVrijgave({
-      ...compleet, risico_klasse: 'verhoogd', dagen_stabiel: 5,
-      druk30_uitgevoerd: true, druk30_ok: true,
+  it('blokkeert als de tank meer dan 0,002 boven de forceertest staat', () => {
+    const b = beoordeelCcp1({ff_sg: 1.008, metingen})
+    expect(codes(b)).toEqual(['ff_buiten_marge'])
+    expect(b.redenen[0].params).toEqual({verschil: '0.003', marge: '0.002'})
+  })
+
+  it('vindt een tank onder de forceertest goed', () => {
+    expect(beoordeelCcp1({ff_sg: 1.013, metingen}).ff_ok).toBe(true)
+  })
+
+  it('vraagt de forceertest als die er niet is', () => {
+    expect(codes(beoordeelCcp1({ff_sg: '', metingen}))).toEqual(['ff_ontbreekt'])
+    expect(codes(beoordeelCcp1({ff_sg: null, metingen}))).toEqual(['ff_ontbreekt'])
+  })
+
+  it('blokkeert als de twee metingen meer dan 0,001 verschillen', () => {
+    const m = [...metingen.slice(0, 2), {sg: 1.010, datum: '2026-07-12', tijd: '09:00'}]
+    const b = beoordeelCcp1({ff_sg: 1.009, metingen: m})
+    expect(codes(b)).toEqual(['niet_stabiel'])
+    expect(b.redenen[0].params).toEqual({verschil: '0.002', tolerantie: '0.001', uur: 48, moment: '14-7 09:00'})
+    // De volgende meting vormt een paar met de laatste: 48 uur later.
+    expect(b.volgende_meting_op).toBe('2026-07-14T09:00')
+  })
+
+  it('vergelijkt een enkele eindmeting met de OG als die de enige eerdere is, en zegt wanneer opnieuw', () => {
+    const b = beoordeelCcp1({ff_sg: 1.010, metingen: [
+      {sg: 1.050, datum: '2026-07-01', tijd: '12:00'},
+      {sg: 1.011, datum: '2026-07-12', tijd: '09:00'},
+    ]})
+    expect(codes(b)).toEqual(['niet_stabiel'])
+    expect(b.volgende_meting_op).toBe('2026-07-14T09:00')
+  })
+
+  it('zegt wanneer de tweede meting kan als er nog geen paar is', () => {
+    const b = beoordeelCcp1({ff_sg: 1.010, metingen: [{sg: 1.011, datum: '2026-07-12', tijd: '09:00'}]})
+    expect(codes(b)).toEqual(['tweede_meting'])
+    expect(b.volgende_meting_op).toBe('2026-07-14T09:00')
+    expect(b.redenen[0].params).toEqual({uur: 48, moment: '14-7 09:00'})
+  })
+
+  it('vraagt een tankmeting als er geen handmatige is', () => {
+    const b = beoordeelCcp1({ff_sg: 1.010, metingen: [{sg: 1.011, datum: '2026-07-12', auto: true}]})
+    expect(codes(b)).toEqual(['tank_ontbreekt'])
+  })
+
+  it('volgt de ingestelde grenzen', () => {
+    const inst = {stabiel_min_uur: 24, stabiel_tolerantie_sg: 0.002, ff_marge_sg: 0.003}
+    const m = [{sg: 1.013, datum: '2026-07-11', tijd: '09:00'}, {sg: 1.011, datum: '2026-07-12', tijd: '09:00'}]
+    const b = beoordeelCcp1({ff_sg: 1.008, metingen: m}, inst)
+    expect(b.oordeel).toBe('vrijgegeven')
+    expect(b.stabiel_min_uur).toBe(24)
+  })
+})
+
+describe('bouwVrijgave', () => {
+  const p = paraaf('2026-07-12T10:00:00Z')
+
+  it('bevriest de gebruikte metingen en grenzen', () => {
+    const b = beoordeelCcp1({ff_sg: 1.010, metingen: [
+      {sg: 1.012, datum: '2026-07-10', tijd: '09:00'},
+      {sg: 1.011, datum: '2026-07-12', tijd: '09:00'},
+    ]})
+    const v = bouwVrijgave(7, 3, b, p, {opmerking: '  '})
+    expect(v).toMatchObject({
+      id: 7, batch_id: 3, datum: '2026-07-12', methode: 'ff_paar',
+      ff_uitgevoerd: true, ff_dichtheid_tank: 1.011, ff_dichtheid_ff: 1.010,
+      ff_verschil: 0.001, ff_marge: 0.002, ff_ok: true,
+      tank_sg_1: 1.012, tank_sg_1_op: '2026-07-10T09:00',
+      tank_sg_2: 1.011, tank_sg_2_op: '2026-07-12T09:00',
+      stabiel_uren: 48, stabiel_verschil: 0.001, stabiel_min_uur: 48, stabiel_tolerantie: 0.001,
+      stabiel_ok: true, oordeel: 'vrijgegeven', oordeel_voorgesteld: 'vrijgegeven',
     })
-    expect(b.vereiste_dagen).toBe(7)
-    expect(codes(b)).toContain('niet_stabiel')
+    expect(v.opmerking).toBeUndefined()
+    expect(magAfvullen(3, [v]).toegestaan).toBe(true)
   })
 
-  it('eist de drukcontrole op het 30 graden-monster bij verhoogd risico', () => {
-    const b = beoordeelVrijgave({...compleet, risico_klasse: 'verhoogd', dagen_stabiel: 7})
-    expect(codes(b)).toContain('druk30_ontbreekt')
-  })
-
-  it('blokkeert bij drukopbouw in het 30 graden-monster', () => {
-    const b = beoordeelVrijgave({
-      ...compleet, risico_klasse: 'verhoogd', dagen_stabiel: 7,
-      druk30_uitgevoerd: true, druk30_ok: false,
-    })
-    expect(codes(b)).toContain('druk30_afwijkend')
-  })
-
-  it('vraagt de drukcontrole niet bij standaardbier', () => {
-    expect(codes(beoordeelVrijgave(compleet))).not.toContain('druk30_ontbreekt')
-  })
-
-  it('blokkeert zonder uitgevoerde forced fermentation test', () => {
-    const b = beoordeelVrijgave({...compleet, ff_uitgevoerd: false})
-    expect(codes(b)).toContain('ff_niet_uitgevoerd')
-  })
-
-  it('blokkeert als het verschil buiten de marge valt', () => {
-    const b = beoordeelVrijgave({...compleet, ff_dichtheid_ff: 1.005})
-    expect(codes(b)).toContain('ff_buiten_marge')
-    expect(b.ff_verschil).toBeCloseTo(0.007, 6)
-  })
-
-  it('meldt ontbrekende dichtheden als onvolledig, niet als afkeuring', () => {
-    const b = beoordeelVrijgave({...compleet, ff_dichtheid_ff: null})
-    expect(b.onvolledig.map(x => x.code)).toContain('ff_dichtheden_ontbreken')
-  })
-
-  it('eist een sensorische beoordeling', () => {
-    const b = beoordeelVrijgave({...compleet, sensorisch: '   '})
-    expect(b.onvolledig.map(x => x.code)).toContain('sensorisch_ontbreekt')
+  it('bewaart het rode voorstel als er met een afwijking toch wordt vrijgegeven', () => {
+    const b = beoordeelCcp1({ff_sg: '', metingen: []})
+    const v = bouwVrijgave(8, 3, b, p, {afwijking_id: 4, vervangt_id: 2})
+    expect(v.oordeel).toBe('vrijgegeven')
+    expect(v.oordeel_voorgesteld).toBe('niet_vrijgegeven')
+    expect(v.afwijking_id).toBe(4)
+    expect(v.vervangt_id).toBe(2)
+    expect(v.ff_uitgevoerd).toBe(false)
   })
 })
 

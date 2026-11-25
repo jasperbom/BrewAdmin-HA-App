@@ -70,6 +70,7 @@ BrewAdmin-HA-App/
 │   │   │                           # op `ingredienten` (dan geen knop). Ingangen: etiketkaart, Wat brouw je?, recept,
 │   │   │                           # HACCP › Allergenen
 │   │   ├── BatchRapportExport.tsx  # Batchdossier → print-HTML / printvenster / PDF-download
+│   │   ├── KratkaartExport.tsx     # Kratkaart (utils/kratkaart.ts): vier per A4 via `openPrint`
 │   │   └── PakbonExport.tsx        # Pakbon, picklijst, factuur, herinnering. Deelt
 │   │                               # `DOC_CSS`/`esc`/`breweryBlock`/`openPrint` met het dossier.
 │   │                               # De picklijst drukt de pakbonnen voor in de doos mee
@@ -82,12 +83,18 @@ BrewAdmin-HA-App/
 │   │                               # batch op de pakbon staan en de pickmodal al ingevuld is; pas
 │   │                               # bewaren als het printvenster openging
 │   │   ├── batch/                  # De batchpagina in delen: BatchKop + KetenRegel (Recept › Product ›
-│   │   │                           # Tank), EtiketKaart (etiket & website; modi batch/product/recept),
+│   │   │                           # Tank), KernKaart (bovenaan Vergisten en Conditioneren: per grootheid
+│   │   │                           # een tegel — SG, temperatuur, druk, pH — met meting en doel, en die tegel
+│   │   │                           # is de knop van zijn lijn in de grafiek ernaast; utils/batchKerncijfers.ts
+│   │   │                           # + utils/grafiekLijnen.ts), EtiketKaart (etiket &
+│   │   │                           # website; modi batch/product/recept; op de batch `inklapbaar`: één regel),
 │   │   │                           # EtiketBijwerken (de énige schrijfweg voor het etiket, overal te openen
 │   │   │                           # met `useEtiketBijwerken()?.open({productId, batchId?})`; bovenaan
 │   │   │                           # EtiketVoorschriftLijst: "Zet dit op het etiket"), AbvVastzetten,
 │   │   │                           # NieuweBatchBlad ("Wat brouw je?", overal via `useNieuweBatch()?.open(…)`),
-│   │   │                           # MetingBlad, AfvulSessieSectie (CCP 2/3), useProductKoppeling, FaseKop
+│   │   │                           # MetingBlad, AfvulSessieSectie (CCP 2/3; ook "Houdtest en vrijgave voor
+│   │   │                           # verkoop" = HoudtestSectie, en "Etiketteren (CCP 3)" per lotcode na de
+│   │   │                           # vrijgave), useProductKoppeling, FaseKop
 │   │   │                           # (bureau: compacte stappenbalk; telefoon: "Fase 4 van 6" met een lijst),
 │   │   │                           # BrouwlogSectie (vinkje "Op de brouwlog", publieke notitie, wat er publiek komt)
 │   │   ├── brouwzaal/              # Brouwzaal: TankKaart (één knop = `volgendeStap`), LegeTank, AndereBatches
@@ -187,7 +194,7 @@ BrewAdmin-HA-App/
 │   │   │                   # `abvBalling`, + suiker na de kook), `energiePer100ml` (kcal én kJ), `abvMarge`,
 │   │   │                   # `vergelijkEtiket`/`etiketStatus`, `allergeenRegel` ("Bevat: …"),
 │   │   │                   # `referentieBatch`, `productEtiketWaarden`, `legEtiketVast` (énige schrijfweg),
-│   │   │                   # `volgendeEtiketVersie`, `websiteLooptAchter`, `webshopBevatRegel`,
+│   │   │                   # `websiteLooptAchter`, `webshopBevatRegel`,
 │   │   │                   # `etiketVoorschrift` (wat er op het etiket moet: per verplicht onderdeel de tekst,
 │   │   │                   # de stand t.o.v. het vastgelegde etiket en de uitleg; vrijwillig: energie en de
 │   │   │                   # ingrediëntenlijst met `ingredientenMetNadruk`) en `allergeenKeuzeTegenBatch`
@@ -239,6 +246,17 @@ BrewAdmin-HA-App/
 │   │   ├── detailTitel.ts  # Kopbalktitel op een detailscherm ("Kadeblond #2609", receptnaam, WC-4321)
 │   │   ├── brouwzaal.ts    # De brouwzaal: tankrijen, andere batches, komende 14 dagen
 │   │   ├── batchActieBalk.ts # De stap van de fase in de ActieBalk van de batch (telefoon)
+│   │   ├── batchKerncijfers.ts # De kerncijfers bovenaan de batch: laatste SG, vergist %, temperatuur
+│   │   │                   # (sensor, anders de laatste meting) tegen het doel, druk in de tank (`haTankDruk`
+│   │   │                   # in App.tsx: de druksensoren elke minuut, in bar), alcohol tot nu (Balling);
+│   │   │                   # een cijfer zonder meting komt niet mee. Verlies, Tank verplaatsen en
+│   │   │                   # Afgekeurd bier staan op de batchpagina alleen als er iets is, anders onder ⋯
+│   │   ├── grafiekLijnen.ts # De lijnen in de vergistingsgrafiek per grootheid, elk met zijn doel (SG met OG
+│   │   │                   # en FG, temperatuur + setpoint, druk + doeldruk, pH); de tegels van KernKaart zijn de
+│   │   │                   # knoppen, alleen een grootheid met gegevens is aan/uit te zetten; doorgetrokken =
+│   │   │                   # gemeten, gestippeld = doel; setpoint = wat de server bij de automatische meting van de koeling las,
+│   │   │                   # anders het doel van nu (schema/cold crash) vanaf zijn startmoment — nooit een gok
+│   │   │                   # over het verleden; doeldruk = de carbonatiesessies; uitgezet = localStorage
 │   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
 │   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
 │   │   ├── kostensoortHerindeling.ts # De kostensoort van inkoopregels achteraf anders ("Overig" →
@@ -269,8 +287,50 @@ BrewAdmin-HA-App/
 │   │   │                   # haalt: opslagvorm (`ha_instellingen.ruimteklimaat`), defaults
 │   │   │                   # (= `_RUIMTEKLIMAAT_DEFAULTS`, pytest bewaakt het) en de statusteksten. De
 │   │   │                   # regeling zelf zit in server.py (`_ruimteklimaat_tick`), zie "Home Assistant"
-│   │   ├── haccp.ts        # Kritische beheerspunten CCP 1/2/3: risicoklasse, stabiliteit, vrijgave-oordeel, sluitcontrole, allergenenvergelijking, afwijkingen
-│   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch>-B<n>, THT per klasse, sessie-blokkades
+│   │   ├── haccp.ts        # Kritische beheerspunten CCP 1/2/3: CCP 1 = één regel (`beoordeelCcp1`: forceertest +
+│   │   │                   # twee handmatige tankmetingen ≥ `stabiel_min_uur` uit elkaar, `bouwVrijgave` bevriest ze;
+│   │   │                   # geen risicoklasse/drukproef/smaakoordeel meer), risicoklasse (alleen nog voor de THT),
+│   │   │                   # sluitcontrole, allergenenvergelijking, afwijkingen. CCP 2 per verpakking (`ccp2Voor`:
+│   │   │                   # fles = `lege_flessen` — één inspectie per sessie, `beoordeelFlesinspectie` —, blik =
+│   │   │                   # sluitcontrole, fust = geen; bevroren op de sessie, `sessieCcp2`: zonder = sluitcontrole)
+│   │   │                   # en het koolzuur bij het afvullen (`co2VanToepassing`/`beoordeelCo2`, alleen flessen,
+│   │   │                   # `fmtCo2` in de notatie van de taal; volumes uit `carbVolumes` in calculations.ts)
+│   │   ├── afvulsessie.ts  # Afvulsessie: lotcode L<batch> (tweede afvulmoment L<batch>-B2; oude codes
+│   │   │                   # L<batch>-B1 blijven), THT per klasse, sessie-blokkades per soort CCP 2,
+│   │   │                   # `vorigeLots` (flessen-/kroonkurkenlot uit de vorige sessie — nooit gegokt)
+│   │   ├── houdtest.ts     # Quarantaine, houdtest en vrijgave voor verkoop (1.13.52): de sessie bevriest
+│   │   │                   # `houdtest_dagen` + `etiketteren` (`sessieQuarantaine` in haccp.ts); een afvulling
+│   │   │                   # krijgt `in_quarantaine`/`etiket_volgt` (`afvulVlaggen`, in `boekAfvulling`) en is
+│   │   │                   # dan niet verkoopbaar — via `afvullingVerkoopbaar`/`afvullingNietVrij` in haccp.ts,
+│   │   │                   # dus kassa, picks, webshopvoorraad en uitslag volgen vanzelf. `houdtestVoorBatch`
+│   │   │                   # (stand per batch, de laatste beoordeling telt), `beoordeelHoudtest` (te vroeg,
+│   │   │                   # SG-daling > `houdtest_sg_marge` = nagisting, druk, smaak), `bouwVerkoopVrijgave`,
+│   │   │                   # `naVerkoopVrijgave` (vrijgegeven = quarantaine eraf, afgekeurd = geblokkeerd),
+│   │   │                   # `naEtiketControle`, `teEtiketteren`, `houdtestAanDeBeurt` (attentiepost)
+│   │   ├── reinigingsmiddelen.ts # Reinigen en desinfecteren (1.13.56): de middelen van de brouwerij
+│   │   │                   # (`reinigingsmiddelen`; geen merken in de code), `ctgbOordeel` (alleen een
+│   │   │                   # desinfectiemiddel heeft een Ctgb-toelating nodig; ontbreekt/verlopen = niet te kiezen,
+│   │   │                   # `middelBruikbaar`; binnen `CTGB_WAARSCHUW_DAGEN` = aandachtspunt `middel_ctgb`),
+│   │   │                   # `doseringTekst`, `beoordeelConcentratie`, `beoordeelNaspoelPh` (pH = leidingwater ± 0,5),
+│   │   │                   # `retourOordeel` (langste aaneengesloten periode ≥ grens uit de HA-geschiedenis; een
+│   │   │                   # gat > 10 min breekt hem), en de stappen van een reiniging: `vorigeStappen` (de
+│   │   │                   # middelen van de vorige keer voor dezelfde tank/taak), `laatstePhLeiding`, `bouwStap`
+│   │   │                   # (bevroren op het record), `stapAfwijkingen`, `desinfectieBewijs`, `retourSensorVoorTank`.
+│   │   │                   # UI: components/haccp/MiddelenLijst.tsx, ReinigingStappen.tsx (in TankReinigingForm en het
+│   │   │                   # schoonmaaklogboek; zonder middelenlijst blijft het vrije veld "Middel")
+│   │   ├── incident.ts     # "Er is iets mis" (1.13.55): klacht of incident bij een batch, volgens de procedure
+│   │   │                   # "Traceerbaarheid, klachten en terugroepen". Kwaliteit = vastleggen en afhandelen;
+│   │   │                   # veiligheid = in één handeling de afvullingen van die lotcodes blokkeren
+│   │   │                   # (`blokkeerVoorIncident`: `geblokkeerd_reden: 'incident'` + `geblokkeerd_incident_id`;
+│   │   │                   # een andere reden blijft staan) en de klok starten: `nvwaStand` (binnen
+│   │   │                   # `NVWA_TERMIJN_UUR` = 4 uur na `ontdekt_op`). Afnemers via `traceBatch` (trace.ts),
+│   │   │                   # waarschuwingsmail (`waarschuwingMail`, `waarschuwingMailto`: afnemers in Bcc, opent in
+│   │   │                   # het eigen mailprogramma — nooit vanzelf), `incidentStappen`, `afsluitBlokkade` (oorzaak;
+│   │   │                   # veiligheid ook de NVWA-melding), `sluitIncident`; onterecht = `deblokkeerIncident`
+│   │   │                   # (alleen wat dít incident blokkeerde). `nvwaNogMelden` = de chip in "Nu actief".
+│   │   │                   # UI: components/batch/Incident.tsx (`IncidentBlad`, `IncidentKaart`, `IncidentLijst`)
+│   │   ├── kratkaart.ts    # De kratkaart: lotcode, bier, verpakking, aantal, afvuldag, THT, quarantaine tot
+│   │   │                   # en "etiket volgt" — zolang het bier in quarantaine staat of nog geen etiket heeft
 │   │   ├── agp.ts          # Verplaatsen/uitslaan uit de AGP (verplaatsing + accijns), uitslag op
 │   │   │                   # productniveau (FEFO) en `bouwUitslagBoekingen` (gedeeld door kassa en
 │   │   │                   # bestellingen); `verkoopUitAgpToegestaan` = de regel "verkoop nooit
@@ -632,6 +692,13 @@ BrewAdmin-HA-App/
 │   │   ├── etiketScan.ts   # Etiketfoto's (meer foto's per regel, één verzoek) → lotnummer(s), THT, eigenschappen;
 │   │   │                   # `pasEtiketToe` (invoer van de gebruiker blijft staan), `lotsVoorRegel` (hoeveelheid
 │   │   │                   # verdelen over de lots), `etiketVoorLot` (bestaand lot), `productKlopt`
+│   │   ├── etiketCheck.ts  # CCP 3: de foto van het gedrukte etiket laten nalezen (1.13.54). Claude léést alleen
+│   │   │                   # (lotcode, THT, alcohol, allergenen; krijgt níét te horen wat er moet staan), de app
+│   │   │                   # vergelijkt (`beoordeelEtiketLezing`: lotcode zonder L/Lot, THT op de dag of de maand,
+│   │   │                   # alcohol binnen `abvMarge` van de batch, allergenen tegen de receptuur — gluten gedekt
+│   │   │                   # door de graansoort; niet op de foto = `niet_gezien`, nooit ✕). `aiCheckRecord` →
+│   │   │                   # `EtiketControle.ai_check`, `aiCheckSamenvatting` voor het dossier. UI:
+│   │   │                   # `components/batch/EtiketAiCheck.tsx` (`useEtiketAi`, `AiPunt`, `AiStatus`)
 │   │   ├── scanGeheugen.ts # Het scangeheugen (`scan_correcties`): per leverancier + artikelnummer of omschrijving
 │   │   │                   # hoe een regel geboekt is; geleerd bij elk opslaan (`koppelingenUitRegels`)
 │   │   ├── allergeenOpzoeken.ts # Allergenen van ingrediënten opzoeken: eerst vaste brouwkennis
@@ -867,8 +934,11 @@ stand, datums voluit, gegevens in delen, betaallink, CSS-veilige paginavoet, let
 app), de Excel-backup-round-trip, de
 tanktemperatuurbewaking (incl. het werkelijke setpoint van
 de koeling) en de HACCP-beheerspunten
-(risicoclassificatie, stabiliteit, vrijgave-oordeel, sluitcontrole,
-allergenenvergelijking, lotcode en THT), de traceerbaarheid
+(risicoclassificatie, CCP 1 met forceertest en het stabiele paar, sluitcontrole,
+allergenenvergelijking, lotcode en THT; de afvuldag in `afvuldag.test.ts`: koolzuur uit druk en
+temperatuur, CCP 2 per verpakking, afsluiten per soort, de koolzuurgrens, de lots; quarantaine en houdtest in
+`houdtest.test.ts`: de stand per batch, de beoordeling, de vlaggen op de afvullingen, etiketteren na de
+vrijgave, de kratkaart), de traceerbaarheid
 (één stap terug/vooruit, massabalans, traceergaten, oefeningstatus) en de
 conflict-samenvoeging (`merge.ts` + het 409-pad van `api.ts`), de hash-routing
 van de schil (`route.ts`), het themacontrast (`kleurContrast.ts`, alle zeven
@@ -885,6 +955,18 @@ factuur- en etiketscan (schema's binnen de grenzen van gestructureerde
 uitvoer, opschonen, toepassen zonder invoer van de gebruiker te overschrijven),
 het scangeheugen, de totaal- en dubbelecontrole, de foto-omzetting
 (`afbeelding.ts`) en de regel-zoeker in de PDF (`pdfZoek.ts`).
+Reinigen (`reinigingsmiddelen.test.ts`): de Ctgb-stand en wat bruikbaar is, dosering,
+concentratie, pH van het naspoelwater, de retourtemperatuur uit de sensorgeschiedenis (gat
+breekt de periode), de stappen (vorige keer, pH van het leidingwater, oordelen, bewijs van
+desinfectie) en de retoursensor per tank; pytest `TestHaGeschiedenis` (venster, reeks, de route).
+"Er is iets mis" (`incident.test.ts`): de 4-uursklok (open, te laat, gemeld, op tijd),
+blokkeren en opheffen (een andere blokkade blijft staan), de waarschuwingsmail in vijf
+talen met de afnemers in Bcc, de stappen en wanneer het dicht mag, en `traceBatch`
+(alleen deze batch en lotcodes); de attentiepost in `attentie.test.ts`.
+De AI-controle van het bieretiket (`etiketCheck.test.ts`): schema zonder null en
+zonder wat er moet staan in de prompt, opschonen, lotcode met of zonder L/Lot,
+THT op dag of maand, alcohol in de wettelijke marge, allergenen met gluten via de
+graansoort, niet op de foto ≠ fout, en het record op de etiketcontrole.
 Het opzoeken van allergenen (`allergeenOpzoeken.test.ts`): de vaste regels (mout,
 graansoorten in vijf talen, glutenvrij graan, melkzuur/nootmuskaat/kokos,
 plantaardige melk, suiker, wat onzeker blijft), de gluten-conventie, het schema
@@ -920,9 +1002,17 @@ van het ⋯-menu (`menuPositie.test.ts`) en
 beslissingen + attentie (`beslissingen.test.ts`, `attentie.test.ts`:
 werkruimte-badge = aantal dashboardrijen = som van de menubadges, één rij per
 BTW-periode en per accijnsmaand).
+De lijnen van de vergistingsgrafiek (`grafiekLijnen.test.ts`: setpoint uit de metingen of het doel
+van nu, doeldruk per carbonatiesessie, per grootheid meting of doel, de trap van nu, de bewaarde keuze); in pytest
+`TestAutoMetingenUitdunnen`: druk (psi → bar) en een vers setpoint op de automatische meting, een tank met
+alleen een druksensor, geen oud setpoint.
+De kerncijfers van de batch (`batchKerncijfers.test.ts`: de laatste meting, vergist begrensd,
+alcohol tot nu, sensor of meting, niets gemeten = geen kaart) en de afvulchecklist zonder wat de app
+zelf vastlegt (`taken.test.ts`, `deactiveerZelfVastgelegd`: uitzetten, niet verwijderen; eigen tekst
+blijft; de sluiting blijft).
 Ook de keten en het etiket (opzet Productie & Verkoop): `etiket.ts` (Balling-ABV,
 energie in kcal/kJ met vaste testwaarden 1.050/1.010 → 46/194 … 1.090/1.018 →
-85/354, de ABV-marge, Bevat-regel, versie-ophoging, `legEtiketVast`),
+85/354, de ABV-marge, Bevat-regel, `legEtiketVast`),
 `productKeten.ts`, `batchKeten.ts`, `receptNaarBatch.ts` (karakteriseringstests
 op het oude gedrag), `receptGebruik.ts`/`receptLijst.ts`, `verkoopOverzicht.ts`
 (ook: dezelfde "vrij" als de kassa), `volgendeStap.ts`, `nieuweBatch.ts`,
@@ -961,7 +1051,7 @@ key-/upload-validatie, schemavalidatie (422), append-only-guard (422),
 optimistic locking (409), atomaire commits, atomaire nummerreeksen (ook
 onder parallelle clients), rate-limiting (429), secrets-maskering, de
 server-audit, de SQLite-opslaglaag (WAL, JSON-migratie, backup-export), de
-HACCP-sluitcontrole-herinnering, de WooCommerce-ordercontrole (`_wc_orders_tick`:
+HACCP-sluitcontrole-herinnering (zwijgt bij een sessie met lege flessen of zonder CCP 2), de WooCommerce-ordercontrole (`_wc_orders_tick`:
 nieuwe webshoporders eenmalig melden, `wc_import_status` alleen bij verandering
 schrijven, de import-lease van de app ongemoeid laten), de website-telemetrie
 (het bericht: schakelaars, lege tanks, sensorstatus, temperatuurleeftijd,
@@ -1419,15 +1509,20 @@ website hoort (zie `docs/OPZET-PRODUCTIE-VERKOOP.md` hoofdstuk 5). Regels:
   nooit kJ = kcal × 4,184. Op het product staat energie alleen vast bij
   `energie_op_etiket === 'vermeld'`; anders volgt de website de afleiding.
   IBU is "berekend (Tinseth)", EBC "recept, niet gemeten" — nooit "gemeten".
-- **Het etiket schrijf je op één plek.** `product.allergenen` en
-  `etiket_versie` veranderen alleen via `legEtiketVast`, aangeroepen door de
-  dialoog `EtiketBijwerken` (`useEtiketBijwerken()?.open(…)`). Wijzigen
-  allergenen of ABV, dan is een nieuwe versie verplicht. De HACCP-matrix is
-  alleen-lezen. Nooit allergenen voorvinken vanuit de batch, nergens "neem
-  over" — CCP 3 blijft een onafhankelijke controle: het veld etiketversie
-  begint leeg ("verwacht: v4" als tekst), en nieuwe EtiketControle-records
-  bevriezen `etiket_versie_gelezen`/`_verwacht`, `abv_batch`,
-  `abv_etiket_verwacht` en `abv_marge`. Gluten wordt niet genormaliseerd
+- **Het etiket schrijf je op één plek.** `product.allergenen` en de
+  getallen veranderen alleen via `legEtiketVast`, aangeroepen door de
+  dialoog `EtiketBijwerken` (`useEtiketBijwerken()?.open(…)`). De HACCP-matrix
+  is alleen-lezen. Nooit allergenen voorvinken vanuit de batch, nergens "neem
+  over" — CCP 3 blijft een onafhankelijke controle; nieuwe
+  EtiketControle-records bevriezen `abv_batch`, `abv_etiket_verwacht` en
+  `abv_marge`.
+- **Geen etiketversie (1.13.53, blijvend).** Het etiket wordt per batch
+  opnieuw gedrukt: of het klopt, toetst CCP 3 aan de inhoud (allergenen,
+  alcohol, lotcode, THT). `etiket_bijgewerkt` (datum) is wanneer het etiket
+  voor het laatst is vastgelegd — `legEtiketVast` zet hem als allergenen,
+  alcohol of energie veranderen, niet bij IBU/EBC (alleen de website). Oude
+  velden (`product.etiket_versie`, `etiket_versie_gelezen`/`_verwacht` op een
+  EtiketControle) blijven in de data staan, maar niets leest ze nog. Gluten wordt niet genormaliseerd
   (gelijk aan CCP 3: een etiket met alleen "gerst" bij ingrediënten met
   "gluten" is rood).
 - **Allergenen via het lot**: geef `lots` mee aan `allergenenUitBatch` /
@@ -1460,10 +1555,18 @@ website hoort (zie `docs/OPZET-PRODUCTIE-VERKOOP.md` hoofdstuk 5). Regels:
   (nooit stil een batchwaarde). Bij elke push en pull bewaart de app de
   `_cf_`-meta als `wc.meta_stand` + `meta_stand_op` op het artikel; "website
   loopt achter" vergelijkt die stand met het product, nooit met de batch. De
-  Bevat-regel (vereniging van de etiketversies die nog op voorraad liggen,
+  Bevat-regel (vereniging van het huidige etiket en de etiketten van de lots
+  die nog op voorraad liggen,
   `webshopBevatRegel`) gaat als laatste zin achter `_cf_ingredienten` en gaat er
   bij een pull weer af. Nooit automatisch pushen; nooit prijs of voorraad in de
   etiketstap.
+- **AI-controle van het gedrukte etiket (CCP 3, 1.13.54).** Met een
+  Claude-sleutel is de foto bij CCP 3 eerst aan de beurt en de knop blijft uit
+  tot hij er is en gelezen is; ziet de AI een verschil, dan vraagt de knop om
+  bevestiging en het record krijgt `toch_vastgelegd`. Een mislukte lezing houdt
+  niets tegen (de fout gaat mee op het record). Achteraf registreren: foto
+  vrijwillig, wel nagelezen. De vinkjes worden nooit vanuit de AI gezet —
+  CCP 3 blijft een controle van een mens; de AI is het tweede paar ogen.
 
 ---
 
@@ -1609,11 +1712,11 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 |-----|------|--------|
 | `ingredienten` | array | Ingrediënten. `allergenen` (ontbrekend = niet beoordeeld, `[]` = geen) met `allergenen_bron` (`regel`/`claude`/`handmatig`), `allergenen_toelichting` en `allergenen_model` (bij `claude`) — gezet door *Allergenen opzoeken* of de matrix (`handmatigBeoordeeld`) |
 | `lots` | array | Ingrediëntlots (voorraadeenheden). `etiket_fotos: [{naam, bestand}]` = foto's van het etiket (bewijs bij een controle of terugroepactie); een inkoopregel met meer lotnummers geeft elk lot dezelfde foto's. `_bijlage_in_gebruik` houdt zo'n bestand vast |
-| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). Brewfather: `brewfather_id`/`brewfather_batch_nummer`, `bf_verweesd` (datum waarop Brewfather de batch niet meer kende); bij lezen `bf_stand` (per veld de laatst overgenomen waarde, een schema als hash) en `bf_verschil` (waarden waarin Brewfather afwijkt van een hier aangepaste waarde) — `utils/bfBatchSync.ts`; bij schrijven `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht) en `bf_fout` (`{op, melding}` van de laatste mislukte poging) — `utils/bfTerugschrijven.ts`. Brouwlog: `brouwlog_publiek` (alleen een echte `true` telt: deze batch gaat naar /brouwlog/ van de webshop) `brouwlog_notitie` (publieke tekst, max 600 tekens — los van `notities`/`batch_notities`, die intern blijven) en `brouwlog_artikel` (het webshopartikel voor naam en link: een `product_artikelen`-id, `'geen'` = geen link, leeg = automatisch); eigen velden die Brewfather-sync, receptsync en "opnieuw toepassen" niet aanraken. `brouwplan` (`BrouwPlan`): hoe de batch bij het plannen naar zijn tank is omgerekend (`geschaald`, liters recept/plan, factoren, rendementen, tank) — de brouwdagwizard leest er de doel-liters uit |
-| `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_versie`, `etiket_bijgewerkt`, `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
+| `batches` | array | Brouwbatches. `recept_id` = hoofdrecept, `recept_versie_id` = gekozen Brewfather-versie, `product_id`/`product_ids`, `ABV` + `abv_definitief`/`abv_bron` (vastgezet vóór de eerste afvulsessie). CCP 1: `ff_sg` + `ff_op` = de forceertest (eigen velden, de syncs raken ze niet aan). Brewfather: `brewfather_id`/`brewfather_batch_nummer`, `bf_verweesd` (datum waarop Brewfather de batch niet meer kende); bij lezen `bf_stand` (per veld de laatst overgenomen waarde, een schema als hash) en `bf_verschil` (waarden waarin Brewfather afwijkt van een hier aangepaste waarde) — `utils/bfBatchSync.ts`; bij schrijven `bf_gepusht` (`{sleutel, op}` — het laatst verstuurde bericht) en `bf_fout` (`{op, melding}` van de laatste mislukte poging) — `utils/bfTerugschrijven.ts`. Brouwlog: `brouwlog_publiek` (alleen een echte `true` telt: deze batch gaat naar /brouwlog/ van de webshop) `brouwlog_notitie` (publieke tekst, max 600 tekens — los van `notities`/`batch_notities`, die intern blijven) en `brouwlog_artikel` (het webshopartikel voor naam en link: een `product_artikelen`-id, `'geen'` = geen link, leeg = automatisch); eigen velden die Brewfather-sync, receptsync en "opnieuw toepassen" niet aanraken. `brouwplan` (`BrouwPlan`): hoe de batch bij het plannen naar zijn tank is omgerekend (`geschaald`, liters recept/plan, factoren, rendementen, tank) — de brouwdagwizard leest er de doel-liters uit |
+| `producten` | array | Verkoopbare producten (bieren): naam, stijl, `status` (`actief`/`gearchiveerd`), `uit_roulatie`, `recept_ids`, `recept_huidig_id` (vastgezet huidig recept; leeg = afgeleid), de etiketgegevens (`allergenen` — ontbrekend ≠ `[]` —, `etiket_bijgewerkt` (datum van het laatst vastgelegde etiket; een oud `etiket_versie` wordt niet meer gelezen), `abv`, `ibu`, `ebc`, `kcal`/`kj` + `energie_op_etiket`; alleen via `legEtiketVast`) en de bierinformatie (`utils/bierinfo.ts`) |
 | `product_artikelen` | array | Artikel per product + verpakking: SKU, EAN, prijzen, BTW, `wc` (WooCommerce-productkaart, incl. `meta_stand`/`meta_stand_op` = de `_cf_`-meta bij de laatste push/pull en `voorraad_gepusht`/`voorraad_gepusht_op` = de voorraad bij de laatste push en `winkel_stand` = `{status, afbeeldingen}` zoals de winkel ze bij het laatste contact had — ook op `merch_artikelen` en de oude `artikelen`) |
 | `batch_ingredienten` | array | Koppelingen batch ↔ ingredient |
-| `afvullingen` | array | Afvullingen / releases |
+| `afvullingen` | array | Afvullingen / releases. `geblokkeerd` (CCP 2 of een afgekeurde houdtest), `in_quarantaine` (tot de vrijgave voor verkoop) en `etiket_volgt` (vrijgegeven, etiket nog niet gecontroleerd) maken een afvulling niet verkoopbaar — `utils/houdtest.ts` zet en wist de laatste twee |
 | `uitslagen` | array | Biervoorraaduitslagen |
 | `accijns` | array | Accijnsrecords |
 | `verpakkingen` | array | Verpakkingstypen |
@@ -1633,20 +1736,23 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `hygiene_items` | array | *(legacy)* Hygiëne-controleitems — gemigreerd naar `batch_taken_items` |
 | `hygiene_groups` | array | *(legacy)* Hygiëne-groepen — gemigreerd naar `batch_taken_groepen` |
 | `haccp_schoonmaak_taken` | array | Schoonmaakschema (object, frequentie, middel) |
-| `haccp_schoonmaak_log` | array | Uitgevoerde reiniging/desinfectie |
+| `haccp_schoonmaak_log` | array | Uitgevoerde reiniging/desinfectie. `stappen` (1.13.56, ook op `tank_reinigingslog`) = per middel `{middel_id, middel, soort, ctgb_nummer?, concentratie_pct?, concentratie_oordeel?, ph_naspoel?, ph_leiding?, naspoel_oordeel?, retour?: {bron: sensor\|handmatig, entity?, drempel, minuten, minuten_boven, max, van, tot, gehaald}}`, bevroren bij het vastleggen; `middel` blijft de namen als tekst |
+| `reinigingsmiddelen` | array | De reinigings- en desinfectiemiddelen van de brouwerij (1.13.56, `utils/reinigingsmiddelen.ts`): `{id, naam, soort: alkalisch\|zuur\|desinfectie\|thermisch\|overig, waarvoor?, ctgb_nummer?, ctgb_geldig_tot?, onverdund?, dosering_min_pct?, dosering_max_pct?, temp_min_c?, temp_max_c?, contacttijd_min?, naspoelen, gearchiveerd?}`. HACCP › Reiniging › Middelen. Gedeelde key (wie reinigt mag hem bijwerken); in de Excel-backup (`Reinigingsmiddelen`) |
 | `haccp_ccp_definities` | array | *(legacy)* Generieke CCP-definities — gemigreerd naar `batch_taken_items` (`type: 'meting'`) en sinds opschoning v4 uitgezet: de kritische beheerspunten zijn CCP 1/2/3 |
 | `haccp_ccp_metingen` | array | *(legacy)* Metingen op die definities, met limietcheck en automatische CAPA. Sinds het verwijderen van de oude Batches-pagina (1.12.42) nergens meer zichtbaar of registreerbaar; de data blijft in de database en de Excel-backup |
 | `haccp_capa` | array | Corrigerende en preventieve maatregelen |
 | `haccp_waterkwaliteit` | array | Watermonsters tappunt brouwerij |
 | `haccp_ongedierte` | array | Ongediertecontroles en -waarnemingen |
 | `haccp_opleidingen` | array | Opleidings- en instructieregister |
-| `haccp_vrijgaven` | array | **CCP 1** — vrijgave voor afvullen per batch: stabiliteitstoets, forced fermentation, sensorisch oordeel. Server-side append-only; correctie via een nieuwe registratie met `vervangt_id`. Zonder vrijgegeven registratie kan er niet afgevuld worden |
-| `afvul_sessies` | array | Afvulsessie met lotcode `L<batchnr>-B<n>` (bijv. `L2431-B1`) en berekende THT; anker voor CCP 2 en CCP 3. Bewust **niet** append-only: een sessie wordt afgesloten |
-| `haccp_sluitcontroles` | array | **CCP 2** — sluitcontroles per sessie (visueel + omkeerproef). Append-only. Bij afkeur worden de afvullingen sinds de laatste goedkeuring geblokkeerd |
-| `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket. Nieuwe records bevriezen ook `etiket_versie_gelezen`/`_verwacht`, `abv_batch`, `abv_etiket_verwacht`, `abv_marge`. Append-only |
+| `haccp_vrijgaven` | array | **CCP 1** — vrijgave vóór koelen per batch (sinds 1.13.50 aan het eind van Vergisten, `renderCcp1` in BatchFlowPage; nog open in Conditioneren = bovenaan die fase, `volgendeStap` geeft dan eerst `vrijgave`; afvullen blijft geblokkeerd zonder). Vanaf 1.13.49 `methode: 'ff_paar'`: forceertest (`ff_dichtheid_ff`) tegen de laatste tankmeting, en de twee bevroren tankmetingen (`tank_sg_1`/`_op`, `tank_sg_2`/`_op`, `stabiel_uren`, `stabiel_verschil`) met de grenzen van dat moment; alleen `vrijgegeven` wordt nog vastgelegd (`oordeel_voorgesteld` = wat de regel zei, rood alleen met een afwijking). Oudere records (risicoklasse, dagen stabiel, drukproef, smaakoordeel) blijven geldig en leesbaar. Server-side append-only; correctie via een nieuwe registratie met `vervangt_id`. Zonder vrijgegeven registratie kan er niet afgevuld worden |
+| `afvul_sessies` | array | Afvulsessie met lotcode `L<batchnr>` (bijv. `L2431`; een tweede afvulmoment van dezelfde batch `L2431-B2`; sessies van vóór 1.13.49 heten `L2431-B1` en veranderen nooit) en berekende THT; anker voor CCP 2 en CCP 3. `ccp2` = de soort CCP 2 (`lege_flessen`/`sluitcontrole`/`geen`, bevroren bij het starten; ontbreekt = sluitcontrole). De afvuldag (1.13.51): `co2_druk_bar`/`co2_temp_c`/`co2_volumes`/`co2_max`/`co2_bron` (`sensor`/`handmatig`) + `co2_afwijking_id` boven de grens, `sg_afvullen`, `flessenlot`/`kroonkurkenlot`, `klapflessen: {aantal, vernietigd, gereinigd}`. Quarantaine (1.13.52): `houdtest_dagen`, `houdtest_flessen` (twee warm, twee koel; één sessie per batch) en `etiketteren` (`na_vrijgave` = de sessie sluit zonder CCP 3). Bewust **niet** append-only: een sessie wordt afgesloten |
+| `haccp_sluitcontroles` | array | **CCP 2** — sluitcontroles per sessie (visueel + omkeerproef), of bij flessen één inspectie van de lege flessen (`methode: 'lege_flessen'`, `afgekeurd_aantal`). Append-only. Bij afkeur worden de afvullingen sinds de laatste goedkeuring geblokkeerd |
+| `haccp_etiketcontroles` | array | **CCP 3** — etiketcontrole per sessie met blokkerende allergenenvergelijking recept ↔ etiket, met een foto van het etiket in `bijlagen` (`_bijlage_in_gebruik` houdt hem vast). Nieuwe records bevriezen ook `abv_batch`, `abv_etiket_verwacht`, `abv_marge` (oude records kunnen `etiket_versie_gelezen`/`_verwacht` dragen; die worden niet meer getoond). `ai_check` (1.13.54) = wat de AI op de etiketfoto las en hoe dat uitviel (`{op, model, lezing, oordeel: {lotcode, tht, alcohol, allergenen}, toch_vastgelegd?, fout?}`, `utils/etiketCheck.ts`). Append-only |
 | `haccp_afwijkingen` | array | Expliciete afwijkingsregistraties: de enige manier om langs een harde CCP-blokkade te komen, altijd met onderbouwing + CAPA. Append-only |
+| `haccp_verkoopvrijgaven` | array | **Houdtest en vrijgave voor verkoop** (1.13.52) per batch: `{id, batch_id, datum, afgevuld_op, houdtest_dagen, sg_afvullen, sg_warm, sg_verschil, sg_marge, druk_ok, smaak_ok, oordeel: vrijgegeven\|afgekeurd, oordeel_voorgesteld, afwijking_id?, opmerking?, paraaf}`. De laatste beoordeling telt. Append-only, in de Excel-backup (`HACCPVerkoopVrijgaven`) |
+| `haccp_incidenten` | array | **"Er is iets mis"** (1.13.55, `utils/incident.ts`): klachten en incidenten per batch — `{id, batch_id, sessie_ids, lotcodes, soort: kwaliteit\|veiligheid, gevaar?, bron, melder?, klant_id?, omschrijving, ontdekt_op (start van de 4-uursklok), bewaarfles?, afhandeling?, geblokkeerd_op?, nvwa_gemeld_op?, nvwa_kenmerk?, afnemers_gewaarschuwd_op?, oorzaak?, maatregel?, onterecht?, status: open\|afgesloten, afgesloten_op?, paraaf, afgesloten_paraaf?}`. Kwaliteit is bij het vastleggen afgesloten; veiligheid blokkeert de afvullingen van die lotcodes (`geblokkeerd_reden: 'incident'`) en blijft open tot oorzaak + NVWA-melding. Bewust **niet** append-only (het loopt door tot het dicht is; de serveraudit legt elke wijziging vast), gedeelde key (productie mag schrijven). Attentiepost `incident` (rood zolang de NVWA niet gemeld is) en een chip in "Nu actief". In de Excel-backup (`HACCPIncidenten`) |
 | `haccp_trace_oefeningen` | array | **Traceeroefeningen** (hoofdstuk 11): periodieke mock recall met bevroren omvang (lotcodes, afnemers), massabalans, traceergaten, doorlooptijd en conclusie. Append-only — een tegenvallende oefening mag niet achteraf bijgesteld worden |
-| `haccp_instellingen` | object | Kritische grenzen uit het handboek: stabiliteitsdagen, forced-fermentation-marge, THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |
+| `haccp_instellingen` | object | Kritische grenzen uit het handboek: CCP 1 (`stabiel_min_uur` = 48, `stabiel_tolerantie_sg` = 0,001, `ff_marge_sg` = 0,002; oude `stabiel_dagen_*` worden genegeerd), `co2_max_volumes` (2,7; 0 = niet toetsen) en `ccp2_fles` (`lege_flessen`/`sluitcontrole`), `houdtest_dagen` (14; 0 = geen quarantaine), `houdtest_sg_marge` (0,002), `etiketteren` (`afvullen`/`na_vrijgave`), THT-maanden per klasse, halfuurinterval sluitcontrole, traceeroefening-interval/-maximumduur/-normpercentage. **Beheer-only** — beleid, geen werkinstelling |
 | `inkoop_facturen` | array | Inkoopfacturen. `betaald_via_alt_id` = betaald vanaf een alt-rekening; `betaald_door_verrekening` = de factuur van een PSP staat op betaald omdat de uitbetalingen hem dekken (`kostenVerrekend` in `bank_koppelingen`); `vorige_stand` = de stand van vóór een afrekening via een alt-rekening (ongedaan maken zet hem terug) |
 | `scan_correcties` | array | Het scangeheugen (`utils/scanGeheugen.ts`): `{tekst, soort, leverancier?, artikelcode?, naam?, kostensoort?, eenheid?}`, de nieuwste 500. Bij elk opslaan van een gescande factuur geleerd (per leverancier + artikelnummer, anders omschrijving); de oude `{tekst, soort}` blijft gelden als algemene correctie. Gaat vóór de indeling van het model |
 | `inkoop_inbox` | array | Facturen per e-mail: de PDF-bijlagen die de server-tick `_inbox_tick` uit het postvak (IMAP) haalde, met `status` `nieuw`/`verwerkt`/`genegeerd`. Item: `{id, ontvangen, mail_datum, van, van_naam, onderwerp, message_id, bijlage: {naam, bestand}, grootte, sha256, status, factuur_id?, afgehandeld?}`. De server voegt alleen nieuwe items toe (bestand `inbox_<sha256[:20]>.pdf` in de bijlagenmap); verwerken, negeren, terugzetten en verwijderen doet de app. Een PDF met een `sha256` die er al in staat (ook genegeerd/verwerkt) komt er nooit nog eens bij. Financiële key: alleen `boekhouding`/`beheer` schrijven. Wel in de Excel-backup |
@@ -1655,7 +1761,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `bestelling_picks` | array | Pickregels per bestelling |
 | `afboekingen` | array | Biervoorraadbewegingen (vermis, vernietiging, overig). `bron_locatie_id` = waar het bier lág — bepaalt van welke locatie het afgaat én of er accijns verschuldigd wordt. Ontbreekt op records van vóór v1.12.52; die gelden als AGP |
 | `klanten` | array | Klanten |
-| `gist_metingen` | array | Gistingsmetingen per batch. Automatische metingen (`auto: true`, server-tick `_auto_metingen_tick`) dragen naast de lokale `datum`/`tijd` een absoluut `ts` (ISO met offset) — dat gaat in de bewaking voor (`_meting_epoch`/`metingTs`), anders geeft de wintertijdwissel een vals "sensor stil". De server dunt automatische metingen ouder dan 48 u eens per dag uit tot één per batch per uur (`_dun_auto_metingen`); handmatige rijen blijven altijd staan |
+| `gist_metingen` | array | Gistingsmetingen per batch. Automatische metingen (`auto: true`, server-tick `_auto_metingen_tick`) dragen `temp`, sinds 1.13.60 ook `druk` (bar, uit `ha_instellingen.druk_sensors`) en `setpoint` (het verse setpoint van de koeling uit `tank_setpoints`; alleen naast een temperatuur), en naast de lokale `datum`/`tijd` een absoluut `ts` (ISO met offset) — dat gaat in de bewaking voor (`_meting_epoch`/`metingTs`), anders geeft de wintertijdwissel een vals "sensor stil". De server dunt automatische metingen ouder dan 48 u eens per dag uit tot één per batch per uur (`_dun_auto_metingen`); handmatige rijen blijven altijd staan |
 | `ruimteklimaat_status` | object | Of de app de airco voor de tanks aanzette, alleen door de server geschreven (`_ruimteklimaat_tick`): `{laatste_check, entity, naam, eigen, richting, sinds, setpoint, gezien_setpoint, doel_setpoint, pauze_tot, stand, reden, airco_stand, ruimte, tank, laatste_actie, fout}`. `eigen` = de app zette hem aan en hij staat nog zo; alleen dan zet de app hem ook weer uit (ook na het kiezen van een andere airco). Beheer-only, de app leest hem met een gewone GET. Niet in de Excel-backup, niet terug te zetten (regenereert) |
 | `tank_setpoints` | array | Werkelijk setpoint per tank, gelezen van de gekoppelde climate-entity door de server-tick `_lees_tank_setpoints`: `{tank, entity, setpoint, sinds, gezien}`. `sinds` = moment van de laatste setpoint-wissel (leeg bij de eerste waarneming — een herstart mag geen instelvenster starten), `gezien` = laatste geslaagde uitlezing (ouder dan 2 uur = terugval op het schema). Alleen de server schrijft hier; bewust **niet** in de Excel-backup (regenereert vanzelf) |
 | `wc_import_status` | object | Stand van de automatische WooCommerce-import. Server (`_wc_orders_tick`, interval = `woocommerce_creds.importInterval`): `nieuw` = webshoporders die nog niet als bestelling bestaan, `gemeld_ids` = waarvoor al een HA-melding ging, `laatste_check`/`laatste_fout`. Tabbladen: `bezig_tot`/`door` = import-lease, `laatste_import*`. Bewust **niet** beheer-only (elke schrijvende rol importeert) en niet in de backup (regenereert). De import zelf blijft in de app (`utils/wcOrderImport.ts`) |
@@ -1691,7 +1797,7 @@ Key names are alphanumeric + underscore only (enforced by server). All active ke
 | `login_instellingen` | object | Styling van de loginpagina op de directe-toegangspoort: titel/ondertitel/knoptekst, accent-/achtergrondkleur (hex), achtergrondafbeelding (data-url), `logo_tonen`. Server rendert met strikte validatie (`_login_pagina`) — pre-auth, dus nooit ongefilterd |
 | `factuur_counter` | object | *(legacy)* Doorlopend factuurnummer per jaar — vervangen door `nummer_reeksen`, alleen nog als migratie-seed gelezen |
 | `nummer_reeksen` | object | Server-beheerde nummerreeksen (`factuur`/`creditnota` per jaar; `bestelling` = kort doorlopend `M-`-nummer voor handmatige orders, geen jaarreset), atomair uitgegeven via `POST /api/nextnr` — nooit client-side muteren |
-| `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`, en `bewaking` = drempels van de temperatuurbewaking; leeg veld = default uit `utils/tankbewaking.ts`; `ruimteklimaat` = de airco voor de tanks: `{enabled, entity, richting (koelen/verwarmen/beide), koelen_tot, verwarmen_tot, tanks, start_marge, start_min, herstel, stop_marge, stop_min}`, defaults in `utils/ruimteklimaat.ts`) |
+| `ha_instellingen` | object | Home Assistant sensor-instellingen (incl. CO₂-cilinder weegsensor: `co2_enabled`/`co2_entity`/`co2_unit`, en `bewaking` = drempels van de temperatuurbewaking; leeg veld = default uit `utils/tankbewaking.ts`; `ruimteklimaat` = de airco voor de tanks: `{enabled, entity, richting (koelen/verwarmen/beide), koelen_tot, verwarmen_tot, tanks, start_marge, start_min, herstel, stop_marge, stop_min}`, defaults in `utils/ruimteklimaat.ts`; `druk_sensors` = `[{id, tank, entity, eenheid: bar\|psi\|kpa}]`, de druk per tank voor het koolzuur op de afvuldag; `retour_sensors` = `[{id, tank, entity}]` (tank leeg = alle tanks), de retourtemperatuur bij reinigen met heet water — gelezen via `GET /api/homeassistant/_history/<entity>`) |
 | `notificatie_instellingen` | object | Meldingsinstellingen: HA `notify`-service + scherm-melding (herbruikbaar voor alle notificaties) |
 | `bank_koppelingen` | object | Koppeling banktransacties (sleutel `txKey`) aan facturen, BTW, accijns, SNd, kapitaal, aflossing en PSP-bundels — dé bron van wat er gekoppeld is; de vlaggen op `bank_transacties` volgen hieruit (zie hieronder) |
 | `app_logo` | string\|null | Base64 app-logo |
@@ -1715,7 +1821,7 @@ Backup en restore gaan via Excel (`.xlsx`) — **niet** via JSON. De functies `e
 - **Export:** `doExport()` in `App.tsx` → `excelExport(data)` → downloadt `brewadmin_backup_YYYY-MM-DD.xlsx`
 - **Import:** `doImport(e)` in `App.tsx` → `excelImport(file, cb, onError)` → stelt alle state in
 - **UI:** Instellingen → App → Data import & export (`accept=".xlsx"`)
-- **Bestandsstructuur:** 81 array-sheets (één per datasleutel, `bouwBackupWerkboek`; o.a. `BankTransacties` en `BankAfschriften` voor de bewaarde bankafschriften, `AccijnsAangiftes`, `BtwAangiftes`, `Journaal`; lijsten van losse waarden als rijen `{waarde}`) + één `Instellingen`-sheet voor objects (`INST_JSON_KEYS`, o.a. `bank_koppelingen` en `bank_saldi`), primitieven en logo's
+- **Bestandsstructuur:** 82 array-sheets (één per datasleutel, `bouwBackupWerkboek`; o.a. `BankTransacties` en `BankAfschriften` voor de bewaarde bankafschriften, `AccijnsAangiftes`, `BtwAangiftes`, `Journaal`; lijsten van losse waarden als rijen `{waarde}`) + één `Instellingen`-sheet voor objects (`INST_JSON_KEYS`, o.a. `bank_koppelingen` en `bank_saldi`), primitieven en logo's
 - **Geneste objecten** binnen array-items worden als JSON-string opgeslagen en bij import teruggeparsed
 - **Credentials** (`brewfather_creds`, `woocommerce_creds`, `claude_creds`, `imap_creds`) zitten **nooit** in de Excel-backup en alleen gemaskeerd in de download-ZIP van een serverbackup (zonder db-kopie, `_backup_to_zip`); de serverbackup op schijf en offsite bevat ze **alleen versleuteld** (ERP 5.8, zie "Security constraints"), zodat die volledig herstelbaar blijft zonder leesbare geheimen
 - **Afgeleide serverdata** (`app_logo_icoon`, `tank_setpoints`, `wc_import_status`, `website_telemetrie_status`, `website_brouwlog_status`, `inkoop_inbox_status`, `ruimteklimaat_status`) staat bewust niet in de backup — die regenereert vanzelf
@@ -1841,6 +1947,7 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 | POST | `/api/login` | Alleen directe poort (8098): HA-login via Supervisor-auth → sessiecookie |
 | POST | `/api/logout` | Alleen directe poort: beëindig de sessie |
 | GET | `/api/ping` | *(geen echte route — valt door naar de SPA-fallback; gebruik `/api/health`)* |
+| GET | `/api/homeassistant/_history/<entity>?start=&end=` | Geschiedenis van één sensor (1.13.56, retoursensor bij reinigen): ISO-tijden met tijdzone, hooguit 24 uur (`_ha_history_venster`), alleen eindige getallen, hooguit 5000 punten (`_ha_history_punten`); `{punten: [{ts, waarde}]}`. Alleen lezen |
 | GET | `/api/brewfather/*` | Proxy to Brewfather API (fout = Brewfathers eigen melding + `Retry-After`) |
 | POST | `/api/brewfather/patch/*` | PATCH naar Brewfather, alleen de voorraad van één ingrediënt en de status + meetwaarden van één batch (`_bf_patch_toegestaan`); de rest 403 |
 | POST | `/api/woocommerce/*` | Proxy to WooCommerce API (GET via de prefix, PUT via `put/`) |
@@ -1865,7 +1972,7 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 | POST | `/api/backups/trigger` | Nu een backup maken (beheer-only) |
 | POST | `/api/backups/restore` | Eén data-key terugzetten uit een serverbackup (`{date, key}`) — beheer-only, geweigerd voor append-only keys, credentials en server-beheerde keys (`_NIET_TERUGZETBAAR`: `nummer_reeksen` + afgeleide serverdata), zelfde schrijfweg als `/api/data` (schemavalidatie, rollenvalidatie + lockout-guard via `_key_guard_fout`, versie, audit `backup_restore`). De rest van de administratie blijft staan |
 | POST | `/api/upload` | File upload (PDF/image, max 20 MB). Overschrijft nooit een bestaande bijlage: bij een botsing wijkt de server uit naar een vrije naam en geeft die terug als `bestand` — de client bewaart díé naam |
-| POST | `/api/delete_upload/<naam>` | Bijlage verwijderen; 409 zolang een inkoopfactuur, postvak-item, afboeking, verliesregistratie, lot (`etiket_fotos`) of banktransactie (`verslag`, het uitbetalingsverslag van een PSP) ernaar verwijst (`_bijlage_in_gebruik`) |
+| POST | `/api/delete_upload/<naam>` | Bijlage verwijderen; 409 zolang een inkoopfactuur, postvak-item, afboeking, verliesregistratie, lot (`etiket_fotos`), etiketcontrole (CCP 3, `bijlagen`) of banktransactie (`verslag`, het uitbetalingsverslag van een PSP) ernaar verwijst (`_bijlage_in_gebruik`) |
 | GET | `/*` | Serve `index.html` (SPA fallback) |
 
 ### Security constraints (do not remove)
@@ -1907,7 +2014,7 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 - Server-audit: elke data-write wordt append-only gelogd naar `/data/server_audit/audit_YYYY-MM.jsonl` (`_audit_write`) — niet bereikbaar via de data-API, nooit verwijderen of omzeilen
 - Schemavalidatie: `_KEY_TYPES` dwingt containertypes af (422). Nieuwe data-key? Voeg hem toe aan `_KEY_TYPES`
 - Geen NaN/Infinity in de opslag: de schrijfwegen lezen via `_json_laden_strikt` (400), HA-waarden gaan door `_eindig_of_none`, en `_json_compact` maakt van een toch binnengekomen niet-eindig getal `null` (Python schreef anders letterlijk `NaN`, wat de app niet kan parsen)
-- Append-only keys: `_APPEND_ONLY` (`journaal` + de HACCP-registraties `haccp_vrijgaven`, `haccp_sluitcontroles`, `haccp_etiketcontroles`, `haccp_afwijkingen`, `haccp_trace_oefeningen`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno- resp. vervangende regels. `_append_only_ok` vergelijkt per id als multiset: een dubbele id, een nieuw record zonder id of een extra variant naast een bestaande id wordt ook geweigerd. Nooit omzeilen. Een CCP-registratie is bewijs richting de NVWA (HACCP-handboek bijlage A.1): wie en wanneer worden automatisch vastgelegd en zijn niet handmatig invulbaar
+- Append-only keys: `_APPEND_ONLY` (`journaal` + de HACCP-registraties `haccp_vrijgaven`, `haccp_sluitcontroles`, `haccp_etiketcontroles`, `haccp_afwijkingen`, `haccp_trace_oefeningen`, `haccp_verkoopvrijgaven`) — bestaande records mogen nooit gewijzigd of verwijderd worden (422); correcties gaan via storno- resp. vervangende regels. `_append_only_ok` vergelijkt per id als multiset: een dubbele id, een nieuw record zonder id of een extra variant naast een bestaande id wordt ook geweigerd. Nooit omzeilen. Een CCP-registratie is bewijs richting de NVWA (HACCP-handboek bijlage A.1): wie en wanneer worden automatisch vastgelegd en zijn niet handmatig invulbaar
 - Gebruikers & rollen (ERP 4.2): mutaties worden per rol afgedwongen (`_rol_mag_key` + endpoint-gates in do_GET/do_POST, 403 met `reden: rol` + audit). Nieuwe financiële key? Voeg hem toe aan `_FINANCIELE_KEYS`; nieuwe instellingen-key aan `_BEHEER_KEYS`. Nooit omzeilen
 - Optimistic locking + atomaire commit: `X-Data-Version`-conflictdetectie op `/api/data`; multi-key writes via `POST /api/commit` (client bundelt saves per event-tick automatisch)
 - CSP headers: strict `default-src 'none'` policy
@@ -2226,6 +2333,8 @@ De computed `btwBetaaldePerioden` (memo in `pages/admin/AdministratiePage.tsx`, 
 ### Claude AI (Anthropic)
 
 - Used for: de inkoopfactuur (PDF of foto's), foto's van het etiket op een zak (lotnummer, THT, eigenschappen),
+  de foto van het gedrukte bieretiket bij CCP 3 (`utils/etiketCheck.ts`: lotcode, THT, alcohol en allergenen
+  lezen; de app vergelijkt, de vinkjes blijven handwerk),
   het waterrapport (Gereedschap → Waterprofiel), het uitbetalingsverslag van een PSP als de tekstlaag van de
   PDF niets oplevert (Bank: scan, foto's, onbekende opmaak — `utils/pspVerslagScan.ts`) en de allergenen van
   ingrediënten die de vaste regels niet zeker weten (`utils/allergeenOpzoeken.ts`: alleen naam, type, fabrikant en

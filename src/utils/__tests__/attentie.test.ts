@@ -88,6 +88,53 @@ describe('attentiePosten', () => {
     })
   })
 
+  it('houdtest: de dag is er en er is nog geen beoordeling — de regel opent de batch', () => {
+    const bron = leegBron()
+    bron.batches = [{ id: 7, batch_nummer: '2609', product_id: 1, status: 'Afgevuld' }]
+    bron.producten = [{ id: 1, naam: 'Kadeblond' }]
+    bron.afvulSessies = [{ id: 1, batch_id: 7, lotcode: 'L2609', status: 'afgesloten', start: '2026-04-20T09:00:00',
+      houdtest_dagen: 14, houdtest_flessen: true }]
+    const post = attentiePosten(bron).productie.find(p => p.id === 'houdtest')!
+    expect(post.aantal).toBe(1)
+    expect(attentieDoel(post)).toEqual({ pagina: 'batches', stand: 'lopend', id: 7 })
+    expect(post.details?.[0]).toEqual({ sleutel: 'attentie_houdtest_detail', kortSleutel: 'attentie_houdtest_kort',
+      params: { batch: 'Kadeblond #2609' }, doel: { pagina: 'batches', id: 7, tab: 'Afgevuld' } })
+    // Nog niet aan de beurt, of al beoordeeld: geen post.
+    bron.vandaagIso = '2026-05-03'
+    expect(attentiePosten(bron).productie.find(p => p.id === 'houdtest')).toBeUndefined()
+    bron.vandaagIso = '2026-05-10'
+    bron.verkoopVrijgaven = [{ id: 1, batch_id: 7, oordeel: 'vrijgegeven', paraaf: { tijdstip: '2026-05-04T10:00:00Z' } }]
+    expect(attentiePosten(bron).productie.find(p => p.id === 'houdtest')).toBeUndefined()
+  })
+
+  it('incident: eerst in de lijst, rood zolang de NVWA nog gemeld moet worden — de regel opent de batch', () => {
+    const bron = leegBron()
+    bron.batches = [{ id: 7, batch_nummer: '2609', product_id: 1, status: 'Afgevuld' }]
+    bron.producten = [{ id: 1, naam: 'Kadeblond' }]
+    const inc: any = { id: 1, batch_id: 7, sessie_ids: [], lotcodes: ['L2609'], soort: 'veiligheid', gevaar: 'druk',
+      bron: 'klant', omschrijving: 'Fles spuit', ontdekt_op: '2026-05-01T08:00:00.000Z', status: 'open',
+      paraaf: { gebruiker: '', tijdstip: '2026-05-01T08:00:00.000Z', bron: 'onbekend' } }
+    bron.incidenten = [inc]
+    bron.nu = new Date('2026-05-01T09:00:00Z')
+    const posten = attentiePosten(bron).productie
+    expect(posten[0].id).toBe('incident')
+    expect(posten[0]).toMatchObject({ aantal: 1, kleur: 'rood', sleutel: 'attentie_incident' })
+    expect(attentieDoel(posten[0])).toEqual({ pagina: 'batches', stand: 'lopend', id: 7 })
+    expect(posten[0].details?.[0]).toMatchObject({ sleutel: 'attentie_incident_nvwa', params: { batch: 'Kadeblond #2609' },
+      doel: { pagina: 'batches', id: 7 } })
+    // Na 4 uur: te laat.
+    bron.nu = new Date('2026-05-01T13:00:00Z')
+    expect(attentiePosten(bron).productie[0].details?.[0].sleutel).toBe('attentie_incident_nvwa_te_laat')
+    // Gemeld: niet meer rood, nog wel af te handelen.
+    bron.incidenten = [{ ...inc, nvwa_gemeld_op: '2026-05-01T10:00:00Z' }]
+    const gemeld = attentiePosten(bron).productie.find(p => p.id === 'incident')!
+    expect(gemeld.kleur).toBeUndefined()
+    expect(gemeld.details?.[0].sleutel).toBe('attentie_incident_detail')
+    // Afgesloten: geen post.
+    bron.incidenten = [{ ...inc, status: 'afgesloten' }]
+    expect(attentiePosten(bron).productie.find(p => p.id === 'incident')).toBeUndefined()
+  })
+
   it('batchtaken: Batches › Lopend, met per batch een regel die de batch bij zijn taken opent', () => {
     const bron = leegBron()
     bron.batches = [
@@ -523,5 +570,26 @@ describe('attentiePosten — administratie = de rijen van het dashboard', () => 
     // Meer rijen: de lijst met de filter, geen losse factuur.
     expect(doel('verkoop_vervallen')).toEqual({ pagina: 'facturen', tab: 'verkoop', filter: 'te_laat' })
     expect(doel('accijns')).toEqual({ pagina: 'aangiftes', tab: 'accijns' })
+  })
+})
+
+describe('middel_ctgb — desinfectiemiddel zonder geldige toelating', () => {
+  it('per middel een regel naar HACCP › Reiniging › Middelen; rood zonder geldige toelating', () => {
+    const bron: any = { batches: [], producten: [], batchTakenItems: [], batchTakenGroepen: [], schoonmaakTaken: [], schoonmaakLog: [],
+      lots: [], vandaag: new Date('2029-05-01T12:00:00Z'), vandaagIso: '2029-05-01' }
+    bron.reinigingsmiddelen = [
+      { id: 1, naam: 'Zuur D', soort: 'desinfectie', ctgb_nummer: '12345 N', ctgb_geldig_tot: '2029-07-01', naspoelen: true },
+      { id: 2, naam: 'Loog A', soort: 'alkalisch', naspoelen: true },
+    ]
+    let post = attentiePosten(bron).productie.find(p => p.id === 'middel_ctgb')!
+    expect(post).toMatchObject({ aantal: 1, pagina: 'haccp', tab: 'reiniging', filter: 'middelen' })
+    expect(post.kleur).toBeUndefined()
+    expect(post.details?.[0]).toMatchObject({ sleutel: 'attentie_middel_verloopt', params: { naam: 'Zuur D', datum: '1-7-2029' } })
+    bron.vandaagIso = '2029-08-01'
+    post = attentiePosten(bron).productie.find(p => p.id === 'middel_ctgb')!
+    expect(post).toMatchObject({ kleur: 'rood' })
+    expect(post.details?.[0].sleutel).toBe('attentie_middel_verlopen')
+    bron.reinigingsmiddelen = [{ id: 2, naam: 'Loog A', soort: 'alkalisch', naspoelen: true }]
+    expect(attentiePosten(bron).productie.find(p => p.id === 'middel_ctgb')).toBeUndefined()
   })
 })

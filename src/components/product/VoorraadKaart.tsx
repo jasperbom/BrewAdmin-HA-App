@@ -70,6 +70,8 @@ const groepRegel = (g: VoorraadVerpakking, dekking: number | null): React.ReactN
   const rest = [
     t('verkoop_agp').replace('{n}', String(g.agp)),
     ...(g.besteld > 0 ? [t('product_besteld').replace('{n}', String(g.besteld))] : []),
+    ...(g.quarantaine > 0 ? [t('verkoop_quarantaine').replace('{n}', String(g.quarantaine))] : []),
+    ...(g.etiketVolgt > 0 ? [t('verkoop_etiket_volgt').replace('{n}', String(g.etiketVolgt))] : []),
     ...(g.geblokkeerd > 0 ? [t('verkoop_geblokkeerd').replace('{n}', String(g.geblokkeerd))] : []),
     ...(dekking != null && dekking > 0 ? [dekkingTekst(dekking, t)] : []),
   ]
@@ -123,7 +125,7 @@ const Afboekingen: React.FC<{ lijst: any[]; onVernietiging: (afb: any) => void }
 
 const VoorraadKaart: React.FC<VoorraadKaartProps> = (p) => {
   const { voorraad, locaties, telefoon } = p
-  const getoond = voorraad.filter(g => g.vrij + g.agp + g.geblokkeerd > 0 || g.besteld > 0)
+  const getoond = voorraad.filter(g => g.vrij + g.agp + g.geblokkeerd + g.quarantaine + g.etiketVolgt > 0 || g.besteld > 0)
 
   const lotRegel = (g: VoorraadVerpakking, lot: VoorraadLot) => {
     const afv = p.afvullingVan(lot.afvullingId)
@@ -158,7 +160,13 @@ const VoorraadKaart: React.FC<VoorraadKaartProps> = (p) => {
             {tekstDelen}
             {(lot.geblokkeerd || rebrandVan) && (
               <span className="inline-flex flex-wrap gap-1.5 ml-1.5 align-middle">
-                {lot.geblokkeerd && <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-100 text-[11px] font-medium">{t('product_lot_geblokkeerd')}</span>}
+                {lot.geblokkeerd && (lot.nietVrij === 'quarantaine' || lot.nietVrij === 'etiket'
+                  ? <span className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-100 text-[11px] font-medium">
+                      {t(lot.nietVrij === 'quarantaine' ? 'product_lot_quarantaine' : 'product_lot_etiket_volgt')}</span>
+                  : <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-100 text-[11px] font-medium">
+                      {/* Waarom: CCP 2, een afgekeurde houdtest of een incident ("Er is iets mis"). */}
+                      {t(afv?.geblokkeerd_reden === 'incident' ? 'product_lot_geblokkeerd_incident'
+                        : afv?.geblokkeerd_reden === 'houdtest' ? 'product_lot_geblokkeerd_houdtest' : 'product_lot_geblokkeerd')}</span>)}
                 {rebrandVan && <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[11px] font-medium" title={afv?.rebrand_opmerking || ''}>↪ {t('lbl_rebrand_van').replace('{product}', rebrandVan)}</span>}
               </span>
             )}

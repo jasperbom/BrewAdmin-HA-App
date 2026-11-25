@@ -476,7 +476,7 @@ export const ingredientenOordeel = (
 // ── Stap 2: vooruitblik op het etiket ───────────────────────────────────────
 
 export interface VooruitblikRegel {
-  /** i18n-sleutel; plaatshouders {recept}, {etiket}, {marge}, {allergenen}, {ingredienten}, {product}, {versie}. */
+  /** i18n-sleutel; plaatshouders {recept}, {etiket}, {marge}, {allergenen}, {ingredienten}, {product}. */
   sleutel: string
   kleur: VooruitKleur
   recept?: number | null
@@ -501,8 +501,6 @@ export interface EtiketVooruitblik {
   bijwerken: boolean
   /** Er is iets dat niet klopt (oranje rand). Het blokkeert het plannen nooit. */
   aandacht: boolean
-  /** De versie van het etiket ("Kadeblond (v3)"), of ''. */
-  versie: string
 }
 
 export interface VooruitblikCtx extends ProductEtiketCtx {
@@ -515,7 +513,7 @@ export interface VooruitblikCtx extends ProductEtiketCtx {
  * het recept verwacht tegen de ABV op het etiket, met de wettelijke marge
  * (`abvMarge`), en de allergenen van het recept (`allergenenUitRecept`, label
  * "verwacht") tegen de vastgelegde allergenen van het product — zo valt de
- * tarwe uit Kadeblond v4 al op bij het plannen. Zelfde vergelijking als de
+ * tarwe in een nieuwe Kadeblond al op bij het plannen. Zelfde vergelijking als de
  * etiketkaart (`vergelijkEtiket`, `etiketStatus`). Blokkeert nooit.
  */
 export const etiketVooruitblik = (
@@ -540,15 +538,13 @@ export const etiketVooruitblik = (
     return {
       verwacht, allergenenVerwacht, alcohol, allergenen,
       zonderEtiket: ctx.productSoort === 'nieuw' ? 'nieuw' : 'geen',
-      status: null, bijwerken: false, aandacht: allergenen.kleur !== 'grijs', versie: '',
+      status: null, bijwerken: false, aandacht: allergenen.kleur !== 'grijs',
     }
   }
 
   const pw = productEtiketWaarden(product, ctx)
   const v = vergelijkEtiket(verwacht, pw)
   const status = etiketStatus(v)
-  const versie = pw.etiketVersie
-  const metVersie = (sleutel: string) => (versie ? `${sleutel}_versie` : sleutel)
 
   let alcohol: VooruitblikRegel
   switch (v.abv.oordeel) {
@@ -576,7 +572,7 @@ export const etiketVooruitblik = (
       allergenen = { sleutel: 'nb_etiket_allergenen_leeg', kleur: 'oranje', allergenen: allergenenVerwacht }
       break
     case 'ontbreekt':
-      allergenen = { sleutel: metVersie('nb_etiket_allergenen_mist'), kleur: 'rood', allergenen: v.allergenen.ontbreekt }
+      allergenen = { sleutel: 'nb_etiket_allergenen_mist', kleur: 'rood', allergenen: v.allergenen.ontbreekt }
       break
     case 'onvolledig':
       allergenen = v.allergenen.onvolledig.length
@@ -584,7 +580,7 @@ export const etiketVooruitblik = (
         : { sleutel: 'nb_etiket_allergenen_onvolledig_geen', kleur: 'oranje' }
       break
     case 'teveel':
-      allergenen = { sleutel: metVersie('nb_etiket_allergenen_teveel'), kleur: 'oranje', allergenen: v.allergenen.teveel }
+      allergenen = { sleutel: 'nb_etiket_allergenen_teveel', kleur: 'oranje', allergenen: v.allergenen.teveel }
       break
     default:
       allergenen = allergenenVerwacht.length
@@ -598,7 +594,6 @@ export const etiketVooruitblik = (
     status,
     bijwerken: status.actie === 'etiket_bijwerken',
     aandacht: status.kleur !== 'groen' || alcohol.kleur !== 'grijs' || allergenen.kleur !== 'grijs',
-    versie,
   }
 }
 

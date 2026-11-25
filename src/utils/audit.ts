@@ -23,12 +23,12 @@ export const AUDIT_SOORTEN = [
   'Accijns', 'Accijnsaangifte', 'Afboeking', 'AfvulSessie', 'Afvulling', 'AltRekening',
   'Artikel', 'Bankafschrift', 'Bankkoppeling', 'Batch', 'BatchTaak', 'BatchTaakGroep', 'Bestelling',
   'BTW-aangifte', 'CAPA', 'Carbonatiesessie', 'Dryhop', 'EtiketControle', 'GN-code',
-  'Gistmeting', 'HA Sensor', 'HA Service', 'HaccpVrijgave', 'Ingrediënt',
+  'Gistmeting', 'HA Sensor', 'HA Service', 'HaccpVrijgave', 'Incident', 'Ingrediënt',
   'Ingrediënttype', 'Inkoopfactuur',
   'Instelling', 'Inventarisatie', 'Jaarafsluiting', 'Kapitaalboeking', 'Klant',
   'Koellog', 'Kostensoort', 'Locatie', 'Lot', 'Merch', 'Onderdeel', 'Ongedierte',
-  'Opleiding', 'Postvak', 'Product', 'Recept', 'SchoonmaakLog', 'SchoonmaakTaak', 'Sessie',
-  'SluitControle', 'Tank', 'TraceOefening', 'Verkoopfactuur', 'Verliesregistratie',
+  'Opleiding', 'Postvak', 'Product', 'Recept', 'Reinigingsmiddel', 'SchoonmaakLog', 'SchoonmaakTaak', 'Sessie',
+  'SluitControle', 'Tank', 'TraceOefening', 'Verkoopfactuur', 'VerkoopVrijgave', 'Verliesregistratie',
   'Verpakking', 'Verplaatsing', 'Waterbehandeling', 'Waterkwaliteit',
 ] as const
 export type AuditSoort = typeof AUDIT_SOORTEN[number]

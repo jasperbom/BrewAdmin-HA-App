@@ -1,7 +1,7 @@
 import React from 'react'
-import { t } from '../i18n'
+import { t, getLang } from '../i18n'
 import { newId } from '../utils/api'
-import { fmtD, tod } from '../utils/format'
+import { fmtD, fmtSg, tod } from '../utils/format'
 import { logAudit } from '../utils/audit'
 import { escapeHtml } from '../utils/template'
 import { ALLERGENEN_LIJST, TOEVOEGING_SOORTEN } from '../utils/constants'
@@ -14,12 +14,13 @@ import TraceTab from '../components/haccp/TraceTab'
 import ReinigingTab from '../components/haccp/ReinigingTab'
 import RegistersTab from '../components/haccp/RegistersTab'
 import { oefeningStatus, geldigeOefeningen, oefeningenNieuwsteEerst } from '../utils/trace'
-import { allergenenUitBatch } from '../utils/haccp'
+import { allergenenUitBatch, sessieCcp2, fmtCo2 } from '../utils/haccp'
 import { allergeenRegel } from '../utils/etiket'
 import { datumKort } from '../utils/etiketKaart'
 import { useEtiketBijwerken } from '../components/batch/EtiketBijwerken'
 import { useAllergenenOpzoeken } from '../components/AllergenenOpzoeken'
 import { teBeoordelen, handmatigBeoordeeld } from '../utils/allergeenOpzoeken'
+import { nvwaStand } from '../utils/incident'
 
 // HACCP-borging. De pagina is een register: registreren gebeurt daar waar de
 // handeling plaatsvindt (vrijgave, sluit- en etiketcontrole in de batchflow,
@@ -57,7 +58,7 @@ function HACCPPage(props: any) {
 
   return (
     <div>
-      <div className="mb-4"><SectionHeader solid rounded="full" title={<span className="font-bold text-lg">{t('haccp_dash_title')}</span>} /></div>
+      <h2 className="text-2xl font-bold text-gray-900 mb-4">{t('haccp_dash_title')}</h2>
       <div className="flex flex-wrap gap-1 mb-4">
         {tabs.map(tb=>(
           <button key={tb.id} onClick={()=>wissel(tb.id)}
@@ -81,7 +82,7 @@ function HACCPPage(props: any) {
 // scanwerk als twaalf rode — en verstopt juist de ene die telt.
 function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ongedierte,
                   opleidingen, bat, av, vrijgaven, sessies, afwijkingen, traceOefeningen,
-                  haccpInst, setTab}: any) {
+                  haccpInst, setTab, incidenten}: any) {
   const today = new Date(); today.setHours(0,0,0,0)
   const mAgo = (d:string,days:number) => { const dt=new Date(d); dt.setHours(0,0,0,0); return (today.getTime()-dt.getTime())/86400000 > days }
 
@@ -114,33 +115,37 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
   // (handboek hoofdstuk 11) — daarom staat de vervaldatum op het dashboard.
   const traceStatus = oefeningStatus(traceOefeningen||[], haccpInst, today)
 
-  type Punt = {key:string, label:string, waarde:string|number, sub?:string, ok:boolean, kleur:string, tab:Tab}
+  // `waarde` null = nog nooit gedaan: dan staat de toelichting groot, geen streepje.
+  type Punt = {key:string, label:string, waarde:string|number|null, sub?:string, ok:boolean, kleur:string, tab:Tab}
+  const openIncidenten = (incidenten||[]).filter((i:any)=>i?.status==='open').length
   const punten: Punt[] = [
+    {key:'incidenten', label:t('haccp_dash_incidenten'), waarde:openIncidenten, sub:t('haccp_dash_incidenten_sub'),
+     ok:!openIncidenten, kleur:'bg-red-500', tab:'kritisch'},
     {key:'vrijgave', label:t('haccp_dash_wacht_vrijgave'), waarde:wachtVrijgave, sub:t('haccp_ccp1_titel'),
-     ok:!wachtVrijgave, kleur:'border-orange-500', tab:'kritisch'},
+     ok:!wachtVrijgave, kleur:'bg-orange-500', tab:'kritisch'},
     {key:'sessies', label:t('haccp_dash_open_sessies'), waarde:openSessies, sub:t('haccp_sessie_titel'),
-     ok:!openSessies, kleur:'border-blue-500', tab:'kritisch'},
-    {key:'geblokkeerd', label:t('haccp_dash_geblokkeerd'), waarde:geblokkeerd, sub:t('haccp_ccp2_titel'),
-     ok:!geblokkeerd, kleur:'border-red-500', tab:'kritisch'},
+     ok:!openSessies, kleur:'bg-blue-500', tab:'kritisch'},
+    {key:'geblokkeerd', label:t('haccp_dash_geblokkeerd'), waarde:geblokkeerd, sub:t('haccp_dash_geblokkeerd_sub'),
+     ok:!geblokkeerd, kleur:'bg-red-500', tab:'kritisch'},
     {key:'afwijkingen', label:t('haccp_dash_afwijkingen'), waarde:afwMaand, sub:t('haccp_dash_deze_maand'),
-     ok:!afwMaand, kleur:'border-orange-500', tab:'kritisch'},
+     ok:!afwMaand, kleur:'bg-orange-500', tab:'kritisch'},
     {key:'schoonmaak', label:t('haccp_dash_schoonmaak'), waarde:achterstallig, sub:t('haccp_dash_achterstallig'),
-     ok:!achterstallig, kleur:'border-red-500', tab:'reiniging'},
+     ok:!achterstallig, kleur:'bg-red-500', tab:'reiniging'},
     {key:'capa', label:t('haccp_dash_open_capa'), waarde:openCapa,
-     ok:!openCapa, kleur:'border-orange-500', tab:'kritisch'},
+     ok:!openCapa, kleur:'bg-orange-500', tab:'kritisch'},
     {key:'allergenen', label:t('haccp_dash_allergenen'), waarde:allergenenOpen, sub:t('haccp_dash_niet_beoordeeld'),
-     ok:!allergenenOpen, kleur:'border-orange-500', tab:'allergenen'},
-    {key:'water', label:t('haccp_dash_water'), waarde:lastWater?fmtD(lastWater.datum):'-',
+     ok:!allergenenOpen, kleur:'bg-orange-500', tab:'allergenen'},
+    {key:'water', label:t('haccp_dash_water'), waarde:lastWater?fmtD(lastWater.datum):null,
      sub:lastWater?t('haccp_dash_laatste_test'):t('haccp_dash_geen_tests'),
-     ok:!waterOud, kleur:'border-orange-500', tab:'registers'},
-    {key:'ongedierte', label:t('haccp_dash_ongedierte'), waarde:lastOngd?fmtD(lastOngd.datum):'-',
+     ok:!waterOud, kleur:'bg-orange-500', tab:'registers'},
+    {key:'ongedierte', label:t('haccp_dash_ongedierte'), waarde:lastOngd?fmtD(lastOngd.datum):null,
      sub:lastOngd?t('haccp_dash_laatste_controle'):t('haccp_dash_geen_controles'),
-     ok:!ongdOud, kleur:'border-orange-500', tab:'registers'},
-    {key:'trace', label:t('haccp_dash_trace'), waarde:traceStatus.laatste?fmtD(traceStatus.laatste.datum):'-',
+     ok:!ongdOud, kleur:'bg-orange-500', tab:'registers'},
+    {key:'trace', label:t('haccp_dash_trace'), waarde:traceStatus.laatste?fmtD(traceStatus.laatste.datum):null,
      sub:traceStatus.verlopen?t('haccp_trace_oefening_verlopen'):t('haccp_trace_oefening_volgende').split('{d}').join(fmtD(traceStatus.volgende_voor||'')),
-     ok:!traceStatus.verlopen, kleur:'border-orange-500', tab:'traceerbaarheid'},
+     ok:!traceStatus.verlopen, kleur:'bg-orange-500', tab:'traceerbaarheid'},
     {key:'opleidingen', label:t('haccp_dash_opleidingen'), waarde:verlopen, sub:t('haccp_dash_verlopen'),
-     ok:!verlopen, kleur:'border-red-500', tab:'registers'},
+     ok:!verlopen, kleur:'bg-red-500', tab:'registers'},
   ]
 
   const aandacht = punten.filter(p=>!p.ok)
@@ -149,8 +154,8 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
   return (
     <div className="space-y-4">
       {!aandacht.length && (
-        <div className="rounded-xl border-l-4 border-green-500 bg-white shadow-sm p-4">
-          <div className="text-sm font-semibold text-gray-800">{t('haccp_dash_alles_in_orde')}</div>
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="text-sm font-semibold text-gray-800"><span className="text-green-700 mr-1.5" aria-hidden="true">✓</span>{t('haccp_dash_alles_in_orde')}</div>
           <div className="text-xs text-gray-500 mt-0.5">{t('haccp_dash_alles_in_orde_sub')}</div>
         </div>
       )}
@@ -158,12 +163,21 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
       {!!aandacht.length && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {aandacht.map(p=>(
-            <div key={p.key} onClick={()=>setTab(p.tab)}
-              className={`rounded-xl border-l-4 p-4 bg-white shadow-sm cursor-pointer hover:shadow-md transition-shadow ${p.kleur}`}>
-              <div className="text-xs font-semibold text-gray-500 mb-1">{p.label}</div>
-              <div className="text-2xl font-bold text-gray-800">{p.waarde}</div>
-              {p.sub && <div className="text-xs text-gray-500 mt-1">{p.sub}</div>}
-            </div>
+            <button key={p.key} type="button" onClick={()=>setTab(p.tab)}
+              className="rounded-xl border border-gray-200 p-4 bg-white text-left hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--t-accent)]">
+              <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 mb-1">
+                <span aria-hidden="true" className={`w-2 h-2 rounded-full flex-none ${p.kleur}`} />
+                {p.label}
+              </div>
+              {p.waarde != null ? (
+                <>
+                  <div className="text-2xl font-bold text-gray-900 cijfer">{p.waarde}</div>
+                  {p.sub && <div className="text-xs text-gray-600 mt-1">{p.sub}</div>}
+                </>
+              ) : (
+                <div className="text-base font-semibold text-gray-900 mt-1">{p.sub}</div>
+              )}
+            </button>
           ))}
         </div>
       )}
@@ -176,7 +190,7 @@ function DashTab({schoonmaakTaken, schoonmaakLog, capa, ing, waterkwaliteit, ong
               <button key={p.key} onClick={()=>setTab(p.tab)}
                 className="bg-white border border-green-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 hover:shadow-sm transition-shadow">
                 <span className="text-green-600 mr-1">✓</span>{p.label}
-                <span className="text-gray-400 ml-1.5">{p.waarde}</span>
+                {p.waarde != null && <span className="text-gray-500 ml-1.5">{p.waarde}</span>}
               </button>
             ))}
           </div>
@@ -190,8 +204,7 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
   const {useState} = React
   const [selBatch, setSelBatch] = useState<number>(0)
   // Het etiket van een product wijzig je alleen in de dialoog "Etiket
-  // bijwerken" (met versie en het vinkje "gedrukt etiket voor me"); de matrix
-  // hieronder is alleen-lezen.
+  // bijwerken"; de matrix hieronder is alleen-lezen.
   const etiketDienst = useEtiketBijwerken()
   const opzoeken = useAllergenenOpzoeken()
   const wachtend = teBeoordelen(ing)
@@ -294,8 +307,7 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
       </div>
 
       {/* Etiketallergenen per product — de bron waartegen CCP 3 vergelijkt.
-          Alleen-lezen: wijzigen gaat via "Etiket bijwerken" (één schrijfweg,
-          met een nieuwe etiketversie als de allergenen veranderen). */}
+          Alleen-lezen: wijzigen gaat via "Etiket bijwerken" (één schrijfweg). */}
       <div>
         <SectionHeader title={t('haccp_product_allergenen')} />
         <div className="bg-white rounded-b-lg shadow-sm">
@@ -309,7 +321,7 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
                   <th className="text-left p-2 font-semibold text-gray-600">{t('nav_producten')}</th>
                   <th className="p-2 text-center font-semibold text-gray-600 whitespace-nowrap">{t('haccp_product_allergen_vastgelegd')}</th>
                   {ALLERGENEN_LIJST.map(a=><th key={a.key} className="p-2 text-center font-semibold text-gray-600 whitespace-nowrap">{t(a.label)}</th>)}
-                  <th className="text-left p-2 font-semibold text-gray-600 whitespace-nowrap">{t('haccp_ccp3_etiket_versie')}</th>
+                  <th className="text-left p-2 font-semibold text-gray-600 whitespace-nowrap">{t('haccp_etiket_bijgewerkt')}</th>
                   <th className="p-2"><span className="sr-only">{t('haccp_product_allergen_actie')}</span></th>
                 </tr></thead>
                 <tbody>
@@ -335,8 +347,7 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
                           )
                         })}
                         <td className="p-2 text-gray-700 whitespace-nowrap">
-                          {pr.etiket_versie || '—'}
-                          {pr.etiket_bijgewerkt && <span className="text-gray-400"> · {datumKort(pr.etiket_bijgewerkt)}</span>}
+                          {pr.etiket_bijgewerkt ? datumKort(pr.etiket_bijgewerkt) : '—'}
                         </td>
                         <td className="p-2 text-right">
                           {etiketDienst && (
@@ -361,7 +372,6 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-gray-900 break-words">
                         {pr.naam}
-                        {pr.etiket_versie && <span className="text-gray-500 font-normal"> · {pr.etiket_versie}</span>}
                       </div>
                       <div className={`text-xs break-words ${gezet?'text-gray-600':'text-orange-700'}`}>{bevat}</div>
                     </div>
@@ -417,11 +427,45 @@ function AllergenenTab({ing, bat, setBat, bi, lots, setIng, producten, auditLog,
 // hun sluit- en etiketcontroles, de afwijkingen en de CAPA's die daaruit
 // volgen. De eerste drie zijn read-only — registreren gebeurt in de
 // batchflow, op het moment dat de handeling plaatsvindt.
-function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontroles,
-                      afwijkingen, traceOefeningen, breweryDetails,
+// CCP 2 van een afvulsessie in een paar woorden: de inspectie van de lege
+// flessen (aantal afgekeurd), het aantal sluitcontroles, of niets (fust).
+const ccp2Kort = (x: any, sc: any[]): string => {
+  const soort = sessieCcp2(x)
+  if (soort === 'geen') return t('haccp_ccp2_nvt')
+  if (soort === 'lege_flessen') {
+    const insp = sc.find((c: any) => c.methode === 'lege_flessen')
+    return insp ? t('batchdossier_flessen_afgekeurd').replace('{n}', String(insp.afgekeurd_aantal ?? 0)) : '—'
+  }
+  return String(sc.length)
+}
+
+// Wat er bij het afvullen is vastgelegd: koolzuur, SG, lots en klapflessen.
+const afvulDetails = (x: any): string => [
+  x.co2_volumes != null ? t('haccp_co2_kort').replace('{volumes}', fmtCo2(Number(x.co2_volumes), getLang()))
+    + (x.co2_afwijking_id != null ? ` (${t('haccp_afw_kort')})` : '') : '',
+  x.sg_afvullen != null ? `${t('haccp_sg_afvullen')} ${fmtSg(x.sg_afvullen)}` : '',
+  x.flessenlot ? `${t('haccp_flessenlot')} ${x.flessenlot}` : '',
+  x.kroonkurkenlot ? `${t('haccp_kroonkurkenlot')} ${x.kroonkurkenlot}` : '',
+  x.klapflessen?.aantal ? t('haccp_klapflessen_stand').replace('{aantal}', String(x.klapflessen.aantal))
+    .replace('{vernietigd}', String(x.klapflessen.vernietigd ?? 0)) : '',
+].filter(Boolean).join(' · ')
+
+// De houdtest in een paar woorden: SG van de warme fles tegen die bij het
+// afvullen, en of overdruk, geur en smaak in orde waren.
+const houdtestKort = (v: any): string => [
+  v.sg_warm != null ? `${t('haccp_houdtest_sg_warm')} ${fmtSg(v.sg_warm)}` : '',
+  v.sg_afvullen != null ? `${t('haccp_sg_afvullen')} ${fmtSg(v.sg_afvullen)}` : '',
+  `${t('haccp_houdtest_druk_kort')} ${v.druk_ok ? '✓' : '✕'}`,
+  `${t('haccp_houdtest_smaak_kort')} ${v.smaak_ok ? '✓' : '✕'}`,
+].filter(Boolean).join(' · ')
+
+function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontroles, verkoopVrijgaven,
+                      afwijkingen, traceOefeningen, breweryDetails, incidenten, gaNaar,
                       capa, setCapa, auditLog, setAuditLog, modal, setModal, edit, setEdit}: any) {
   const {useState, useMemo} = React
-  const [sub, setSub] = useState<'vrijgaven'|'sessies'|'afwijkingen'|'capa'>('vrijgaven')
+  // Staat er een incident open, dan begint het tabblad daar.
+  const [sub, setSub] = useState<'vrijgaven'|'sessies'|'afwijkingen'|'incidenten'|'capa'>(
+    (incidenten||[]).some((i:any)=>i?.status==='open') ? 'incidenten' : 'vrijgaven')
   const [fVan, setFVan] = useState('')
   const [fTot, setFTot] = useState('')
 
@@ -435,11 +479,23 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
     .filter((v:any)=>inPeriode(v.datum))
     .slice().sort((a:any,b:any)=>String(b.datum||'').localeCompare(String(a.datum||''))),
     [vrijgaven, fVan, fTot])
+  // De houdtesten (vrijgave voor verkoop) in dezelfde periode.
+  const houdtesten = useMemo(() => (verkoopVrijgaven||[])
+    .filter((v:any)=>inPeriode(v.datum))
+    .slice().sort((a:any,b:any)=>String(b.datum||'').localeCompare(String(a.datum||''))),
+    [verkoopVrijgaven, fVan, fTot])
 
   const sess = useMemo(() => (sessies||[])
     .filter((x:any)=>inPeriode(String(x.start||'').slice(0,10)))
     .slice().sort((a:any,b:any)=>String(b.start||'').localeCompare(String(a.start||''))),
     [sessies, fVan, fTot])
+
+  // Klachten en incidenten ("Er is iets mis", utils/incident.ts): open eerst.
+  const inc = useMemo(() => (incidenten||[])
+    .filter((i:any)=>i && (i.status==='open' || inPeriode(String(i.ontdekt_op||'').slice(0,10))))
+    .slice().sort((a:any,b:any)=>(a.status==='open'?0:1)-(b.status==='open'?0:1)
+      || String(b.ontdekt_op||'').localeCompare(String(a.ontdekt_op||''))),
+    [incidenten, fVan, fTot])
 
   const afw = useMemo(() => (afwijkingen||[])
     .filter((a:any)=>inPeriode(a.datum))
@@ -455,6 +511,14 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
   // Inspectie-export: alles van de gekozen periode in één afdruk. Bij een
   // controle is de vraag niet of de brouwer weet hoe het moet, maar of
   // aantoonbaar is dat het ook zo gedaan is.
+  // Eén regel per vrijgave: de regel van nu (forceertest + twee tankmetingen)
+  // of de oude (risicoklasse + dagen stabiel) — oude registraties blijven
+  // zoals ze zijn vastgelegd.
+  const ccp1Kort = (v:any): string => v.methode==='ff_paar'
+    ? `${t('haccp_ccp1_ff')} ${fmtSg(v.ff_dichtheid_ff)} · ${t('haccp_ccp1_tank')} ${fmtSg(v.ff_dichtheid_tank)}`
+      + (v.tank_sg_1!=null ? ` · ${fmtSg(v.tank_sg_1)} → ${fmtSg(v.tank_sg_2)} (${t('haccp_ccp1_na_uur').replace('{n}', String(v.stabiel_uren??''))})` : '')
+    : `${t(v.risico_klasse==='verhoogd'?'haccp_risico_verhoogd':'haccp_risico_standaard')} · ${v.dagen_stabiel??''}/${v.vereiste_dagen_stabiel??''} ${t('haccp_ccp1_dagen')}`
+
   const printRapport = () => {
     const w = window.open('','_blank')
     if(!w) return
@@ -465,9 +529,8 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
       : t('haccp_rap_alle_data')
     const rijenVrij = vrij.map((v:any)=>`<tr>
       <td>${esc(fmtD(v.datum))}</td><td>${esc(batchNaam(v.batch_id))}</td>
-      <td>${esc(t(v.risico_klasse==='verhoogd'?'haccp_risico_verhoogd':'haccp_risico_standaard'))}</td>
-      <td>${esc(v.dagen_stabiel)}/${esc(v.vereiste_dagen_stabiel)}</td>
-      <td>${v.ff_uitgevoerd ? esc(v.ff_verschil ?? '') : t('lbl_nee')}</td>
+      <td>${esc(ccp1Kort(v))}</td>
+      <td>${v.ff_uitgevoerd ? esc(v.ff_verschil ?? '') : esc(t('lbl_nee'))}</td>
       <td class="${v.oordeel==='vrijgegeven'?'ok':'nok'}">${esc(t(v.oordeel==='vrijgegeven'?'haccp_ccp1_vrijgegeven':'haccp_ccp1_niet_vrijgegeven'))}${v.afwijking_id!=null?` (${esc(t('haccp_afw_kort'))})`:''}</td>
       <td>${esc(v.paraaf?.gebruiker||'')}</td></tr>`).join('')
     const rijenSess = sess.map((x:any)=>{
@@ -478,7 +541,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
         <td>${esc(x.lotcode)}</td><td>${esc(batchNaam(x.batch_id))}</td>
         <td>${esc(tijd(x.start))}</td><td>${esc(x.eind?tijd(x.eind):'—')}</td>
         <td>${esc(x.tht?fmtD(x.tht):(x.tht_klasse&&x.tht_klasse!=='geen'?'—':t('haccp_tht_klasse_geen')))}</td>
-        <td>${sc.length}${afgekeurd?` <span class="nok">(${afgekeurd} ${esc(t('haccp_ccp2_afgekeurd'))})</span>`:''}</td>
+        <td>${esc(ccp2Kort(x, sc))}${afgekeurd?` <span class="nok">(${afgekeurd} ${esc(t('haccp_ccp2_afgekeurd'))})</span>`:''}${afvulDetails(x)?`<br><span class="klein">${esc(afvulDetails(x))}</span>`:''}</td>
         <td>${ec.length}</td>
         <td>${esc(t(`haccp_sessie_${x.status}`))}</td></tr>`
     }).join('')
@@ -488,6 +551,12 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
       <td>${esc(a.blokkade_omschrijving)}</td>
       <td>${esc(a.onderbouwing)}</td>
       <td>${esc(a.paraaf?.gebruiker||'')}</td></tr>`).join('')
+    const rijenHoud = houdtesten.map((v:any)=>`<tr>
+      <td>${esc(fmtD(v.datum))}</td><td>${esc(batchNaam(v.batch_id))}</td>
+      <td>${esc(fmtD(v.afgevuld_op))}</td>
+      <td>${esc(houdtestKort(v))}</td>
+      <td class="${v.oordeel==='vrijgegeven'?'ok':'nok'}">${esc(t(v.oordeel==='vrijgegeven'?'haccp_houdtest_vrijgegeven':'haccp_houdtest_afgekeurd'))}${v.afwijking_id!=null?` (${esc(t('haccp_afw_kort'))})`:''}</td>
+      <td>${esc(v.paraaf?.gebruiker||'')}</td></tr>`).join('')
     const rijenOef = oefeningen.map((o:any)=>`<tr>
       <td>${esc(fmtD(o.datum))}</td>
       <td>${esc(t(o.richting==='vooruit'?'haccp_trace_richting_vooruit':'haccp_trace_richting_terug'))}</td>
@@ -505,14 +574,16 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
       th,td{border:1px solid #ccc;padding:5px;text-align:left;font-size:11px;vertical-align:top}
       th{background:#f5f5f5} .ok{color:#15803d} .nok{color:#b91c1c;font-weight:600}
       .leeg{font-size:11px;color:#888;font-style:italic}
+      .klein{font-size:10px;color:#666}
       @media print{body{padding:0}}
     </style></head><body>
       <h1>${esc(t('haccp_rap_titel'))}</h1>
       <div class="meta">${esc(breweryDetails?.naam||'')} · ${esc(t('haccp_rap_periode'))}: ${esc(periode)} · ${esc(new Date().toLocaleString())}</div>
       <h2>${esc(t('haccp_ccp1_titel'))}</h2>
-      ${vrij.length?`<table><tr><th>${esc(t('lbl_datum'))}</th><th>Batch</th><th>${esc(t('haccp_ccp1_producttype'))}</th><th>${esc(t('haccp_ccp1_stabiel'))}</th><th>${esc(t('haccp_ccp1_ff'))}</th><th>${esc(t('haccp_ccp1_oordeel'))}</th><th>${esc(t('haccp_ccp1_paraaf'))}</th></tr>${rijenVrij}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
+      ${vrij.length?`<table><tr><th>${esc(t('lbl_datum'))}</th><th>Batch</th><th>${esc(t('haccp_ccp1_stabiel'))}</th><th>${esc(t('haccp_ccp1_verschil'))}</th><th>${esc(t('haccp_ccp1_oordeel'))}</th><th>${esc(t('haccp_ccp1_paraaf'))}</th></tr>${rijenVrij}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
+      ${houdtesten.length?`<h2>${esc(t('haccp_houdtest_titel'))}</h2><table><tr><th>${esc(t('lbl_datum'))}</th><th>Batch</th><th>${esc(t('batchdossier_houdtest_afgevuld'))}</th><th>${esc(t('haccp_houdtest_titel'))}</th><th>${esc(t('haccp_ccp1_oordeel'))}</th><th>${esc(t('haccp_ccp1_paraaf'))}</th></tr>${rijenHoud}</table>`:''}
       <h2>${esc(t('haccp_sessie_titel'))} — ${esc(t('haccp_ccp2_titel'))} / ${esc(t('haccp_ccp3_titel'))}</h2>
-      ${sess.length?`<table><tr><th>${esc(t('haccp_sessie_lotcode'))}</th><th>Batch</th><th>${esc(t('haccp_sessie_gestart'))}</th><th>${esc(t('haccp_sessie_afgesloten'))}</th><th>${esc(t('haccp_sessie_tht'))}</th><th>${esc(t('haccp_ccp2_titel'))}</th><th>${esc(t('haccp_ccp3_titel'))}</th><th>${esc(t('haccp_rap_status'))}</th></tr>${rijenSess}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
+      ${sess.length?`<table><tr><th>${esc(t('haccp_sessie_lotcode'))}</th><th>Batch</th><th>${esc(t('haccp_sessie_gestart'))}</th><th>${esc(t('haccp_sessie_afgesloten'))}</th><th>${esc(t('haccp_sessie_tht'))}</th><th>${esc(t('batchdossier_ccp2'))}</th><th>${esc(t('haccp_ccp3_titel'))}</th><th>${esc(t('haccp_rap_status'))}</th></tr>${rijenSess}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
       <h2>${esc(t('haccp_tab_afwijkingen'))}</h2>
       ${afw.length?`<table><tr><th>${esc(t('lbl_datum'))}</th><th>${esc(t('haccp_rap_bron'))}</th><th>Batch</th><th>${esc(t('haccp_afw_geblokkeerd_omdat'))}</th><th>${esc(t('haccp_afw_onderbouwing'))}</th><th>${esc(t('haccp_ccp1_paraaf'))}</th></tr>${rijenAfw}</table>`:`<p class="leeg">${esc(t('haccp_rap_geen'))}</p>`}
       <h2>${esc(t('haccp_trace_oefening_titel'))}</h2>
@@ -529,10 +600,10 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        {(['vrijgaven','sessies','afwijkingen','capa'] as const).map(k=>(
-          <button key={k} onClick={()=>setSub(k)}
-            className={`px-3 py-1 rounded text-xs font-medium ${sub===k?'tbtn text-white':'bg-gray-100 text-gray-600'}`}>
-            {t(k==='vrijgaven'?'haccp_tab_vrijgave':k==='sessies'?'haccp_tab_sessies':k==='afwijkingen'?'haccp_tab_afwijkingen':'haccp_capa')}
+        {(['vrijgaven','sessies','afwijkingen','incidenten','capa'] as const).map(k=>(
+          <button key={k} type="button" onClick={()=>setSub(k)} aria-pressed={sub===k}
+            className={`min-h-tap sm:min-h-0 px-3 py-1 rounded text-xs font-medium ${sub===k?'tbtn':'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+            {t(k==='vrijgaven'?'haccp_tab_vrijgave':k==='sessies'?'haccp_tab_sessies':k==='afwijkingen'?'haccp_tab_afwijkingen':k==='incidenten'?'haccp_tab_incidenten':'haccp_capa')}
           </button>
         ))}
         {sub!=='capa' && <>
@@ -548,7 +619,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
         ? <p className="text-sm text-gray-500 italic">{t('haccp_ccp1_geen')}</p>
         : <div className="space-y-1">
             {vrij.map((v:any)=>(
-              <div key={v.id} className={`bg-white rounded-lg p-2.5 shadow-sm text-sm border-l-4 ${v.oordeel==='vrijgegeven'?'border-green-500':'border-red-500'}`}>
+              <div key={v.id} className="bg-white rounded-lg p-2.5 text-sm border border-gray-200">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{batchNaam(v.batch_id)}</span>
@@ -560,17 +631,37 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
                         {t('haccp_afw_kort')}
                       </span>
                     )}
-                    <span className="text-xs text-gray-500">
-                      {t(v.risico_klasse==='verhoogd'?'haccp_risico_verhoogd':'haccp_risico_standaard')}
-                      {' · '}{v.dagen_stabiel}/{v.vereiste_dagen_stabiel} {t('haccp_ccp1_dagen')}
-                    </span>
+                    <span className="text-xs text-gray-500">{ccp1Kort(v)}</span>
                   </div>
-                  <span className="text-xs text-gray-400">{fmtD(v.datum)} · {v.paraaf?.gebruiker||'—'}</span>
+                  <span className="text-xs text-gray-500">{fmtD(v.datum)} · {v.paraaf?.gebruiker||'—'}</span>
                 </div>
-                {v.sensorisch && <div className="text-xs text-gray-500 italic mt-1">{v.sensorisch}</div>}
+                {(v.opmerking || v.sensorisch) && <div className="text-xs text-gray-500 italic mt-1">{v.opmerking || v.sensorisch}</div>}
               </div>
             ))}
           </div>)}
+      {sub==='vrijgaven' && houdtesten.length > 0 && (
+        <div className="space-y-1 pt-2">
+          <div className="text-sm font-semibold text-gray-800">{t('haccp_houdtest_titel')}</div>
+          {houdtesten.map((v:any)=>(
+            <div key={v.id} className="bg-white rounded-lg p-2.5 text-sm border border-gray-200">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium">{batchNaam(v.batch_id)}</span>
+                  <Pill ok={v.oordeel==='vrijgegeven'}>
+                    {t(v.oordeel==='vrijgegeven'?'haccp_houdtest_vrijgegeven':'haccp_houdtest_afgekeurd')}
+                  </Pill>
+                  {v.afwijking_id!=null && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">{t('haccp_afw_kort')}</span>
+                  )}
+                  <span className="text-xs text-gray-500">{houdtestKort(v)}</span>
+                </div>
+                <span className="text-xs text-gray-500">{fmtD(v.datum)} · {v.paraaf?.gebruiker||'—'}</span>
+              </div>
+              {v.opmerking && <div className="text-xs text-gray-500 italic mt-1">{v.opmerking}</div>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {sub==='sessies' && (!sess.length
         ? <p className="text-sm text-gray-500 italic">{t('haccp_sessie_geen')}</p>
@@ -581,8 +672,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
               const afgekeurd = sc.filter((c:any)=>c.resultaat==='afgekeurd').length
               const geblokkeerd = (av||[]).filter((a:any)=>a.sessie_id===x.id && a.geblokkeerd).length
               return (
-                <div key={x.id} className="bg-white rounded-lg p-2.5 shadow-sm text-sm border-l-4"
-                  style={{borderColor:'var(--t-accent)'}}>
+                <div key={x.id} className="bg-white rounded-lg p-2.5 text-sm border border-gray-200">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono font-semibold">{x.lotcode}</span>
@@ -591,7 +681,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
                         {t(`haccp_sessie_${x.status}`)}
                       </span>
                     </div>
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-gray-500">
                       {/* Zonder THT maar onder de alcoholgrens: geen bewering
                           dat er geen THT nodig is (die sessie mist er één). */}
                       {x.tht ? `${t('haccp_sessie_tht')} ${fmtD(x.tht)}`
@@ -600,7 +690,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
                     </span>
                   </div>
                   <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-2">
-                    <span>{t('haccp_ccp2_titel')}: {sc.length}</span>
+                    <span>{t('batchdossier_ccp2')}: {ccp2Kort(x, sc)}</span>
                     {!!afgekeurd && <span className="text-red-600 font-medium">{afgekeurd}× {t('haccp_ccp2_afgekeurd')}</span>}
                     <span>{t('haccp_ccp3_titel')}: {ec.length}</span>
                     {!!geblokkeerd && (
@@ -610,6 +700,7 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
                     )}
                     <span>{tijd(x.start)}{x.eind?` — ${tijd(x.eind)}`:''}</span>
                   </div>
+                  {afvulDetails(x) && <div className="text-xs text-gray-500 mt-0.5 break-words">{afvulDetails(x)}</div>}
                 </div>
               )
             })}
@@ -619,18 +710,53 @@ function KritischTab({bat, av, vrijgaven, sessies, sluitcontroles, etiketcontrol
         ? <p className="text-sm text-gray-500 italic">{t('haccp_rap_geen')}</p>
         : <div className="space-y-1">
             {afw.map((a:any)=>(
-              <div key={a.id} className="bg-white rounded-lg p-2.5 shadow-sm text-sm border-l-4 border-orange-500">
+              <div key={a.id} className="bg-white rounded-lg p-2.5 text-sm border border-gray-200">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="font-medium">
                     {a.batch_id ? batchNaam(a.batch_id) : t('lbl_onbekend')}
-                    <span className="text-gray-400 font-normal ml-1.5 text-xs">{bronLabel(a.bron)}</span>
+                    <span className="text-gray-500 font-normal ml-1.5 text-xs">{bronLabel(a.bron)}</span>
                   </span>
-                  <span className="text-xs text-gray-400">{fmtD(a.datum)} · {a.paraaf?.gebruiker||'—'}</span>
+                  <span className="text-xs text-gray-500">{fmtD(a.datum)} · {a.paraaf?.gebruiker||'—'}</span>
                 </div>
                 <div className="text-xs text-red-700 mt-1">{a.blokkade_omschrijving}</div>
                 <div className="text-xs text-gray-600 mt-0.5 italic">{a.onderbouwing}</div>
               </div>
             ))}
+          </div>)}
+
+      {sub==='incidenten' && (!inc.length
+        ? <p className="text-sm text-gray-500 italic">{t('haccp_incidenten_geen')}</p>
+        : <div className="space-y-1">
+            {inc.map((i:any)=>{
+              const stand = nvwaStand(i)
+              return (
+                <div key={i.id} className="bg-white rounded-lg p-2.5 text-sm border border-gray-200">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="font-medium">
+                      {batchNaam(i.batch_id)}
+                      {(i.lotcodes||[]).length>0 && <span className="text-gray-500 font-mono font-normal ml-1.5 text-xs">{i.lotcodes.join(', ')}</span>}
+                      <span className={`font-normal ml-1.5 text-xs ${i.soort==='veiligheid'?'text-red-700':'text-gray-500'}`}>
+                        {i.soort==='veiligheid' ? t('incident_kort_veiligheid').replace('{gevaar}', t(`incident_gevaar_${i.gevaar||'anders'}`)) : t('incident_soort_kwaliteit')}
+                      </span>
+                    </span>
+                    <span className="text-xs text-gray-500">{tijd(i.ontdekt_op)} · {i.paraaf?.gebruiker||'—'}</span>
+                  </div>
+                  <div className="text-xs text-gray-700 mt-1 break-words">{i.omschrijving}</div>
+                  <div className="text-xs mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                    <span className={i.status==='open'?'text-orange-700 font-medium':'text-green-700'}>
+                      {t(i.status==='open'?'haccp_incident_open':'haccp_incident_afgesloten')}
+                    </span>
+                    {stand?.stand==='gemeld' && <span className={stand.optijd===false?'text-red-700':'text-gray-600'}>
+                      {t(stand.optijd===false?'haccp_incident_nvwa_te_laat':'haccp_incident_nvwa_gemeld').replace('{tijd}', tijd(i.nvwa_gemeld_op))}
+                    </span>}
+                    {stand && stand.stand!=='gemeld' && <span className="text-red-700 font-medium">{t('haccp_incident_nvwa_open')}</span>}
+                    {i.oorzaak && <span className="text-gray-600 italic break-words">{i.oorzaak}</span>}
+                    {gaNaar && <button type="button" onClick={()=>gaNaar({pagina:'batches', id:i.batch_id})}
+                      className="underline underline-offset-2 t-accent-text min-h-tap sm:min-h-0">{t('haccp_incident_naar_batch')}</button>}
+                  </div>
+                </div>
+              )
+            })}
           </div>)}
 
       {sub==='capa' && (
@@ -668,7 +794,7 @@ function CAPALijst({capa, setCapa, auditLog, setAuditLog, modal, setModal, edit,
     <div>
       <div className="flex items-center gap-2 mb-3">
         <Btn s="sm" onClick={()=>{setEdit({omschrijving:'',oorzaak:'',actie:'',verantwoordelijke:'',status:'open',datum:tod()});setModal('capa')}}>{t('haccp_capa_nieuw')}</Btn>
-        <select value={fStatus} onChange={e=>setFStatus(e.target.value)} className="t-input text-xs px-2 py-1 rounded border">
+        <select value={fStatus} onChange={e=>setFStatus(e.target.value)} aria-label={t('haccp_capa_status')} className="t-input text-xs px-2 py-1 rounded border">
           <option value="">{t('haccp_capa_status')}</option>
           <option value="open">{t('haccp_capa_status_open')}</option>
           <option value="in_behandeling">{t('haccp_capa_status_in_behandeling')}</option>
@@ -678,7 +804,7 @@ function CAPALijst({capa, setCapa, auditLog, setAuditLog, modal, setModal, edit,
       {!filtered.length && <p className="text-sm text-gray-500 italic">{t('haccp_capa_geen')}</p>}
       <div className="space-y-2">
         {filtered.map((c:any)=>(
-          <div key={c.id} className="bg-white rounded-lg p-3 shadow-sm border-l-4" style={{borderColor:c.status==='afgerond'?'#22c55e':c.status==='in_behandeling'?'#f97316':'#ef4444'}}>
+          <div key={c.id} className="bg-white rounded-lg p-3 border border-gray-200">
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <span className="font-medium text-sm">{c.omschrijving}</span>
@@ -690,7 +816,7 @@ function CAPALijst({capa, setCapa, auditLog, setAuditLog, modal, setModal, edit,
               </div>
             </div>
             {c.actie && <div className="text-xs text-gray-600 mt-1">{c.actie}</div>}
-            {c.verantwoordelijke && <div className="text-xs text-gray-400">{c.verantwoordelijke}</div>}
+            {c.verantwoordelijke && <div className="text-xs text-gray-500">{c.verantwoordelijke}</div>}
           </div>
         ))}
       </div>

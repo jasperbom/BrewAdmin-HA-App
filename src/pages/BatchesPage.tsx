@@ -87,6 +87,7 @@ export interface BatchesPageProps {
   batchTakenItems?: any[]; batchTakenGroepen?: any[]
   planningInst?: any
   haccpVrijgaven?: any[]
+  verkoopVrijgaven?: any[]
   afvulSessies?: any[]
   haccpInst?: any
   tanks?: any[]; tankStatussen?: any
@@ -208,7 +209,7 @@ const BatchesPage: React.FC<BatchesPageProps> = (p) => {
         vandaag, conditionerenDagen,
         batchTakenItems: p.batchTakenItems || [], batchTakenGroepen: p.batchTakenGroepen || [],
         batchIngredienten: bi, ingredienten: ing, lots, recepten, gistMetingen, dryHops: p.dryHops,
-        vrijgaven: p.haccpVrijgaven, afvulSessies: p.afvulSessies, afvullingen: av,
+        vrijgaven: p.haccpVrijgaven, afvulSessies: p.afvulSessies, afvullingen: av, verkoopVrijgaven: p.verkoopVrijgaven,
         etiketKleur: etiket.status.kleur, abvWaarde: etiket.waarden.abv.waarde,
       })
       const eigenAv = (av || []).filter((a: any) => a?.batch_id === b.id)
@@ -230,7 +231,7 @@ const BatchesPage: React.FC<BatchesPageProps> = (p) => {
     return uit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lopendAlle, etiketData, vandaag, conditionerenDagen, p.batchTakenItems, p.batchTakenGroepen, bi, ing, lots, recepten,
-    gistMetingen, p.dryHops, p.haccpVrijgaven, p.afvulSessies, av, p.uit, p.verplaatsingen, p.afboekingen, p.bestellingPicks,
+    gistMetingen, p.dryHops, p.haccpVrijgaven, p.verkoopVrijgaven, p.afvulSessies, av, p.uit, p.verplaatsingen, p.afboekingen, p.bestellingPicks,
     p.bestellingen, p.acc, producten, statusLog, p.tanks])
 
   const lopendGefilterd = useMemo(() => filterBatches(lopendAlle, filter, zoekCtx)

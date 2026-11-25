@@ -539,7 +539,7 @@ export type ThtBron = 'sessie' | 'handmatig' | 'berekend' | 'afvulling' | 'geen'
 
 export interface EtiketLot {
   lotcode: string
-  /** Vóór de eerste sessie: de voorspelling "L2609-B1 e.v." */
+  /** Vóór de eerste sessie: de voorspelling "L2609 e.v." */
   voorspeld: boolean
   sessieId: number | null
   sessieNr: number | null
@@ -923,7 +923,7 @@ export interface ProductEtiketWaarden {
   /** `gezet: false` = nog niet vastgelegd (≠ een lege lijst: "geen allergenen"). */
   allergenen: {lijst: Allergeen[]; gezet: boolean}
   ingredienten: IngredientenWaarde
-  etiketVersie: string
+  /** Wanneer het etiket voor het laatst is vastgelegd (YYYY-MM-DD), of ''. */
   bijgewerkt: string
   referentieBatchId: number | null
   /** Moment van de laatst bewaarde webshopstand (push/pull), als die er is. */
@@ -964,8 +964,6 @@ export const productEtiketWaarden = (
   const huidigRecept = huidig.receptId
     ? (ctx.recepten || []).find(r => r.id === huidig.receptId) || null
     : null
-  const versie = tekst(product.etiket_versie)
-
   const vermeld = product.energie_op_etiket === 'vermeld'
   let energie: ProductEtiketWaarden['energie']
   if (vermeld) {
@@ -996,15 +994,14 @@ export const productEtiketWaarden = (
     productId: product.id,
     abv: {
       waarde: pos(product.abv),
-      bronSleutel: versie ? 'etiket_bron_etiket_versie' : 'etiket_bron_etiket',
-      bronParams: versie ? {versie} : {},
+      bronSleutel: 'etiket_bron_etiket',
+      bronParams: {},
     },
     ibu: {waarde: pos(product.ibu), bronSleutel: 'etiket_bron_website'},
     ebc: {waarde: pos(product.ebc), bronSleutel: 'etiket_bron_website'},
     energie,
     allergenen: {lijst: sorteerAllergenen(product.allergenen), gezet: Array.isArray(product.allergenen)},
     ingredienten,
-    etiketVersie: versie,
     bijgewerkt: tekst(product.etiket_bijgewerkt),
     referentieBatchId: ref ? ref.id : null,
     websiteStandOp: stand?.op || null,
@@ -1267,29 +1264,7 @@ export const abvVastzetten = (
   return {ok: true, patch: {ABV: rond(abv.waarde, 2), abv_definitief: true, abv_bron: bron}}
 }
 
-// ── 10. Etiketversie ────────────────────────────────────────────────────────
-
-/**
- * Het voorstel voor de volgende etiketversie, met de datum:
- * "v3", "V3" en "3" → "v4"; leeg → "v1"; een tekst die op een getal eindigt
- * telt dat getal op ("2024-1" → "2024-2", "v3.1" → "v3.2"); een tekst zonder
- * getal krijgt een volgnummer ("lente" → "lente (2)" → "lente (3)").
- */
-export const volgendeEtiketVersie = (
-  huidig: unknown,
-  datum?: string | null,
-): {versie: string; datum: string; vorige: string} => {
-  const h = tekst(huidig)
-  const d = tekst(datum) || tod()
-  let m: RegExpExecArray | null
-  let versie: string
-  if (!h) versie = 'v1'
-  else if ((m = /^v?\s*(\d+)$/i.exec(h))) versie = `v${Number(m[1]) + 1}`
-  else if ((m = /^(.*\()(\d+)(\)\s*)$/.exec(h))) versie = `${m[1]}${Number(m[2]) + 1}${m[3].trim()}`
-  else if ((m = /^(.*?)(\d+)$/.exec(h))) versie = `${m[1]}${Number(m[2]) + 1}`
-  else versie = `${h} (2)`
-  return {versie, datum: d, vorige: h}
-}
+// ── 10. Allergenen vergelijken ─────────────────────────────────────────────
 
 const zelfdeAllergenen = (a: unknown, b: unknown): boolean => {
   if (Array.isArray(a) !== Array.isArray(b)) return false
@@ -1298,25 +1273,15 @@ const zelfdeAllergenen = (a: unknown, b: unknown): boolean => {
   return x.length === y.length && x.every((v, i) => v === y[i])
 }
 
-const zelfdeAbv = (a: unknown, b: unknown): boolean => {
-  const x = pos(a)
-  const y = pos(b)
-  return x === null || y === null ? x === y : rond(x, 1) === rond(y, 1)
-}
-
-/** Een nieuwe etiketversie is verplicht zodra de allergenen of de ABV wijzigen
- *  (ook van "nog niet vastgelegd" naar een lijst). */
-export const etiketVersieVerplicht = (
-  oud: Partial<Pick<Product, 'allergenen' | 'abv'>> | null | undefined,
-  nieuw: Partial<Pick<Product, 'allergenen' | 'abv'>> | null | undefined,
-): boolean => !zelfdeAllergenen(oud?.allergenen, nieuw?.allergenen) || !zelfdeAbv(oud?.abv, nieuw?.abv)
-
 // ── 11. Etiket vastleggen — de enige schrijfweg ─────────────────────────────
 
 export const ETIKET_VELDEN = [
-  'allergenen', 'abv', 'ibu', 'ebc', 'kcal', 'kj', 'energie_op_etiket', 'etiket_versie', 'etiket_bijgewerkt',
+  'allergenen', 'abv', 'ibu', 'ebc', 'kcal', 'kj', 'energie_op_etiket', 'etiket_bijgewerkt',
 ] as const
 export type EtiketVeld = typeof ETIKET_VELDEN[number]
+
+/** De velden die op het gedrukte etiket staan (de rest gaat naar de website). */
+const OP_HET_ETIKET: readonly EtiketVeld[] = ['allergenen', 'abv', 'kcal', 'kj', 'energie_op_etiket']
 
 export interface EtiketWijziging {
   allergenen?: Allergeen[]
@@ -1326,7 +1291,6 @@ export interface EtiketWijziging {
   kcal?: number | string | null
   kj?: number | string | null
   energie_op_etiket?: 'vermeld' | 'niet_vermeld'
-  etiket_versie?: string
   etiket_bijgewerkt?: string
 }
 
@@ -1352,17 +1316,16 @@ const toonWaarde = (v: unknown, t?: Vertaal): string =>
 
 /**
  * Leg etiketgegevens vast op het product. Dit is de énige schrijfweg voor
- * allergenen, ABV, IBU, EBC, energie en de etiketversie (de dialoog "Etiket
- * bijwerken", ook vanaf HACCP en CCP 3).
+ * allergenen, ABV, IBU, EBC en energie (de dialoog "Etiket bijwerken", ook
+ * vanaf HACCP en CCP 3).
  *
  *  - Alleen wat in `wijziging` staat verandert; de rest blijft precies staan.
  *    Een veld met `undefined` telt als niet meegegeven; leegmaken = `null`/''.
- *  - Wijzigen allergenen of ABV, dan is een nieuwe `etiket_versie` verplicht
- *    (anders dan de huidige) én `opties.bevestigd` ("Ik heb het gedrukte
- *    etiket v4 voor me"); anders een fout-sleutel en geen wijziging.
+ *  - Geen etiketversie (1.13.53): of het gedrukte etiket klopt, toetst CCP 3
+ *    aan de inhoud, niet aan een nummer.
  *  - Energie: "Niet vermeld" haalt kcal/kJ van het product; "Vermeld" vraagt
  *    kJ én kcal. kcal/kJ vastleggen zonder "Vermeld" kan niet.
- *  - Een nieuwe versie zet `etiket_bijgewerkt` (wijziging, opties.datum of vandaag).
+ *  - Elke wijziging zet `etiket_bijgewerkt` (wijziging, opties.datum of vandaag).
  *
  * Geeft het nieuwe productrecord en een auditregel ("velden oud → nieuw",
  * soort `Product`) voor `logAudit`.
@@ -1427,17 +1390,14 @@ export const legEtiketVast = <P extends Pick<Product, 'id'> & Partial<Product>>(
     return fout('etiket_fout_energie_niet_vermeld')
   }
 
-  const oudeVersie = tekst(product.etiket_versie)
-  if (heeft('etiket_versie')) zet('etiket_versie', tekst(w.etiket_versie) || undefined)
-  const nieuweVersie = tekst(nieuw.etiket_versie)
-  const andereVersie = nieuweVersie !== '' && nieuweVersie.toLowerCase() !== oudeVersie.toLowerCase()
-
-  if (etiketVersieVerplicht(product, nieuw as Partial<Product>)) {
-    if (!andereVersie) return fout('etiket_fout_versie_verplicht')
-    if (opties?.bevestigd !== true) return fout('etiket_fout_bevestiging')
-  }
+  // Veranderde er iets op het gedrukte etiket (allergenen, alcohol, energie)?
+  // Dan krijgt het de datum van vandaag (of de meegegeven datum). IBU en EBC
+  // gaan alleen naar de website.
+  const veranderd = OP_HET_ETIKET.some(veld => !(veld === 'allergenen'
+    ? zelfdeAllergenen((product as Record<string, unknown>)[veld], nieuw[veld])
+    : toonWaarde((product as Record<string, unknown>)[veld]) === toonWaarde(nieuw[veld])))
   if (heeft('etiket_bijgewerkt')) zet('etiket_bijgewerkt', tekst(w.etiket_bijgewerkt) || undefined)
-  else if (andereVersie) zet('etiket_bijgewerkt', tekst(opties?.datum) || tod())
+  else if (veranderd) zet('etiket_bijgewerkt', tekst(opties?.datum) || tod())
 
   // Wat er per saldo veranderd is.
   const gewijzigd: EtiketVeld[] = []
@@ -1561,7 +1521,7 @@ export const websiteLooptAchter = (
  * voorraad tellen álle etiketcontroles van zijn sessie voor dit product (na
  * een rolwissel liggen er flessen met beide etiketten in hetzelfde lot); een
  * lot zonder controle valt terug op het huidige etiket, dat er altijd in zit.
- * Zo staat er tijdens de overgang v3 → v4 nooit te weinig.
+ * Zo staat er tijdens een overgang naar een ander etiket nooit te weinig.
  * `afvullingenOpVoorraad` = de lots van dit product met voorraad
  * (`afvullingenOpVoorraad` hieronder).
  */
@@ -1569,11 +1529,8 @@ export const webshopAllergenen = (
   product: Pick<Product, 'id'> & Partial<Product>,
   afvullingenOpVoorraad: Array<Pick<Afvulling, 'product_id'> & Partial<Afvulling>> | null | undefined,
   etiketcontroles: Array<Pick<EtiketControle, 'sessie_id' | 'product_id' | 'allergenen_etiket'> & Partial<EtiketControle>> | null | undefined,
-): {lijst: Allergeen[]; versies: string[]} => {
+): {lijst: Allergeen[]} => {
   const alles: Allergeen[] = [...(product.allergenen || [])]
-  const versies: string[] = []
-  const voegVersie = (v: unknown) => { const s = tekst(v); if (s && !versies.includes(s)) versies.push(s) }
-  voegVersie(product.etiket_versie)
   const moment = (c: Partial<EtiketControle>) => tekst(c.uitgevoerd_op) || tekst(c.paraaf?.tijdstip)
   const sessies = new Set<number>()
   for (const a of (afvullingenOpVoorraad || [])) {
@@ -1583,11 +1540,8 @@ export const webshopAllergenen = (
   const controles = (etiketcontroles || [])
     .filter(c => !!c && c.sessie_id != null && sessies.has(Number(c.sessie_id)) && Number(c.product_id) === Number(product.id))
     .sort((x, y) => moment(y).localeCompare(moment(x)))
-  for (const c of controles) {
-    alles.push(...(c.allergenen_etiket || []))
-    voegVersie(c.etiket_versie_gelezen || c.etiket_versie)
-  }
-  return {lijst: sorteerAllergenen(alles), versies}
+  for (const c of controles) alles.push(...(c.allergenen_etiket || []))
+  return {lijst: sorteerAllergenen(alles)}
 }
 
 // ── 11c. De webshop: wat er op voorraad ligt en wat er per artikel verandert ─
@@ -1752,8 +1706,6 @@ export interface EtiketKeuze {
   energie: 'vermeld' | 'niet_vermeld'
   kcal?: number | string | null
   kj?: number | string | null
-  /** De versie in het veld. */
-  versie: string
 }
 
 /** Begint de energiekeuze op "Vermeld" of "Niet vermeld"? Wat het product vastlegt. */
@@ -1765,13 +1717,12 @@ export const energieKeuze = (product: Partial<Pick<Product, 'energie_op_etiket'>
  * echt gekozen is: allergenen als ze anders zijn dan het huidige etiket (een
  * lege lijst tegenover "nog niet vastgelegd" is anders), een getal alleen als
  * zijn vinkje aan staat, de energie alleen als
- * de keuze afwijkt of op "Vermeld" staat (kcal en kJ), de versie alleen als
- * hij anders is dan de huidige. Zo maakt openen en opslaan zonder iets te
+ * de keuze afwijkt of op "Vermeld" staat (kcal en kJ). Zo maakt openen en opslaan zonder iets te
  * kiezen geen wijziging — en wordt een nog niet vastgelegd etiket nooit
  * stilzwijgend "geen allergenen".
  */
 export const etiketWijzigingUitKeuze = (
-  product: Partial<Pick<Product, 'allergenen' | 'energie_op_etiket' | 'etiket_versie'>> | null | undefined,
+  product: Partial<Pick<Product, 'allergenen' | 'energie_op_etiket'>> | null | undefined,
   keuze: EtiketKeuze,
 ): EtiketWijziging => {
   const w: EtiketWijziging = {}
@@ -1788,21 +1739,7 @@ export const etiketWijzigingUitKeuze = (
       w.kj = keuze.kj ?? null
     }
   }
-  const versie = tekst(keuze.versie)
-  if (versie && versie.toLowerCase() !== tekst(product?.etiket_versie).toLowerCase()) w.etiket_versie = versie
   return w
-}
-
-/** Vraagt deze keuze om een nieuwe etiketversie (allergenen of alcohol anders)? */
-export const keuzeVraagtNieuweVersie = (
-  product: Partial<Pick<Product, 'allergenen' | 'abv' | 'energie_op_etiket' | 'etiket_versie'>> | null | undefined,
-  keuze: EtiketKeuze,
-): boolean => {
-  const w = etiketWijzigingUitKeuze(product, {...keuze, versie: ''})
-  return etiketVersieVerplicht(product, {
-    allergenen: w.allergenen ?? product?.allergenen,
-    abv: w.abv !== undefined ? w.abv as Product['abv'] : product?.abv,
-  })
 }
 
 /**
@@ -1874,15 +1811,15 @@ export const etiketGetalReden = (g: EtiketGetalVoorstel, t: Vertaal, taal?: stri
 
 /**
  * De grijze regel onder de titel van de dialoog. Bureau: "Vergeleken met
- * #2609 (conditioneert in GV1) · nu op het etiket: v3 van 8-4-2025";
- * telefoon (`kort`): "Tegen #2609 · nu etiket v3". Zonder batch het recept,
- * zonder versie "nog geen etiketversie vastgelegd".
+ * #2609 (conditioneert in GV1) · etiket vastgelegd op 8-4-2025"; telefoon
+ * (`kort`): "Tegen #2609 · etiket van 8-4-2025". Zonder batch het recept,
+ * zonder vastgelegd etiket "nog geen etiket vastgelegd".
  */
 export const etiketDialoogKop = (
   invoer: {
     batch?: BatchLike | null
     recept?: Partial<Pick<Recept, 'naam'>> | null
-    product: Partial<Pick<Product, 'etiket_versie' | 'etiket_bijgewerkt'>>
+    product: Partial<Pick<Product, 'allergenen' | 'etiket_bijgewerkt'>>
     kort?: boolean
   },
   t: Vertaal,
@@ -1904,12 +1841,10 @@ export const etiketDialoogKop = (
     delen.push(vulIn(t, kort ? 'etiket_bijwerken_tegen_recept' : 'etiket_bijwerken_vergeleken_recept',
       {recept: tekst(recept.naam) || t('lbl_naamloos')}))
   }
-  const versie = tekst(product.etiket_versie)
   const datum = tekst(product.etiket_bijgewerkt)
-  if (!versie) delen.push(t('etiket_bijwerken_nu_geen'))
-  else if (kort) delen.push(vulIn(t, 'etiket_bijwerken_nu_kort', {versie}))
-  else if (datum) delen.push(vulIn(t, 'etiket_bijwerken_nu', {versie, datum: datumDmj(datum)}))
-  else delen.push(vulIn(t, 'etiket_bijwerken_nu_versie', {versie}))
+  if (datum) delen.push(vulIn(t, kort ? 'etiket_bijwerken_nu_kort' : 'etiket_bijwerken_nu', {datum: datumDmj(datum)}))
+  else if (Array.isArray(product.allergenen)) delen.push(t('etiket_bijwerken_nu_vastgelegd'))
+  else delen.push(t('etiket_bijwerken_nu_geen'))
   return delen.join(' · ')
 }
 
@@ -2245,69 +2180,25 @@ export const allergeenKeuzeTegenBatch = (
   return {klopt: v.gelijk, ontbreekt: sorteerAllergenen(v.ontbreektOpEtiket), teveel: sorteerAllergenen(v.teveelOpEtiket)}
 }
 
-// ── 13. CCP 3: de versie op de rol en de getallen bij de controle ───────────
-//
-// De afvuller vult de versie in van de rol die hij in zijn hand heeft; het
-// veld begint leeg en de verwachte versie (die van het product) staat er als
-// tekst naast. Zo valt een oude rol op, in plaats van dat het formulier de
-// verwachte versie al invult en hij er doorheen glipt (opzet 5.5).
-
-const versieSleutel = (v: unknown): string => {
-  const s = tekst(v).toLowerCase().replace(/\s+/g, ' ')
-  const m = /^v?\s*(\d+)$/.exec(s)
-  return m ? `v${Number(m[1])}` : s
-}
-
-/** Dezelfde etiketversie: "v4", "V4", "4" en " v 4 " zijn gelijk. */
-export const zelfdeEtiketVersie = (a: unknown, b: unknown): boolean =>
-  versieSleutel(a) === versieSleutel(b)
-
-/**
- * Blokkade bij CCP 3 als de gelezen versie afwijkt van de verwachte (die van
- * het product). Niets ingevuld of geen verwachte versie: geen blokkade — het
- * formulier vraagt de versie zelf wanneer er een te verwachten valt. Gaat via
- * het bestaande mechanisme: dezelfde blokkadekaart en dezelfde
- * afwijkingsregistratie als de allergenen.
- */
-export const etiketVersieBlokkade = (gelezen: unknown, verwacht: unknown): BlokkadeReden | null => {
-  const g = tekst(gelezen)
-  const v = tekst(verwacht)
-  if (!g || !v || zelfdeEtiketVersie(g, v)) return null
-  return {code: 'etiket_versie_wijkt_af', i18nKey: 'haccp_blok_etiket_versie', params: {gelezen: g, verwacht: v}}
-}
-
-/** De etiketblokkade van CCP 3 (allergenen, `magEtiketterenDoorgaan`) met
- *  de versie op de rol erbij. */
-export const etiketBlokMetVersie = (blok: BlokkadeResultaat, gelezen: unknown, verwacht: unknown): BlokkadeResultaat => {
-  const reden = etiketVersieBlokkade(gelezen, verwacht)
-  return reden ? {toegestaan: false, redenen: [...blok.redenen, reden]} : blok
-}
+// ── 13. CCP 3: de getallen bij de controle ──────────────────────────────────
 
 /** De bevroren getallen op een nieuwe etiketcontrole (CCP 3). Oude records
  *  hebben ze niet; append-only blijft gelden. */
 export interface EtiketControleGetallen {
-  etiket_versie_gelezen?: string
-  etiket_versie_verwacht?: string
   abv_batch?: number
   abv_etiket_verwacht?: number
   abv_marge?: number
 }
 
 /**
- * Wat een nieuwe etiketcontrole bevriest: de gelezen en de verwachte versie,
- * de ABV van de batch (de vastgezette, anders de beste waarde die er is), wat
+ * Wat een nieuwe etiketcontrole bevriest: de ABV van de batch (de vastgezette, anders de beste waarde die er is), wat
  * het etiket vastlegt en de marge die daarbij hoort. Lege waarden vallen weg.
  */
 export const etiketControleGetallen = (invoer: {
-  gelezen?: unknown
-  product?: Partial<Pick<Product, 'etiket_versie' | 'abv'>> | null
+  product?: Partial<Pick<Product, 'abv'>> | null
   abvBatch?: unknown
 }): EtiketControleGetallen => {
   const uit: EtiketControleGetallen = {}
-  const gelezen = tekst(invoer.gelezen)
-  const verwacht = tekst(invoer.product?.etiket_versie)
-  if (gelezen) uit.etiket_versie_gelezen = gelezen
-  if (verwacht) uit.etiket_versie_verwacht = verwacht
   const b = pos(invoer.abvBatch)
   const e = pos(invoer.product?.abv)
   if (b !== null) uit.abv_batch = rond(b, 2)

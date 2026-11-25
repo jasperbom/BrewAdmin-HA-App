@@ -1007,6 +1007,39 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
     setHaInst((p: any) => ({...p, sensors: (p?.sensors||[]).map((s: any) => s.id === id ? {...s, [field]: value} : s)}))
   }
 
+  // Druksensoren per tank (koolzuur bij het afvullen, CCP 1 grens c). De
+  // afvuldag leest de druk eenmalig en rekent met de tanktemperatuur de
+  // volumes CO₂ uit.
+  const addDrukSensor = () => {
+    const lijst = Array.isArray(haInst?.druk_sensors) ? haInst.druk_sensors : []
+    const nextId = lijst.length ? Math.max(...lijst.map((s: any) => s.id)) + 1 : 1
+    setHaInst((p: any) => ({...p, druk_sensors: [...lijst, {id: nextId, tank: '', entity: '', eenheid: 'bar'}]}))
+    logAudit(auditLog, setAuditLog, {entiteit:'HA Sensor', entiteit_id:nextId, actie:'aangemaakt', omschrijving:'HA druksensor toegevoegd'})
+  }
+  const removeDrukSensor = (id: number) => {
+    logAudit(auditLog, setAuditLog, {entiteit:'HA Sensor', entiteit_id:id, actie:'verwijderd', omschrijving:`HA druksensor #${id} verwijderd`})
+    setHaInst((p: any) => ({...p, druk_sensors: (p?.druk_sensors||[]).filter((s: any) => s.id !== id)}))
+  }
+  const updateDrukSensor = (id: number, field: string, value: string) => {
+    setHaInst((p: any) => ({...p, druk_sensors: (p?.druk_sensors||[]).map((s: any) => s.id === id ? {...s, [field]: value} : s)}))
+  }
+  // Retoursensoren (heet water bij reinigen): per tank, of één voor alle
+  // tanks (de retour naar de heetwatertank). De reiniging leest de
+  // geschiedenis en rekent uit hoe lang het retourwater op temperatuur was.
+  const addRetourSensor = () => {
+    const lijst = Array.isArray(haInst?.retour_sensors) ? haInst.retour_sensors : []
+    const nextId = lijst.length ? Math.max(...lijst.map((s: any) => s.id)) + 1 : 1
+    setHaInst((p: any) => ({...p, retour_sensors: [...lijst, {id: nextId, tank: '', entity: ''}]}))
+    logAudit(auditLog, setAuditLog, {entiteit:'HA Sensor', entiteit_id:nextId, actie:'aangemaakt', omschrijving:'HA retoursensor toegevoegd'})
+  }
+  const removeRetourSensor = (id: number) => {
+    logAudit(auditLog, setAuditLog, {entiteit:'HA Sensor', entiteit_id:id, actie:'verwijderd', omschrijving:`HA retoursensor #${id} verwijderd`})
+    setHaInst((p: any) => ({...p, retour_sensors: (p?.retour_sensors||[]).filter((s: any) => s.id !== id)}))
+  }
+  const updateRetourSensor = (id: number, field: string, value: string) => {
+    setHaInst((p: any) => ({...p, retour_sensors: (p?.retour_sensors||[]).map((s: any) => s.id === id ? {...s, [field]: value} : s)}))
+  }
+
   // ── Climate / Light / Switch — gedeelde helpers ───────────────────────────
   // Discovered entity-cache per domein; wordt gevuld door "Entities ophalen".
   const [haDiscovered, setHaDiscovered] = React.useState<Record<string, HaStateEntry[]>>({})
@@ -1457,7 +1490,7 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
       {/* Branding */}
       <div className={card}>
         <h2 className="text-lg font-semibold text-gray-700 mb-1">{t('settings_logo_title')}</h2>
-        <p className="text-sm text-gray-500 mb-4">{t('settings_logo_desc')}</p>
+
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-600 mb-1">{t('settings_app_name_label')}</label>
           <input type="text" value={appName} onChange={(e: any)=>setAppName(e.target.value)}
@@ -1614,10 +1647,12 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
         <p className="text-sm text-gray-500 mb-4">{t('haccp_inst_uitleg')}</p>
         <div className="grid sm:grid-cols-2 gap-3">
           {([
-            ['stabiel_dagen_standaard', 'haccp_inst_dagen_standaard', 1, DEFAULT_HACCP_INST.stabiel_dagen_standaard],
-            ['stabiel_dagen_verhoogd', 'haccp_inst_dagen_verhoogd', 1, DEFAULT_HACCP_INST.stabiel_dagen_verhoogd],
+            ['stabiel_min_uur', 'haccp_inst_min_uur', 1, DEFAULT_HACCP_INST.stabiel_min_uur],
             ['stabiel_tolerantie_sg', 'haccp_inst_tolerantie', 0.001, DEFAULT_HACCP_INST.stabiel_tolerantie_sg],
             ['ff_marge_sg', 'haccp_inst_ff_marge', 0.001, DEFAULT_HACCP_INST.ff_marge_sg],
+            ['co2_max_volumes', 'haccp_inst_co2_max', 0.1, DEFAULT_HACCP_INST.co2_max_volumes],
+            ['houdtest_dagen', 'haccp_inst_houdtest_dagen', 1, DEFAULT_HACCP_INST.houdtest_dagen],
+            ['houdtest_sg_marge', 'haccp_inst_houdtest_marge', 0.001, DEFAULT_HACCP_INST.houdtest_sg_marge],
             ['tht_maanden_standaard', 'haccp_inst_tht_standaard', 1, DEFAULT_HACCP_INST.tht_maanden_standaard],
             ['tht_maanden_gepasteuriseerd', 'haccp_inst_tht_gepast', 1, DEFAULT_HACCP_INST.tht_maanden_gepasteuriseerd],
             ['tht_maanden_ongekookt', 'haccp_inst_tht_ongekookt', 1, DEFAULT_HACCP_INST.tht_maanden_ongekookt],
@@ -1639,6 +1674,39 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
                 className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input" />
             </div>
           ))}
+          {/* CCP 2 bij flessen: de lege flessen bekijken (standaard) of de
+              sluitcontrole met omkeerproef elk half uur, zoals bij blik. */}
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('haccp_inst_ccp2_fles')}</label>
+            <select value={haccpInst?.ccp2_fles === 'sluitcontrole' ? 'sluitcontrole' : 'lege_flessen'}
+              onChange={(e: any) => {
+                const v = e.target.value
+                setHaccpInst((prev: any) => ({...DEFAULT_HACCP_INST, ...(prev || {}), ccp2_fles: v}))
+                logAudit(auditLog, setAuditLog, {entiteit: 'Instelling', entiteit_id: 0, actie: 'gewijzigd', omschrijving: `HACCP ccp2_fles → ${v}`})
+              }}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input bg-white">
+              <option value="lege_flessen">{t('haccp_inst_ccp2_lege_flessen')}</option>
+              <option value="sluitcontrole">{t('haccp_inst_ccp2_sluitcontrole')}</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-500">{t('haccp_inst_co2_uitleg')}</p>
+          </div>
+          {/* Wanneer het etiket erop gaat: bij het afvullen (CCP 3 in de sessie)
+              of pas na de vrijgave voor verkoop — dan gooi je bij een
+              afgekeurde houdtest geen etiketten weg. */}
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('haccp_inst_etiketteren')}</label>
+            <select value={haccpInst?.etiketteren === 'na_vrijgave' ? 'na_vrijgave' : 'afvullen'}
+              onChange={(e: any) => {
+                const v = e.target.value
+                setHaccpInst((prev: any) => ({...DEFAULT_HACCP_INST, ...(prev || {}), etiketteren: v}))
+                logAudit(auditLog, setAuditLog, {entiteit: 'Instelling', entiteit_id: 0, actie: 'gewijzigd', omschrijving: `HACCP etiketteren → ${v}`})
+              }}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm w-full t-input bg-white">
+              <option value="afvullen">{t('haccp_inst_etiketteren_afvullen')}</option>
+              <option value="na_vrijgave">{t('haccp_inst_etiketteren_na_vrijgave')}</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-500">{t('haccp_inst_houdtest_uitleg')}</p>
+          </div>
         </div>
         {/* Per ingrediënttype een default; per ingrediënt kan het overschreven
             worden op de HACCP-allergenenpagina. */}
@@ -2808,6 +2876,82 @@ function InstellingenPage({accijnsInst, setAccijnsInst, log, setLog, doExport, d
           )}
         </div>
         <Btn v="secondary" s="sm" onClick={addSensor}>{t('btn_sensor_toevoegen')}</Btn>
+
+        {/* ── Druksensoren (koolzuur bij het afvullen) ── */}
+        <div className="mt-5 pt-4 border-t">
+          <h3 className="text-sm font-semibold text-gray-800 mb-1">{t('settings_ha_druk_titel')}</h3>
+          <p className="text-sm text-gray-500 mb-3">{t('settings_ha_druk_uitleg')}</p>
+          <div className="space-y-2 mb-3">
+            {(Array.isArray(haInst?.druk_sensors) ? haInst.druk_sensors : []).map((ds: any) => (
+              <div key={ds.id} className="border border-gray-200 rounded-lg p-3 bg-gray-50/50">
+                <div className="flex items-end gap-2 flex-wrap">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('lbl_tank')}</label>
+                    {tanks && tanks.length > 0 ? (
+                      <select value={ds.tank} onChange={e => updateDrukSensor(ds.id, 'tank', e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-32 t-input bg-white">
+                        <option value="">{t('opt_select')}</option>
+                        {tanks.map((tk: any) => (
+                          <option key={tk.id} value={tk.id}>{tk.naam ? `${tk.id} (${tk.naam})` : tk.id}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input type="text" value={ds.tank} onChange={e => updateDrukSensor(ds.id, 'tank', e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24 t-input" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-48">
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_entity_id')}</label>
+                    {renderEntityPicker('sensor', `druk:${ds.id}`, ds.entity,
+                      v => updateDrukSensor(ds.id, 'entity', v), 'sensor.tank_druk')}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_druk_eenheid')}</label>
+                    <select value={ds.eenheid || 'bar'} onChange={e => updateDrukSensor(ds.id, 'eenheid', e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24 t-input bg-white">
+                      <option value="bar">bar</option>
+                      <option value="psi">psi</option>
+                      <option value="kpa">kPa</option>
+                    </select>
+                  </div>
+                  <Btn v="danger" s="sm" onClick={() => removeDrukSensor(ds.id)}>×</Btn>
+                </div>
+              </div>
+            ))}
+          </div>
+          <Btn v="secondary" s="sm" onClick={addDrukSensor}>{t('settings_ha_druk_toevoegen')}</Btn>
+        </div>
+
+        {/* ── Retoursensoren (heet water bij reinigen: ≥ 82 °C, 15 minuten) ── */}
+        <div className="mt-5 pt-4 border-t">
+          <h3 className="text-sm font-semibold text-gray-800 mb-1">{t('settings_ha_retour_titel')}</h3>
+          <p className="text-sm text-gray-500 mb-3">{t('settings_ha_retour_uitleg')}</p>
+          <div className="space-y-2 mb-3">
+            {(Array.isArray(haInst?.retour_sensors) ? haInst.retour_sensors : []).map((rs: any) => (
+              <div key={rs.id} className="border border-gray-200 rounded-lg p-3 bg-gray-50/50">
+                <div className="flex items-end gap-2 flex-wrap">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('lbl_tank')}</label>
+                    <select value={rs.tank || ''} onChange={e => updateRetourSensor(rs.id, 'tank', e.target.value)}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm w-40 t-input bg-white">
+                      <option value="">{t('settings_ha_retour_alle_tanks')}</option>
+                      {(tanks || []).map((tk: any) => (
+                        <option key={tk.id} value={tk.id}>{tk.naam ? `${tk.id} (${tk.naam})` : tk.id}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1 min-w-48">
+                    <label className="block text-xs font-medium text-gray-500 mb-0.5">{t('settings_ha_entity_id')}</label>
+                    {renderEntityPicker('sensor', `retour:${rs.id}`, rs.entity,
+                      v => updateRetourSensor(rs.id, 'entity', v), 'sensor.cip_retour')}
+                  </div>
+                  <Btn v="danger" s="sm" onClick={() => removeRetourSensor(rs.id)}>×</Btn>
+                </div>
+              </div>
+            ))}
+          </div>
+          <Btn v="secondary" s="sm" onClick={addRetourSensor}>{t('settings_ha_retour_toevoegen')}</Btn>
+        </div>
 
         <div className="mt-4 pt-4 border-t text-xs text-gray-400 space-y-1">
           <p>{t('settings_ha_proxy_hint')} <code className="bg-gray-100 px-1 rounded">http://supervisor/core/api/states/&lt;entity_id&gt;</code></p>

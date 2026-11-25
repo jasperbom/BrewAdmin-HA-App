@@ -122,9 +122,15 @@ describe('Vergisten', () => {
     expect(volgendeStap({ ...tweeStappen, cold_crash_datum: '2026-10-06T08:00:00Z' }, basis()).soort).toBe('meting')
   })
 
-  it('laatste stap klaar en FG gemeten: "Naar conditioneren ›"; zonder FG eerst meten', () => {
+  const vrij2610 = [{ id: 1, batch_id: 2610, datum: '2026-10-06', oordeel: 'vrijgegeven' }] as unknown as HaccpVrijgave[]
+
+  it('laatste stap klaar en FG gemeten: eerst "Vrijgave CCP 1 ›" (vóór het koelen), dan "Naar conditioneren ›"', () => {
     const klaar = { ...werfhop, vergistingsprofiel: profiel(5) }
-    expect(volgendeStap({ ...klaar, FG: 1.011 }, basis())).toMatchObject({ soort: 'naar_conditioneren', overgang: 'Conditioneren' })
+    expect(volgendeStap({ ...klaar, FG: 1.011 }, basis())).toMatchObject({
+      soort: 'vrijgave', opent: true, doel: { fase: 'Vergisten', sectie: 'vrijgave' },
+    })
+    expect(volgendeStap({ ...klaar, FG: 1.011 }, basis({ vrijgaven: vrij2610 })))
+      .toMatchObject({ soort: 'naar_conditioneren', overgang: 'Conditioneren' })
     expect(volgendeStap(klaar, basis()).soort).toBe('meting')
   })
 
@@ -135,7 +141,8 @@ describe('Vergisten', () => {
       { batch_id: 2610, datum: '2026-10-04', tijd: '08:00', sg: 1.012 },
       { batch_id: 2610, datum: '2026-10-05', tijd: '09:00', sg: 1.0115 },
     ]
-    expect(volgendeStap(zonder, basis({ gistMetingen: metingen })).soort).toBe('naar_conditioneren')
+    expect(volgendeStap(zonder, basis({ gistMetingen: metingen, vrijgaven: vrij2610 })).soort).toBe('naar_conditioneren')
+    expect(volgendeStap(zonder, basis({ gistMetingen: metingen })).soort).toBe('vrijgave')
     expect(volgendeStap(zonder, basis({ gistMetingen: metingen.slice(0, 2) })).soort).toBe('meting')
   })
 
@@ -187,7 +194,7 @@ describe('Conditioneren', () => {
   })
 
   it('"ABV vastzetten ›" met de waarde voor de ActieBalk — ook met een rood etiket, zolang afvullen nog niet nadert', () => {
-    const s = volgendeStap(kadeblond, basis({ etiketKleur: 'rood' }))
+    const s = volgendeStap(kadeblond, basis({ etiketKleur: 'rood', vrijgaven: vrijgave('vrijgegeven') }))
     expect(s).toMatchObject({
       soort: 'abv_vastzetten', opent: true, labelParams: { abv: 7 },
       detailSleutel: 'stap_detail_abv', detailParams: { abv: 7 }, doel: { fase: 'Conditioneren', sectie: 'abv' },
@@ -197,7 +204,8 @@ describe('Conditioneren', () => {
 
   it('etiket rood en afvullen nadert: "Etiket bijwerken ›" heeft voorrang', () => {
     expect(ETIKET_URGENT_DAGEN).toBe(7)
-    const bijna = basis({ etiketKleur: 'rood', vandaag: '2026-10-10', nu: new Date('2026-10-10T10:00').getTime() })
+    const bijna = basis({ etiketKleur: 'rood', vandaag: '2026-10-10', nu: new Date('2026-10-10T10:00').getTime(),
+      vrijgaven: vrijgave('vrijgegeven') })
     expect(volgendeStap(kadeblond, bijna)).toMatchObject({
       soort: 'etiket_bijwerken', opent: true, urgent: true, doel: { fase: 'Conditioneren', sectie: 'etiket' },
     })
@@ -209,18 +217,20 @@ describe('Conditioneren', () => {
   })
 
   it('zonder FG of ABV eerst meten', () => {
-    expect(volgendeStap({ ...kadeblond, FG: undefined, ABV: undefined }, basis())).toMatchObject({ soort: 'meting', opent: false })
+    const v = { vrijgaven: vrijgave('vrijgegeven') }
+    expect(volgendeStap({ ...kadeblond, FG: undefined, ABV: undefined }, basis(v))).toMatchObject({ soort: 'meting', opent: false })
     // Een labwaarde zonder FG is genoeg om vast te zetten.
-    expect(volgendeStap({ ...kadeblond, FG: undefined }, basis()).soort).toBe('abv_vastzetten')
+    expect(volgendeStap({ ...kadeblond, FG: undefined }, basis(v)).soort).toBe('abv_vastzetten')
     // FG zonder ABV: vastzetten, zonder waarde erbij — tenzij het scherm de
     // berekende ABV meegeeft.
-    const s = volgendeStap({ ...kadeblond, ABV: undefined }, basis())
+    const s = volgendeStap({ ...kadeblond, ABV: undefined }, basis(v))
     expect(s).toMatchObject({ soort: 'abv_vastzetten', labelParams: {} })
     expect(s.detailSleutel).toBeUndefined()
-    expect(volgendeStap({ ...kadeblond, ABV: undefined }, basis({ abvWaarde: 6.95 })).detailParams).toEqual({ abv: 6.95 })
+    expect(volgendeStap({ ...kadeblond, ABV: undefined }, basis({ ...v, abvWaarde: 6.95 })).detailParams).toEqual({ abv: 6.95 })
   })
 
-  it('daarna "Vrijgave CCP 1 ›", en dan "Afvullen ›"', () => {
+  it('zonder CCP 1 eerst "Vrijgave CCP 1 ›" (vóór koelen en vóór de ABV), daarna "Afvullen ›"', () => {
+    expect(volgendeStap(kadeblond, basis())).toMatchObject({ soort: 'vrijgave', doel: { fase: 'Conditioneren', sectie: 'vrijgave' } })
     const vast = { ...kadeblond, abv_definitief: true }
     expect(volgendeStap(vast, basis())).toMatchObject({ soort: 'vrijgave', doel: { fase: 'Conditioneren', sectie: 'vrijgave' } })
     expect(volgendeStap(vast, basis({ vrijgaven: vrijgave('niet_vrijgegeven') })).soort).toBe('vrijgave')
@@ -235,6 +245,7 @@ describe('Conditioneren', () => {
     const s = volgendeStap(kadeblond, basis({
       batchTakenGroepen: [{ id: 4, naam: 'Conditioneren', fase: 'Conditioneren' }],
       batchTakenItems: [{ id: 40, type: 'check', group_id: 4, actief: true }, { id: 41, type: 'meting', group_id: 4 }],
+      vrijgaven: vrijgave('vrijgegeven'),
     }))
     expect(s.openTaken).toBe(1)
     expect(s.soort).toBe('abv_vastzetten')
@@ -264,6 +275,25 @@ describe('Afgevuld', () => {
   it('nog niets afgevuld: "Afvullen ›" — met een rood etiket eerst het etiket', () => {
     expect(volgendeStap(sluiswit, basis({ afvulSessies: [], afvullingen: [] }))).toMatchObject({ soort: 'afvullen', doel: { fase: 'Afgevuld', sectie: 'sessie' } })
     expect(volgendeStap(sluiswit, basis({ afvulSessies: [], afvullingen: [], etiketKleur: 'rood' }))).toMatchObject({ soort: 'etiket_bijwerken', urgent: true })
+  })
+
+  it('in quarantaine: "Houdtest 30-9 ›", urgent vanaf die dag', () => {
+    const q = (extra: any = {}) => ({ ...sessie(1, 'afgesloten', 'L2608'), start: '2026-09-16T09:00:00',
+      houdtest_dagen: 14, houdtest_flessen: true, ...extra }) as unknown as AfvulSessie
+    const vroeg = volgendeStap(sluiswit, basis({ afvulSessies: [q()], afvullingen, vandaag: '2026-09-20' }))
+    expect(vroeg).toMatchObject({ soort: 'houdtest', labelParams: { datum: '30-9' }, detailParams: { n: 10 },
+      doel: { fase: 'Afgevuld', sectie: 'houdtest' }, urgent: false })
+    expect(volgendeStap(sluiswit, basis({ afvulSessies: [q()], afvullingen, vandaag: '2026-09-30' })))
+      .toMatchObject({ soort: 'houdtest', urgent: true })
+    // Vrijgegeven en het etiket volgt nog: "Etiketteren L2608 ›".
+    const vrij = [{ id: 1, batch_id: 2608, oordeel: 'vrijgegeven', paraaf: { tijdstip: '2026-09-30T10:00:00Z' } }] as any
+    const nog = [{ batch_id: 2608, sessie_id: 1, hoeveelheid: 400, etiket_volgt: true }]
+    expect(volgendeStap(sluiswit, basis({ afvulSessies: [q({ etiketteren: 'na_vrijgave' })], afvullingen: nog,
+      verkoopVrijgaven: vrij, vandaag: '2026-10-01' })))
+      .toMatchObject({ soort: 'etiketteren', labelParams: { lotcode: 'L2608', n: 1 }, doel: { fase: 'Afgevuld', sectie: 'etiketteren' } })
+    // Etiket erop: afronden.
+    expect(volgendeStap(sluiswit, basis({ afvulSessies: [q({ etiketteren: 'na_vrijgave' })], afvullingen,
+      verkoopVrijgaven: vrij, vandaag: '2026-10-01' })).soort).toBe('afronden')
   })
 
   it('de oude status Verpakt telt als Afgevuld', () => {

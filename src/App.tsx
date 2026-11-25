@@ -9,7 +9,7 @@ import { detailTitel } from './utils/detailTitel'
 import { afgeleideThemaKleuren } from './utils/kleurContrast'
 import { useStore, bfGetBatches, bfPatchBatch, haGetState, API_BASE, _fetchedKeys, getWhoami, wcGet, wcPut, newId, ruimteklimaatStatus } from './utils/api'
 import { wcVoorraadLijst, gewijzigdeVoorraad, pushWcVoorraad, metGepushteVoorraad, volgendeVoorraadPoging, WC_VOORRAAD_WACHT_MS } from './utils/wcVoorraad'
-import { openBestellingReserveringen } from './utils/calculations'
+import { openBestellingReserveringen, drukNaarBar } from './utils/calculations'
 import { beschikbaarVoorAfvulling as beschikbaarNaPicks } from './utils/beschikbaarheid'
 import { merchGereserveerd } from './utils/merch'
 import { maakAppIcoon } from './utils/icoon'
@@ -39,11 +39,12 @@ import {
   importeerWcOrders, pasImportToe, importAuditRegels, importMelding, telNieuweWebshopOrders,
   importLeaseVrij, verwijderDubbeleWcOrders, WC_IMPORT_LEASE_MS,
 } from './utils/wcOrderImport'
-import { schoonTakenOp, deactiveerStandaardMetingen } from './utils/taken'
+import { schoonTakenOp, deactiveerStandaardMetingen, deactiveerZelfVastgelegd } from './utils/taken'
 import { batchStapGereed, huidigeStapIdx, huidigeStapStartMs, dagenInStap } from './utils/vergisting'
 import { BEWAAKTE_STATUSSEN, beoordeelBatches, tankAlarmTekst } from './utils/tankbewaking'
 import { aircoActief, type RuimteklimaatStatus } from './utils/ruimteklimaat'
 import { attentiePosten, attentieDoel, AttentieDoel, attentieVoorPagina, attentieTotaal } from './utils/attentie'
+import { nvwaNogMelden } from './utils/incident'
 import { attentieLabel } from './utils/attentieTekst'
 import type { VerkoopCtx } from './utils/verkoopOverzicht'
 import { beslissingen } from './utils/beslissingen'
@@ -303,6 +304,12 @@ function App() {
   const [afvulSessies, setAfvulSessies, refreshAfvulSessies] = useStore('afvul_sessies', []);
   const [haccpSluitcontroles, setHaccpSluitcontroles] = useStore('haccp_sluitcontroles', []);
   const [haccpEtiketcontroles, setHaccpEtiketcontroles] = useStore('haccp_etiketcontroles', []);
+  // Houdtest en vrijgave voor verkoop (utils/houdtest.ts) — append-only.
+  const [verkoopVrijgaven, setVerkoopVrijgaven] = useStore('haccp_verkoopvrijgaven', []);
+  // "Er is iets mis": klachten en incidenten per batch (utils/incident.ts).
+  const [haccpIncidenten, setHaccpIncidenten] = useStore('haccp_incidenten', []);
+  // Reinigings- en desinfectiemiddelen met hun Ctgb-toelating (utils/reinigingsmiddelen.ts).
+  const [reinigingsmiddelen, setReinigingsmiddelen] = useStore('reinigingsmiddelen', []);
   const [haccpAfwijkingen, setHaccpAfwijkingen] = useStore('haccp_afwijkingen', []);
   // Traceeroefeningen (handboek hoofdstuk 11) — ook append-only: het bewijs
   // dát er periodiek geoefend is, en met welke uitkomst.
@@ -941,6 +948,31 @@ function App() {
     return () => { clearInterval(int); clearTimeout(timeout); };
   }, [takenOpschoningV4, takenMigratie, batchTakenItems]);
 
+  // Opschoning v5 (1.13.58): de vinkjes op de afvuldag die de app zelf
+  // vastlegt (ABV vastzetten, CCP 3, de THT van de sessie, de afvulling met
+  // locatie) gaan uit. Uitzetten, niet verwijderen; alleen standaardregels
+  // zonder eigen tekst. Pure logica + tests in src/utils/taken.ts.
+  const [takenOpschoningV5, setTakenOpschoningV5] = useStore('batch_taken_opschoning_v5', null);
+  const takenOpschoningV5Ref = React.useRef(false);
+  React.useEffect(() => {
+    if (takenOpschoningV5Ref.current) return;
+    if (takenOpschoningV5 === 'v5') { takenOpschoningV5Ref.current = true; return; }
+    if (takenMigratie !== 'v1' && takenMigratie !== 'done') return;
+    const needed = ['batch_taken_items', 'batch_taken_opschoning_v5'];
+    const ready = () => needed.every(k => _fetchedKeys.has(k));
+    const run = () => {
+      if (takenOpschoningV5Ref.current) return;
+      takenOpschoningV5Ref.current = true;
+      const res = deactiveerZelfVastgelegd(Array.isArray(batchTakenItems) ? batchTakenItems : []);
+      if (res.gewijzigd) setBatchTakenItems(res.items);
+      setTakenOpschoningV5('v5');
+    };
+    if (ready()) { run(); return; }
+    const int = setInterval(() => { if (ready()) { clearInterval(int); run(); } }, 500);
+    const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000); // fallback
+    return () => { clearInterval(int); clearTimeout(timeout); };
+  }, [takenOpschoningV5, takenMigratie, batchTakenItems]);
+
   // Eenmalige migratie (v1.12.11): de webshop-themavelden die kort als losse
   // `_cf_`-meta bij het product en het artikel stonden, zijn nu gewone
   // bierinformatie (utils/bierinfo.ts). Zet ze één keer over.
@@ -1385,10 +1417,12 @@ function App() {
 
   // Live tank temps for dashboard: refresh every 60s, all sensors regardless of batch status
   const [haTankTemps, setHaTankTemps] = React.useState<Record<string, number>>({})
+  // De druk per tank (bar) uit de druksensoren (`ha_instellingen.druk_sensors`),
+  // in hetzelfde ritme: bij spunden en carboneren telt hij net zo als de temperatuur.
+  const [haTankDruk, setHaTankDruk] = React.useState<Record<string, number>>({})
   const haFetchTankTemps = React.useCallback(async () => {
     if (!haInst?.enabled) return
     const sensors: any[] = haInst?.sensors || []
-    if (!sensors.length) return
     const updates: Record<string, number> = {}
     for (const sensor of sensors) {
       if (!sensor?.entity || !sensor?.tank) continue
@@ -1399,6 +1433,17 @@ function App() {
       } catch {}
     }
     if (Object.keys(updates).length) setHaTankTemps(prev => ({ ...prev, ...updates }))
+    const drukSensors: any[] = Array.isArray(haInst?.druk_sensors) ? haInst.druk_sensors : []
+    const druk: Record<string, number> = {}
+    for (const sensor of drukSensors) {
+      if (!sensor?.entity || !sensor?.tank) continue
+      try {
+        const d = await haGetState(sensor.entity)
+        const bar = drukNaarBar(d?.state, sensor.eenheid)
+        if (bar != null) druk[sensor.tank] = bar
+      } catch {}
+    }
+    if (Object.keys(druk).length) setHaTankDruk(prev => ({ ...prev, ...druk }))
   }, [haInst])
 
   // Migratie: uitslagen → uitleveringen + accijns veldrenames (stap 1-2,
@@ -2115,6 +2160,19 @@ function App() {
   }, [bat, carbSessies, batchLabel])
   const nuActief: NuActiefChip[] = React.useMemo(() => {
     const chips: NuActiefChip[] = []
+    // Een veiligheidsincident: binnen 4 uur de NVWA melden. Niet weg te
+    // klikken — de chip verdwijnt pas als de melding is vastgelegd.
+    for (const { inc, stand } of nvwaNogMelden(haccpIncidenten)) {
+      const b = (bat || []).find((x: any) => x.id === inc.batch_id)
+      const d = new Date(stand.uiterlijk)
+      const tijd = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      chips.push({
+        key: `incident:${inc.id}`, soort: 'alarm', actie: true, batchId: inc.batch_id,
+        tekst: t(stand.stand === 'te_laat' ? 'nu_chip_incident_te_laat' : 'nu_chip_incident')
+          .replace('{batch}', b ? batchLabel(b) : t('lbl_naamloos')).replace('{tijd}', tijd),
+        knop: t('nu_btn_bekijken'), onOpen: () => openBatch(inc.batch_id),
+      })
+    }
     for (const a of openTankAlarmen) chips.push({
       key: `alarm:${a.id}`, soort: a.soort === 'alarm' ? 'alarm' : 'waarschuwing', actie: true,
       tekst: t('nu_chip_alarm').replace('{tank}', a.tank).replace('{batch}', a.naam).replace('{melding}', a.tekst),
@@ -2163,7 +2221,7 @@ function App() {
       })
     }
     return chips
-  }, [openTankAlarmen, stapGereedBatches, carbDoelBereikt, wcAutoMelding, brouwendeBatches, carboniserendeBatches, bat, ruimteklimaatAan, rkStatus, batchLabel])
+  }, [openTankAlarmen, stapGereedBatches, carbDoelBereikt, wcAutoMelding, brouwendeBatches, carboniserendeBatches, bat, ruimteklimaatAan, rkStatus, batchLabel, haccpIncidenten])
 
   const doExport = () => {
     excelExport({
@@ -2218,6 +2276,9 @@ function App() {
       haccp_vrijgaven: haccpVrijgaven, afvul_sessies: afvulSessies,
       haccp_sluitcontroles: haccpSluitcontroles,
       haccp_etiketcontroles: haccpEtiketcontroles,
+      haccp_verkoopvrijgaven: verkoopVrijgaven,
+      haccp_incidenten: haccpIncidenten,
+      reinigingsmiddelen,
       haccp_afwijkingen: haccpAfwijkingen,
       haccp_trace_oefeningen: haccpTraceOefeningen,
       haccp_instellingen: haccpInst,
@@ -2334,6 +2395,9 @@ function App() {
       if (Array.isArray(d.afvul_sessies)) setAfvulSessies(d.afvul_sessies);
       if (Array.isArray(d.haccp_sluitcontroles)) setHaccpSluitcontroles((prev: any[]) => voegToeOpId(prev, d.haccp_sluitcontroles));
       if (Array.isArray(d.haccp_etiketcontroles)) setHaccpEtiketcontroles((prev: any[]) => voegToeOpId(prev, d.haccp_etiketcontroles));
+      if (Array.isArray(d.haccp_verkoopvrijgaven)) setVerkoopVrijgaven((prev: any[]) => voegToeOpId(prev, d.haccp_verkoopvrijgaven));
+      if (Array.isArray(d.haccp_incidenten)) setHaccpIncidenten(d.haccp_incidenten);
+      if (Array.isArray(d.reinigingsmiddelen)) setReinigingsmiddelen(d.reinigingsmiddelen);
       if (Array.isArray(d.haccp_afwijkingen)) setHaccpAfwijkingen((prev: any[]) => voegToeOpId(prev, d.haccp_afwijkingen));
       if (Array.isArray(d.haccp_trace_oefeningen)) setHaccpTraceOefeningen((prev: any[]) => voegToeOpId(prev, d.haccp_trace_oefeningen));
       if (d.haccp_instellingen) setHaccpInst(d.haccp_instellingen);
@@ -2509,6 +2573,7 @@ function App() {
     const vandaag = new Date(); vandaag.setHours(0,0,0,0);
     return attentiePosten({
       batches: bat, batchTakenItems, batchTakenGroepen,
+      afvulSessies, verkoopVrijgaven, incidenten: haccpIncidenten, reinigingsmiddelen,
       schoonmaakTaken: haccpSchoonmaakTaken, schoonmaakLog: haccpSchoonmaakLog,
       lots,
       bestellingen, bestellingPicks, wcImportStatus,
@@ -2529,7 +2594,7 @@ function App() {
   }, [bat, batchTakenItems, batchTakenGroepen, haccpSchoonmaakTaken, haccpSchoonmaakLog, lots, bestellingen,
     bestellingPicks, wcImportStatus, btwPeriodeType, btwAangiftes, bankKoppelingen, verkoopFacturen, inkoopFacturen,
     inkoopInbox, accijnsAangiftes, acc, klanten, breweryDetails, bankTransacties, bankAfschriften, adminRijen,
-    vandaagIso, producten, verkoopCtx, recepten, bi, ing, mailTemplates]);
+    vandaagIso, producten, verkoopCtx, recepten, bi, ing, mailTemplates, afvulSessies, verkoopVrijgaven, haccpIncidenten, reinigingsmiddelen]);
   // De badge op het tabblad Bestellingen: dezelfde posten als in de
   // Verkoop-badge (te picken + nieuwe webshoporders), geen eigen telling.
   const bestellingPosten = attentieVoorPagina(attentie.verkoop, 'bestellingen');
@@ -2800,6 +2865,7 @@ function App() {
     planningInst,
     haInst,
     haTankTemps,
+    haTankDruk,
     tanks,
     tankStatussen,
     setTankStatussen,
@@ -2818,9 +2884,19 @@ function App() {
     setHaccpSluitcontroles,
     haccpEtiketcontroles,
     setHaccpEtiketcontroles,
+    verkoopVrijgaven,
+    setVerkoopVrijgaven,
+    // "Er is iets mis": incidenten per batch, met de klanten voor de afnemers.
+    haccpIncidenten,
+    setHaccpIncidenten,
+    klanten,
     haccpAfwijkingen,
     setHaccpAfwijkingen,
     haccpInst,
+    // Reinigen: de middelen en (via haInst) de retoursensor per tank.
+    reinigingsmiddelen,
+    // CCP 3: met een Claude-sleutel leest de AI de etiketfoto na.
+    heeftClaude: !!claudeCreds?.apiKey && claudeCreds?.enabled !== false,
     schoonmaakTaken: haccpSchoonmaakTaken,
     schoonmaakLog: haccpSchoonmaakLog,
     setSchoonmaakLog: setHaccpSchoonmaakLog,
@@ -2965,7 +3041,7 @@ function App() {
             van de actieve werkruimte — zo landt de werkruimte-wisselaar (die
             bij een echte wissel naar 'dashboard' springt) altijd op de juiste,
             kleine "dagelijkse takenlijst" voor die pet. */}
-        {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankBewaking={tankBewaking} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} onNieuweBatch={openNieuweBatch} gaNaar={gaNaar} producten={producten} recepten={recepten} carbSessies={carbSessies} metingSignaal={metingSignaal} bi={bi} dryHops={dryHops} haccpVrijgaven={haccpVrijgaven} afvulSessies={afvulSessies} planningInst={planningInst} log={log} attentie={attentie.productie} gebruiker={whoami?.gebruiker || ''} />}
+        {page==='dashboard' && werkruimte==='productie' && <ProductieDashboard bat={bat} tanks={tanks} av={av} verliesRegistraties={verliesRegistraties} haTankTemps={haTankTemps} tankBewaking={tankBewaking} tankStatussen={tankStatussen} setTankStatussen={setTankStatussen} tankLog={tankReinigingLog} setTankLog={setTankReinigingLog} batchTakenItems={batchTakenItems} batchTakenGroepen={batchTakenGroepen} brouwdagStappen={brouwdagStappen} lots={lots} ing={ing} gistMetingen={gistMetingen} setGistMetingen={setGistMetingen} auditLog={auditLog} setAuditLog={setAuditLog} setPage={setPage} onNieuweBatch={openNieuweBatch} gaNaar={gaNaar} producten={producten} recepten={recepten} carbSessies={carbSessies} metingSignaal={metingSignaal} bi={bi} dryHops={dryHops} haccpVrijgaven={haccpVrijgaven} verkoopVrijgaven={verkoopVrijgaven} afvulSessies={afvulSessies} planningInst={planningInst} log={log} attentie={attentie.productie} gebruiker={whoami?.gebruiker || ''} reinigingsmiddelen={reinigingsmiddelen} haInst={haInst} />}
         {page==='dashboard' && werkruimte==='verkoop' && <VerkoopDashboard verkoopCtx={verkoopCtx} attentie={attentie.verkoop} producten={producten} recepten={recepten} gaNaar={gaNaar} wcCreds={wcCreds} wcImportStatus={wcImportStatus} wcImportInterval={wcImportInterval} wcSyncLog={wcSyncLog} />}
         {page==='dashboard' && werkruimte==='administratie' && <AdministratieDashboard rijen={adminRijen} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} klanten={klanten} breweryDetails={breweryDetails} gaNaarDoel={gaNaar} />}
         {page==='ingredienten' && <IngredientenPage ing={ing} setIng={setIng} lots={lots} setLots={setLots} verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} onderdelen={onderdelen} setOnderdelen={setOnderdelen} log={log} setLog={setLog} bi={bi} bat={bat} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} kostenSoorten={kostenSoorten} bfCreds={bfCreds} auditLog={auditLog} setAuditLog={setAuditLog} btwInst={btwInst} btwAangiftes={btwAangiftes} bankKoppelingen={bankKoppelingen} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} setJournaal={setJournaal} navDoel={doelVoor('ingredienten')} onNavDoelConsumed={wisNavDoel} />}
@@ -2983,7 +3059,7 @@ function App() {
         {page==='klanten' && <KlantenPage klanten={klanten} setKlanten={setKlanten} bestellingen={bestellingen} setBestellingen={setBestellingen} verkoopFacturen={verkoopFacturen} breweryDetails={breweryDetails} smtpCreds={smtpCreds} factuurLogo={factuurLogo} logo={logo} appName={appName} setPage={setPage} gaNaar={gaNaar} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('klanten')} onNavDoelConsumed={wisNavDoel} />}
         {page==='statiegeld' && <StatiegeldPage verpakkingen={verpakkingen} setVerpakkingen={setVerpakkingen} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} bankKoppelingen={bankKoppelingen} bestellingen={bestellingen} auditLog={auditLog} setAuditLog={setAuditLog} setJournaal={setJournaal} />}
         {page==='voorraad' && <VoorraadPage bat={bat} av={av} uit={uit} acc={acc} setAcc={setAcc} bi={bi} lots={lots} setLots={setLots} ing={ing} log={log} setLog={setLog} producten={producten} locaties={locaties} setLocaties={setLocaties} verplaatsingen={verplaatsingen} setVerplaatsingen={setVerplaatsingen} afboekingen={afboekingen} setAfboekingen={setAfboekingen} accijnsInst={accijnsInst} accijnsAangiftes={accijnsAangiftes} verliezen={verliesRegistraties} bestellingen={bestellingen} bestellingPicks={bestellingPicks} inventarisaties={inventarisaties} setInventarisaties={setInventarisaties} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('voorraad')} onNavDoelConsumed={wisNavDoel} />}
-        {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} tankStatussen={tankStatussen} tankLog={tankReinigingLog} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} producten={producten} setProducten={setProducten} setBat={setBat} vrijgaven={haccpVrijgaven} sessies={afvulSessies} sluitcontroles={haccpSluitcontroles} etiketcontroles={haccpEtiketcontroles} afwijkingen={haccpAfwijkingen} traceOefeningen={haccpTraceOefeningen} setTraceOefeningen={setHaccpTraceOefeningen} whoami={whoami} afboekingen={afboekingen} klanten={klanten} bestellingen={bestellingen} bestellingPicks={bestellingPicks} haccpInst={haccpInst} breweryDetails={breweryDetails} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('haccp')} onNavDoelConsumed={wisNavDoel} />}
+        {page==='haccp' && <HACCPPage ing={ing} setIng={setIng} lots={lots} bat={bat} bi={bi} av={av} uit={uit} tanks={tanks} tankStatussen={tankStatussen} tankLog={tankReinigingLog} schoonmaakTaken={haccpSchoonmaakTaken} setSchoonmaakTaken={setHaccpSchoonmaakTaken} schoonmaakLog={haccpSchoonmaakLog} setSchoonmaakLog={setHaccpSchoonmaakLog} capa={haccpCapa} setCapa={setHaccpCapa} waterkwaliteit={haccpWaterkwaliteit} setWaterkwaliteit={setHaccpWaterkwaliteit} ongedierte={haccpOngedierte} setOngedierte={setHaccpOngedierte} opleidingen={haccpOpleidingen} setOpleidingen={setHaccpOpleidingen} producten={producten} setProducten={setProducten} setBat={setBat} vrijgaven={haccpVrijgaven} sessies={afvulSessies} sluitcontroles={haccpSluitcontroles} etiketcontroles={haccpEtiketcontroles} verkoopVrijgaven={verkoopVrijgaven} incidenten={haccpIncidenten} gaNaar={gaNaar} reinigingsmiddelen={reinigingsmiddelen} setReinigingsmiddelen={rolMagKey(whoami?.rol, 'reinigingsmiddelen') ? setReinigingsmiddelen : undefined} haInst={haInst} afwijkingen={haccpAfwijkingen} traceOefeningen={haccpTraceOefeningen} setTraceOefeningen={setHaccpTraceOefeningen} whoami={whoami} afboekingen={afboekingen} klanten={klanten} bestellingen={bestellingen} bestellingPicks={bestellingPicks} haccpInst={haccpInst} breweryDetails={breweryDetails} auditLog={auditLog} setAuditLog={setAuditLog} navDoel={doelVoor('haccp')} onNavDoelConsumed={wisNavDoel} />}
         {(page==='facturen' || page==='bank' || page==='aangiftes' || page==='rapporten') && <AdministratiePage sectie={page} navDoel={doelVoor(page)} onNavDoelConsumed={wisNavDoel} gaNaarDoel={gaNaar} whoami={whoami} bankTransacties={bankTransacties} setBankTransacties={setBankTransacties} bankAfschriften={bankAfschriften} setBankAfschriften={setBankAfschriften} refreshBankTransacties={refreshBankTransacties} refreshBankAfschriften={refreshBankAfschriften} refreshBankKoppelingen={refreshBankKoppelingen} refreshBankSaldi={refreshBankSaldi} wcCreds={wcCreds} inkoopFacturen={inkoopFacturen} setInkoopFacturen={setInkoopFacturen} ing={ing} setIng={setIng} lots={lots} setLots={setLots} onderdelen={onderdelen} setOnderdelen={setOnderdelen} verpakkingen={verpakkingen} log={log} setLog={setLog} btwInst={btwInst} claudeCreds={claudeCreds} ingTypes={ingTypes} ingTypeBtw={ingTypeBtw} verkoopFacturen={verkoopFacturen} setVerkoopFacturen={setVerkoopFacturen} bestellingen={bestellingen} setBestellingen={setBestellingen} setPage={setPage} bat={bat} acc={acc} setAcc={setAcc} breweryDetails={breweryDetails} factuurLogo={factuurLogo} klanten={klanten} setKlanten={setKlanten} factuurCounter={factuurCounter} setFactuurCounter={setFactuurCounter} artikelen={artikelen} bankKoppelingen={bankKoppelingen} setBankKoppelingen={setBankKoppelingen} kapitaalBoekingen={kapitaalBoekingen} setKapitaalBoekingen={setKapitaalBoekingen} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} accijnsAangiftes={accijnsAangiftes} setAccijnsAangiftes={setAccijnsAangiftes} btwAangiftes={btwAangiftes} setBtwAangiftes={setBtwAangiftes} av={av} uit={uit} afboekingen={afboekingen} bi={bi} accijnsInst={accijnsInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} smtpCreds={smtpCreds} mollieCreds={mollieCreds} appName={appName} logo={logo} mailTemplates={mailTemplates} scanCorrecties={scanCorrecties} setScanCorrecties={setScanCorrecties} journaal={journaal} setJournaal={setJournaal} bankSaldi={bankSaldi} setBankSaldi={setBankSaldi} jaarafsluitingen={jaarafsluitingen} setJaarafsluitingen={setJaarafsluitingen} merchArtikelen={merchArtikelen} setMerchArtikelen={setMerchArtikelen} merchVoorraadLog={merchVoorraadLog} setMerchVoorraadLog={setMerchVoorraadLog} inkoopInbox={inkoopInbox} setInkoopInbox={setInkoopInbox} refreshInkoopInbox={refreshInkoopInbox} imapCreds={imapCreds} onNaarPostvakInstellingen={() => gaNaar({pagina: 'instellingen', tab: 'koppelingen', filter: 'postvak'})} />}
         {page==='instellingen' && <InstellingenPage haccpSchoonmaakTaken={haccpSchoonmaakTaken} accijnsInst={accijnsInst} setAccijnsInst={setAccijnsInst} log={log} setLog={setLog} doExport={doExport} doImport={doImport} importRef={importRef} logo={logo} setLogo={setLogo} appName={appName} setAppName={setAppName} bfCreds={bfCreds} setBfCreds={setBfCreds} tanks={tanks} setTanks={setTanks} batchTakenItems={batchTakenItems} setBatchTakenItems={setBatchTakenItems} batchTakenGroepen={batchTakenGroepen} setBatchTakenGroepen={setBatchTakenGroepen} wcCreds={wcCreds} setWcCreds={setWcCreds} wcSyncLog={wcSyncLog} setWcSyncLog={setWcSyncLog} wcImportStatus={wcImportStatus} lang={lang} setLang={setLang} navTheme={navTheme} setNavTheme={setNavTheme} btwInst={btwInst} setBtwInst={setBtwInst} btwTarieven={btwTarieven} setBtwTarieven={setBtwTarieven} inkoopFacturen={inkoopFacturen} verkoopFacturen={verkoopFacturen} claudeCreds={claudeCreds} setClaudeCreds={setClaudeCreds} smtpCreds={smtpCreds} setSmtpCreds={setSmtpCreds} mollieCreds={mollieCreds} setMollieCreds={setMollieCreds} ingTypes={ingTypes} setIngTypes={setIngTypes} ingTypeBtw={ingTypeBtw} setIngTypeBtw={setIngTypeBtw} ing={ing} bat={bat} acc={acc} accijnsAangiftes={accijnsAangiftes} breweryDetails={breweryDetails} setBreweryDetails={setBreweryDetails} altRekeningen={altRekeningen} setAltRekeningen={setAltRekeningen} bankKoppelingen={bankKoppelingen} factuurLogo={factuurLogo} setFactuurLogo={setFactuurLogo} haInst={haInst} setHaInst={setHaInst} notificatieInst={notificatieInst} setNotificatieInst={setNotificatieInst} coldcrashInst={coldcrashInst} setColdcrashInst={setColdcrashInst} planningInst={planningInst} setPlanningInst={setPlanningInst} websiteTelemetrie={websiteTelemetrie} setWebsiteTelemetrie={setWebsiteTelemetrie} websiteBrouwlog={websiteBrouwlog} setWebsiteBrouwlog={setWebsiteBrouwlog} brouwprocesInst={brouwprocesInst} setBrouwprocesInst={setBrouwprocesInst} haccpInst={haccpInst} setHaccpInst={setHaccpInst} auditLog={auditLog} setAuditLog={setAuditLog} kostenSoorten={kostenSoorten} setKostenSoorten={setKostenSoorten} gnCodes={gnCodes} setGnCodes={setGnCodes} mailTemplates={mailTemplates} setMailTemplates={setMailTemplates} gebruikersRollen={gebruikersRollen} setGebruikersRollen={setGebruikersRollen} loginInst={loginInst} setLoginInst={setLoginInst} resetApp={resetApp} integriteitData={{ingredienten: ing, lots, batches: bat, batch_ingredienten: bi, afvullingen: av, uitleveringen: uit, accijns: acc, bestellingen, bestelling_picks: bestellingPicks, verkoop_facturen: verkoopFacturen, afboekingen, klanten, producten, product_artikelen: productArtikelen, locaties, verplaatsingen, verpakkingen}} integriteitSetters={{lots: setLots, batches: setBat, afvullingen: setAv, product_artikelen: setProductArtikelen}} imapCreds={imapCreds} setImapCreds={setImapCreds} navDoel={doelVoor('instellingen')} onNavDoelConsumed={wisNavDoel} recepten={recepten} afvullingen={av}
           naAankoop={{inst: naAankoopMails, setInst: setNaAankoopMails, afmeldingen: mailAfmeldingen, setAfmeldingen: setMailAfmeldingen,

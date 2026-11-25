@@ -2126,6 +2126,7 @@ _KEY_TYPES = {
         'haccp_opleidingen',
         'haccp_vrijgaven', 'afvul_sessies', 'haccp_sluitcontroles',
         'haccp_etiketcontroles', 'haccp_afwijkingen', 'haccp_trace_oefeningen',
+        'haccp_verkoopvrijgaven', 'haccp_incidenten', 'reinigingsmiddelen',
         'locaties', 'verplaatsingen', 'btw_tarieven', 'tank_alarmen',
         'tank_setpoints',
         'ing_types', 'kosten_soorten', 'gn_codes',
@@ -2195,6 +2196,9 @@ _APPEND_ONLY = (
     'journaal',
     'haccp_vrijgaven', 'haccp_sluitcontroles', 'haccp_etiketcontroles',
     'haccp_afwijkingen', 'haccp_trace_oefeningen',
+    # De houdtest en de vrijgave voor verkoop (1.13.52): bewijs dat het bier
+    # pas na de houdtest de deur uit ging.
+    'haccp_verkoopvrijgaven',
 )
 
 
@@ -3409,6 +3413,50 @@ def _eindig_of_none(waarde) -> float | None:
     except (TypeError, ValueError):
         return None
     return val if math.isfinite(val) else None
+
+
+# ── Geschiedenis van één sensor (retourtemperatuur bij reinigen) ────────────
+# De app leest hiermee de retoursensor uit over het tijdvak van een reiniging
+# (≥ 82 °C retour, 15 minuten): het bewijs van temperatuur en tijd. Alleen
+# lezen, één entiteit, hooguit 24 uur, hooguit HA_HISTORY_MAX_PUNTEN punten.
+HA_HISTORY_MAX_UUR = 24
+HA_HISTORY_MAX_PUNTEN = 5000
+_HA_ENTITY_RE = re.compile(r'^[a-z][a-z0-9_]*\.[a-z0-9][a-z0-9_-]*$')
+
+
+def _ha_history_venster(start: str, eind: str):
+    """Controleer het tijdvak: twee ISO-tijdstippen met tijdzone, eind na
+    start, hooguit HA_HISTORY_MAX_UUR uur. Geeft (start, eind) als ISO in UTC
+    of None bij ongeldige invoer."""
+    try:
+        s = datetime.datetime.fromisoformat(str(start).replace('Z', '+00:00'))
+        e = datetime.datetime.fromisoformat(str(eind).replace('Z', '+00:00'))
+    except (TypeError, ValueError):
+        return None
+    if s.tzinfo is None or e.tzinfo is None or e <= s:
+        return None
+    if e - s > datetime.timedelta(hours=HA_HISTORY_MAX_UUR):
+        return None
+    utc = datetime.timezone.utc
+    return (s.astimezone(utc).isoformat(), e.astimezone(utc).isoformat())
+
+
+def _ha_history_punten(raw) -> list:
+    """De reeks uit HA's /history/period (een lijst per entiteit, met
+    `minimal_response` alleen `state` + `last_changed`) als
+    [{ts, waarde}]: alleen eindige getallen, op tijd gesorteerd, begrensd."""
+    reeks = raw[0] if isinstance(raw, list) and raw and isinstance(raw[0], list) else []
+    uit = []
+    for st in reeks:
+        if not isinstance(st, dict):
+            continue
+        waarde = _eindig_of_none(st.get('state'))
+        ts = st.get('last_changed') or st.get('last_updated')
+        if waarde is None or not isinstance(ts, str):
+            continue
+        uit.append({'ts': ts, 'waarde': waarde})
+    uit.sort(key=lambda p: p['ts'])
+    return uit[-HA_HISTORY_MAX_PUNTEN:]
 
 
 def _ha_fetch_state(entity_id: str) -> float | None:
@@ -5948,6 +5996,11 @@ def _sluitcontrole_tick() -> None:
     updates: dict = {}
 
     for sessie in open_sessies:
+        # Alleen de sluitcontrole loopt op de klok. De inspectie van de lege
+        # flessen en een sessie zonder CCP 2 (fust) kennen geen halfuurritme;
+        # een sessie zonder `ccp2` is van vóór 1.13.51 en was een sluitcontrole.
+        if (sessie.get('ccp2') or 'sluitcontrole') != 'sluitcontrole':
+            continue
         eigen = [c for c in controles if c.get('sessie_id') == sessie.get('id')]
         tijdstippen = [
             (c.get('paraaf') or {}).get('tijdstip') for c in eigen
@@ -6051,19 +6104,35 @@ def _vergisting_stap_tick() -> None:
         _log('verg-stap', f"notify {service}: {'ok' if ok else 'mislukt'}", level=logging.ERROR)
 
 
+def _druk_naar_bar(waarde, eenheid) -> float | None:
+    """Druk van een sensor in bar, ook als hij psi of kPa meldt. Spiegel van
+    drukNaarBar() in calculations.ts."""
+    n = _eindig_of_none(waarde)
+    if n is None:
+        return None
+    e = str(eenheid or 'bar').lower()
+    bar = n / 14.5038 if e == 'psi' else n / 100 if e == 'kpa' else n
+    return round(bar, 3)
+
+
 def _auto_metingen_tick() -> None:
     """Eén ronde automatische metingen: check HA-instellingen, lees batches,
-    haal temperatuur op voor elke actieve batch met sensor, en sla metingen op."""
+    haal temperatuur en druk op voor elke actieve batch met een sensor, en sla
+    metingen op. Het werkelijke setpoint van de koeling (`tank_setpoints`,
+    vers) gaat mee als `setpoint`, zodat de grafiek temperatuur tegen doel kan
+    tonen; de druk als `druk` (bar)."""
     with _data_lock:
         ha_inst = _read_json('ha_instellingen', {})
     if not ha_inst.get('enabled'):
         return
-    sensors = ha_inst.get('sensors', [])
-    if not sensors:
+    sensors = [s for s in (ha_inst.get('sensors') or []) if isinstance(s, dict)]
+    druk_sensors = [s for s in (ha_inst.get('druk_sensors') or []) if isinstance(s, dict)]
+    if not sensors and not druk_sensors:
         return
 
     with _data_lock:
         batches = _read_json('batches', [])
+        setpoint_rijen = _read_json('tank_setpoints', []) or []
     active = [b for b in batches
               if b.get('tank') and b.get('status') in ('Vergisten', 'Conditioneren')]
     if not active:
@@ -6077,21 +6146,32 @@ def _auto_metingen_tick() -> None:
     # weergave en de backup, `ts` voor de rekenkant (_meting_epoch/metingTs).
     ts = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
 
+    klok_nu = time.time()
     for batch in active:
-        sensor = next((s for s in sensors if s.get('tank') == batch.get('tank')), None)
-        if not sensor or not sensor.get('entity'):
+        tank = batch.get('tank')
+        sensor = next((s for s in sensors if s.get('tank') == tank and s.get('entity')), None)
+        druk_sensor = next((s for s in druk_sensors
+                            if str(s.get('tank')) == str(tank) and s.get('entity')), None)
+        val = _ha_fetch_state(sensor['entity']) if sensor else None
+        druk = (_druk_naar_bar(_ha_fetch_state(druk_sensor['entity']), druk_sensor.get('eenheid'))
+                if druk_sensor else None)
+        if val is None and druk is None:
             continue
-        val = _ha_fetch_state(sensor['entity'])
-        if val is None:
-            continue
-        new_entries.append({
+        entry = {
             'batch_id': batch['id'],
             'datum': datum,
             'tijd': tijd,
             'ts': ts,
-            'temp': val,
             'auto': True,
-        })
+        }
+        if val is not None:
+            entry['temp'] = val
+            sp = _setpoint_voor_tank(setpoint_rijen, tank, klok_nu)
+            if sp is not None:
+                entry['setpoint'] = sp[0]
+        if druk is not None:
+            entry['druk'] = druk
+        new_entries.append(entry)
 
     if not new_entries:
         return
@@ -7340,8 +7420,10 @@ def _bijlage_in_gebruik(filename: str) -> str | None:
     facturen per e-mail), `verslag.bestand` (het uitbetalingsverslag van een
     PSP bij een banktransactie), `bijlagen[].bestand` (afboeking,
     verliesregistratie, vernietiging) en `etiket_fotos[].bestand` (de foto's
-    van het etiket bij een ingrediëntlot: bewijs voor traceerbaarheid)."""
-    for key in ('inkoop_facturen', 'inkoop_inbox', 'afboekingen', 'verlies_registraties', 'lots', 'bank_transacties'):
+    van het etiket bij een ingrediëntlot: bewijs voor traceerbaarheid), en de
+    foto van het etiket bij CCP 3 (`haccp_etiketcontroles[].bijlagen`)."""
+    for key in ('inkoop_facturen', 'inkoop_inbox', 'afboekingen', 'verlies_registraties', 'lots', 'bank_transacties',
+                'haccp_etiketcontroles'):
         rijen = _read_json(key, [])
         if not isinstance(rijen, list):
             continue
@@ -8531,6 +8613,21 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             self._ha_notify_endpoint()
             return
 
+        # Geschiedenis van één sensor over een tijdvak (retoursensor).
+        if tail.startswith('_history/'):
+            if self.command != 'GET':
+                self._json(405, {'error': 'method not allowed'})
+                return
+            entity_id = tail[len('_history/'):]
+            # do_GET geeft het pad zonder query door: lees hem uit self.path.
+            params = urllib.parse.parse_qs(qs or (self.path.split('?', 1)[1] if '?' in self.path else ''))
+            venster = _ha_history_venster((params.get('start') or [''])[0], (params.get('end') or [''])[0])
+            if not _HA_ENTITY_RE.match(entity_id) or venster is None:
+                self._json(400, {'error': 'ongeldige_invoer'})
+                return
+            self._ha_history(entity_id, venster)
+            return
+
         # Anders: enkele entity-state ophalen.
         entity_id = tail
         if not re.match(r'^[a-z][a-z0-9_]*\.[a-z0-9][a-z0-9_-]*$', entity_id):
@@ -8555,6 +8652,26 @@ class BrouwerijHandler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 msg = f'HA API returned {e.code}'
             self._json(e.code, {'error': msg})
+        except Exception:
+            self._json(502, {'error': 'could not reach Home Assistant API'})
+
+    def _ha_history(self, entity_id: str, venster):
+        """GET op HA /history/period voor één entiteit, alleen lezen."""
+        token = os.environ.get('SUPERVISOR_TOKEN', '')
+        if not token:
+            self._json(503, {'error': 'SUPERVISOR_TOKEN not available — app must run as HA addon'})
+            return
+        start, eind = venster
+        url = (f'{HA_SUPERVISOR_BASE}/history/period/{urllib.parse.quote(start)}'
+               f'?filter_entity_id={urllib.parse.quote(entity_id)}'
+               f'&end_time={urllib.parse.quote(eind)}&minimal_response&no_attributes')
+        try:
+            req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                raw = json.loads(r.read())
+            self._json(200, {'punten': _ha_history_punten(raw)})
+        except urllib.error.HTTPError as e:
+            self._json(e.code, {'error': f'HA API returned {e.code}'})
         except Exception:
             self._json(502, {'error': 'could not reach Home Assistant API'})
 

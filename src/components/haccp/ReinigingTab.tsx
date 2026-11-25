@@ -11,6 +11,13 @@ import Inp from '../ui/Inp'
 import SectionHeader from '../ui/SectionHeader'
 import SearchInput from '../ui/SearchInput'
 import { useUndo } from '../ui/UndoBar'
+import BevestigKnop from '../ui/BevestigKnop'
+import MiddelenLijst from './MiddelenLijst'
+import ReinigingStappen from './ReinigingStappen'
+import {
+  vorigeStappen, laatstePhLeiding, bouwStap, stapAfwijkingen, stappenTekst, retourSensorVoorTank, type StapConcept,
+} from '../../utils/reinigingsmiddelen'
+import { getLang } from '../../i18n'
 
 // Id-voorvoegsel van de terugweg bij het verwijderen van een schoonmaaktaak.
 const TAAK_UNDO = 'schoonmaak-taak-weg-'
@@ -21,7 +28,7 @@ const TAAK_UNDO = 'schoonmaak-taak-weg-'
 // gemaakt en is dat vastgelegd. Ze zitten hier in één tabblad met drie
 // sublijsten. Tankreiniging blijft read-only: schrijven gebeurt in de
 // batchflow (auto-trigger bij een lege tank) en bij de tanks zelf.
-type Sub = 'taken' | 'log' | 'tanks'
+type Sub = 'taken' | 'log' | 'tanks' | 'middelen'
 
 interface ReinigingTabProps {
   schoonmaakTaken: any[]
@@ -36,17 +43,26 @@ interface ReinigingTabProps {
   setModal: (v: string | null) => void
   edit: any
   setEdit: (v: any) => void
+  /** De reinigingsmiddelen met hun Ctgb-toelating (utils/reinigingsmiddelen.ts). */
+  reinigingsmiddelen?: any[]
+  setReinigingsmiddelen?: any
+  /** Voor de retoursensor per tank. */
+  haInst?: any
+  /** Navigatiedoel: `filter: 'middelen'` opent de middelenlijst (aandachtspunt Ctgb). */
+  navDoel?: { filter?: string } | null
 }
 
 function ReinigingTab({schoonmaakTaken, setSchoonmaakTaken, schoonmaakLog, setSchoonmaakLog,
-                       tanks, tankLog, auditLog, setAuditLog, modal, setModal, edit, setEdit}: ReinigingTabProps) {
+                       tanks, tankLog, auditLog, setAuditLog, modal, setModal, edit, setEdit,
+                       reinigingsmiddelen = [], setReinigingsmiddelen, haInst, navDoel}: ReinigingTabProps) {
   const {useState} = React
-  const [sub, setSub] = useState<Sub>('taken')
+  const [sub, setSub] = useState<Sub>(navDoel?.filter === 'middelen' ? 'middelen' : 'taken')
 
   const subs: {id: Sub, l: string}[] = [
     {id: 'taken', l: t('haccp_schoonmaak_taken')},
     {id: 'log', l: t('haccp_schoonmaak_log')},
     {id: 'tanks', l: t('haccp_tab_tankreiniging')},
+    {id: 'middelen', l: t('middel_tab')},
   ]
 
   return (
@@ -60,21 +76,42 @@ function ReinigingTab({schoonmaakTaken, setSchoonmaakTaken, schoonmaakLog, setSc
         ))}
       </div>
 
-      {sub !== 'tanks' && (
+      {(sub === 'taken' || sub === 'log') && (
         <SchoonmaakLijst sub={sub} schoonmaakTaken={schoonmaakTaken} setSchoonmaakTaken={setSchoonmaakTaken}
           schoonmaakLog={schoonmaakLog} setSchoonmaakLog={setSchoonmaakLog} tanks={tanks}
           auditLog={auditLog} setAuditLog={setAuditLog}
-          modal={modal} setModal={setModal} edit={edit} setEdit={setEdit} />
+          modal={modal} setModal={setModal} edit={edit} setEdit={setEdit}
+          middelen={reinigingsmiddelen} haInst={haInst} tankLog={tankLog} />
       )}
       {sub === 'tanks' && <TankReinigingLijst tanks={tanks} tankLog={tankLog} />}
+      {sub === 'middelen' && (
+        <MiddelenLijst middelen={reinigingsmiddelen} setMiddelen={setReinigingsmiddelen || (() => {})}
+          auditLog={auditLog} setAuditLog={setAuditLog} alleenLezen={!setReinigingsmiddelen} />
+      )}
     </div>
   )
 }
 
 function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLog, setSchoonmaakLog,
-                          tanks, auditLog, setAuditLog, modal, setModal, edit, setEdit}: any) {
+                          tanks, auditLog, setAuditLog, modal, setModal, edit, setEdit,
+                          middelen = [], haInst, tankLog}: any) {
   const {useState} = React
   const [fDatum, setFDatum] = useState('')
+  // De middelen bij deze uitvoering: die van de vorige keer voor dezelfde
+  // taak, met de dosering van nu (utils/reinigingsmiddelen.ts).
+  const vandaag = tod()
+  const metLijst = (middelen || []).some((m: any) => m && !m.gearchiveerd)
+  const phLeiding = laatstePhLeiding(schoonmaakLog, tankLog)
+  const [stappen, setStappen] = useState<StapConcept[]>([])
+  const vulStappen = (taakId: number) =>
+    setStappen(metLijst ? vorigeStappen(schoonmaakLog, (l: any) => l.taak_id === taakId, middelen, vandaag, phLeiding) : [])
+  const openLog = (taakId: number) => {
+    setEdit({taak_id: taakId, datum: tod(), uitgevoerd_door: '', middel: '', opmerking: '', cip: false})
+    vulStappen(taakId)
+    setModal('log')
+  }
+  const gebouwd = stappen.map(c => bouwStap(c, middelen)).filter((x): x is NonNullable<typeof x> => !!x)
+  const afwijkingen = gebouwd.flatMap(stapAfwijkingen)
   const undo = useUndo()
   // Een taak die op de terugweg staat is al uit beeld, maar nog niet weg.
   const zichtbareTaken = (schoonmaakTaken || []).filter((tk: any) => undo.actie?.id !== `${TAAK_UNDO}${tk.id}`)
@@ -99,7 +136,8 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
   const saveLog = () => {
     if(!edit?.taak_id || !edit?.uitgevoerd_door) return
     const id = newId(schoonmaakLog)
-    setSchoonmaakLog((prev: any[]) => [...prev, {...edit, id}])
+    const metStappen = metLijst && gebouwd.length ? {stappen: gebouwd, middel: stappenTekst(gebouwd, getLang())} : {}
+    setSchoonmaakLog((prev: any[]) => [...prev, {...edit, ...metStappen, id}])
     logAudit(auditLog, setAuditLog, {entiteit: 'SchoonmaakLog', entiteit_id: id, actie: 'aangemaakt',
       omschrijving: `Schoonmaak: ${(schoonmaakTaken || []).find((x: any) => x.id === edit.taak_id)?.naam || ''}`})
     setModal(null); setEdit(null)
@@ -141,7 +179,7 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500">{t('haccp_schoonmaak_laatste')}: {last ? fmtD(last.datum) : t('haccp_schoonmaak_nooit')}</span>
-                    <Btn s="sm" onClick={() => {setEdit({taak_id: tk.id, datum: tod(), uitgevoerd_door: '', middel: '', opmerking: '', cip: false}); setModal('log')}}>{t('haccp_btn_uitgevoerd')}</Btn>
+                    <Btn s="sm" onClick={() => openLog(tk.id)}>{t('haccp_btn_uitgevoerd')}</Btn>
                     <Btn s="sm" v="ghost" onClick={() => {setEdit({...tk}); setModal('taak')}}>{t('btn_edit')}</Btn>
                     <Btn s="sm" v="ghost" onClick={() => delTaak(tk)}>{t('btn_delete')}</Btn>
                   </div>
@@ -154,7 +192,7 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
 
       {sub === 'log' && <>
         <div className="flex items-center gap-2 mb-2">
-          <Btn s="sm" onClick={() => {setEdit({taak_id: zichtbareTaken[0]?.id || 0, datum: tod(), uitgevoerd_door: '', middel: '', opmerking: '', cip: false}); setModal('log')}}>{t('haccp_schoonmaak_log_nieuw')}</Btn>
+          <Btn s="sm" onClick={() => openLog(zichtbareTaken[0]?.id || 0)}>{t('haccp_schoonmaak_log_nieuw')}</Btn>
           <input type="date" value={fDatum} onChange={e => setFDatum(e.target.value)} className="t-input text-xs px-2 py-1 rounded border" />
         </div>
         {!filteredLog.length && <p className="text-sm text-gray-500 italic">{t('haccp_schoonmaak_geen_log')}</p>}
@@ -167,6 +205,9 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
                 <span className="text-gray-500 ml-2">{l.uitgevoerd_door}</span>
                 {l.cip && <span className="ml-1 text-xs px-1 py-0.5 rounded bg-blue-100 text-blue-700">CIP</span>}
                 {l.middel && <span className="text-gray-400 ml-2 text-xs">{l.middel}</span>}
+                {(l.stappen || []).some((st: any) => stapAfwijkingen(st).length) && (
+                  <span className="ml-2 text-xs text-orange-700">{t('reiniging_log_afwijking')}</span>
+                )}
               </div>
             </div>
           ))}
@@ -206,13 +247,16 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">{t('haccp_schoonmaak_taak')}</label>
-              <select value={edit.taak_id || ''} onChange={e => setEdit({...edit, taak_id: Number(e.target.value)})} className="t-input w-full text-sm px-3 py-1.5 rounded-lg border">
+              <select value={edit.taak_id || ''} onChange={e => { setEdit({...edit, taak_id: Number(e.target.value)}); vulStappen(Number(e.target.value)) }} className="t-input w-full text-sm px-3 py-1.5 rounded-lg border">
                 {zichtbareTaken.map((tk: any) => <option key={tk.id} value={tk.id}>{tk.naam}</option>)}
               </select>
             </div>
             <Inp label={t('haccp_schoonmaak_datum')} type="date" value={edit.datum || tod()} onChange={v => setEdit({...edit, datum: v})} />
             <Inp label={t('haccp_schoonmaak_door')} value={edit.uitgevoerd_door || ''} onChange={v => setEdit({...edit, uitgevoerd_door: v})} req />
-            <Inp label={t('haccp_schoonmaak_middel')} value={edit.middel || ''} onChange={v => setEdit({...edit, middel: v})} />
+            {metLijst
+              ? <ReinigingStappen middelen={middelen} stappen={stappen} setStappen={setStappen} vandaag={vandaag} phLeiding={phLeiding}
+                  retourEntity={retourSensorVoorTank(haInst, (schoonmaakTaken || []).find((x: any) => x.id === edit.taak_id)?.tank_id)} />
+              : <Inp label={t('haccp_schoonmaak_middel')} value={edit.middel || ''} onChange={v => setEdit({...edit, middel: v})} />}
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" checked={!!edit.cip} onChange={e => setEdit({...edit, cip: e.target.checked})} className="t-checkbox" />
               {t('haccp_schoonmaak_cip')}
@@ -220,7 +264,9 @@ function SchoonmaakLijst({sub, schoonmaakTaken, setSchoonmaakTaken, schoonmaakLo
             <Inp label={t('haccp_schoonmaak_opmerking')} value={edit.opmerking || ''} onChange={v => setEdit({...edit, opmerking: v})} />
             <div className="flex justify-end gap-2 pt-2">
               <Btn v="secondary" onClick={() => {setModal(null); setEdit(null)}}>{t('btn_cancel')}</Btn>
-              <Btn onClick={saveLog}>{t('btn_save')}</Btn>
+              {afwijkingen.length && edit.taak_id && String(edit.uitgevoerd_door || '').trim()
+                ? <BevestigKnop v="primary" vraag={t('reiniging_vraag_afwijking')} onBevestig={saveLog}>{t('btn_save')}</BevestigKnop>
+                : <Btn onClick={saveLog}>{t('btn_save')}</Btn>}
             </div>
           </div>
         </Modal>

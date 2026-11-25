@@ -325,16 +325,18 @@ export const DEFAULT_BATCH_TAKEN_ITEMS = [
   // reinigingslogboek + schoonmaaktaken van die tank) — zie utils/ontsmetting.ts
   {id:111, type:'check' as const, labelKey:'brouwdag_check_11_fermentor',  group_id:4, volgorde:2, actief:true, tank_reiniging:'Ontsmet'},
   {id:112, type:'check' as const, labelKey:'brouwdag_check_12_waterslot',  group_id:4, volgorde:3, actief:true},
-  // Botteldag (groep 5) — via i18n labelKey
+  // Botteldag (groep 5) — via i18n labelKey. FG + ABV, etiketten, THT en
+  // opslag legt de app zelf vast (ABV vastzetten, CCP 3, de sessie, de
+  // afvulling): standaard uit, in Instellingen → Batchtaken aan te zetten.
   {id:201, type:'check' as const, labelKey:'botteldag_check_1_reiniging',       group_id:5, volgorde:0, actief:true},
   {id:202, type:'check' as const, labelKey:'botteldag_check_2_sanitair',        group_id:5, volgorde:1, actief:true},
-  {id:203, type:'check' as const, labelKey:'botteldag_check_3_fg_meting',       group_id:5, volgorde:2, actief:true},
+  {id:203, type:'check' as const, labelKey:'botteldag_check_3_fg_meting',       group_id:5, volgorde:2, actief:false},
   {id:204, type:'check' as const, labelKey:'botteldag_check_4_suikeroplossing', group_id:5, volgorde:3, actief:true},
   {id:205, type:'check' as const, labelKey:'botteldag_check_5_vulniveau',       group_id:5, volgorde:4, actief:true},
   {id:206, type:'check' as const, labelKey:'botteldag_check_6_sluiting',        group_id:5, volgorde:5, actief:true},
-  {id:207, type:'check' as const, labelKey:'botteldag_check_7_etiketten',       group_id:5, volgorde:6, actief:true},
-  {id:208, type:'check' as const, labelKey:'botteldag_check_8_tht_gecontroleerd', group_id:5, volgorde:7, actief:true},
-  {id:209, type:'check' as const, labelKey:'botteldag_check_9_opslag',          group_id:5, volgorde:8, actief:true},
+  {id:207, type:'check' as const, labelKey:'botteldag_check_7_etiketten',       group_id:5, volgorde:6, actief:false},
+  {id:208, type:'check' as const, labelKey:'botteldag_check_8_tht_gecontroleerd', group_id:5, volgorde:7, actief:false},
+  {id:209, type:'check' as const, labelKey:'botteldag_check_9_opslag',          group_id:5, volgorde:8, actief:false},
   // Kritische controlepunten (groep 6) — numerieke metingen met limieten
   {id:301, type:'meting' as const, label:'Kooktemperatuur', group_id:6, volgorde:0, actief:true, categorie:'koken' as const, kritische_grens:'≥100 °C gedurende ≥60 min', grens_min:100, eenheid:'°C', monitoring_methode:'Thermometer in brouwketel', corrigerende_actie:'Kooktijd verlengen tot minimaal 60 min bij 100 °C'},
   {id:302, type:'meting' as const, label:'Koelsnelheid', group_id:6, volgorde:1, actief:true, categorie:'koelen' as const, kritische_grens:'<20 °C binnen 90 min na koken', grens_max:20, eenheid:'°C', monitoring_methode:'Thermometer na koeler', corrigerende_actie:'Extra koeling inzetten; batch evalueren bij >90 min'},
@@ -430,15 +432,27 @@ export const THT_KLASSE_LABEL_KEY: Record<string, string> = {
 // Kritische grenzen en marges achter de CCP-beoordelingen. Beheer-only: dit is
 // beleid uit het voedselveiligheidsplan, geen dagelijkse werkinstelling.
 export const DEFAULT_HACCP_INST = {
-  // Stabiele dichtheid over 3 opeenvolgende dagen bij standaardbier, 7 dagen
-  // bij vers fruit/hout — wilde gist vergist traag en een korte
-  // stabiliteitsperiode geeft daar een vals-positief resultaat.
-  stabiel_dagen_standaard: 3,
-  stabiel_dagen_verhoogd: 7,
-  // Meetnauwkeurigheid waarbinnen twee dichtheden als gelijk gelden.
+  // CCP 1 (utils/haccp.ts, beoordeelCcp1): twee tankmetingen met minstens
+  // 48 uur ertussen verschillen hooguit 0,001, en de tank staat hooguit 0,002
+  // boven de forceertest.
+  stabiel_min_uur: 48,
   stabiel_tolerantie_sg: 0.001,
-  // Toegestaan verschil tussen tankdichtheid en de forced fermentation test.
   ff_marge_sg: 0.002,
+  // Hooguit 2,7 volumes CO2 bij het afvullen in flessen: een veilige grens
+  // voor een gewone (lichte) bierfles. 0 = niet toetsen.
+  co2_max_volumes: 2.7,
+  // CCP 2 bij flessen: de lege flessen inspecteren (Hygiënecode). Wie de
+  // sluiting elk halfuur wil controleren, kiest 'sluitcontrole'.
+  ccp2_fles: 'lege_flessen' as 'lege_flessen' | 'sluitcontrole',
+  // Quarantaine (utils/houdtest.ts): twee flessen staan warm, na 14 dagen de
+  // houdtest; tot de vrijgave voor verkoop is het bier niet te koop. De SG van
+  // een warme fles mag hooguit 0,002 onder die bij het afvullen liggen.
+  houdtest_dagen: 14,
+  houdtest_sg_marge: 0.002,
+  // Het etiket gaat erop bij het afvullen (CCP 3 in de sessie) of pas na de
+  // vrijgave voor verkoop — dan gooi je bij een afgekeurde houdtest geen
+  // etiketten weg.
+  etiketteren: 'afvullen' as 'afvullen' | 'na_vrijgave',
   tht_maanden_standaard: 9,
   tht_maanden_gepasteuriseerd: 6,
   tht_maanden_ongekookt: 3,

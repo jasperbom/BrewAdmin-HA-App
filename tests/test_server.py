@@ -175,7 +175,9 @@ class TestAppendOnly:
                 'haccp_etiketcontroles', 'haccp_afwijkingen',
                 # Hoofdstuk 11: een traceeroefening die tegenviel mag niet
                 # achteraf worden bijgesteld.
-                'haccp_trace_oefeningen')
+                'haccp_trace_oefeningen',
+                # De houdtest en de vrijgave voor verkoop (1.13.52).
+                'haccp_verkoopvrijgaven')
         for key in keys:
             assert key in srv._APPEND_ONLY, key
             srv._write_json(key, [{'id': 1, 'paraaf': {'gebruiker': 'jasper'}}])
@@ -208,6 +210,27 @@ class TestAppendOnly:
             with conn:
                 conn.execute("DELETE FROM records WHERE key='afvul_sessies'")
                 conn.execute("DELETE FROM versies WHERE key='afvul_sessies'")
+
+    def test_incidenten_lijst_muteerbaar_en_voor_productie(self, app):
+        """"Er is iets mis" (1.13.55): een incident loopt door tot het is
+        afgesloten (NVWA gemeld, afnemers gewaarschuwd, oorzaak), dus niet
+        append-only — de serveraudit legt elke wijziging vast. Wie brouwt moet
+        het kunnen vastleggen: geen beheer- of financiële key."""
+        assert srv._KEY_TYPES['haccp_incidenten'] == 'array'
+        assert 'haccp_incidenten' not in srv._APPEND_ONLY
+        assert 'haccp_incidenten' not in srv._BEHEER_KEYS
+        assert 'haccp_incidenten' not in srv._FINANCIELE_KEYS
+        assert srv._rol_mag_key('productie', 'haccp_incidenten')
+        assert not srv._rol_mag_key('alleen_lezen', 'haccp_incidenten')
+
+    def test_reinigingsmiddelen_lijst_voor_wie_brouwt(self, app):
+        """De middelen met hun Ctgb-toelating (1.13.56): een gewone lijst die
+        wie reinigt kan bijwerken (een nieuw middel, een verlengde
+        toelating) — geen beheer- of financiële key."""
+        assert srv._KEY_TYPES['reinigingsmiddelen'] == 'array'
+        assert 'reinigingsmiddelen' not in srv._APPEND_ONLY
+        assert srv._rol_mag_key('productie', 'reinigingsmiddelen')
+        assert not srv._rol_mag_key('alleen_lezen', 'reinigingsmiddelen')
 
 
 class TestSecretsMaskering:
@@ -1271,6 +1294,19 @@ class TestBijlagen:
         req(app, 'POST', '/api/data/bank_transacties', body=[tx])
         assert req(app, 'POST', '/api/delete_upload/psp_1.pdf', body={})[0] == 200
 
+    def test_etiketfoto_bij_ccp3_gaat_niet_weg(self, app):
+        # De foto van het etiket bij een etiketcontrole is bewijs (CCP 3).
+        srv._write_json('haccp_etiketcontroles', [{'id': 1, 'sessie_id': 1, 'batch_id': 1,
+            'bijlagen': [{'naam': 'etiket.jpg', 'bestand': 'etiket_1.jpg', 'rol': 'etiket'}]}])
+        try:
+            assert srv._bijlage_in_gebruik('etiket_1.jpg') == 'haccp_etiketcontroles'
+            assert srv._bijlage_in_gebruik('etiket_2.jpg') is None
+        finally:
+            conn = srv._db()
+            with conn:
+                conn.execute("DELETE FROM records WHERE key='haccp_etiketcontroles'")
+                conn.execute("DELETE FROM versies WHERE key='haccp_etiketcontroles'")
+
     def test_bijlage_in_gebruik_negeert_een_kapotte_fotolijst(self, app):
         # Een lot met een rare waarde in etiket_fotos mag de controle niet laten vallen.
         req(app, 'POST', '/api/data/lots', body=[{'id': 8, 'etiket_fotos': 'geen-lijst'},
@@ -2220,6 +2256,24 @@ class TestSluitcontroleHerinnering:
         try:
             srv._sluitcontrole_tick()
             assert calls == []
+        finally:
+            self._clean()
+
+    def test_zwijgt_bij_lege_flessen_en_zonder_ccp2(self, app, monkeypatch):
+        # Sinds 1.13.51 draagt een sessie haar CCP 2: de inspectie van de lege
+        # flessen en een fust kennen geen halfuurcontrole, dus ook geen melding.
+        calls = []
+        monkeypatch.setattr(srv, '_ha_notify', lambda s, t, m: (calls.append((s, t, m)) or True))
+        self._seed(
+            [{'id': 1, 'batch_id': 1, 'lotcode': 'L1', 'status': 'open', 'ccp2': 'lege_flessen',
+              'start': self._iso_min_geleden(120)},
+             {'id': 2, 'batch_id': 2, 'lotcode': 'L2', 'status': 'open', 'ccp2': 'geen',
+              'start': self._iso_min_geleden(120)},
+             {'id': 3, 'batch_id': 3, 'lotcode': 'L3', 'status': 'open', 'ccp2': 'sluitcontrole',
+              'start': self._iso_min_geleden(120)}])
+        try:
+            srv._sluitcontrole_tick()
+            assert len(calls) == 1 and 'L3' in calls[0][2]
         finally:
             self._clean()
 
@@ -3998,7 +4052,7 @@ class TestAutoMetingenUitdunnen:
     def _clean():
         conn = srv._db()
         with conn:
-            for key in ('batches', 'gist_metingen'):
+            for key in ('batches', 'gist_metingen', 'tank_setpoints'):
                 conn.execute('DELETE FROM records WHERE key=?', (key,))
                 conn.execute('DELETE FROM versies WHERE key=?', (key,))
             conn.execute("DELETE FROM kv WHERE key='ha_instellingen'")
@@ -4039,6 +4093,69 @@ class TestAutoMetingenUitdunnen:
             assert len(srv._read_json('gist_metingen', [])) == len(metingen) + 12 + 1
         finally:
             self._clean()
+
+    def test_druk_en_setpoint_gaan_mee(self, app, monkeypatch):
+        """De druksensor (psi → bar) en het verse setpoint van de koeling
+        staan op dezelfde automatische meting als de temperatuur."""
+        nu_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        srv._write_json('ha_instellingen', {
+            'enabled': True,
+            'sensors': [{'id': 1, 'tank': 'T1', 'entity': 'sensor.t1'}],
+            'druk_sensors': [{'id': 1, 'tank': 'T1', 'entity': 'sensor.druk_t1', 'eenheid': 'psi'}]})
+        srv._write_json('batches', [{'id': 7, 'tank': 'T1', 'status': 'Conditioneren'}])
+        srv._write_json('tank_setpoints', [
+            {'tank': 'T1', 'entity': 'climate.t1', 'setpoint': 2.0, 'sinds': None, 'gezien': nu_iso}])
+        srv._write_json('gist_metingen', [])
+        waarden = {'sensor.t1': 2.4, 'sensor.druk_t1': 17.4}
+        monkeypatch.setattr(srv, '_ha_fetch_state', lambda e: waarden.get(e))
+        try:
+            srv._auto_metingen_tick()
+            [m] = srv._read_json('gist_metingen', [])
+            assert m['temp'] == 2.4 and m['setpoint'] == 2.0
+            assert m['druk'] == pytest.approx(1.2, abs=0.001)
+            assert m['auto'] is True
+        finally:
+            self._clean()
+
+    def test_alleen_druksensor(self, app, monkeypatch):
+        """Een tank met alleen een druksensor krijgt toch een meting, zonder
+        temperatuur en dus zonder setpoint; de bewaking leest alleen temp."""
+        srv._write_json('ha_instellingen', {
+            'enabled': True, 'sensors': [],
+            'druk_sensors': [{'id': 1, 'tank': 'T1', 'entity': 'sensor.druk_t1', 'eenheid': 'bar'}]})
+        srv._write_json('batches', [{'id': 7, 'tank': 'T1', 'status': 'Vergisten'}])
+        srv._write_json('gist_metingen', [])
+        monkeypatch.setattr(srv, '_ha_fetch_state', lambda e: 0.85)
+        try:
+            srv._auto_metingen_tick()
+            [m] = srv._read_json('gist_metingen', [])
+            assert m['druk'] == 0.85 and 'temp' not in m and 'setpoint' not in m
+            assert srv._temp_punten_per_batch([m], 0) == {}
+        finally:
+            self._clean()
+
+    def test_oud_setpoint_gaat_niet_mee(self, app, monkeypatch):
+        oud = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=3)).isoformat()
+        srv._write_json('ha_instellingen', {
+            'enabled': True, 'sensors': [{'id': 1, 'tank': 'T1', 'entity': 'sensor.t1'}]})
+        srv._write_json('batches', [{'id': 7, 'tank': 'T1', 'status': 'Vergisten'}])
+        srv._write_json('tank_setpoints', [
+            {'tank': 'T1', 'entity': 'climate.t1', 'setpoint': 20.0, 'sinds': None, 'gezien': oud}])
+        srv._write_json('gist_metingen', [])
+        monkeypatch.setattr(srv, '_ha_fetch_state', lambda e: 19.6)
+        try:
+            srv._auto_metingen_tick()
+            [m] = srv._read_json('gist_metingen', [])
+            assert m['temp'] == 19.6 and 'setpoint' not in m and 'druk' not in m
+        finally:
+            self._clean()
+
+    def test_druk_naar_bar(self):
+        assert srv._druk_naar_bar(14.5038, 'psi') == 1.0
+        assert srv._druk_naar_bar(120, 'kPa') == 1.2
+        assert srv._druk_naar_bar('0.9', None) == 0.9
+        assert srv._druk_naar_bar(float('nan'), 'bar') is None
+        assert srv._druk_naar_bar('', 'bar') is None
 
     def test_onleesbare_sensor_schrijft_niets(self, app, monkeypatch):
         srv._write_json('ha_instellingen', {
@@ -7072,3 +7189,61 @@ class TestMailAfbeeldingen:
     def test_afbeelding_zonder_html_blijft_geweigerd(self):
         payload = {**self._payload(['whatsapp-logo']), 'html': ''}
         assert srv._build_email(self.CREDS, payload) is None
+
+
+class TestHaGeschiedenis:
+    """De retoursensor bij reinigen (1.13.56): de geschiedenis van één sensor
+    over het tijdvak van een reiniging — alleen lezen, begrensd."""
+
+    def test_venster_moet_kloppen(self):
+        assert srv._ha_history_venster('2026-11-24T10:00:00+01:00', '2026-11-24T12:00:00+01:00') == (
+            '2026-11-24T09:00:00+00:00', '2026-11-24T11:00:00+00:00')
+        assert srv._ha_history_venster('2026-11-24T10:00:00Z', '2026-11-24T10:30:00Z') is not None
+        # Zonder tijdzone, omgekeerd, te lang of onzin: geweigerd.
+        assert srv._ha_history_venster('2026-11-24T10:00:00', '2026-11-24T12:00:00') is None
+        assert srv._ha_history_venster('2026-11-24T12:00:00Z', '2026-11-24T10:00:00Z') is None
+        assert srv._ha_history_venster('2026-11-24T10:00:00Z', '2026-11-25T10:00:01Z') is None
+        assert srv._ha_history_venster('gisteren', 'vandaag') is None
+
+    def test_reeks_alleen_eindige_getallen_op_tijd(self):
+        raw = [[
+            {'entity_id': 'sensor.retour', 'state': '83.1', 'last_changed': '2026-11-24T10:05:00+00:00'},
+            {'state': 'unavailable', 'last_changed': '2026-11-24T10:03:00+00:00'},
+            {'state': 'nan', 'last_changed': '2026-11-24T10:04:00+00:00'},
+            {'state': '79', 'last_changed': '2026-11-24T10:00:00+00:00'},
+            'kapot',
+        ]]
+        assert srv._ha_history_punten(raw) == [
+            {'ts': '2026-11-24T10:00:00+00:00', 'waarde': 79.0},
+            {'ts': '2026-11-24T10:05:00+00:00', 'waarde': 83.1},
+        ]
+        assert srv._ha_history_punten([]) == []
+        assert srv._ha_history_punten({'x': 1}) == []
+
+    def test_route_weigert_ongeldige_invoer_zonder_ha_te_vragen(self, app):
+        pad = '/api/homeassistant/_history/sensor.retour?start=gisteren&end=vandaag'
+        status, body, _ = req(app, 'GET', pad)
+        assert status == 400 and body['error'] == 'ongeldige_invoer'
+        status, _, _ = req(app, 'GET', '/api/homeassistant/_history/Sensor;rm?start=2026-11-24T10:00:00Z&end=2026-11-24T11:00:00Z')
+        assert status == 400
+
+    def test_route_vraagt_alleen_die_ene_sensor_over_dat_venster(self, app, monkeypatch):
+        echt = srv.urllib.request.urlopen
+        gevraagd = []
+
+        def nep(verzoek, *a, **k):
+            url = verzoek.full_url if hasattr(verzoek, 'full_url') else str(verzoek)
+            if url.startswith(srv.HA_SUPERVISOR_BASE):
+                gevraagd.append(url)
+                return _NepAntwoord(json.dumps([[{'state': '84', 'last_changed': '2026-11-24T10:10:00+00:00'}]]).encode())
+            return echt(verzoek, *a, **k)
+
+        monkeypatch.setenv('SUPERVISOR_TOKEN', 'test')
+        monkeypatch.setattr(srv.urllib.request, 'urlopen', nep)
+        status, body, _ = req(app, 'GET', '/api/homeassistant/_history/sensor.retour?start=2026-11-24T10:00:00%2B00:00&end=2026-11-24T11:00:00Z')
+        assert status == 200
+        assert body == {'punten': [{'ts': '2026-11-24T10:10:00+00:00', 'waarde': 84.0}]}
+        assert len(gevraagd) == 1
+        assert '/history/period/2026-11-24T10%3A00%3A00%2B00%3A00' in gevraagd[0]
+        assert 'filter_entity_id=sensor.retour' in gevraagd[0]
+        assert 'end_time=2026-11-24T11%3A00%3A00%2B00%3A00' in gevraagd[0]

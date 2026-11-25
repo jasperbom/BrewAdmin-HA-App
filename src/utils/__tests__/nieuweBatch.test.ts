@@ -399,13 +399,12 @@ describe('liters, doelen en ingrediënten', () => {
 
 describe('etiketVooruitblik — het etiket vóór de brouwdag', () => {
   const ectx = { batches, recepten, ingredienten, lots }
-  it('Kadeblond v4 tegen het etiket v3: alcohol binnen de marge, tarwe ontbreekt', () => {
+  it('Kadeblond v4 tegen het vastgelegde etiket: alcohol binnen de marge, tarwe ontbreekt', () => {
     const v = etiketVooruitblik(kb4, producten[0], ectx)
     expect(v.alcohol).toEqual({ sleutel: 'nb_etiket_alcohol_binnen', kleur: 'grijs', recept: 6.8, etiket: 6.2, marge: 1 })
-    expect(v.allergenen).toMatchObject({ sleutel: 'nb_etiket_allergenen_mist_versie', kleur: 'rood' })
+    expect(v.allergenen).toMatchObject({ sleutel: 'nb_etiket_allergenen_mist', kleur: 'rood' })
     expect(v.allergenen.allergenen).toContain('tarwe')
     expect(v.allergenenVerwacht).toEqual(['gluten', 'gerst', 'tarwe'])
-    expect(v.versie).toBe('v3')
     expect(v).toMatchObject({ bijwerken: true, aandacht: true, zonderEtiket: null })
     expect(v.status?.kleur).toBe('rood')
   })
@@ -426,7 +425,7 @@ describe('etiketVooruitblik — het etiket vóór de brouwdag', () => {
   })
   it('een allergeen alleen op het etiket: oranje "vermeldt ook"', () => {
     const v = etiketVooruitblik(kb3, { ...producten[0], allergenen: ['gluten', 'gerst', 'haver'] }, ectx)
-    expect(v.allergenen).toMatchObject({ sleutel: 'nb_etiket_allergenen_teveel_versie', kleur: 'oranje', allergenen: ['haver'] })
+    expect(v.allergenen).toMatchObject({ sleutel: 'nb_etiket_allergenen_teveel', kleur: 'oranje', allergenen: ['haver'] })
   })
   it('allergenen van het recept onvolledig: de namen erbij, geen etiketknop', () => {
     const v = etiketVooruitblik(rauch, producten[1], ectx)
@@ -448,8 +447,6 @@ describe('de teksten van het blad', () => {
   it('elke sleutel die de logica teruggeeft staat in het Nederlands (en dus in alle talen)', () => {
     const bron = readFileSync('src/utils/nieuweBatch.ts', 'utf8')
     const sleutels = new Set([...bron.matchAll(/'((?:nb|recept_etiket)_[a-z_]+)'/g)].map(m => m[1]))
-    // `metVersie` plakt er `_versie` achter.
-    for (const k of ['nb_etiket_allergenen_mist', 'nb_etiket_allergenen_teveel']) sleutels.add(`${k}_versie`)
     expect(sleutels.size).toBeGreaterThan(25)
     expect([...sleutels].filter(k => !(k in (nl as Record<string, string>)))).toEqual([])
   })

@@ -226,11 +226,32 @@ describe('bouwBatchRapport — één stap terug', () => {
 })
 
 describe('bouwBatchRapport — CCP-registraties', () => {
-  it('neemt de vrijgave integraal over', () => {
+  it('neemt een vrijgave volgens de regel van forceertest en twee metingen integraal over', () => {
+    const r = bouwBatchRapport(invoer({
+      vrijgaven: [{id: 43, batch_id: 7, datum: '2026-06-18', methode: 'ff_paar',
+        ff_uitgevoerd: true, ff_dichtheid_ff: 1.010, ff_dichtheid_tank: 1.011,
+        ff_verschil: 0.001, ff_marge: 0.002, ff_ok: true,
+        tank_sg_1: 1.012, tank_sg_1_op: '2026-06-16T09:00',
+        tank_sg_2: 1.011, tank_sg_2_op: '2026-06-18T09:00',
+        stabiel_uren: 48, stabiel_verschil: 0.001, stabiel_ok: true,
+        oordeel: 'vrijgegeven', oordeel_voorgesteld: 'niet_vrijgegeven', afwijking_id: 9,
+        paraaf: {gebruiker: 'jasper', tijdstip: '2026-06-18T10:00:00.000Z', bron: 'whoami'}}] as any,
+    }))
+    expect(r.vrijgaven[0]).toMatchObject({
+      methode: 'ff_paar', risicoKey: null, dagenStabiel: null,
+      ffSg: 1.010, tankSg: 1.011, ffOk: true,
+      tankSg1: 1.012, tankSg1Op: '2026-06-16T09:00', tankSg2: 1.011, stabielUren: 48,
+      stabielOk: true, afwijking: true,
+    })
+  })
+
+  it('neemt een vrijgave volgens de oude regel integraal over', () => {
     const v = bouwBatchRapport(invoer()).vrijgaven[0]
     expect(v).toMatchObject({
       datum: '2026-06-18',
       oordeelKey: 'haccp_ccp1_vrijgegeven',
+      methode: 'dagen',
+      afwijking: false,
       risicoKey: 'haccp_risico_standaard',
       dagenStabiel: 4,
       vereisteDagen: 3,
@@ -249,6 +270,54 @@ describe('bouwBatchRapport — CCP-registraties', () => {
     expect(r.vrijgaven[0].oordeelKey).toBe('haccp_ccp1_niet_vrijgegeven')
     expect(r.vrijgaven[0].risicoKey).toBe('haccp_risico_verhoogd')
     expect(r.vrijgaven[0].ffOk).toBeNull()
+  })
+
+  it('neemt de afvuldag mee: CCP 2 per soort, koolzuur, SG, lots en klapflessen', () => {
+    const r = bouwBatchRapport(invoer({
+      sessies: [
+        {id: 61, batch_id: 7, sessie_nr: 1, lotcode: 'L2614', status: 'afgesloten', ccp2: 'lege_flessen',
+          verpakking_type: 'Fles 33cl', start: '2026-06-20T09:00', vrijgave_id: 41,
+          co2_volumes: 2.62, co2_max: 2.7, co2_bron: 'sensor', sg_afvullen: 1.011,
+          flessenlot: 'F-101', kroonkurkenlot: 'K-8',
+          klapflessen: {aantal: 1, vernietigd: 3, gereinigd: true}},
+        {id: 62, batch_id: 7, sessie_nr: 2, lotcode: 'L2614-B2', status: 'afgesloten', ccp2: 'geen',
+          verpakking_type: 'Fust 20L', start: '2026-06-21T09:00', vrijgave_id: 41},
+      ] as any,
+      sluitcontroles: [
+        {id: 71, batch_id: 7, sessie_id: 61, methode: 'lege_flessen', afgekeurd_aantal: 4, resultaat: 'goedgekeurd'},
+      ] as any,
+    }))
+    const [fles, fust] = r.sessies
+    expect(fles.ccp2).toBe('lege_flessen')
+    expect(fles.flessenAfgekeurd).toBe(4)
+    expect(fles).toMatchObject({co2Volumes: 2.62, co2Max: 2.7, co2Bron: 'sensor', co2Afwijking: false,
+      sgAfvullen: 1.011, flessenlot: 'F-101', kroonkurkenlot: 'K-8', klapflessen: {aantal: 1, vernietigd: 3}})
+    expect(fust.ccp2).toBe('geen')
+    expect(fust).toMatchObject({flessenAfgekeurd: null, co2Volumes: null, sgAfvullen: null, klapflessen: null})
+  })
+
+  it('leest een sessie van vóór de afvuldag als sluitcontrole, zonder extra velden', () => {
+    const s = bouwBatchRapport(invoer()).sessies[0]
+    expect(s.ccp2).toBe('sluitcontrole')
+    expect(s.flessenAfgekeurd).toBeNull()
+    expect(s.flessenlot).toBe('')
+  })
+
+  it('neemt de houdtest en de vrijgave voor verkoop mee', () => {
+    const r = bouwBatchRapport(invoer({
+      verkoopvrijgaven: [
+        {id: 1, batch_id: 7, datum: '2026-07-04', afgevuld_op: '2026-06-20', houdtest_dagen: 14,
+          sg_afvullen: 1.011, sg_warm: 1.010, sg_verschil: 0.001, sg_marge: 0.002, druk_ok: true, smaak_ok: true,
+          oordeel: 'vrijgegeven', oordeel_voorgesteld: 'groen', paraaf: {gebruiker: 'jasper', tijdstip: '2026-07-04T10:00:00Z', bron: 'whoami'}},
+        {id: 2, batch_id: 8, datum: '2026-07-04', afgevuld_op: '2026-06-20', houdtest_dagen: 14, sg_marge: 0.002,
+          druk_ok: true, smaak_ok: true, oordeel: 'afgekeurd', oordeel_voorgesteld: 'onvolledig',
+          paraaf: {gebruiker: 'jasper', tijdstip: '2026-07-04T10:00:00Z', bron: 'whoami'}},
+      ] as any,
+    }))
+    expect(r.verkoopvrijgaven).toHaveLength(1)
+    expect(r.verkoopvrijgaven[0]).toMatchObject({oordeelKey: 'haccp_houdtest_vrijgegeven', vrijgegeven: true,
+      afgevuldOp: '2026-06-20', dagen: 14, sgAfvullen: 1.011, sgWarm: 1.01, sgVerschil: 0.001, afwijking: false})
+    expect(bouwBatchRapport(invoer()).verkoopvrijgaven).toEqual([])
   })
 
   it('zet de afwijkingen erbij — een dossier dat die weglaat is een folder', () => {
@@ -419,7 +488,7 @@ describe('bouwBatchRapport — etiket & website (zoals de kaart in Gereed)', () 
     expect(r.etiket?.waarden.ebc.waarde).toBe(12)
     expect(r.etiket?.waarden.allergenen.lijst).toEqual(['gluten', 'gerst'])
     expect(r.etiket?.producten.map(p => p.product.id)).toEqual([3])
-    expect(r.etiket?.producten[0].etiket.etiketVersie).toBe('v2')
+    expect(r.etiket?.producten[0].etiket).not.toHaveProperty('etiketVersie')
   })
 
   it('lotcode en THT per verpakking uit de sessies', () => {
@@ -436,24 +505,32 @@ describe('bouwBatchRapport — CCP 3 met de getallen erbij', () => {
     paraaf: {gebruiker: 'jasper', tijdstip: '2026-06-20T09:05:00Z', bron: 'whoami'}, ...extra,
   })
 
-  it('een nieuw record: versie op de rol, verwacht, ABV van batch en etiket, marge', () => {
+  it('een nieuw record: ABV van batch en etiket, marge (een oude etiketversie doet niet meer mee)', () => {
     const r = bouwBatchRapport(invoer({producten: [{id: 3, naam: 'James Blond'}] as any, etiketcontroles: [controle({
       etiket_versie: 'v2', etiket_versie_gelezen: 'v2', etiket_versie_verwacht: 'v2',
       abv_batch: 5.5, abv_etiket_verwacht: 5.4, abv_marge: 0.5,
     })]}))
     expect(r.etiketcontroles).toEqual([{
       moment: '2026-06-20T09:05:00Z', lotcode: 'L2614-B1', product: 'James Blond',
-      versieGelezen: 'v2', versieVerwacht: 'v2', abvBatch: 5.5, abvEtiket: 5.4, abvMarge: 0.5,
+      abvBatch: 5.5, abvEtiket: 5.4, abvMarge: 0.5,
       allergenenBatch: ['gluten', 'gerst'], allergenenEtiket: ['gluten', 'gerst'],
-      goedgekeurd: true, afwijking: false, snapshot: true,
+      goedgekeurd: true, afwijking: false, snapshot: true, ai: null,
       paraaf: {gebruiker: 'jasper', tijdstip: '2026-06-20T09:05:00Z'},
     }])
   })
 
   it('een oud record (zonder snapshots) blijft zoals het was', () => {
     const r = bouwBatchRapport(invoer({etiketcontroles: [controle({etiket_versie: 'v1', afwijking_id: 4, resultaat: 'afgekeurd'})]}))
-    expect(r.etiketcontroles[0]).toMatchObject({versieGelezen: 'v1', versieVerwacht: '', abvBatch: null,
+    expect(r.etiketcontroles[0]).toMatchObject({abvBatch: null,
       snapshot: false, goedgekeurd: false, afwijking: true})
+  })
+
+  it('de AI-controle van de etiketfoto: samenvatting, ook als er toch is vastgelegd', () => {
+    const r = bouwBatchRapport(invoer({etiketcontroles: [controle({ai_check: {
+      op: '2026-06-20T09:04:00Z', model: 'claude-opus-5-5', toch_vastgelegd: true,
+      oordeel: {lotcode: 'wijkt_af', tht: 'klopt', alcohol: 'klopt', allergenen: 'niet_gezien'},
+    }})]}))
+    expect(r.etiketcontroles[0].ai).toEqual({stand: 'wijkt_af', afwijkend: ['lotcode'], tochVastgelegd: true})
   })
 
   it('alleen controles van deze batch', () => {

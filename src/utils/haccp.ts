@@ -19,9 +19,10 @@ import type {
   Allergeen, Batch, BatchIngredient, Ingredient, Product,
   HaccpVrijgave, HaccpInst, HaccpAfwijking, AfwijkingBron, Paraaf,
   RisicoKlasse, ToevoegingSoort, VrijgaveOordeel,
-  AfvulSessie, SluitControle, ControleResultaat, CorrigierendeActie,
+  AfvulSessie, SluitControle, ControleResultaat, CorrigierendeActie, Ccp2Soort, Etiketteren,
 } from '../types'
 import { DEFAULT_HACCP_INST } from './constants'
+import { fmtDagMaand } from './format'
 import { ingredientVoorBatchRegel } from './batchIngredienten'
 import type { LotKoppeling } from './batchIngredienten'
 
@@ -136,169 +137,225 @@ export const risicoVoorBatch = (
   }
 }
 
-export const vereisteStabiliteitsdagen = (
-  klasse: RisicoKlasse,
-  instRaw?: Partial<HaccpInst> | null
-): number => {
-  const inst = haccpInst(instRaw)
-  return klasse === 'verhoogd' ? inst.stabiel_dagen_verhoogd : inst.stabiel_dagen_standaard
-}
-
-// ── Stabiliteit van de dichtheid ────────────────────────────────────────────
-
-interface SgMeting { sg?: number | string | null; datum?: string; tijd?: string }
-
-const metingTs = (m: SgMeting): number =>
-  new Date(`${m.datum || ''}T${m.tijd || '00:00'}`).getTime()
-
-const sorteerMetingen = (metingen: SgMeting[]): SgMeting[] =>
-  (metingen || [])
-    .filter(m => m && m.sg != null && Number(m.sg) > 0 && !!m.datum)
-    .slice()
-    .sort((a, b) => metingTs(a) - metingTs(b))
-
-/** Aantal dagen dat de dichtheid onveranderd is: de langste aaneengesloten
- *  reeks metingen die eindigt bij de laatste meting en waarin elke waarde
- *  binnen `tol` van die laatste waarde ligt. Minder dan twee bruikbare
- *  metingen levert 0 op — één meting zegt niets over stabiliteit. */
-export const dagenStabiel = (
-  metingen: SgMeting[],
-  instRaw?: Partial<HaccpInst> | null
-): number => {
-  const inst = haccpInst(instRaw)
-  const ms = sorteerMetingen(metingen)
-  if (ms.length < 2) return 0
-  const laatste = ms[ms.length - 1]
-  const ref = Number(laatste.sg)
-  let start = ms.length - 1
-  while (start > 0 && Math.abs(Number(ms[start - 1].sg) - ref) <= inst.stabiel_tolerantie_sg) {
-    start--
-  }
-  if (start === ms.length - 1) return 0
-  const span = metingTs(laatste) - metingTs(ms[start])
-  if (!isFinite(span) || span <= 0) return 0
-  return Math.floor(span / 86400000)
-}
-
-// ── Forced fermentation ─────────────────────────────────────────────────────
-// De standaardmethode om de werkelijke eindvergisting te bepalen: een monster
-// warm en met overmaat gist laten doorgisten. Blijft het bier in de tank op
-// die waarde staan, dan is nagisting door de brouwersgist uitgesloten.
-
-// Afgerond op vier decimalen: dichtheden worden op drie decimalen gemeten en
-// het verschil belandt onafgerond in een registratie die bewijs moet zijn.
-// Drijvende-komma-ruis als 0.001000000000000112 hoort daar niet in.
-export const ffVerschil = (dichtheidTank: number, dichtheidFf: number): number =>
-  Math.round(Math.abs(Number(dichtheidTank) - Number(dichtheidFf)) * 10000) / 10000
-
-export const ffBinnenMarge = (verschil: number, marge: number): boolean =>
-  verschil <= marge + 1e-9
-
 // ── CCP 1 — vrijgave voor afvullen ──────────────────────────────────────────
+// Eén regel voor elk bier (Hygiënecode voor de Bierbrouwerijen, EBC):
+//
+//   (a) de forceertest: een monster wort met gist dat warm is weggezet, laat
+//       zien hoe ver het bier kán uitgisten. De tank mag daar hooguit
+//       `ff_marge_sg` boven staan.
+//   (b) de tank is stabiel: twee metingen met minstens `stabiel_min_uur`
+//       ertussen verschillen hooguit `stabiel_tolerantie_sg`.
+//
+// Geen risicoklassen, geen drukproef en geen smaakoordeel meer bij deze stap:
+// de warm-houdtest na het afvullen laat zien of de vrijgave klopte, en daar
+// wordt ook geproefd. Wie na de kook vergistbare suiker toevoegt (fruit,
+// honing, siroop), zet na die toevoeging een nieuwe forceertest weg.
 
-export interface VrijgaveInvoer {
-  risico_klasse: RisicoKlasse
-  dagen_stabiel: number
-  ff_uitgevoerd: boolean
-  ff_dichtheid_tank?: number | string | null
-  ff_dichtheid_ff?: number | string | null
-  druk30_uitgevoerd?: boolean
-  druk30_ok?: boolean
-  sensorisch?: string
+/** Afgerond op vier decimalen: dichtheden worden op drie decimalen gemeten en
+ *  het verschil belandt in een registratie die bewijs moet zijn. Drijvende-
+ *  kommaruis als 0.001000000000000112 hoort daar niet in. */
+const rond4 = (x: number): number => Math.round(x * 10000) / 10000
+
+const binnen = (x: number, grens: number): boolean => x <= grens + 1e-9
+
+/** Hoeveel de tank boven de forceertest staat; negatief = eronder (dat is
+ *  goed: de tank kan niet verder uitgisten dan de test). */
+export const ffVerschil = (tankSg: number, ffSg: number): number =>
+  rond4(Number(tankSg) - Number(ffSg))
+
+interface SgMeting { sg?: number | string | null; datum?: string; tijd?: string; auto?: boolean }
+
+/** Een handmatige SG-meting van de tank. */
+export interface TankSg {
+  sg: number
+  /** Lokaal tijdstip 'JJJJ-MM-DDTUU:MM', zoals de meting in de lijst staat. */
+  op: string
+  ts: number
 }
 
-export interface VrijgaveBeoordeling {
-  /** Wat het systeem voorstelt op grond van de criteria. */
-  oordeel: VrijgaveOordeel
-  vereiste_dagen: number
-  stabiel_ok: boolean
-  ff_ok: boolean
-  ff_verschil: number | null
-  ff_marge: number
-  druk30_ok: boolean
-  sensorisch_ok: boolean
-  /** Verplichte velden die nog ontbreken — het formulier kan nog niet weg. */
-  onvolledig: BlokkadeReden[]
-  /** Waarom het voorstel 'niet vrijgegeven' is. */
-  redenen: BlokkadeReden[]
+const metingOp = (m: SgMeting): string => `${m.datum || ''}T${m.tijd || '00:00'}`
+
+/** De handmatige SG-metingen van de tank, oud → nieuw. Een drijvende sensor
+ *  (Tilt, iSpindel, RAPT) is rond de einddichtheid te onnauwkeurig voor een
+ *  kritische grens: automatische metingen tellen hier niet mee, in de grafiek
+ *  wel. */
+export const tankSgMetingen = (metingen: SgMeting[] | null | undefined): TankSg[] =>
+  (metingen || [])
+    .filter(m => !!m && !m.auto && m.sg != null && m.sg !== '' && Number(m.sg) > 0 && !!m.datum)
+    .map(m => ({sg: Number(m.sg), op: metingOp(m), ts: new Date(metingOp(m)).getTime()}))
+    .filter(m => isFinite(m.ts))
+    .sort((a, b) => a.ts - b.ts)
+
+export interface StabielPaar {
+  eerste: TankSg
+  laatste: TankSg
+  uren: number
+  verschil: number
 }
 
-export const beoordeelVrijgave = (
-  inv: VrijgaveInvoer,
-  instRaw?: Partial<HaccpInst> | null
-): VrijgaveBeoordeling => {
-  const inst = haccpInst(instRaw)
-  const vereiste = vereisteStabiliteitsdagen(inv.risico_klasse, inst)
-  const verhoogd = inv.risico_klasse === 'verhoogd'
-  const onvolledig: BlokkadeReden[] = []
-  const redenen: BlokkadeReden[] = []
-
-  const stabielOk = inv.dagen_stabiel >= vereiste
-  if (!stabielOk) {
-    redenen.push({
-      code: 'niet_stabiel',
-      i18nKey: 'haccp_blok_niet_stabiel',
-      params: {dagen: inv.dagen_stabiel, vereist: vereiste},
-    })
-  }
-
-  // De forced fermentation test is verplicht uitgevoerd — zonder die test is
-  // er geen onderbouwing dat het bier daadwerkelijk uitgegist is.
-  let ffVersch: number | null = null
-  let ffOk = false
-  if (!inv.ff_uitgevoerd) {
-    redenen.push({code: 'ff_niet_uitgevoerd', i18nKey: 'haccp_blok_ff_niet_uitgevoerd'})
-  } else {
-    const tank = Number(inv.ff_dichtheid_tank)
-    const ff = Number(inv.ff_dichtheid_ff)
-    if (!isFinite(tank) || tank <= 0 || !isFinite(ff) || ff <= 0) {
-      onvolledig.push({code: 'ff_dichtheden_ontbreken', i18nKey: 'haccp_blok_ff_dichtheden'})
-    } else {
-      ffVersch = ffVerschil(tank, ff)
-      ffOk = ffBinnenMarge(ffVersch, inst.ff_marge_sg)
-      if (!ffOk) {
-        redenen.push({
-          code: 'ff_buiten_marge',
-          i18nKey: 'haccp_blok_ff_buiten_marge',
-          params: {verschil: ffVersch.toFixed(3), marge: inst.ff_marge_sg.toFixed(3)},
-        })
+/** De twee metingen waarop de stabiliteit beoordeeld wordt: de laatste meting
+ *  en de laatste meting die minstens `minUur` eerder lag. Null zolang zo'n
+ *  paar er niet is. */
+export const stabielPaar = (tank: TankSg[], minUur: number): StabielPaar | null => {
+  if (!tank || tank.length < 2) return null
+  const laatste = tank[tank.length - 1]
+  const grens = laatste.ts - minUur * 3600000
+  for (let i = tank.length - 2; i >= 0; i--) {
+    if (tank[i].ts <= grens) {
+      const eerste = tank[i]
+      return {
+        eerste, laatste,
+        uren: Math.floor((laatste.ts - eerste.ts) / 3600000),
+        verschil: rond4(Math.abs(laatste.sg - eerste.sg)),
       }
     }
   }
+  return null
+}
 
-  // Drukcontrole op een 30 °C-monster: alleen bij vers fruit en hout, waar
-  // wilde gist traag vergist en pas na weken zichtbaar wordt.
-  let druk30Ok = true
-  if (verhoogd) {
-    if (!inv.druk30_uitgevoerd) {
-      redenen.push({code: 'druk30_ontbreekt', i18nKey: 'haccp_blok_druk30_ontbreekt'})
-      druk30Ok = false
-    } else if (inv.druk30_ok === false) {
-      redenen.push({code: 'druk30_afwijkend', i18nKey: 'haccp_blok_druk30_afwijkend'})
-      druk30Ok = false
+const lokaalOp = (ts: number): string => {
+  const d = new Date(ts)
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+export interface Ccp1Invoer {
+  /** Eind-SG van de forceertest. */
+  ff_sg?: number | string | null
+  /** Alle metingen van de batch; de automatische tellen niet mee. */
+  metingen: SgMeting[] | null | undefined
+}
+
+export interface Ccp1Beoordeling {
+  oordeel: VrijgaveOordeel
+  ff_sg: number | null
+  /** De laatste handmatige meting van de tank. */
+  tank: TankSg | null
+  ff_verschil: number | null
+  ff_marge: number
+  ff_ok: boolean
+  paar: StabielPaar | null
+  stabiel_min_uur: number
+  stabiel_tolerantie: number
+  stabiel_ok: boolean
+  /** Geen paar, of een paar dat niet stabiel is: vanaf wanneer een nieuwe meting
+   *  een paar maakt met de laatste ('JJJJ-MM-DDTUU:MM'). */
+  volgende_meting_op: string | null
+  /** Wat er nog ontbreekt of niet klopt; leeg = vrijgeven kan. */
+  redenen: BlokkadeReden[]
+}
+
+export const beoordeelCcp1 = (
+  inv: Ccp1Invoer,
+  instRaw?: Partial<HaccpInst> | null
+): Ccp1Beoordeling => {
+  const inst = haccpInst(instRaw)
+  const minUur = Number(inst.stabiel_min_uur) > 0 ? Number(inst.stabiel_min_uur) : 48
+  const tol = inst.stabiel_tolerantie_sg
+  const redenen: BlokkadeReden[] = []
+
+  const metingen = tankSgMetingen(inv.metingen)
+  const tank = metingen.length ? metingen[metingen.length - 1] : null
+  const ffRuw = Number(inv.ff_sg)
+  const ff = inv.ff_sg != null && inv.ff_sg !== '' && isFinite(ffRuw) && ffRuw > 0 ? ffRuw : null
+
+  // (a) De forceertest.
+  let ffVersch: number | null = null
+  let ffOk = false
+  if (ff == null) {
+    redenen.push({code: 'ff_ontbreekt', i18nKey: 'haccp_blok_ff_ontbreekt'})
+  } else if (tank) {
+    ffVersch = ffVerschil(tank.sg, ff)
+    ffOk = binnen(ffVersch, inst.ff_marge_sg)
+    if (!ffOk) {
+      redenen.push({
+        code: 'ff_buiten_marge',
+        i18nKey: 'haccp_blok_ff_boven',
+        params: {verschil: ffVersch.toFixed(3), marge: inst.ff_marge_sg.toFixed(3)},
+      })
     }
   }
 
-  // De smaakbeoordeling volgt op de stabiliteitsbeoordeling, niet andersom.
-  const sensorisch = (inv.sensorisch || '').trim()
-  const sensorischOk = sensorisch.length > 0
-  if (!sensorischOk) {
-    onvolledig.push({code: 'sensorisch_ontbreekt', i18nKey: 'haccp_blok_sensorisch'})
+  // (b) Twee metingen met genoeg tijd ertussen.
+  const paar = stabielPaar(metingen, minUur)
+  let stabielOk = false
+  let volgende: string | null = null
+  if (!tank) {
+    redenen.push({code: 'tank_ontbreekt', i18nKey: 'haccp_blok_tank_ontbreekt'})
+  } else if (!paar) {
+    volgende = lokaalOp(tank.ts + minUur * 3600000)
+    redenen.push({
+      code: 'tweede_meting',
+      i18nKey: 'haccp_blok_tweede_meting',
+      params: {uur: minUur, moment: fmtDagMaand(volgende, {tijd: true})},
+    })
+  } else {
+    stabielOk = binnen(paar.verschil, tol)
+    if (!stabielOk) {
+      // Een nieuwe meting vormt een paar met de laatste: zeg wanneer die kan.
+      volgende = lokaalOp(tank.ts + minUur * 3600000)
+      redenen.push({
+        code: 'niet_stabiel',
+        i18nKey: 'haccp_blok_niet_stabiel_paar',
+        params: {verschil: paar.verschil.toFixed(3), tolerantie: tol.toFixed(3), uur: paar.uren,
+          moment: fmtDagMaand(volgende, {tijd: true})},
+      })
+    }
   }
 
   return {
     oordeel: redenen.length === 0 ? 'vrijgegeven' : 'niet_vrijgegeven',
-    vereiste_dagen: vereiste,
-    stabiel_ok: stabielOk,
-    ff_ok: ffOk,
+    ff_sg: ff,
+    tank,
     ff_verschil: ffVersch,
     ff_marge: inst.ff_marge_sg,
-    druk30_ok: druk30Ok,
-    sensorisch_ok: sensorischOk,
-    onvolledig,
+    ff_ok: ffOk,
+    paar,
+    stabiel_min_uur: minUur,
+    stabiel_tolerantie: tol,
+    stabiel_ok: stabielOk,
+    volgende_meting_op: volgende,
     redenen,
   }
 }
+
+/** Het record dat CCP 1 vastlegt, met de gebruikte metingen bevroren: een
+ *  latere meting of een gewijzigde grens verandert de registratie niet. */
+export const bouwVrijgave = (
+  id: number,
+  batchId: number,
+  b: Ccp1Beoordeling,
+  paraaf: Paraaf,
+  extra: {vervangt_id?: number; afwijking_id?: number; opmerking?: string} = {},
+): HaccpVrijgave => ({
+  id,
+  batch_id: batchId,
+  datum: (paraaf.tijdstip || new Date().toISOString()).slice(0, 10),
+  methode: 'ff_paar',
+  ff_uitgevoerd: b.ff_sg != null,
+  ff_dichtheid_tank: b.tank?.sg,
+  ff_dichtheid_ff: b.ff_sg ?? undefined,
+  ff_verschil: b.ff_verschil ?? undefined,
+  ff_marge: b.ff_marge,
+  ff_ok: b.ff_ok,
+  tank_sg_1: b.paar?.eerste.sg,
+  tank_sg_1_op: b.paar?.eerste.op,
+  tank_sg_2: b.paar?.laatste.sg,
+  tank_sg_2_op: b.paar?.laatste.op,
+  stabiel_uren: b.paar?.uren,
+  stabiel_verschil: b.paar?.verschil,
+  stabiel_min_uur: b.stabiel_min_uur,
+  stabiel_tolerantie: b.stabiel_tolerantie,
+  stabiel_ok: b.stabiel_ok,
+  // Met een afwijking gaat het door ondanks een rood voorstel; het voorstel
+  // zelf blijft bewaard.
+  oordeel: 'vrijgegeven',
+  oordeel_voorgesteld: b.oordeel,
+  afwijking_id: extra.afwijking_id,
+  vervangt_id: extra.vervangt_id,
+  opmerking: (extra.opmerking || '').trim() || undefined,
+  paraaf,
+})
 
 /** De vrijgave die op dit moment geldt voor een batch: de nieuwste registratie
  *  die niet door een latere is vervangen. Append-only betekent dat oude
@@ -372,6 +429,115 @@ export const kroonkurkVerplicht = (
   const types = inst.kroonkurk_verplicht_types || []
   const tp = String(verpakkingType || '').toLowerCase()
   return types.some(x => tp.includes(String(x).toLowerCase()))
+}
+
+/** Welke CCP 2 bij een verpakking hoort. Blik: de sluitcontrole (met
+ *  omkeerproef). Fles: de inspectie van de lege flessen, tenzij de brouwerij
+ *  de sluitcontrole kiest (`ccp2_fles`). Fust en de rest: geen CCP 2 — daar
+ *  houden reinigen en de pH van het naspoelwater het gevaar klein. */
+export const ccp2Voor = (
+  verpakkingType: string | undefined | null,
+  instRaw?: Partial<HaccpInst> | null
+): Ccp2Soort => {
+  const inst = haccpInst(instRaw)
+  if (omkeerproefVerplicht(verpakkingType, inst)) return 'sluitcontrole'
+  if (kroonkurkVerplicht(verpakkingType, inst)) {
+    return inst.ccp2_fles === 'sluitcontrole' ? 'sluitcontrole' : 'lege_flessen'
+  }
+  return 'geen'
+}
+
+/** De CCP 2 van een sessie: bevroren bij het aanmaken; een sessie van vóór
+ *  1.13.51 kende alleen de sluitcontrole. */
+export const sessieCcp2 = (sessie: Pick<AfvulSessie, 'ccp2'> | null | undefined): Ccp2Soort =>
+  sessie?.ccp2 === 'lege_flessen' || sessie?.ccp2 === 'geen' ? sessie.ccp2 : 'sluitcontrole'
+
+/** De houdtest van een sessie in dagen, bevroren bij het aanmaken (0 = geen
+ *  quarantaine; een sessie van vóór 1.13.52 kende er geen). */
+export const sessieHoudtestDagen = (sessie: Pick<AfvulSessie, 'houdtest_dagen'> | null | undefined): number => {
+  const n = Number(sessie?.houdtest_dagen)
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0
+}
+
+/** Wanneer het etiket op deze sessie gaat: bij het afvullen (ook alle oude
+ *  sessies) of na de vrijgave voor verkoop. */
+export const sessieEtiketteren = (sessie: Pick<AfvulSessie, 'etiketteren'> | null | undefined): Etiketteren =>
+  sessie?.etiketteren === 'na_vrijgave' ? 'na_vrijgave' : 'afvullen'
+
+/** Wat een nieuwe sessie bevriest van de quarantaine-instellingen. */
+export const sessieQuarantaine = (
+  instRaw?: Partial<HaccpInst> | null
+): Pick<AfvulSessie, 'houdtest_dagen' | 'etiketteren'> => {
+  const inst = haccpInst(instRaw)
+  return {
+    houdtest_dagen: sessieHoudtestDagen({houdtest_dagen: inst.houdtest_dagen}),
+    etiketteren: sessieEtiketteren({etiketteren: inst.etiketteren}),
+  }
+}
+
+/** Moet deze sessie nog houdtestflessen apart zetten? Eén sessie per batch is
+ *  genoeg: de warme flessen gelden ook voor de fusten van dezelfde tank. */
+export const houdtestFlessenNodig = (
+  sessie: Pick<AfvulSessie, 'id' | 'batch_id' | 'houdtest_dagen' | 'houdtest_flessen'>,
+  sessies?: Array<Pick<AfvulSessie, 'id' | 'batch_id' | 'status' | 'houdtest_flessen'>> | null
+): boolean =>
+  sessieHoudtestDagen(sessie) > 0 && !sessie.houdtest_flessen
+  && !(sessies || []).some(s => s && s.id !== sessie.id && s.batch_id === sessie.batch_id
+    && s.status !== 'afgebroken' && s.houdtest_flessen === true)
+
+/** Inspectie van de lege flessen (CCP 2): elke fles tegen het licht, wat
+ *  afwijkt eruit. Eén registratie per sessie. */
+export const beoordeelFlesinspectie = (inv: {
+  bekeken?: boolean
+  afgekeurd?: number | string | null
+}): BlokkadeReden[] => {
+  const redenen: BlokkadeReden[] = []
+  if (!inv.bekeken) redenen.push({code: 'flessen_niet_bekeken', i18nKey: 'haccp_blok_flessen_niet_bekeken'})
+  const n = Number(inv.afgekeurd ?? 0)
+  if (inv.afgekeurd !== '' && inv.afgekeurd != null && (!isFinite(n) || n < 0 || !Number.isInteger(n))) {
+    redenen.push({code: 'afgekeurd_ongeldig', i18nKey: 'haccp_blok_afgekeurd_ongeldig'})
+  }
+  return redenen
+}
+
+// ── CCP 1, grens (c): koolzuur bij het afvullen ─────────────────────────────
+
+/** Toets het koolzuur alleen bij flessen, en alleen met een grens. */
+export const co2VanToepassing = (
+  verpakkingType: string | undefined | null,
+  instRaw?: Partial<HaccpInst> | null
+): boolean => {
+  const inst = haccpInst(instRaw)
+  return Number(inst.co2_max_volumes) > 0 && kroonkurkVerplicht(verpakkingType, inst)
+}
+
+/** Ontbreekt het koolzuur, of ligt het boven wat de fles aankan? */
+/** Koolzuur in volumes zoals je hem leest: twee decimalen in de notatie van
+ *  de taal ("2,66"; in het Engels "2.66"). */
+export const fmtCo2 = (volumes: number, taal?: string | null): string =>
+  Number(volumes).toFixed(2).replace('.', decimaalVoor(taal))
+
+/** De grens zoals ingesteld, zonder extra nullen ("2,7"). */
+export const fmtCo2Grens = (max: number, taal?: string | null): string =>
+  String(Number(max)).replace('.', decimaalVoor(taal))
+
+const decimaalVoor = (taal?: string | null): string =>
+  String(taal || 'nl').toLowerCase().startsWith('en') ? '.' : ','
+
+export const beoordeelCo2 = (
+  volumes: number | null | undefined,
+  instRaw?: Partial<HaccpInst> | null,
+  taal?: string | null
+): BlokkadeReden[] => {
+  const max = Number(haccpInst(instRaw).co2_max_volumes)
+  if (volumes == null || !isFinite(Number(volumes))) {
+    return [{code: 'co2_ontbreekt', i18nKey: 'haccp_blok_co2_ontbreekt'}]
+  }
+  if (max > 0 && Number(volumes) > max + 1e-9) {
+    return [{code: 'co2_te_hoog', i18nKey: 'haccp_blok_co2_te_hoog',
+      params: {volumes: fmtCo2(Number(volumes), taal), max: fmtCo2Grens(max, taal)}}]
+  }
+  return []
 }
 
 export interface SluitcontroleInvoer {
@@ -455,12 +621,31 @@ export const afvullingenSindsLaatsteGoedkeuring = (
  *  bestellingen, verzamelpicklijst, webshopvoorraad en uitslag. Die filterden
  *  eerst elk zelf, en de kassa en de uitslag vergaten het: daar kon FEFO juist
  *  de geblokkeerde blikken kiezen. */
-export const afvullingVerkoopbaar = (a: {geblokkeerd?: boolean} | null | undefined): boolean =>
-  !!a && !a.geblokkeerd
+export const afvullingVerkoopbaar = (a: AfvullingVrij | null | undefined): boolean =>
+  afvullingNietVrij(a) === null
 
-export const verkoopbareAfvullingen = <T extends {geblokkeerd?: boolean}>(
+export const verkoopbareAfvullingen = <T extends AfvullingVrij>(
   afvullingen: T[] | null | undefined
 ): T[] => (afvullingen || []).filter(afvullingVerkoopbaar)
+
+/** De vlaggen die verkopen tegenhouden. Naast de afgekeurde sluitcontrole
+ *  (`geblokkeerd`) de quarantaine tot de houdtest (`in_quarantaine`) en een
+ *  etiket dat er na de vrijgave nog op moet (`etiket_volgt`, utils/houdtest.ts). */
+export interface AfvullingVrij {
+  geblokkeerd?: boolean
+  in_quarantaine?: boolean
+  etiket_volgt?: boolean
+}
+
+/** Waarom een afvulling (nog) niet te koop is, of null. Geblokkeerd gaat voor:
+ *  dat bier komt ook na de houdtest niet vrij. */
+export const afvullingNietVrij = (
+  a: AfvullingVrij | null | undefined
+): 'geblokkeerd' | 'quarantaine' | 'etiket' | null =>
+  !a || a.geblokkeerd ? 'geblokkeerd'
+    : a.in_quarantaine ? 'quarantaine'
+    : a.etiket_volgt ? 'etiket'
+    : null
 
 /** Minimale vorm van een etiketcontrole (CCP 3) voor de blokkades hieronder. */
 export interface EtiketDekking {
@@ -518,27 +703,42 @@ export const magSessieAfsluiten = (
   afvullingen?: Array<{sessie_id?: number | null; product_id?: number | string | null;
     rebrand_van_product_id?: number | null}> | null,
   producten?: Array<{id: number; naam?: string}> | null,
+  sessies?: AfvulSessie[] | null,
 ): BlokkadeResultaat => {
   const eigen = (controles || []).filter(c => c.sessie_id === sessie.id)
   const redenen: BlokkadeReden[] = []
-  if (!eigen.some(c => c.aanleiding === 'start')) {
-    redenen.push({code: 'geen_startcontrole', i18nKey: 'haccp_blok_geen_startcontrole'})
+  const soort = sessieCcp2(sessie)
+  if (houdtestFlessenNodig(sessie, sessies)) {
+    redenen.push({code: 'geen_houdtestflessen', i18nKey: 'haccp_blok_geen_houdtestflessen'})
   }
-  if (!eigen.some(c => c.aanleiding === 'einde')) {
-    redenen.push({code: 'geen_eindcontrole', i18nKey: 'haccp_blok_geen_eindcontrole'})
-  }
-  const openAfkeur = eigen.filter(c => c.resultaat === 'afgekeurd').filter(c => {
-    const maatregel = (capa || []).find(x => x.sluitcontrole_id === c.id)
-    return !maatregel || maatregel.status !== 'afgerond'
-  })
-  if (openAfkeur.length) {
-    redenen.push({
-      code: 'open_afkeur',
-      i18nKey: 'haccp_blok_open_afkeur',
-      params: {aantal: openAfkeur.length},
+  if (soort === 'lege_flessen') {
+    if (!eigen.some(c => c.methode === 'lege_flessen')) {
+      redenen.push({code: 'geen_flesinspectie', i18nKey: 'haccp_blok_geen_flesinspectie'})
+    }
+  } else if (soort === 'sluitcontrole') {
+    if (!eigen.some(c => c.aanleiding === 'start')) {
+      redenen.push({code: 'geen_startcontrole', i18nKey: 'haccp_blok_geen_startcontrole'})
+    }
+    if (!eigen.some(c => c.aanleiding === 'einde')) {
+      redenen.push({code: 'geen_eindcontrole', i18nKey: 'haccp_blok_geen_eindcontrole'})
+    }
+    const openAfkeur = eigen.filter(c => c.resultaat === 'afgekeurd').filter(c => {
+      const maatregel = (capa || []).find(x => x.sluitcontrole_id === c.id)
+      return !maatregel || maatregel.status !== 'afgerond'
     })
+    if (openAfkeur.length) {
+      redenen.push({
+        code: 'open_afkeur',
+        i18nKey: 'haccp_blok_open_afkeur',
+        params: {aantal: openAfkeur.length},
+      })
+    }
   }
-  if (!(etiketcontroles || []).some(e => e.sessie_id === sessie.id)) {
+  // Etiketteren na de vrijgave voor verkoop: het etiket zit er bij het
+  // afsluiten nog niet op, CCP 3 volgt per lotcode na de houdtest.
+  if (sessieEtiketteren(sessie) === 'na_vrijgave') {
+    // niets
+  } else if (!(etiketcontroles || []).some(e => e.sessie_id === sessie.id)) {
     redenen.push({code: 'geen_etiketcontrole', i18nKey: 'haccp_blok_geen_etiketcontrole'})
   } else if (afvullingen) {
     const missend = ongecontroleerdeProducten(sessie.id, afvullingen, etiketcontroles)
@@ -564,6 +764,11 @@ export const sluitcontroleHerinnering = (
   instRaw?: Partial<HaccpInst> | null
 ): {due: boolean; minutenSinds: number; volgendeOverMin: number} => {
   const inst = haccpInst(instRaw)
+  // Alleen de sluitcontrole loopt op de klok; de lege-flesseninspectie en een
+  // sessie zonder CCP 2 kennen geen halfuurritme.
+  if (sessieCcp2(sessie) !== 'sluitcontrole') {
+    return {due: false, minutenSinds: 0, volgendeOverMin: 0}
+  }
   const eigen = (controles || [])
     .filter(c => c.sessie_id === sessie.id)
     .sort((a, b) => controleTs(a) - controleTs(b))
