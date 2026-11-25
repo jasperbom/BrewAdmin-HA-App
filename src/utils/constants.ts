@@ -325,16 +325,18 @@ export const DEFAULT_BATCH_TAKEN_ITEMS = [
   // reinigingslogboek + schoonmaaktaken van die tank) — zie utils/ontsmetting.ts
   {id:111, type:'check' as const, labelKey:'brouwdag_check_11_fermentor',  group_id:4, volgorde:2, actief:true, tank_reiniging:'Ontsmet'},
   {id:112, type:'check' as const, labelKey:'brouwdag_check_12_waterslot',  group_id:4, volgorde:3, actief:true},
-  // Botteldag (groep 5) — via i18n labelKey
+  // Botteldag (groep 5) — via i18n labelKey. FG + ABV, etiketten, THT en
+  // opslag legt de app zelf vast (ABV vastzetten, CCP 3, de sessie, de
+  // afvulling): standaard uit, in Instellingen → Batchtaken aan te zetten.
   {id:201, type:'check' as const, labelKey:'botteldag_check_1_reiniging',       group_id:5, volgorde:0, actief:true},
   {id:202, type:'check' as const, labelKey:'botteldag_check_2_sanitair',        group_id:5, volgorde:1, actief:true},
-  {id:203, type:'check' as const, labelKey:'botteldag_check_3_fg_meting',       group_id:5, volgorde:2, actief:true},
+  {id:203, type:'check' as const, labelKey:'botteldag_check_3_fg_meting',       group_id:5, volgorde:2, actief:false},
   {id:204, type:'check' as const, labelKey:'botteldag_check_4_suikeroplossing', group_id:5, volgorde:3, actief:true},
   {id:205, type:'check' as const, labelKey:'botteldag_check_5_vulniveau',       group_id:5, volgorde:4, actief:true},
   {id:206, type:'check' as const, labelKey:'botteldag_check_6_sluiting',        group_id:5, volgorde:5, actief:true},
-  {id:207, type:'check' as const, labelKey:'botteldag_check_7_etiketten',       group_id:5, volgorde:6, actief:true},
-  {id:208, type:'check' as const, labelKey:'botteldag_check_8_tht_gecontroleerd', group_id:5, volgorde:7, actief:true},
-  {id:209, type:'check' as const, labelKey:'botteldag_check_9_opslag',          group_id:5, volgorde:8, actief:true},
+  {id:207, type:'check' as const, labelKey:'botteldag_check_7_etiketten',       group_id:5, volgorde:6, actief:false},
+  {id:208, type:'check' as const, labelKey:'botteldag_check_8_tht_gecontroleerd', group_id:5, volgorde:7, actief:false},
+  {id:209, type:'check' as const, labelKey:'botteldag_check_9_opslag',          group_id:5, volgorde:8, actief:false},
   // Kritische controlepunten (groep 6) — numerieke metingen met limieten
   {id:301, type:'meting' as const, label:'Kooktemperatuur', group_id:6, volgorde:0, actief:true, categorie:'koken' as const, kritische_grens:'≥100 °C gedurende ≥60 min', grens_min:100, eenheid:'°C', monitoring_methode:'Thermometer in brouwketel', corrigerende_actie:'Kooktijd verlengen tot minimaal 60 min bij 100 °C'},
   {id:302, type:'meting' as const, label:'Koelsnelheid', group_id:6, volgorde:1, actief:true, categorie:'koelen' as const, kritische_grens:'<20 °C binnen 90 min na koken', grens_max:20, eenheid:'°C', monitoring_methode:'Thermometer na koeler', corrigerende_actie:'Extra koeling inzetten; batch evalueren bij >90 min'},

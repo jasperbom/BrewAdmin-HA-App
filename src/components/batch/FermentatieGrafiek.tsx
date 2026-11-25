@@ -283,7 +283,7 @@ const FermentatieGrafiek: React.FC<{metingen: any[], startTs?: number | null}> =
           const x = toX(startTs)
           return <g>
             <line x1={x} y1={PAD.t} x2={x} y2={PAD.t+CH} stroke="#10b981" strokeWidth="1" strokeDasharray="3 3" opacity="0.7"/>
-            <text x={x+3} y={PAD.t+9} fontSize="8" fill="#10b981">{t('batch_gist_start')}</text>
+            <text x={x+3} y={PAD.t+CH-5} fontSize="8" fill="#047857">{t('batch_gist_start')}</text>
           </g>
         })()}
 

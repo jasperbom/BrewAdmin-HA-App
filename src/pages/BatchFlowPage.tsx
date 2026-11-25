@@ -60,6 +60,8 @@ import BrouwlogSectie from '../components/batch/BrouwlogSectie'
 import { brouwlogAangevinkt } from '../utils/brouwlog'
 import VernietigingSection from '../components/batch/VernietigingSection'
 import FermentatieGrafiek from '../components/batch/FermentatieGrafiek'
+import KernKaart from '../components/batch/KernKaart'
+import { batchKerncijfers, laatsteMetingMet } from '../utils/batchKerncijfers'
 import MetingLog from '../components/batch/MetingLog'
 import BrouwdagWizard from '../components/batch/BrouwdagWizard'
 import DryHopSection from '../components/batch/DryHopSection'
@@ -549,6 +551,11 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
   // Handmatig open/dicht-geklapte stappen. Zolang een stap hier niet in staat,
   // volgt hij de default (open = niet-afgerond).
   const [openStappen, setOpenStappen] = useState<Record<string, boolean>>({})
+  // Zelden nodig, dus niet standaard in beeld: verlies registreren, de tank
+  // verplaatsen en afgekeurd bier vernietigen. Ze komen erbij via het ⋯-menu
+  // van de batch (of staan er al als er iets geregistreerd is). Per batch:
+  // `<batch-id>:<wat>`.
+  const [extraStappen, setExtraStappen] = useState<string[]>([])
   const [notitiesOpen, setNotitiesOpen] = useState(false)
   const [brouwlogOpen, setBrouwlogOpen] = useState(false)
   // Inklapbaar batch-gegevens-bewerkblok (naam/stijl/liters/product/gn-code),
@@ -734,10 +741,6 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     Gepland: t('status_planning'), Brouwen: t('status_brewing'), Vergisten: t('status_fermenting'),
     Conditioneren: t('status_conditioning'), Afgevuld: t('flow_fase_afvullen'), Verpakt: t('flow_fase_afvullen'),
     Gesloten: t('flow_fase_gereed'),
-  }
-  const FASE_DESC: Record<string, string> = {
-    Gepland: t('flow_desc_gepland'), Brouwen: t('flow_desc_brouwen'), Vergisten: t('flow_desc_vergisten'),
-    Conditioneren: t('flow_desc_conditioneren'), Afgevuld: t('flow_desc_afgevuld'), Gesloten: t('flow_desc_gesloten'),
   }
 
   const selB = bat.find((b: any) => b.id === sel) || null
@@ -2380,7 +2383,7 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     const gereed = selB.status === 'Gesloten'
     return (
       <EtiketKaart modus="batch" batch={selB} data={etiketData} website={etiketWebsite}
-        alleenLezen={gereed}
+        alleenLezen={gereed} inklapbaar
         onEtiketBijwerken={etiketDienst ? (pid: number | null) => {
           if (pid != null) etiketDienst.open({productId: pid, batchId: selB.id})
         } : undefined}
@@ -2437,11 +2440,6 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     }
   }
 
-  const laatsteSg = (() => {
-    const ms = mijnMetingen.filter((m: any) => Number(m.sg) > 0)
-      .sort((a: any, b: any) => (String(b.datum || '') + 'T' + String(b.tijd || '00:00')).localeCompare(String(a.datum || '') + 'T' + String(a.tijd || '00:00')))
-    return ms.length ? Number(ms[0].sg) : null
-  })()
   const fgDoel = Number(selB.FG) > 0 ? Number(selB.FG)
     : Number(selB.verwacht_fg) > 0 ? Number(selB.verwacht_fg)
     : (Number(batchRecept?.FG) > 0 ? Number(batchRecept?.FG) : null)
@@ -3033,62 +3031,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     )
   }
 
-  // Volle-breedte kop bij Vergisten: OG→FG-progressie met de huidige SG én de
-  // huidige (gemeten) temperatuur in één oogopslag, bovenaan de fase.
-  const renderVergistHeader = () => {
-    const og = Number(selB.OG) || 0
-    const huidige = laatsteSg ?? (Number(selB.FG) > 0 ? Number(selB.FG) : null)
-    // Huidige temp: HA-sensor als die er is, anders de laatst gemeten temp.
-    const sensorTempRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
-    const sensorTemp = typeof sensorTempRaw === 'number' && !isNaN(sensorTempRaw) ? sensorTempRaw : null
-    const laatsteTemp = (() => {
-      const ms = mijnMetingen.filter((m: any) => metingWaarde(m.temp) != null)
-        .sort((a: any, b: any) => (String(b.datum || '') + 'T' + String(b.tijd || '00:00')).localeCompare(String(a.datum || '') + 'T' + String(a.tijd || '00:00')))
-      return ms.length ? metingWaarde(ms[0].temp) : null
-    })()
-    const temp = sensorTemp ?? laatsteTemp
-    const pct = (og > 1 && fgDoel != null && huidige != null && og > fgDoel)
-      ? Math.min(100, Math.max(0, (og - huidige) / (og - fgDoel) * 100)) : null
-    return (
-      <div className="rounded-xl border border-gray-100 bg-white shadow-card p-4">
-        <div className="flex items-center justify-between gap-4 mb-2 flex-wrap">
-          <div className="flex items-baseline gap-4">
-            <div>
-              <div className="text-xs font-semibold text-gray-400">{t('flow_progressie_sg')}</div>
-              <div className="text-2xl font-bold font-mono text-gray-800">{fmtSg(huidige)}</div>
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-gray-400">{t('flow_temp_gemeten')}</div>
-              <div className="text-2xl font-bold text-gray-800">{temp != null ? `${temp.toFixed(1)}°C` : '—'}</div>
-            </div>
-            {doelTemp != null && (
-              <div>
-                <div className="text-xs font-semibold text-gray-400">{t('flow_temp_doel')}</div>
-                <div className="text-2xl font-bold" style={{color: 'var(--t-accent-text, var(--t-accent))'}}>{doelTemp}°C</div>
-              </div>
-            )}
-          </div>
-          {pct != null && (
-            <div className="text-sm font-medium" style={{color: 'var(--t-accent-text, var(--t-accent))'}}>
-              {t('flow_progressie_vergist').replace('{pct}', pct.toFixed(0))}
-            </div>
-          )}
-        </div>
-        {pct != null ? (
-          <>
-            <div className="h-3 rounded-full bg-gray-100 overflow-hidden">
-              <div className="h-full rounded-full transition-all" style={{width: `${pct}%`, backgroundColor: 'var(--t-accent)'}} />
-            </div>
-            <div className="flex items-center justify-between text-xs text-gray-400 mt-1">
-              <span>{t('batch_info_og')} {fmtSg(og)}</span>
-              <span>{t('batch_info_fg')} {fmtSg(fgDoel)}</span>
-            </div>
-          </>
-        ) : (
-          <div className="text-xs text-gray-400 italic">{t('flow_progressie_hint')}</div>
-        )}
-      </div>
-    )
+  // Bovenaan Vergisten en Conditioneren: de cijfers die tellen en de grafiek
+  // (utils/batchKerncijfers.ts). Wat er niet gemeten is, staat er niet.
+  const renderKern = (faseStatus: string) => {
+    const sensorRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
+    const og = Number(selB.OG) > 0 ? Number(selB.OG) : null
+    const cijfers = batchKerncijfers({
+      og, fgDoel, doelTemp,
+      sg: laatsteMetingMet(mijnMetingen, 'sg'),
+      sensorTemp: typeof sensorRaw === 'number' ? sensorRaw : null,
+      metingTemp: laatsteMetingMet(mijnMetingen, 'temp'),
+    })
+    const grafiek = mijnMetingen.length >= 2
+      ? <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs} /> : null
+    return <KernKaart cijfers={cijfers} og={og} grafiek={grafiek} zonderAbv={faseStatus === 'Conditioneren'} />
   }
 
   // Compacte verliesregistratie (bron 'afgekeurd' loopt via de Batches-pagina
@@ -3133,7 +3089,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
             })}
           </div>
         )}
-        <div className="text-xs text-gray-400 mt-2">{t('flow_verlies_afgekeurd_hint')}</div>
+        {/* Afgekeurd bier gaat langs de Douane: een eigen stroom (VernietigingSection). */}
+        {magBatchSchrijven && (
+          <button type="button" onClick={() => toonExtra('afgekeurd')}
+            className="mt-2 text-sm font-medium t-accent-text hover:underline min-h-tap sm:min-h-0">
+            {t('batch_kop_afgekeurd')}
+          </button>
+        )}
       </div>
     )
   }
@@ -3973,16 +3935,12 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
     </div>
     )
   }
-  const renderGrafiek = () => mijnMetingen.length >= 2
-    ? <FermentatieGrafiek metingen={mijnMetingen} startTs={vergistStartTs} />
-    : <div className="text-xs text-gray-400 italic">{t('batch_gist_min_2')}</div>
-
-  // Grafiek + het logje met de (handmatige) metingen — dezelfde band in zowel
-  // de vergist- als de conditioneerfase.
+  // Het formulier + het logje met de (handmatige) metingen — dezelfde band in
+  // zowel de vergist- als de conditioneerfase. De grafiek staat bovenaan de
+  // fase, in de kaart met de kerncijfers (renderKern).
   const renderMetingen = () => (
     <>
       {renderMetingForm()}
-      {renderGrafiek()}
       <MetingLog metingen={mijnMetingen} onDelete={deleteMeting}
         open={metingLogOpen} onToggle={() => setMetingLogOpen(v => !v)} />
     </>
@@ -4022,23 +3980,30 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         />
       </FlowStap>
     )
+    // Zelden nodig: alleen in beeld als er al iets staat of als het via het
+    // ⋯-menu van de batch is gevraagd (`toonExtra`).
+    const verliesZichtbaar = mijnVerlies.length > 0 || extraStappen.includes(`${selB.id}:verlies`)
+    const tankmoveZichtbaar = extraStappen.includes(`${selB.id}:tankmove`)
     return (
       <div className="p-4 space-y-3">
-        {/* Compacte kop — de fase is al geselecteerd via de tijdlijn hierboven,
-            dus een grote headerbalk is niet nodig. */}
-        <p className="text-sm text-gray-600">
-          <span className="font-semibold text-gray-800">{i + 1}. {STATUS_LABELS[faseStatus]}</span>
-          {cl.length > 0 && <span className="ml-2 text-xs text-gray-400">{klaarN}/{cl.length}</span>}
-          <span className="block mt-0.5">{FASE_DESC[faseStatus]}</span>
-        </p>
+        {/* Compacte kop — de fase is al geselecteerd via de fasebalk
+            hierboven; geen zin die de kop herhaalt. */}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <h2 className="text-[15px] font-semibold text-gray-900">{STATUS_LABELS[faseStatus]}</h2>
+          {cl.length > 0 && (
+            <span className="text-xs text-gray-600">
+              {t('flow_klaar_n_van_m').replace('{n}', String(klaarN)).replace('{m}', String(cl.length))}
+            </span>
+          )}
+        </div>
         {!isHuidig && (
           <div className="text-xs px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-500">
             {i < huidigeFase ? t('flow_fase_afgerond') : t('flow_fase_toekomstig')}
           </div>
         )}
 
-        {/* Vergisten: progressie + huidige waarden over de volle breedte bovenin. */}
-        {faseStatus === 'Vergisten' && renderVergistHeader()}
+        {/* Vergisten en Conditioneren: de kerncijfers en de grafiek bovenaan. */}
+        {(faseStatus === 'Vergisten' || faseStatus === 'Conditioneren') && renderKern(faseStatus)}
 
         {/* Stappen: de kortere fases (Gepland/Afvullen/Gesloten) staan op desktop
             in twee kolommen (masonry via CSS columns), zodat je meer in één
@@ -4196,10 +4161,9 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         })()}
 
         {/* ── Vergisten ───────────────────────────────────────────────────── */}
-        {/* Volle-breedte metingen-band (SG-form + grafiek) direct onder de
-            progressie-kop, daarna de operationele stappen in twee vaste kolommen:
-            links vergisting/dry-hop, rechts verlies + taken. Zo snijdt de grafiek
-            niet meer dwars door de indeling. */}
+        {/* Eén lijst van boven naar beneden, in de volgorde waarin je het
+            doet: meten, het schema, dry hop, de taken; onderaan de FG en CCP 1
+            (hieronder). Verlies alleen als er iets is of als het gevraagd is. */}
         {faseStatus === 'Vergisten' && (() => {
           // Dry hop is alleen relevant als het recept dry-hop-additions heeft
           // óf er al dry-hops voor deze batch geregistreerd zijn.
@@ -4212,46 +4176,41 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 {...so('metingen', !!clMap.metingen?.done)}>
                 {renderMetingen()}
               </FlowStap>
-              <div className="lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start space-y-3 lg:space-y-0">
-                <div className="space-y-3">
-                  <FlowStap title={t('flow_sectie_schema')} optional done={schemaProfiel.length > 0} {...so('schema', true)}>
-                    {renderVergistingsSchema()}
-                    <div className="pt-1">
-                      <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
-                        doelTemp={doelTemp} doelLabel={t('flow_temp_doel')} />
-                    </div>
-                  </FlowStap>
-                  {dryHopBi.length > 0 && (
-                    <FlowStap title={t('flow_dryhop_afboek_titel')} done={!!clMap.dryhop?.done} detail={clMap.dryhop?.detail} {...so('dryhop', !!clMap.dryhop?.done)}>
-                      {renderAfboekTabel(dryHopBi)}
-                    </FlowStap>
-                  )}
-                  {dryHopVanToepassing && (
-                    <DryHopSection auditLog={auditLog} setAuditLog={setAuditLog} batch={selB} dryHops={dryHops} setDryHops={setDryHops} ingredienten={ing} />
-                  )}
+              <FlowStap title={t('flow_sectie_schema')} optional done={schemaProfiel.length > 0} {...so('schema', true)}>
+                {renderVergistingsSchema()}
+                <div className="pt-1">
+                  <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
+                    doelTemp={doelTemp} doelLabel={t('flow_temp_doel')} />
                 </div>
-                <div className="space-y-3">
-                  <FlowStap title={t('flow_sectie_verlies')} optional done={mijnVerlies.length > 0}
-                    detail={mijnVerlies.length ? `${mijnVerlies.length} · ${verliesL.toFixed(1)} L` : undefined}
-                    {...so('verlies', true)}>
-                    {renderVerlies('monster')}
-                  </FlowStap>
-                  {takenVoorFase('Vergisten').length > 0 && (
-                    <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
-                      {renderTaken('Vergisten')}
-                    </FlowStap>
-                  )}
-                </div>
-              </div>
+              </FlowStap>
+              {dryHopBi.length > 0 && (
+                <FlowStap title={t('flow_dryhop_afboek_titel')} done={!!clMap.dryhop?.done} detail={clMap.dryhop?.detail} {...so('dryhop', !!clMap.dryhop?.done)}>
+                  {renderAfboekTabel(dryHopBi)}
+                </FlowStap>
+              )}
+              {dryHopVanToepassing && (
+                <DryHopSection auditLog={auditLog} setAuditLog={setAuditLog} batch={selB} dryHops={dryHops} setDryHops={setDryHops} ingredienten={ing} />
+              )}
+              {takenVoorFase('Vergisten').length > 0 && (
+                <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
+                  {renderTaken('Vergisten')}
+                </FlowStap>
+              )}
+              {verliesZichtbaar && (
+                <FlowStap title={t('flow_sectie_verlies')} optional done={mijnVerlies.length > 0}
+                  detail={mijnVerlies.length ? `${mijnVerlies.length} · ${verliesL.toFixed(1)} L` : undefined}
+                  {...so('verlies', true)}>
+                  {renderVerlies('monster')}
+                </FlowStap>
+              )}
             </>
           )
         })()}
 
         {/* ── Conditioneren ───────────────────────────────────────────────── */}
-        {/* Twee vaste kolommen: links de processtappen (temp/cold-crash,
-            carbonatie, ABV), rechts de logistiek (verlies, tankverplaatsing,
-            taken). De snelle SG-meting + grafiek staat als volle-breedte band
-            onderaan, zodat de grafiek niet dwars door de kolommen snijdt. */}
+        {/* Eén lijst: temperatuur en cold crash, carbonatie, pH, de taken en
+            de metingen. Verlies en tank verplaatsen alleen als er iets is of
+            als het via het ⋯-menu gevraagd is. */}
         {faseStatus === 'Conditioneren' && (
           <>
             {/* CCP 1 hoort aan het eind van de gisting. Staat hij hier nog
@@ -4262,68 +4221,66 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
                 geen afvulsessie (opzet 5.3). Dit was de taak "Definitieve ABV
                 bevestigd" met een invulveld; één plek, geen tweede veld. */}
             {abvRegel()}
-            <div className="lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start space-y-3 lg:space-y-0">
-              <div className="space-y-3">
-                <FlowStap title={t('flow_temp_titel')} optional done={!!selB.cold_crash_datum} {...so('temp', true)}>
-                  <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
-                    doelTemp={doelTemp} doelLabel={selB.cold_crash_datum ? t('flow_temp_doel_coldcrash') : t('flow_temp_doel')} />
-                  {/* Cold-crash — zelfde preset en server-ramp als op het Dashboard */}
-                  {(() => {
-                    const ccActive = !!selB.cold_crash_datum
-                    const ccTarget = Number(selB.cold_crash_target ?? coldcrashInst?.target_temp ?? 2)
-                    const ccRamp = Number(selB.cold_crash_ramp ?? coldcrashInst?.ramp_per_uur ?? 1)
-                    const tankTempRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
-                    const tankTemp = typeof tankTempRaw === 'number' && !isNaN(tankTempRaw) ? tankTempRaw : null
-                    const reached = ccActive && tankTemp != null && tankTemp <= ccTarget + 0.5
-                    return ccActive ? (
-                      <div className="flex items-center gap-2 flex-wrap text-xs">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium ${
-                          reached ? 'bg-green-100 text-green-700 ring-1 ring-green-200' : 'bg-blue-100 text-blue-700 ring-1 ring-blue-200'}`}>
-                          <Icon n="snowflake" /> {reached ? t('dashboard_coldcrash_reached') : t('dashboard_coldcrash_active')}
-                        </span>
-                        <span className="text-gray-500">→ {ccTarget}°C @ {ccRamp}°C/{t('lbl_uur')}</span>
-                        <span className="text-gray-400">· {t('lbl_gestart')}: {fmtD(selB.cold_crash_datum)}</span>
-                        <BevestigKnop v="secondary" s="sm" vraag={t('dashboard_coldcrash_stop_confirm')} onBevestig={stopColdCrash}>{t('dashboard_coldcrash_stop_btn')}</BevestigKnop>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <BevestigKnop v="primary" s="sm" vraag={coldCrashVraag()} onBevestig={() => { void startColdCrash() }}><Icon n="snowflake" /> {t('dashboard_coldcrash_btn')}</BevestigKnop>
-                        {coldcrashInst?.enabled && (
-                          <span className="text-xs text-gray-400">→ {coldcrashInst.target_temp}°C @ {coldcrashInst.ramp_per_uur}°C/{t('lbl_uur')}</span>
-                        )}
-                      </div>
-                    )
-                  })()}
-                </FlowStap>
-                <FlowStap title={t('carb_title')} done={!!clMap.carb?.done} detail={clMap.carb?.detail} {...so('carb', !!clMap.carb?.done)}>
-                  {renderCarbonatie()}
-                </FlowStap>
-                <FlowStap title={t('batch_info_product_ph')} optional done={Number(selB.product_ph) > 0}
-                  detail={Number(selB.product_ph) > 0 ? String(selB.product_ph) : undefined}
-                  {...so('ph', Number(selB.product_ph) > 0)}>
-                  {renderFaseVelden('Conditioneren')}
-                </FlowStap>
-              </div>
-              <div className="space-y-3">
-                <FlowStap title={t('flow_sectie_verlies')} optional done={mijnVerlies.length > 0}
-                  detail={mijnVerlies.length ? `${mijnVerlies.length} · ${verliesL.toFixed(1)} L` : undefined}
-                  {...so('verlies', mijnVerlies.length > 0)}>
-                  {renderVerlies('gist_dump')}
-                </FlowStap>
-                <FlowStap title={t('flow_sectie_tankmove')} optional done={false} {...so('tankmove', true)}>
-                  {renderTankMove()}
-                </FlowStap>
-                {takenVoorFase('Conditioneren').length > 0 && (
-                  <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
-                    {renderTaken('Conditioneren')}
-                  </FlowStap>
-                )}
-              </div>
-            </div>
+            <FlowStap title={t('flow_temp_titel')} optional done={!!selB.cold_crash_datum} {...so('temp', true)}>
+              <TempControl tank={selB.tank} haInst={haInst} haTankTemps={haTankTemps}
+                doelTemp={doelTemp} doelLabel={selB.cold_crash_datum ? t('flow_temp_doel_coldcrash') : t('flow_temp_doel')} />
+              {/* Cold-crash — zelfde preset en server-ramp als op het Dashboard */}
+              {(() => {
+                const ccActive = !!selB.cold_crash_datum
+                const ccTarget = Number(selB.cold_crash_target ?? coldcrashInst?.target_temp ?? 2)
+                const ccRamp = Number(selB.cold_crash_ramp ?? coldcrashInst?.ramp_per_uur ?? 1)
+                const tankTempRaw = selB.tank != null ? haTankTemps?.[selB.tank] : undefined
+                const tankTemp = typeof tankTempRaw === 'number' && !isNaN(tankTempRaw) ? tankTempRaw : null
+                const reached = ccActive && tankTemp != null && tankTemp <= ccTarget + 0.5
+                return ccActive ? (
+                  <div className="flex items-center gap-2 flex-wrap text-xs">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium ${
+                      reached ? 'bg-green-100 text-green-700 ring-1 ring-green-200' : 'bg-blue-100 text-blue-700 ring-1 ring-blue-200'}`}>
+                      <Icon n="snowflake" /> {reached ? t('dashboard_coldcrash_reached') : t('dashboard_coldcrash_active')}
+                    </span>
+                    <span className="text-gray-500">→ {ccTarget}°C @ {ccRamp}°C/{t('lbl_uur')}</span>
+                    <span className="text-gray-400">· {t('lbl_gestart')}: {fmtD(selB.cold_crash_datum)}</span>
+                    <BevestigKnop v="secondary" s="sm" vraag={t('dashboard_coldcrash_stop_confirm')} onBevestig={stopColdCrash}>{t('dashboard_coldcrash_stop_btn')}</BevestigKnop>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <BevestigKnop v="primary" s="sm" vraag={coldCrashVraag()} onBevestig={() => { void startColdCrash() }}><Icon n="snowflake" /> {t('dashboard_coldcrash_btn')}</BevestigKnop>
+                    {coldcrashInst?.enabled && (
+                      <span className="text-xs text-gray-400">→ {coldcrashInst.target_temp}°C @ {coldcrashInst.ramp_per_uur}°C/{t('lbl_uur')}</span>
+                    )}
+                  </div>
+                )
+              })()}
+            </FlowStap>
+            <FlowStap title={t('carb_title')} done={!!clMap.carb?.done} detail={clMap.carb?.detail} {...so('carb', !!clMap.carb?.done)}>
+              {renderCarbonatie()}
+            </FlowStap>
+            <FlowStap title={t('batch_info_product_ph')} optional done={Number(selB.product_ph) > 0}
+              detail={Number(selB.product_ph) > 0 ? String(selB.product_ph) : undefined}
+              {...so('ph', Number(selB.product_ph) > 0)}>
+              {renderFaseVelden('Conditioneren')}
+            </FlowStap>
+            {takenVoorFase('Conditioneren').length > 0 && (
+              <FlowStap title={t('flow_chk_taken')} done={!!clMap.taken?.done} detail={clMap.taken?.detail} {...so('taken', !!clMap.taken?.done)}>
+                {renderTaken('Conditioneren')}
+              </FlowStap>
+            )}
             <FlowStap title={t('flow_stap_metingen')} optional done={handmatigeMetingen.length >= 2}
               detail={handmatigeMetingen.length ? `${handmatigeMetingen.length}×` : undefined} {...so('meting', true)}>
               {renderMetingen()}
             </FlowStap>
+            {verliesZichtbaar && (
+              <FlowStap title={t('flow_sectie_verlies')} optional done={mijnVerlies.length > 0}
+                detail={mijnVerlies.length ? `${mijnVerlies.length} · ${verliesL.toFixed(1)} L` : undefined}
+                {...so('verlies', mijnVerlies.length > 0)}>
+                {renderVerlies('gist_dump')}
+              </FlowStap>
+            )}
+            {tankmoveZichtbaar && (
+              <FlowStap title={t('flow_sectie_tankmove')} optional done={false} {...so('tankmove', true)}>
+                {renderTankMove()}
+              </FlowStap>
+            )}
           </>
         )}
 
@@ -4577,6 +4534,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       )
     })
 
+  // Een zelden gebruikte stap in beeld zetten (⋯-menu): de fase open, de stap
+  // open, en erheen scrollen.
+  const toonExtra = (wat: 'verlies' | 'tankmove' | 'afgekeurd') => {
+    const sleutel = `${selB.id}:${wat}`
+    setExtraStappen(prev => prev.includes(sleutel) ? prev : [...prev, sleutel])
+    const anker = wat === 'afgekeurd' ? 'batch-afgekeurd' : batchSectieAnker(STATUSSEN[huidigeFase], wat)
+    if (wat !== 'afgekeurd') {
+      setOpenFasen([huidigeFase])
+      setOpenStappen(prev => ({...prev, [`${huidigeFase}:${wat}`]: true}))
+    }
+    setTimeout(() => document.getElementById(anker)?.scrollIntoView({behavior: 'smooth', block: 'start'}), 80)
+  }
+  const afgekeurdZichtbaar = (verliesRegistraties || []).some((r: any) => r.batch_id === selB.id && r.bron === 'afgekeurd')
+    || extraStappen.includes(`${selB.id}:afgekeurd`)
   const kopActies: RowActie[] = [
     ...(dossierBeschikbaar && telefoon ? [{
       id: 'dossier', label: dossierBezig ? t('mail_generating_pdf') : t('batchdossier_knop'),
@@ -4587,6 +4558,13 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
       onClick: () => printBatchDossier(dossierRapport(), ...dossierBriefhoofd()),
     }] : []),
     { id: 'gegevens', label: t('batch_kop_gegevens'), onClick: openGegevens },
+    // Zelden nodig, daarom hier en niet als vaste stap op de pagina.
+    ...(magBatchSchrijven && (selB.status === 'Vergisten' || selB.status === 'Conditioneren')
+      ? [{ id: 'verlies', label: t('batch_kop_verlies'), onClick: () => toonExtra('verlies') }] : []),
+    ...(magBatchSchrijven && selB.status === 'Conditioneren'
+      ? [{ id: 'tankmove', label: t('flow_sectie_tankmove'), onClick: () => toonExtra('tankmove') }] : []),
+    ...(magBatchSchrijven && selB.status !== 'Gepland'
+      ? [{ id: 'afgekeurd', label: t('batch_kop_afgekeurd'), onClick: () => toonExtra('afgekeurd') }] : []),
     // "Er is iets mis": een klacht of incident bij deze batch (utils/incident.ts).
     ...(setHaccpIncidenten && magBatchSchrijven ? [{ id: 'incident', label: t('incident_actie'), onClick: () => setIncidentBladOpen(true) }] : []),
     ...bfActies,
@@ -4700,14 +4678,20 @@ const BatchFlowPage: React.FC<BatchFlowPageProps> = ({
         onToggle={() => setNotitiesOpen(o => !o)}
       />
 
-      {/* Afgekeurd bier — Douane-vernietigingsflow (gedeeld component) */}
-      <VernietigingSection
-        batch={selB}
-        verliesRegistraties={verliesRegistraties}
-        setVerliesRegistraties={setVerliesRegistraties}
-        auditLog={auditLog}
-        setAuditLog={setAuditLog}
-      />
+      {/* Afgekeurd bier — Douane-vernietigingsflow (gedeeld component).
+          Alleen als er iets is aangevraagd of via ⋯ → Afgekeurd bier. */}
+      {afgekeurdZichtbaar && (
+        <div id="batch-afgekeurd" className="scroll-mt-24">
+          <VernietigingSection
+            batch={selB}
+            verliesRegistraties={verliesRegistraties}
+            setVerliesRegistraties={setVerliesRegistraties}
+            auditLog={auditLog}
+            setAuditLog={setAuditLog}
+            openBijStart={extraStappen.includes(`${selB.id}:afgekeurd`)}
+          />
+        </div>
+      )}
 
       {/* Logboek (activiteitenlog) — overgenomen van de Batches-pagina */}
       {renderLogboek()}

@@ -212,5 +212,38 @@ export const deactiveerStandaardMetingen = (
   return { items: nieuwe, gewijzigd }
 }
 
+// Opschoning v5: vinkjes op de afvuldag die de app zelf vastlegt, gaan uit.
+// - "FG + ABV gemeten en genoteerd": de ABV zet je vast vóór de eerste
+//   afvulsessie (zonder kan er niet afgevuld worden).
+// - "Etiketten gecontroleerd": dat is CCP 3, met foto en AI-controle.
+// - "TGT/THT gecontroleerd en geregistreerd": de sessie rekent de THT uit en
+//   CCP 3 toetst hem op het etiket.
+// - "Eindproduct geïnventariseerd en op locatie": de afvulling legt aantal en
+//   locatie vast.
+// Alleen de standaardregel (labelKey, geen eigen tekst) en alleen als hij nog
+// aan staat; uitzetten, niet verwijderen — in Instellingen → Batchtaken weer
+// aan te zetten. "Sluiting op druk getest" blijft: met de inspectie van de
+// lege flessen als CCP 2 legt niets anders de sluiting vast.
+export const ZELF_VASTGELEGDE_TAKEN: readonly string[] = [
+  'botteldag_check_3_fg_meting',
+  'botteldag_check_7_etiketten',
+  'botteldag_check_8_tht_gecontroleerd',
+  'botteldag_check_9_opslag',
+]
+
+export const deactiveerZelfVastgelegd = (
+  items: any[],
+): { items: any[]; gewijzigd: boolean } => {
+  let gewijzigd = false
+  const nieuwe = (items || []).map((it: any) => {
+    if (!it || it.actief === false || it.type !== 'check') return it
+    if (!ZELF_VASTGELEGDE_TAKEN.includes(String(it.labelKey || ''))) return it
+    if (String(it.label || '').trim()) return it
+    gewijzigd = true
+    return { ...it, actief: false }
+  })
+  return { items: nieuwe, gewijzigd }
+}
+
 // Her-export voor gemak van de aanroeper (App.tsx gebruikt beide).
 export { groepFase }

@@ -39,7 +39,7 @@ import {
   importeerWcOrders, pasImportToe, importAuditRegels, importMelding, telNieuweWebshopOrders,
   importLeaseVrij, verwijderDubbeleWcOrders, WC_IMPORT_LEASE_MS,
 } from './utils/wcOrderImport'
-import { schoonTakenOp, deactiveerStandaardMetingen } from './utils/taken'
+import { schoonTakenOp, deactiveerStandaardMetingen, deactiveerZelfVastgelegd } from './utils/taken'
 import { batchStapGereed, huidigeStapIdx, huidigeStapStartMs, dagenInStap } from './utils/vergisting'
 import { BEWAAKTE_STATUSSEN, beoordeelBatches, tankAlarmTekst } from './utils/tankbewaking'
 import { aircoActief, type RuimteklimaatStatus } from './utils/ruimteklimaat'
@@ -947,6 +947,31 @@ function App() {
     const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000); // fallback
     return () => { clearInterval(int); clearTimeout(timeout); };
   }, [takenOpschoningV4, takenMigratie, batchTakenItems]);
+
+  // Opschoning v5 (1.13.58): de vinkjes op de afvuldag die de app zelf
+  // vastlegt (ABV vastzetten, CCP 3, de THT van de sessie, de afvulling met
+  // locatie) gaan uit. Uitzetten, niet verwijderen; alleen standaardregels
+  // zonder eigen tekst. Pure logica + tests in src/utils/taken.ts.
+  const [takenOpschoningV5, setTakenOpschoningV5] = useStore('batch_taken_opschoning_v5', null);
+  const takenOpschoningV5Ref = React.useRef(false);
+  React.useEffect(() => {
+    if (takenOpschoningV5Ref.current) return;
+    if (takenOpschoningV5 === 'v5') { takenOpschoningV5Ref.current = true; return; }
+    if (takenMigratie !== 'v1' && takenMigratie !== 'done') return;
+    const needed = ['batch_taken_items', 'batch_taken_opschoning_v5'];
+    const ready = () => needed.every(k => _fetchedKeys.has(k));
+    const run = () => {
+      if (takenOpschoningV5Ref.current) return;
+      takenOpschoningV5Ref.current = true;
+      const res = deactiveerZelfVastgelegd(Array.isArray(batchTakenItems) ? batchTakenItems : []);
+      if (res.gewijzigd) setBatchTakenItems(res.items);
+      setTakenOpschoningV5('v5');
+    };
+    if (ready()) { run(); return; }
+    const int = setInterval(() => { if (ready()) { clearInterval(int); run(); } }, 500);
+    const timeout = setTimeout(() => { clearInterval(int); run(); }, 8000); // fallback
+    return () => { clearInterval(int); clearTimeout(timeout); };
+  }, [takenOpschoningV5, takenMigratie, batchTakenItems]);
 
   // Eenmalige migratie (v1.12.11): de webshop-themavelden die kort als losse
   // `_cf_`-meta bij het product en het artikel stonden, zijn nu gewone

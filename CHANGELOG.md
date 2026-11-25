@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ---
 
+## [1.13.58] — 2026-11-25
+
+### Batchpagina: eerst het werk
+
+- Vergisten en Conditioneren beginnen met één kaart met de cijfers die tellen:
+  de laatste SG, hoe ver de vergisting is, de temperatuur van de tank tegen het
+  doel en het alcoholpercentage tot nu, met de grafiek ernaast. Wat niet
+  gemeten is, staat er niet. In Conditioneren geen tweede alcoholgetal naast
+  de regel *Alcohol voor accijns en THT*.
+- De stappen van een fase staan in één lijst, in de volgorde waarin je ze
+  doet, in plaats van in twee kolommen. De zin onder de fasenaam die de kop
+  herhaalde is weg; de kop zegt "2 van 4 gedaan".
+- Zelden nodig, dus niet meer altijd in beeld: *Verlies registreren*, *Tank
+  verplaatsen* en *Afgekeurd bier vernietigen* staan onder ⋯ in de kop van de
+  batch. Is er al iets geregistreerd, dan staan ze er gewoon.
+- De etiketkaart op de batch is één regel met de stand en de knop; de tabel
+  zie je na openklappen. Geen gekleurde zijrand meer.
+- De afvulchecklist vraagt niet meer om wat de app zelf vastlegt: FG + ABV
+  (de ABV zet je vast vóór het afvullen), etiketten (CCP 3), THT (de sessie)
+  en de opslag (de afvulling met locatie). Die vier regels gaan uit, niet weg:
+  in Instellingen → Batchtaken zijn ze weer aan te zetten. Een regel met een
+  eigen tekst blijft staan. De sluiting blijft: met de inspectie van de lege
+  flessen als CCP 2 legt niets anders die vast.
+- Het label "Vergisten" in de grafiek staat niet meer over de legenda.
+
+---
+
 ## [1.13.57] — 2026-11-24
 
 ### Opruimen: wat de app er gegenereerd liet uitzien

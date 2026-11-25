@@ -83,7 +83,9 @@ BrewAdmin-HA-App/
 │   │                               # batch op de pakbon staan en de pickmodal al ingevuld is; pas
 │   │                               # bewaren als het printvenster openging
 │   │   ├── batch/                  # De batchpagina in delen: BatchKop + KetenRegel (Recept › Product ›
-│   │   │                           # Tank), EtiketKaart (etiket & website; modi batch/product/recept),
+│   │   │                           # Tank), KernKaart (de cijfers + grafiek bovenaan Vergisten en
+│   │   │                           # Conditioneren, utils/batchKerncijfers.ts), EtiketKaart (etiket &
+│   │   │                           # website; modi batch/product/recept; op de batch `inklapbaar`: één regel),
 │   │   │                           # EtiketBijwerken (de énige schrijfweg voor het etiket, overal te openen
 │   │   │                           # met `useEtiketBijwerken()?.open({productId, batchId?})`; bovenaan
 │   │   │                           # EtiketVoorschriftLijst: "Zet dit op het etiket"), AbvVastzetten,
@@ -242,6 +244,10 @@ BrewAdmin-HA-App/
 │   │   ├── detailTitel.ts  # Kopbalktitel op een detailscherm ("Kadeblond #2609", receptnaam, WC-4321)
 │   │   ├── brouwzaal.ts    # De brouwzaal: tankrijen, andere batches, komende 14 dagen
 │   │   ├── batchActieBalk.ts # De stap van de fase in de ActieBalk van de batch (telefoon)
+│   │   ├── batchKerncijfers.ts # De kerncijfers bovenaan de batch: laatste SG, vergist %, temperatuur
+│   │   │                   # (sensor, anders de laatste meting) tegen het doel, alcohol tot nu (Balling);
+│   │   │                   # een cijfer zonder meting komt niet mee. Verlies, Tank verplaatsen en
+│   │   │                   # Afgekeurd bier staan op de batchpagina alleen als er iets is, anders onder ⋯
 │   │   ├── centen.ts       # Cent-exacte geldberekening (ERP 2.2): totaliseerRegels/totaliseerInkoop — gebruik dit voor élk factuurtotaal
 │   │   ├── journaal.ts     # Journaalboekingen (ERP 2.1): boekingsbouwers, storno, W&V uit journaal
 │   │   ├── kostensoortHerindeling.ts # De kostensoort van inkoopregels achteraf anders ("Overig" →
@@ -987,6 +993,10 @@ van het ⋯-menu (`menuPositie.test.ts`) en
 beslissingen + attentie (`beslissingen.test.ts`, `attentie.test.ts`:
 werkruimte-badge = aantal dashboardrijen = som van de menubadges, één rij per
 BTW-periode en per accijnsmaand).
+De kerncijfers van de batch (`batchKerncijfers.test.ts`: de laatste meting, vergist begrensd,
+alcohol tot nu, sensor of meting, niets gemeten = geen kaart) en de afvulchecklist zonder wat de app
+zelf vastlegt (`taken.test.ts`, `deactiveerZelfVastgelegd`: uitzetten, niet verwijderen; eigen tekst
+blijft; de sluiting blijft).
 Ook de keten en het etiket (opzet Productie & Verkoop): `etiket.ts` (Balling-ABV,
 energie in kcal/kJ met vaste testwaarden 1.050/1.010 → 46/194 … 1.090/1.018 →
 85/354, de ABV-marge, Bevat-regel, `legEtiketVast`),
